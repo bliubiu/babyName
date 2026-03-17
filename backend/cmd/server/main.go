@@ -3,7 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 	"github.com/namemaster/backend/internal/application/handlers"
@@ -17,13 +19,21 @@ var (
 	port    = flag.Int("port", 8080, "Server port")
 	host    = flag.String("host", "localhost", "Server host")
 	mode    = flag.String("mode", "backend", "Run mode: backend or all")
-	static  = flag.String("static", "./frontend/.next", "Static files directory for frontend")
+	static  = flag.String("static", "", "Static files directory for frontend (default: frontend/out)")
 	help    = flag.Bool("help", false, "Show help")
 	logPath = flag.String("log", "", "Log file path")
 )
 
 func main() {
 	flag.Parse()
+
+	if *static == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			cwd = "."
+		}
+		*static = filepath.Join(cwd, "..", "frontend", "out")
+	}
 
 	if *help {
 		fmt.Println("宝宝起名大师 - NameMaster")
@@ -109,9 +119,19 @@ func main() {
 	}
 
 	if *mode == "all" {
+		logger.Info("Static files directory", logger.String("path", *static))
 		router.Static("/static", *static)
 		router.GET("/", func(c *gin.Context) {
-			c.File(*static + "/index.html")
+			c.Header("Content-Type", "text/html; charset=utf-8")
+			c.Status(200)
+			filePath := *static + "/index.html"
+			file, err := os.Open(filePath)
+			if err != nil {
+				c.String(404, "Not Found")
+				return
+			}
+			defer file.Close()
+			io.Copy(c.Writer, file)
 		})
 	}
 
