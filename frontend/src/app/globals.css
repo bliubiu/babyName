@@ -1,0 +1,215 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Noto Sans SC', sans-serif;
+  }
+  
+  body {
+    @apply bg-warm-white text-ink;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-crimson text-white px-6 py-3 rounded-lg font-medium 
+           hover:brightness-110 transition-all duration-200 hover:-translate-y-0.5;
+  }
+  
+  .btn-secondary {
+    @apply border-2 border-gold text-gold px-6 py-2 rounded-lg font-medium
+           hover:bg-gold/10 transition-all duration-200;
+  }
+  
+  .card {
+    @apply bg-paper rounded-xl p-6;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-3 border border-paper rounded-md 
+           focus:border-gold focus:outline-none transition-colors;
+  }
+  
+  .label {
+    @apply block text-sm font-medium text-teal mb-2;
+  }
+}
+
+/* 背景纹理效果 */
+.bg-texture {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.03;
+}
+
+/* 八卦符号样式 */
+.hexagram-symbol {
+  @apply text-4xl font-serif text-ink;
+}
+
+/* 评分星星 */
+.star {
+  @apply text-score-green;
+}
+
+.star-half {
+  @apply text-gold;
+}
+
+/* 动画效果 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeInUp {
+  animation: fadeInUp 0.3s ease-out;
+}
+
+/* Toast 样式 */
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  animation: slideIn 0.3s ease-out;
+  min-width: 250px;
+  max-width: 400px;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.toast-success {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+}
+
+.toast-error {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+}
+
+.toast-warning {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+}
+
+.toast-info {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+}
+
+.toast-icon {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.toast-message {
+  flex: 1;
+  font-size: 14px;
+}
+
+/* Spinner 样式 */
+.spinner {
+  border-radius: 50%;
+  border-style: solid;
+  border-width: 3px;
+  border-color: currentColor;
+  border-top-color: transparent !important;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner-small {
+  width: 16px;
+  height: 16px;
+}
+
+.spinner-medium {
+  width: 32px;
+  height: 32px;
+}
+
+.spinner-large {
+  width: 48px;
+  height: 48px;
+}
+
+.page-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: 16px;
+}
+
+.page-loader-text {
+  color: #5d8a82;
+  font-size: 14px;
+}
+
+.inline-loader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #5d8a82;
+  font-size: 14px;
+}
+
+/* 表单验证样式 */
+.input-field.error {
+  border-color: #ef4444;
+}
+
+.input-field.success {
+  border-color: #10b981;
+}
+
+.input-error-message {
+  color: #ef4444;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.input-success-icon {
+  color: #10b981;
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+}
