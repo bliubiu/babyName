@@ -2,382 +2,554 @@ package ziwei
 
 import (
 	"fmt"
-	"time"
+	"sync"
 )
 
-type ZiweiChart struct {
-	BirthTime     time.Time `json:"birth_time"`
-	SolarYear     int       `json:"solar_year"`
-	SolarMonth    int       `json:"solar_month"`
-	SolarDay      int       `json:"solar_day"`
-	SolarHour     int       `json:"solar_hour"`
-	LunarYear     int       `json:"lunar_year"`
-	LunarMonth    int       `json:"lunar_month"`
-	LunarDay      int       `json:"lunar_day"`
-	IsLeapMonth   bool      `json:"is_leap_month"`
-	Gender        string    `json:"gender"`
-	DestinyHouse  int       `json:"destiny_house"`
-	BodyHouse     int       `json:"body_house"`
-	Stars         map[int][]string `json:"stars"`
-	Houses        []House   `json:"houses"`
-}
+var (
+	ziweiMutex sync.Mutex
+)
 
-type House struct {
-	Index     int      `json:"index"`
-	Name      string   `json:"name"`
-	Stars     []string `json:"stars"`
-	MainStar  string   `json:"main_star"`
-	Origin    string   `json:"origin"`
-}
+const (
+	Lu  = "禄"
+	Quan = "权"
+	Ke  = "科"
+	Ji  = "忌"
+)
 
-var HouseNames = []string{
-	"命宫", "兄弟宫", "夫妻宫", "子女宫",
-	"财帛宫", "疾厄宫", "迁移宫", "奴仆宫",
-	"官禄宫", "田宅宫", "福德宫", "父母宫",
-}
+var TianganNames = []string{"甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"}
 
-var MajorStars = []string{
-	"紫微", "天机", "太阳", "武曲", "天同", "廉贞",
-	"天府", "太阴", "贪狼", "巨门", "天相", "天梁",
-	"七杀", "破军",
-}
+var DizhiNames = []string{"子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"}
 
-var SecondaryStars = []string{
+var Gongs = []string{"命宫", "兄弟宫", "夫妻宫", "子女宫", "财帛宫", "疾厄宫", "迁移宫", "交友宫", "官禄宫", "田宅宫", "福德宫", "父母宫"}
+
+var ZhuXing14 = []string{"紫微", "天机", "太阳", "武曲", "天同", "廉贞", "天府", "太阴", "贪狼", "巨门", "天梁", "七杀", "破军", "紫微"}
+
+var FuXingList = []string{
 	"左辅", "右弼", "文昌", "文曲", "天魁", "天钺",
-	"火星", "铃星", "擎羊", "陀罗", "禄存", "天马",
-	"天空", "地劫", "化禄", "化权", "化科", "化忌",
+	"火星", "铃星", "擎羊", "陀罗",
+	"天空", "地空", "截空", "旬空",
+	"天伤", "天使",
 }
 
-var DecadeStars = []string{
-	"紫微星", "天机星", "太阳星", "武曲星", "天同星", "廉贞星",
-	"天府星", "太阴星", "贪狼星", "巨门星", "天相星", "天梁星",
-	"七杀星", "破军星",
+var SuiXingList = []string{
+	"天姚", "天哭", "天虚", "龙池", "凤阁",
+	"红鸾", "天喜", "孤辰", "寡宿",
+	"亡神", "劫煞", "大耗",
 }
 
-var HourBranchNames = []string{
-	"子", "丑", "寅", "卯", "辰", "巳",
-	"午", "未", "申", "酉", "戌", "亥",
+type ZiweiChart struct {
+	Year       int      `json:"year"`
+	Month      int      `json:"month"`
+	Day        int      `json:"day"`
+	Hour       int      `json:"hour"`
+	Gender     string   `json:"gender"`
+
+	NianZhu    string   `json:"nian_zhu"`
+	YueZhu     string   `json:"yue_zhu"`
+	RiZhu      string   `json:"ri_zhu"`
+	ShiZhu     string   `json:"shi_zhu"`
+
+	MingGong   string   `json:"ming_gong"`
+	ShenGong   string   `json:"shen_gong"`
+
+	ZhuXing    map[string]string `json:"zhu_xing"`
+	FuXing     map[string][]string `json:"fu_xing"`
+	SiHua      map[string]string `json:"si_hua"`
+
+	Analysis   string   `json:"analysis"`
 }
 
-func GetZiweiChart(year, month, day, hour int, gender string) *ZiweiChart {
+type ZiweiAnalysis struct {
+	Tianzhu     string `json:"tianzhu"`
+	Diwei       string `json:"diwei"`
+	Lu         string `json:"lu"`
+	Quan       string `json:"quan"`
+	Ke         string `json:"ke"`
+	Ji         string `json:"ji"`
+	Zhushen    string `json:"zhushen"`
+	Fuji       string `json:"fuji"`
+	Xingyao    string `json:"xingyao"`
+	Gongwei    string `json:"gongwei"`
+	Analysis   string `json:"analysis"`
+}
+
+func AnalyzeZiwei(year, month, day, hour int) *ZiweiAnalysis {
+	ziweiMutex.Lock()
+	defer ziweiMutex.Unlock()
+
+	chart := CalculateZiweiChart(year, month, day, hour, "")
+
+	return &ZiweiAnalysis{
+		Tianzhu:   chart.ZhuXing["命宫"],
+		Diwei:     chart.ZhuXing["田宅宫"],
+		Lu:        chart.SiHua["禄"],
+		Quan:      chart.SiHua["权"],
+		Ke:        chart.SiHua["科"],
+		Ji:        chart.SiHua["忌"],
+		Zhushen:   chart.ZhuXing["命宫"],
+		Fuji:      getFuXingString(chart.FuXing["命宫"]),
+		Xingyao:   "文昌、文曲、左辅、右弼",
+		Gongwei:   chart.MingGong,
+		Analysis:  chart.Analysis,
+	}
+}
+
+func CalculateZiweiChart(year, month, day, hour int, gender string) *ZiweiChart {
 	chart := &ZiweiChart{
-		SolarYear:    year,
-		SolarMonth:   month,
-		SolarDay:     day,
-		SolarHour:    hour,
-		Gender:       gender,
-		Stars:        make(map[int][]string),
-		Houses:       make([]House, 12),
+		Year:     year,
+		Month:    month,
+		Day:      day,
+		Hour:     hour,
+		Gender:   gender,
+		ZhuXing:  make(map[string]string),
+		FuXing:   make(map[string][]string),
+		SiHua:    make(map[string]string),
 	}
 
-	for i := 0; i < 12; i++ {
-		chart.Houses[i] = House{
-			Index: i,
-			Name:  HouseNames[i],
-		}
-	}
+	chart.NianZhu = calculateNianZhu(year)
+	chart.YueZhu = calculateYueZhu(month)
+	chart.RiZhu = calculateRiZhu(year, month, day)
+	chart.ShiZhu = calculateShiZhu(hour)
 
-	chart.calculateMingGong()
-	chart.calculateShenGong()
-	chart.placeMajorStars()
-	chart.placeSecondaryStars()
+	chart.MingGong = calculateMingGong(chart.YueZhu, chart.ShiZhu)
+	chart.ShenGong = calculateShenGong(chart.YueZhu, chart.ShiZhu)
+
+	distributeZhuXing(chart)
+	distributeFuXing(chart, year)
+	calculateSiHua(chart)
+
+	chart.Analysis = generateAnalysis(chart)
 
 	return chart
 }
 
-func (c *ZiweiChart) calculateMingGong() {
-	stemIndex := (c.SolarYear - 4) % 10
-	branchIndex := (c.SolarYear - 4) % 12
-
-	base := (stemIndex*2 + branchIndex) % 12
-	mingGong := (base + 12 - c.SolarHour/2) % 12
-
-	c.DestinyHouse = mingGong
-}
-
-func (c *ZiweiChart) calculateShenGong() {
-	mingGong := c.DestinyHouse
-
-	stemIndex := (c.SolarYear - 4) % 10
-	shenGong := (mingGong + 6 + stemIndex%3) % 12
-
-	c.BodyHouse = shenGong
-}
-
-func (c *ZiweiChart) placeMajorStars() {
-	destinyHouse := c.DestinyHouse
-
-	ziweiPos := (destinyHouse + 1) % 12
-	c.Stars[ziweiPos] = append(c.Stars[ziweiPos], "紫微")
-
-	tianjiPos := (destinyHouse + 3) % 12
-	c.Stars[tianjiPos] = append(c.Stars[tianjiPos], "天机")
-
-	sunPos := (destinyHouse + 4) % 12
-	c.Stars[sunPos] = append(c.Stars[sunPos], "太阳")
-
-	wuquPos := (destinyHouse + 5) % 12
-	c.Stars[wuquPos] = append(c.Stars[wuquPos], "武曲")
-
-	tiantongPos := (destinyHouse + 6) % 12
-	c.Stars[tiantongPos] = append(c.Stars[tiantongPos], "天同")
-
-	lianzhenPos := (destinyHouse + 7) % 12
-	c.Stars[lianzhenPos] = append(c.Stars[lianzhenPos], "廉贞")
-
-	tianfuPos := (destinyHouse + 8) % 12
-	c.Stars[tianfuPos] = append(c.Stars[tianfuPos], "天府")
-
-	taiyinPos := (destinyHouse + 9) % 12
-	c.Stars[taiyinPos] = append(c.Stars[taiyinPos], "太阴")
-
-	tanlangPos := (destinyHouse + 10) % 12
-	c.Stars[tanlangPos] = append(c.Stars[tanlangPos], "贪狼")
-
-	jumenPos := (destinyHouse + 11) % 12
-	c.Stars[jumenPos] = append(c.Stars[jumenPos], "巨门")
-
-	tianxiangPos := destinyHouse
-	c.Stars[tianxiangPos] = append(c.Stars[tianxiangPos], "天相")
-
-	tianliangPos := (destinyHouse + 1) % 12
-	c.Stars[tianliangPos] = append(c.Stars[tianliangPos], "天梁")
-
-	qishahPos := (destinyHouse + 2) % 12
-	c.Stars[qishahPos] = append(c.Stars[qishahPos], "七杀")
-
-	pojunPos := (destinyHouse + 3) % 12
-	c.Stars[pojunPos] = append(c.Stars[pojunPos], "破军")
-}
-
-func (c *ZiweiChart) placeSecondaryStars() {
-	destinyHouse := c.DestinyHouse
-	hour := c.SolarHour
-
-	zuofuPos := (destinyHouse + 2) % 12
-	c.Stars[zuofuPos] = append(c.Stars[zuofuPos], "左辅")
-
-	youbiPos := (destinyHouse + 10) % 12
-	c.Stars[youbiPos] = append(c.Stars[youbiPos], "右弼")
-
-	wenchangPos := (destinyHouse + 4) % 12
-	c.Stars[wenchangPos] = append(c.Stars[wenchangPos], "文昌")
-
-	wenquPos := (destinyHouse + 8) % 12
-	c.Stars[wenquPos] = append(c.Stars[wenquPos], "文曲")
-
-	tiankuiPos := (destinyHouse + 1) % 12
-	c.Stars[tiankuiPos] = append(c.Stars[tiankuiPos], "天魁")
-
-	tianyuePos := (destinyHouse + 9) % 12
-	c.Stars[tianyuePos] = append(c.Stars[tianyuePos], "天钺")
-
-	huoxingPos := (destinyHouse + 5) % 12
-	c.Stars[huoxingPos] = append(c.Stars[huoxingPos], "火星")
-
-	lingxingPos := (destinyHouse + 11) % 12
-	c.Stars[lingxingPos] = append(c.Stars[lingxingPos], "铃星")
-
-	qingyangPos := (destinyHouse + 6) % 12
-	c.Stars[qingyangPos] = append(c.Stars[qingyangPos], "擎羊")
-
-	tuoluoPos := (destinyHouse + 12 - ((destinyHouse + 6) % 12)) % 12
-	if tuoluoPos == destinyHouse {
-		tuoluoPos = (destinyHouse + 6) % 12
+func calculateNianZhu(year int) string {
+	yearIndex := (year - 4) % 10
+	if yearIndex < 0 {
+		yearIndex += 10
 	}
-	c.Stars[tuoluoPos] = append(c.Stars[tuoluoPos], "陀罗")
+	gan := TianganNames[yearIndex]
 
-	lucunPos := (c.SolarYear - 4) % 12
-	c.Stars[lucunPos] = append(c.Stars[lucunPos], "禄存")
+	monthIndex := (year - 4) % 12
+	if monthIndex < 0 {
+		monthIndex += 12
+	}
+	zhi := DizhiNames[monthIndex]
 
-	tianmaPos := (destinyHouse + 4 + hour/2) % 12
-	c.Stars[tianmaPos] = append(c.Stars[tianmaPos], "天马")
-
-	tiankongPos := (destinyHouse + 7) % 12
-	c.Stars[tiankongPos] = append(c.Stars[tiankongPos], "天空")
-
-	dijiePos := (destinyHouse + 1) % 12
-	c.Stars[dijiePos] = append(c.Stars[dijiePos], "地劫")
+	return gan + zhi
 }
 
-func GetStarMeaning(star string) string {
-	meanings := map[string]string{
-		"紫微": "帝王星，尊贵、权力、领导力",
-		"天机": "智慧星，思考、策划、机敏",
-		"太阳": "光明星，事业、名望、父亲",
-		"武曲": "财星，果断、坚毅、财富",
-		"天同": "福星，享乐、温和、福气",
-		"廉贞": "次桃花星，忠诚、廉洁、感情",
-		"天府": "财库星，稳定、保守、财富",
-		"太阴": "母星，温柔、阴柔、月亮",
-		"贪狼": "桃花星，欲望、交际、野心",
-		"巨门": "是非星，口才、神秘、纠纷",
-		"天相": "官禄星，服务、辅佐、中立",
-		"天梁": "荫星，慈善、长辈、稳定",
-		"七杀": "将星，果断、冲动、变革",
-		"破军": "耗星，破坏、创新、变动",
-		"左辅": "辅佐星，帮助、支持、忠臣",
-		"右弼": "辅佐星，帮助、支持、忠臣",
-		"文昌": "文星，学术、考试、文化",
-		"文曲": "文星，才艺、演艺、浪漫",
-		"天魁": "贵人星，机会、帮助、地位",
-		"天钺": "贵人星，机会、帮助、地位",
-		"火星": "煞星，冲动、火灾、急性",
-		"铃星": "煞星，冲动、火灾、演艺",
-		"擎羊": "煞星，伤害、刀光、争执",
-		"陀罗": "煞星，纠结、拖延、障碍",
-		"禄存": "财星，财富、稳定、正财",
-		"天马": "驿马星，变动、旅行、移动",
-		"天空": "空亡星，想象、空灵、精神",
-		"地劫": "劫财星，损失、破耗、抢夺",
+func calculateYueZhu(month int) string {
+	if month < 1 || month > 12 {
+		month = 1
+	}
+	return DizhiNames[(month-1)%12]
+}
+
+func calculateRiZhu(year, month, day int) string {
+	baseGan := (year - 4) % 10
+	if baseGan < 0 {
+		baseGan += 10
 	}
 
-	if meaning, ok := meanings[star]; ok {
-		return meaning
+	dayGanIndex := (baseGan + day - 1) % 10
+	if dayGanIndex < 0 {
+		dayGanIndex += 10
 	}
-	return "未知星曜"
+	gan := TianganNames[dayGanIndex]
+
+	baseZhi := (year - 4) % 12
+	if baseZhi < 0 {
+		baseZhi += 12
+	}
+
+	lunarMonthDays := getLunarMonthDays(month)
+	dayZhiIndex := (baseZhi + day - 1) % 12
+	if dayZhiIndex < 0 {
+		dayZhiIndex += 12
+	}
+	if day > lunarMonthDays {
+		dayZhiIndex = (dayZhiIndex + 1) % 12
+	}
+	zhi := DizhiNames[dayZhiIndex]
+
+	return gan + zhi
 }
 
-type StarAnalysis struct {
-	Star       string   `json:"star"`
-	House      string   `json:"house"`
-	Meaning    string   `json:"meaning"`
-	Strength   string   `json:"strength"`
-	Advice     string   `json:"advice"`
+func calculateShiZhu(hour int) string {
+	if hour < 0 || hour > 23 {
+		hour = 12
+	}
+
+	hourIndex := (hour + 1) / 2 % 12
+	return DizhiNames[hourIndex]
 }
 
-func (c *ZiweiChart) AnalyzeStars() []StarAnalysis {
-	var analyses []StarAnalysis
+func calculateMingGong(yueZhu, shiZhu string) string {
+	yueIndex := getDizhiIndex(yueZhu)
+	shiIndex := getDizhiIndex(shiZhu)
 
-	for houseIdx, stars := range c.Stars {
-		for _, star := range stars {
-			analysis := StarAnalysis{
-				Star:    star,
-				House:   HouseNames[houseIdx],
-				Meaning: GetStarMeaning(star),
-			}
+	gongIndex := (yueIndex + shiIndex) % 12
+	return Gongs[gongIndex]
+}
 
-			if isMajorStar(star) {
-				analysis.Strength = "主星"
-				analysis.Advice = getMajorStarAdvice(star, houseIdx)
-			} else if isSecondaryStar(star) {
-				analysis.Strength = "副星"
-				analysis.Advice = getSecondaryStarAdvice(star, houseIdx)
-			} else {
-				analysis.Strength = "煞星"
-				analysis.Advice = "需注意化解"
-			}
+func calculateShenGong(yueZhu, shiZhu string) string {
+	yueIndex := getDizhiIndex(yueZhu)
+	shiIndex := getDizhiIndex(shiZhu)
 
-			analyses = append(analyses, analysis)
+	gongIndex := (yueIndex + shiIndex + 6) % 12
+	return Gongs[gongIndex]
+}
+
+func distributeZhuXing(chart *ZiweiChart) {
+	nianIndex := (chart.Year - 4) % 10
+	if nianIndex < 0 {
+		nianIndex += 10
+	}
+
+	startOffset := nianIndex
+	if nianIndex >= 5 {
+		startOffset = nianIndex - 5
+	} else {
+		startOffset = nianIndex + 5
+	}
+
+	startGongIndex := 0
+	for i, g := range Gongs {
+		if g == chart.MingGong {
+			startGongIndex = i
+			break
 		}
 	}
-
-	return analyses
-}
-
-func isMajorStar(star string) bool {
-	for _, s := range MajorStars {
-		if s == star {
-			return true
-		}
-	}
-	return false
-}
-
-func isSecondaryStar(star string) bool {
-	for _, s := range SecondaryStars {
-		if s == star {
-			return true
-		}
-	}
-	return false
-}
-
-func getMajorStarAdvice(star string, houseIdx int) string {
-	adviceMap := map[string]string{
-		"紫微": "发挥领导才能，注意培养下属",
-		"天机": "多动脑筋，保持灵活性",
-		"太阳": "积极进取，注意父子关系",
-		"武曲": "果断决策，财运亨通",
-		"天同": "知足常乐，注意健康",
-		"廉贞": "坚守原则，注意感情",
-		"天府": "保守理财，积累财富",
-		"太阴": "内敛温柔，注意母亲",
-		"贪狼": "控制欲望，避免桃花劫",
-		"巨门": "谨言慎行，避免口舌",
-		"天相": "中庸之道，辅佐他人",
-		"天梁": "慈悲为怀，长辈缘佳",
-		"七杀": "果断勇敢，忌冲动",
-		"破军": "破旧立新，变动较大",
-	}
-
-	if advice, ok := adviceMap[star]; ok {
-		return advice
-	}
-	return "保持平衡发展"
-}
-
-func getSecondaryStarAdvice(star string, houseIdx int) string {
-	adviceMap := map[string]string{
-		"左辅": "多获帮助，人际关系佳",
-		"右弼": "多获帮助，人际关系佳",
-		"文昌": "学业进步，考试运佳",
-		"文曲": "艺术才华，表达能力强",
-		"天魁": "贵人相助，机会多多",
-		"天钺": "贵人相助，机会多多",
-		"火星": "注意防火，避免冲动",
-		"铃星": "注意情绪，避免纠纷",
-		"擎羊": "注意安全，避免血光",
-		"陀罗": "注意拖延，耐心化解",
-		"禄存": "正财稳定，理财有道",
-		"天马": "适合变动，驿马运旺",
-		"天空": "发挥想象，精神追求",
-		"地劫": "注意破财，保管财物",
-	}
-
-	if advice, ok := adviceMap[star]; ok {
-		return advice
-	}
-	return "正常发展"
-}
-
-func (c *ZiweiChart) GetHouseDescription(houseIdx int) string {
-	descriptions := []string{
-		"命宫：代表本人，性格、相貌、命格",
-		"兄弟宫：代表兄弟姐妹、合作关系",
-		"夫妻宫：代表婚姻、感情、配偶",
-		"子女宫：代表子女、桃花、欲望",
-		"财帛宫：代表财运、收入、理财",
-		"疾厄宫：代表健康、疾病、灾祸",
-		"迁移宫：代表外出、旅行、迁移",
-		"奴仆宫：代表朋友、下属、合作关系",
-		"官禄宫：代表事业、职位、权力",
-		"田宅宫：代表房产、不动产、家运",
-		"福德宫：代表福气、享受、兴趣",
-		"父母宫：代表父母、长辈、上司",
-	}
-
-	if houseIdx >= 0 && houseIdx < 12 {
-		return descriptions[houseIdx]
-	}
-	return ""
-}
-
-func (c *ZiweiChart) String() string {
-	result := fmt.Sprintf("紫微命盘 - %d年%d月%d日 %s时\n", 
-		c.SolarYear, c.SolarMonth, c.SolarDay, HourBranchNames[c.SolarHour/2])
-	result += fmt.Sprintf("命宫: %s, 身宫: %s\n", 
-		HouseNames[c.DestinyHouse], HouseNames[c.BodyHouse])
-	result += "\n各宫星曜:\n"
 
 	for i := 0; i < 12; i++ {
-		stars := c.Stars[i]
-		result += fmt.Sprintf("%s: ", HouseNames[i])
-		for _, star := range stars {
-			result += star + " "
+		gongName := Gongs[(startGongIndex+i)%12]
+		xingIndex := (startOffset + i) % 14
+		if xingIndex >= 14 {
+			xingIndex -= 14
 		}
-		result += "\n"
+		chart.ZhuXing[gongName] = ZhuXing14[xingIndex]
 	}
 
+	if _, exists := chart.ZhuXing[chart.ShenGong]; !exists {
+		chart.ZhuXing[chart.ShenGong] = "天府"
+	}
+}
+
+func getZhuXingOrder(year, month int) []string {
+	yearGan := (year - 4) % 10
+	if yearGan < 0 {
+		yearGan += 10
+	}
+
+	switch yearGan {
+	case 0, 5:
+		return []string{"紫微", "天机", "太阳", "武曲", "天同", "廉贞", "天府", "太阴", "贪狼", "巨门", "天梁", "七杀", "破军"}
+	case 1, 6:
+		return []string{"紫微", "天府", "天机", "太阳", "武曲", "天同", "廉贞", "太阴", "贪狼", "巨门", "天梁", "七杀", "破军"}
+	case 2, 7:
+		return []string{"紫微", "太阴", "天机", "天府", "太阳", "天同", "武曲", "廉贞", "巨门", "贪狼", "七杀", "天梁", "破军"}
+	case 3, 8:
+		return []string{"紫微", "天府", "太阴", "天机", "天同", "太阳", "廉贞", "武曲", "巨门", "贪狼", "天梁", "七杀", "破军"}
+	case 4, 9:
+		return []string{"紫微", "天同", "天府", "天机", "太阴", "太阳", "廉贞", "武曲", "贪狼", "巨门", "天梁", "七杀", "破军"}
+	default:
+		return []string{"紫微", "贪狼", "巨门", "禄存", "文曲", "廉贞", "武曲", "破军", "天府", "太阴", "天梁", "七杀", "天机"}
+	}
+}
+
+func distributeFuXing(chart *ZiweiChart, year int) {
+	yearZhi := (chart.Year - 4) % 12
+	if yearZhi < 0 {
+		yearZhi += 12
+	}
+
+	fuPositions := map[string]int{
+		"左辅": (yearZhi + 2) % 12,
+		"右弼": (yearZhi + 10) % 12,
+		"文昌": (yearZhi + 4) % 12,
+		"文曲": (yearZhi + 10) % 12,
+		"天魁": (yearZhi + 1) % 12,
+		"天钺": (yearZhi + 11) % 12,
+		"火星": (yearZhi + 5) % 12,
+		"铃星": (yearZhi + 9) % 12,
+		"擎羊": (yearZhi + 6) % 12,
+		"陀罗": (yearZhi + 8) % 12,
+	}
+
+	for star, pos := range fuPositions {
+		gongName := Gongs[pos]
+		chart.FuXing[gongName] = append(chart.FuXing[gongName], star)
+	}
+
+	for i := 0; i < 12; i++ {
+		gongName := Gongs[i]
+		if _, exists := chart.FuXing[gongName]; !exists {
+			chart.FuXing[gongName] = []string{}
+		}
+	}
+}
+
+func calculateSiHua(chart *ZiweiChart) {
+	nianGan := (chart.Year - 4) % 10
+	if nianGan < 0 {
+		nianGan += 10
+	}
+
+	luGong := getSiHuaLu(nianGan)
+	quanGong := getSiHuaQuan(nianGan)
+	keGong := getSiHuaKe(nianGan)
+	jiGong := getSiHuaJi(nianGan)
+
+	chart.SiHua["禄"] = luGong
+	chart.SiHua["权"] = quanGong
+	chart.SiHua["科"] = keGong
+	chart.SiHua["忌"] = jiGong
+}
+
+func getSiHuaLu(nianGan int) string {
+	switch nianGan {
+	case 0, 5:
+		return "破军"
+	case 1, 6:
+		return "贪狼"
+	case 2, 7:
+		return "太阳"
+	case 3, 8:
+		return "天梁"
+	case 4, 9:
+		return "太阴"
+	default:
+		return "贪狼"
+	}
+}
+
+func getSiHuaQuan(nianGan int) string {
+	switch nianGan {
+	case 0, 5:
+		return "贪狼"
+	case 1, 6:
+		return "天府"
+	case 2, 7:
+		return "太阴"
+	case 3, 8:
+		return "天机"
+	case 4, 9:
+		return "天同"
+	default:
+		return "天府"
+	}
+}
+
+func getSiHuaKe(nianGan int) string {
+	switch nianGan {
+	case 0, 5:
+		return "巨门"
+	case 1, 6:
+		return "武曲"
+	case 2, 7:
+		return "天机"
+	case 3, 8:
+		return "文昌"
+	case 4, 9:
+		return "文曲"
+	default:
+		return "武曲"
+	}
+}
+
+func getSiHuaJi(nianGan int) string {
+	switch nianGan {
+	case 0, 5:
+		return "廉贞"
+	case 1, 6:
+		return "七杀"
+	case 2, 7:
+		return "天同"
+	case 3, 8:
+		return "天梁"
+	case 4, 9:
+		return "太阳"
+	default:
+		return "七杀"
+	}
+}
+
+func getDizhiIndex(dizhi string) int {
+	for i, d := range DizhiNames {
+		if d == dizhi {
+			return i
+		}
+	}
+	return 0
+}
+
+func getLunarMonthDays(month int) int {
+	if month < 1 || month > 12 {
+		return 30
+	}
+	daysMap := map[int]int{
+		1: 30, 2: 29, 3: 30, 4: 29, 5: 30, 6: 29,
+		7: 30, 8: 30, 9: 29, 10: 30, 11: 29, 12: 30,
+	}
+	if days, ok := daysMap[month]; ok {
+		return days
+	}
+	return 30
+}
+
+func getFuXingString(fuXing []string) string {
+	if len(fuXing) == 0 {
+		return ""
+	}
+	result := fuXing[0]
+	for i := 1; i < len(fuXing); i++ {
+		result += "、" + fuXing[i]
+	}
 	return result
+}
+
+func generateAnalysis(chart *ZiweiChart) string {
+	analysis := fmt.Sprintf("出生年份：%d年\n", chart.Year)
+	analysis += fmt.Sprintf("四柱：%s %s %s %s\n", chart.NianZhu, chart.YueZhu, chart.RiZhu, chart.ShiZhu)
+	analysis += fmt.Sprintf("命宫：%s\n", chart.MingGong)
+	analysis += fmt.Sprintf("身宫：%s\n", chart.ShenGong)
+
+	analysis += "\n【主星分布】\n"
+	for _, gong := range Gongs {
+		if zhuXing, ok := chart.ZhuXing[gong]; ok {
+			analysis += fmt.Sprintf("%s：%s\n", gong, zhuXing)
+		}
+	}
+
+	analysis += "\n【四化】\n"
+	analysis += fmt.Sprintf("禄：%s\n", chart.SiHua["禄"])
+	analysis += fmt.Sprintf("权：%s\n", chart.SiHua["权"])
+	analysis += fmt.Sprintf("科：%s\n", chart.SiHua["科"])
+	analysis += fmt.Sprintf("忌：%s\n", chart.SiHua["忌"])
+
+	analysis += "\n【辅星】\n"
+	hasFuXing := false
+	for _, gong := range Gongs {
+		if fuXing, ok := chart.FuXing[gong]; ok && len(fuXing) > 0 {
+			analysis += fmt.Sprintf("%s：%s\n", gong, getFuXingString(fuXing))
+			hasFuXing = true
+		}
+	}
+	if !hasFuXing {
+		analysis += "无特殊辅星\n"
+	}
+
+	mingGongZhuXing := chart.ZhuXing[chart.MingGong]
+	analysis += "\n【命宫主星分析】\n"
+	analysis += getZhuXingAnalysis(mingGongZhuXing)
+
+	return analysis
+}
+
+func getZhuXingAnalysis(zhuXing string) string {
+	analysisMap := map[string]string{
+		"紫微": "紫微星君临，美满福禄，地位显赫，有领导才能，适合管理岗位。",
+		"天机": "天机星临命，聪明机智，思维敏捷，适合策划、创意、技术类工作。",
+		"太阳": "太阳星照耀，热情开朗，积极主动，适合教育、公共关系、销售类工作。",
+		"武曲": "武曲星刚毅果断，行动力强，适合金融、技术、军事类工作。",
+		"天同": "天同星温和仁慈，人缘好，适合服务、医疗、教育类工作。",
+		"廉贞": "廉贞星情感丰富，善于表达，适合艺术、文学、演艺类工作。",
+		"天府": "天府星稳重可靠，理财能力强，适合财务、管理、稳定类工作。",
+		"太阴": "太阴星细腻温柔，想象力丰富，适合艺术、设计、文职类工作。",
+		"贪狼": "贪狼星欲望强烈，适应力强，适合商业、娱乐、社交类工作。",
+		"巨门": "巨门星口才出众，分析力强，适合法律、教育、媒体类工作。",
+		"天梁": "天梁星成熟稳重，有责任感，适合教育、宗教、慈善类工作。",
+		"七杀": "七杀星刚强果断，敢于冒险，适合执法、军事、创业类工作。",
+		"破军": "破军星变革创新，不畏艰难，适合改革、技术、开创类工作。",
+	}
+
+	if analysis, ok := analysisMap[zhuXing]; ok {
+		return analysis
+	}
+	return "命主性格温和，做事稳重，适合稳定的工作环境。"
+}
+
+func GetZiweiInfo(year, month, day, hour int) map[string]interface{} {
+	chart := CalculateZiweiChart(year, month, day, hour, "")
+
+	return map[string]interface{}{
+		"nian_zhu":        chart.NianZhu,
+		"yue_zhu":         chart.YueZhu,
+		"ri_zhu":          chart.RiZhu,
+		"shi_zhu":         chart.ShiZhu,
+		"ming_gong":       chart.MingGong,
+		"shen_gong":       chart.ShenGong,
+		"zhu_xing":        chart.ZhuXing,
+		"fu_xing":         chart.FuXing,
+		"si_hua":          chart.SiHua,
+		"analysis":        chart.Analysis,
+		"lucky_direction": getLuckyDirection(year),
+		"lucky_color":     getLuckyColor(year),
+		"lucky_number":    getLuckyNumber(year),
+		"career_suggestion": getCareerSuggestion(chart.ZhuXing[chart.MingGong]),
+		"relationship":    getRelationshipAdvice(chart.ZhuXing[chart.MingGong]),
+	}
+}
+
+func getLuckyDirection(year int) string {
+	directions := []string{"东方", "南方", "西方", "北方", "东南方", "西南方", "东北方", "西北方"}
+	index := year % len(directions)
+	return directions[index]
+}
+
+func getLuckyColor(year int) string {
+	colors := []string{"红色", "黄色", "蓝色", "绿色", "紫色", "白色", "黑色", "金色"}
+	index := year % len(colors)
+	return colors[index]
+}
+
+func getLuckyNumber(year int) int {
+	return (year % 9) + 1
+}
+
+func getCareerSuggestion(zhuXing string) string {
+	careerMap := map[string]string{
+		"紫微": "适合从政、管理、领导岗位",
+		"贪狼": "适合商业、艺术、娱乐行业",
+		"巨门": "适合教育、法律、媒体行业",
+		"武曲": "适合军事、金融、技术行业",
+		"天机": "适合科技、策划、创意行业",
+		"天同": "适合服务、医疗、教育行业",
+		"太阴": "适合艺术、设计、文职行业",
+		"太阳": "适合教育、公共服务、销售行业",
+		"天梁": "适合教育、宗教、慈善行业",
+		"七杀": "适合军事、执法、冒险行业",
+		"破军": "适合创业、改革、技术行业",
+		"天府": "适合管理、财务、稳定行业",
+		"廉贞": "适合艺术、文学、演艺行业",
+	}
+
+	if career, ok := careerMap[zhuXing]; ok {
+		return career
+	}
+	return "适合稳定的工作环境，注重团队合作"
+}
+
+func getRelationshipAdvice(zhuXing string) string {
+	relationMap := map[string]string{
+		"紫微": "感情中注重尊严，需要伴侣理解支持",
+		"贪狼": "感情丰富，需要伴侣有共同兴趣",
+		"巨门": "口才出众，需要伴侣善于沟通",
+		"武曲": "性格刚毅，需要伴侣温柔体贴",
+		"天机": "思维敏捷，需要伴侣聪明伶俐",
+		"天同": "性格温和，需要伴侣真诚相待",
+		"太阴": "感情细腻，需要伴侣细心呵护",
+		"太阳": "热情开朗，需要伴侣积极乐观",
+		"天梁": "传统保守，需要伴侣稳重可靠",
+		"七杀": "个性强势，需要伴侣独立自信",
+		"破军": "喜欢挑战，需要伴侣勇敢坚强",
+		"天府": "注重实际，需要伴侣踏实肯干",
+		"廉贞": "情感丰富，需要伴侣能理解艺术气质",
+	}
+
+	if advice, ok := relationMap[zhuXing]; ok {
+		return advice
+	}
+	return "感情中需要相互理解，共同成长"
 }

@@ -3,34 +3,42 @@ package bazi
 import (
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
-	"github.com/6tail/lunar-go/calendar"
-	"github.com/namemaster/backend/internal/domain/yijing"
+	"github.com/bliubiu/babyName/internal/domain/bazi/tyme"
+	"github.com/bliubiu/babyName/internal/domain/yijing"
 )
 
-// SolarTermData 节气数据（简化版）
-var SolarTermData = map[string]struct {
-	Month   int
-	Day     int
-	Hour    int
-	Minute  int
-}{
-	"小寒": {12, 5, 12, 0}, "大寒": {1, 20, 12, 0},
-	"立春": {2, 4, 12, 0}, "雨水": {2, 19, 12, 0},
-	"惊蛰": {3, 5, 12, 0}, "春分": {3, 20, 12, 0},
-	"清明": {4, 5, 12, 0}, "谷雨": {4, 20, 12, 0},
-	"立夏": {5, 5, 12, 0}, "小满": {5, 21, 12, 0},
-	"芒种": {6, 5, 12, 0}, "夏至": {6, 21, 12, 0},
-	"小暑": {7, 7, 12, 0}, "大暑": {7, 22, 12, 0},
-	"立秋": {8, 7, 12, 0}, "处暑": {8, 23, 12, 0},
-	"白露": {9, 7, 12, 0}, "秋分": {9, 23, 12, 0},
-	"寒露": {10, 8, 12, 0}, "霜降": {10, 23, 12, 0},
-	"立冬": {11, 7, 12, 0}, "小雪": {11, 22, 12, 0},
-	"大雪": {12, 7, 12, 0}, "冬至": {12, 21, 12, 0},
+const (
+	WuxingRatioTaiRuo   = 15.0
+	WuxingRatioPianRuo  = 25.0
+	WuxingRatioPingheng = 35.0
+	WuxingRatioPianQiang = 45.0
+
+	ScoreTaiRuoMax    = 35
+	ScorePianRuoMax    = 55
+	ScorePinghengMax   = 75
+	ScorePianQiangMax  = 90
+	ScoreGuoWangMax    = 95
+)
+
+var (
+	wuxingAdviceMap = map[string]string{
+		"金": "金过旺则折，需火炼土生；金太弱则缺，宜补金",
+		"木": "木过旺则折，需金克火泄；木太弱则缺，宜补木",
+		"水": "水过旺则泛滥，需土制木泄；水太弱则缺，宜补水",
+		"火": "火过旺则炎上，需水克金泄；火太弱则缺，宜补火",
+		"土": "土过旺则壅塞，需木克水泄；土太弱则缺，宜补土",
+	}
+)
+
+type SolarTermResult struct {
+	Name      string
+	ExactTime time.Time
+	IsLeapMonth bool
 }
 
-// GetSolarTerm 获取节气
 func GetSolarTerm(month, day int) string {
 	terms := []string{
 		"小寒", "大寒", "立春", "雨水", "惊蛰", "春分",
@@ -48,7 +56,19 @@ func GetSolarTerm(month, day int) string {
 	return ""
 }
 
-// SolarTermOffset 节气时间偏移
+func GetSolarTermFromTyme(year, month, day, hour, minute int) (string, bool, error) {
+	solarTime, err := tyme.SolarTime{}.FromYmdHms(year, month, day, hour, minute, 0)
+	if err != nil {
+		return "", false, err
+	}
+
+	term := solarTime.GetTerm()
+	lunarMonth := solarTime.GetSolarDay().GetLunarDay().GetLunarMonth()
+	isLeapMonth := lunarMonth.IsLeap()
+
+	return term.GetName(), isLeapMonth, nil
+}
+
 func SolarTermOffset(year, month, day, hour, minute int) bool {
 	term := GetSolarTerm(month, day)
 	if term == "" {
@@ -64,7 +84,6 @@ func SolarTermOffset(year, month, day, hour, minute int) bool {
 	return false
 }
 
-// WuxingStrengthResult 五行强弱分析结果
 type WuxingStrengthResult struct {
 	Jin  StrengthInfo `json:"jin"`
 	Mu   StrengthInfo `json:"mu"`
@@ -73,16 +92,14 @@ type WuxingStrengthResult struct {
 	Tu   StrengthInfo `json:"tu"`
 }
 
-// StrengthInfo 强弱信息
 type StrengthInfo struct {
-	Count     int     `json:"count"`
-	Strength  string  `json:"strength"` // 弱/平衡/强
-	Score     int     `json:"score"`    // 1-100
-	Advice    string  `json:"advice"`   // 建议
+	Count    int    `json:"count"`
+	Strength string `json:"strength"`
+	Score    int    `json:"score"`
+	Advice   string `json:"advice"`
 }
 
-// WuxingStrengthAnalysis 五行强弱分析
-func WuxingStrengthAnalysis(wuxing *WuxingResult) *WuxingStrengthResult {
+func CalculateWuxingStrength(wuxing *WuxingResult) *WuxingStrengthResult {
 	result := &WuxingStrengthResult{}
 
 	elements := map[string]*StrengthInfo{
@@ -91,14 +108,6 @@ func WuxingStrengthAnalysis(wuxing *WuxingResult) *WuxingStrengthResult {
 
 	counts := map[string]int{"金": wuxing.Jin, "木": wuxing.Mu, "水": wuxing.Shui, "火": wuxing.Huo, "土": wuxing.Tu}
 
-	adviceMap := map[string]string{
-		"金": "金过旺则折，需火炼土生；金太弱则缺，宜补金",
-		"木": "木过旺则折，需金克火泄；木太弱则缺，宜补木",
-		"水": "水过旺则泛滥，需土制木泄；水太弱则缺，宜补水",
-		"火": "火过旺则炎上，需水克金泄；火太弱则缺，宜补火",
-		"土": "土过旺则壅塞，需木克水泄；土太弱则缺，宜补土",
-	}
-
 	total := wuxing.Jin + wuxing.Mu + wuxing.Shui + wuxing.Huo + wuxing.Tu
 	if total == 0 {
 		total = 1
@@ -106,91 +115,129 @@ func WuxingStrengthAnalysis(wuxing *WuxingResult) *WuxingStrengthResult {
 
 	for elem, count := range counts {
 		ratio := float64(count) / float64(total) * 100
-		strength := "平衡"
-		score := 50
-
-		if ratio < 15 {
-			strength = "太弱"
-			score = 20 + int(ratio)
-		} else if ratio < 25 {
-			strength = "偏弱"
-			score = 40 + int((ratio-15)*2)
-		} else if ratio < 35 {
-			strength = "平衡"
-			score = 60 + int((ratio-25))
-		} else if ratio < 45 {
-			strength = "偏强"
-			score = 75 + int((ratio-35))
-		} else {
-			strength = "过旺"
-			score = 90 - int((ratio-45))
-			if score > 95 {
-				score = 95
-			}
-		}
+		strength, score := calculateStrengthAndScore(ratio)
 
 		elements[elem].Count = count
 		elements[elem].Strength = strength
 		elements[elem].Score = score
-		elements[elem].Advice = adviceMap[elem]
+		elements[elem].Advice = wuxingAdviceMap[elem]
 	}
 
 	return result
 }
 
-// Bazi 八字结构
+func calculateStrengthAndScore(ratio float64) (string, int) {
+	var strength string
+	var score int
+
+	if ratio < WuxingRatioTaiRuo {
+		strength = "太弱"
+		score = 20 + int(ratio)
+	} else if ratio < WuxingRatioPianRuo {
+		strength = "偏弱"
+		score = 40 + int((ratio-WuxingRatioTaiRuo)*2)
+	} else if ratio < WuxingRatioPingheng {
+		strength = "平衡"
+		score = 60 + int((ratio-WuxingRatioPianRuo))
+	} else if ratio < WuxingRatioPianQiang {
+		strength = "偏强"
+		score = 75 + int((ratio-WuxingRatioPingheng))
+	} else {
+		strength = "过旺"
+		score = 90 - int((ratio-WuxingRatioPianQiang))
+		if score > ScoreGuoWangMax {
+			score = ScoreGuoWangMax
+		}
+	}
+
+	return strength, score
+}
+
+func CalculateWuxingScore(wuxing *WuxingResult) int {
+	strength := CalculateWuxingStrength(wuxing)
+	total := 0
+	count := 0
+
+	elements := []*StrengthInfo{&strength.Jin, &strength.Mu, &strength.Shui, &strength.Huo, &strength.Tu}
+	for _, e := range elements {
+		total += e.Score
+		count++
+	}
+
+	if count == 0 {
+		return 50
+	}
+	return total / count
+}
+
 type Bazi struct {
-	Year      string `json:"year"`      // 年柱
-	Month     string `json:"month"`     // 月柱
-	Day       string `json:"day"`       // 日柱
-	Hour      string `json:"hour"`      // 时柱
-	YearGanzhi string `json:"year_ganzhi"`
+	Year        string `json:"year"`
+	Month       string `json:"month"`
+	Day         string `json:"day"`
+	Hour        string `json:"hour"`
+	YearGanzhi  string `json:"year_ganzhi"`
 	MonthGanzhi string `json:"month_ganzhi"`
 	DayGanzhi   string `json:"day_ganzhi"`
 	HourGanzhi  string `json:"hour_ganzhi"`
+	IsLeapMonth bool   `json:"is_leap_month"`
+	LunarMonth  int    `json:"lunar_month"`
 }
 
-// WuxingResult 五行分析结果
 type WuxingResult struct {
-	Jin  int `json:"jin"`  // 金
-	Mu   int `json:"mu"`   // 木
-	Shui int `json:"shui"` // 水
-	Huo  int `json:"huo"`  // 火
-	Tu   int `json:"tu"`   // 土
+	Jin  int `json:"jin"`
+	Mu   int `json:"mu"`
+	Shui int `json:"shui"`
+	Huo  int `json:"huo"`
+	Tu   int `json:"tu"`
 }
 
-// BaziAnalysis 八字分析结果
 type BaziAnalysis struct {
-	Bazi              Bazi                  `json:"bazi"`
-	Wuxing            WuxingResult          `json:"wuxing"`
-	Xiyongshen       []string              `json:"xiyongshen"`
-	Yiyongshen       []string              `json:"iyongshen"`
-	TiaohouShen      []string              `json:"tiaohou_shen"`
-	Rishou           string                `json:"rishou"`
-	RishouWuxing     string                `json:"rishou_wuxing"`
-	Nayin            string                `json:"nayin"`
-	DayMaster        string                `json:"day_master"`
-	DayMasterStrength string               `json:"day_master_strength"`
-	SolarTerm        string                `json:"solar_term"`
-	Season           string                `json:"season"`
-	WuxingStrength   *WuxingStrengthResult `json:"wuxing_strength"`
-	BestHexagram     string                `json:"best_hexagram"`
-	HexagramWuxing  string                `json:"hexagram_wuxing"`
-	BaziPattern      string                `json:"bazi_pattern"`
-	YongshenScore    int                   `json:"yongshen_score"`
-	DayanHexagram   string                `json:"dayan_hexagram"`
-	DayanInterpretation string             `json:"dayan_interpretation"`
+	Bazi               Bazi                   `json:"bazi"`
+	Wuxing             WuxingResult           `json:"wuxing"`
+	Xiyongshen         []string               `json:"xiyongshen"`
+	Yiyongshen         []string               `json:"yiyongshen"`
+	TiaohouShen        []string               `json:"tiaohou_shen"`
+	Rishou             string                 `json:"rishou"`
+	RishouWuxing       string                 `json:"rishou_wuxing"`
+	Nayin              string                 `json:"nayin"`
+	DayMaster          string                 `json:"day_master"`
+	DayMasterStrength  string                 `json:"day_master_strength"`
+	SolarTerm          string                 `json:"solar_term"`
+	Season             string                 `json:"season"`
+	WuxingStrength     *WuxingStrengthResult  `json:"wuxing_strength"`
+	BestHexagram       string                 `json:"best_hexagram"`
+	HexagramWuxing     string                 `json:"hexagram_wuxing"`
+	BaziPattern        string                 `json:"bazi_pattern"`
+	YongshenScore      int                    `json:"yongshen_score"`
+	DayanHexagram      string                 `json:"dayan_hexagram"`
+	DayanInterpretation string                `json:"dayan_interpretation"`
+	IsLeapMonth        bool                   `json:"is_leap_month"`
+	LeapMonthAdvice    string                 `json:"leap_month_advice,omitempty"`
 }
 
-// CalculateBazi 计算八字（使用lunar-go高精度库）
-func CalculateBazi(year, month, day, hour, minute int) *Bazi {
-	solar := calendar.NewSolar(year, month, day, hour, minute, 0)
-	lunar := calendar.NewLunarFromSolar(solar)
+var baziCalcMutex sync.Mutex
 
-	yearGanzhi := lunar.GetYearInGanZhi()
-	monthGanzhi := lunar.GetMonthInGanZhi()
-	dayGanzhi := lunar.GetDayInGanZhi()
-	hourGanzhi := lunar.GetTimeInGanZhi()
+func CalculateBazi(year, month, day, hour, minute int) (*Bazi, error) {
+	baziCalcMutex.Lock()
+	defer baziCalcMutex.Unlock()
+
+	solarTime, err := tyme.SolarTime{}.FromYmdHms(year, month, day, hour, minute, 0)
+	if err != nil {
+		return nil, fmt.Errorf("创建SolarTime失败: %w", err)
+	}
+
+	lunarHour := solarTime.GetLunarHour()
+	eightChar := lunarHour.GetEightChar()
+
+	lunarDay := solarTime.GetSolarDay().GetLunarDay()
+	lunarMonth := lunarDay.GetLunarMonth()
+	isLeapMonth := lunarMonth.IsLeap()
+	lunarMonthNum := lunarMonth.GetMonth()
+
+	yearGanzhi := eightChar.GetYear().GetName()
+	monthGanzhi := eightChar.GetMonth().GetName()
+	dayGanzhi := eightChar.GetDay().GetName()
+	hourGanzhi := eightChar.GetHour().GetName()
 
 	return &Bazi{
 		Year:        yearGanzhi,
@@ -201,15 +248,16 @@ func CalculateBazi(year, month, day, hour, minute int) *Bazi {
 		MonthGanzhi: monthGanzhi,
 		DayGanzhi:   dayGanzhi,
 		HourGanzhi:  hourGanzhi,
-	}
+		IsLeapMonth: isLeapMonth,
+		LunarMonth:  lunarMonthNum,
+	}, nil
 }
 
-// AnalyzeBazi 分析八字
-func AnalyzeBazi(year, month, day, hour, minute int) *BaziAnalysis {
-	solar := calendar.NewSolar(year, month, day, hour, minute, 0)
-	lunar := calendar.NewLunarFromSolar(solar)
-
-	bazi := CalculateBazi(year, month, day, hour, minute)
+func AnalyzeBazi(year, month, day, hour, minute int) (*BaziAnalysis, error) {
+	bazi, err := CalculateBazi(year, month, day, hour, minute)
+	if err != nil {
+		return nil, err
+	}
 
 	ganzhi := bazi.YearGanzhi + bazi.MonthGanzhi + bazi.DayGanzhi + bazi.HourGanzhi
 	wuxing := calculateWuxing(ganzhi)
@@ -221,19 +269,16 @@ func AnalyzeBazi(year, month, day, hour, minute int) *BaziAnalysis {
 	iyongshen := calculateYiyongshen(wuxing, rishouWuxing)
 	tiaohouShen := calculateTiaohouShen(month)
 
-	nayin := lunar.GetYearNaYin()
-	if nayin == "" {
-		nayin = "未知"
-	}
+	nayin := getNayinFromTyme(year, month, day, hour, minute)
 
-	solarTerm := lunar.GetJieQi()
-	if solarTerm == "" {
-		solarTerm = GetSolarTerm(month, day)
+	solarTerm, isLeapMonth, err := GetSolarTermFromTyme(year, month, day, hour, minute)
+	if err != nil {
+		solarTerm = ""
 	}
 
 	season := getSeason(month, day)
 	dayMasterStrength := calculateDayMasterStrength(wuxing, rishouWuxing)
-	wuxingStrength := WuxingStrengthAnalysis(wuxing)
+	wuxingStrength := CalculateWuxingStrength(wuxing)
 
 	hexagram := yijing.GetHexagramByStrokes(10)
 	hexagramWuxing := ""
@@ -254,30 +299,52 @@ func AnalyzeBazi(year, month, day, hour, minute int) *BaziAnalysis {
 		dayanInterpretation = dayanResult.Interpretation
 	}
 
-	return &BaziAnalysis{
-		Bazi:              *bazi,
-		Wuxing:            *wuxing,
-		Xiyongshen:       xiyongshen,
-		Yiyongshen:       iyongshen,
-		TiaohouShen:      tiaohouShen,
-		Rishou:           dayTiangan,
-		RishouWuxing:     rishouWuxing,
-		Nayin:            nayin,
-		DayMaster:        rishouWuxing,
-		DayMasterStrength: dayMasterStrength,
-		SolarTerm:        solarTerm,
-		Season:            season,
-		WuxingStrength:    wuxingStrength,
-		BestHexagram:     bestHexagram,
-		HexagramWuxing:   hexagramWuxing,
-		BaziPattern:      baziPattern,
-		YongshenScore:    yongshenScore,
-		DayanHexagram:   dayanHexagram,
+	result := &BaziAnalysis{
+		Bazi:               *bazi,
+		Wuxing:             *wuxing,
+		Xiyongshen:         xiyongshen,
+		Yiyongshen:         iyongshen,
+		TiaohouShen:        tiaohouShen,
+		Rishou:             dayTiangan,
+		RishouWuxing:       rishouWuxing,
+		Nayin:              nayin,
+		DayMaster:          rishouWuxing,
+		DayMasterStrength:  dayMasterStrength,
+		SolarTerm:          solarTerm,
+		Season:             season,
+		WuxingStrength:     wuxingStrength,
+		BestHexagram:       bestHexagram,
+		HexagramWuxing:     hexagramWuxing,
+		BaziPattern:        baziPattern,
+		YongshenScore:      yongshenScore,
+		DayanHexagram:      dayanHexagram,
 		DayanInterpretation: dayanInterpretation,
+		IsLeapMonth:        isLeapMonth || bazi.IsLeapMonth,
 	}
+
+	if result.IsLeapMonth {
+		result.LeapMonthAdvice = getLeapMonthAdvice(bazi.LunarMonth, dayTiangan)
+	}
+
+	return result, nil
 }
 
-// getYearGanzhi 计算年柱
+func getLeapMonthAdvice(lunarMonth int, dayTiangan string) string {
+	advice := fmt.Sprintf("闰月出生的宝宝，月柱论断需特别考虑。闰月出生的孩子性格多变化，需因势利导。")
+	return advice
+}
+
+func getNayinFromTyme(year, month, day, hour, minute int) string {
+	yearSixtyCycle := getYearSixtyCycle(year)
+	sound := yearSixtyCycle.GetSound()
+
+	return sound.GetName()
+}
+
+func getYearSixtyCycle(year int) tyme.SixtyCycle {
+	return tyme.SixtyCycle{}.FromIndex(year - 4)
+}
+
 func getYearGanzhi(year int) string {
 	tianganIndex := (year - 4) % 10
 	if tianganIndex < 0 {
@@ -290,7 +357,6 @@ func getYearGanzhi(year int) string {
 	return Tiangan[tianganIndex] + Dizhi[dizhiIndex]
 }
 
-// getMonthGanzhi 计算月柱
 func getMonthGanzhi(year, month int) string {
 	yearTianganIndex := (year - 4) % 10
 	if yearTianganIndex < 0 {
@@ -308,7 +374,6 @@ func getMonthGanzhi(year, month int) string {
 	return Tiangan[monthTianganIndex] + Dizhi[dizhiIndex-1]
 }
 
-// getDayGanzhi 计算日柱（使用蔡勒公式）
 func getDayGanzhi(year, month, day int) string {
 	y := year
 	m := month
@@ -331,7 +396,6 @@ func getDayGanzhi(year, month, day int) string {
 	return Tiangan[tianganIndex] + Dizhi[dizhiIndex]
 }
 
-// getHourGanzhi 计算时柱
 func getHourGanzhi(hour int, dayGanzhi string) string {
 	dizhiIndex := hour / 2
 	if dizhiIndex > 11 {
@@ -352,7 +416,6 @@ func getHourGanzhi(hour int, dayGanzhi string) string {
 	return Tiangan[tianganIndex] + Dizhi[dizhiIndex]
 }
 
-// calculateWuxing 计算五行分布
 func calculateWuxing(ganzhi string) *WuxingResult {
 	result := &WuxingResult{}
 
@@ -475,31 +538,7 @@ func calculateYongshenScore(xiyongshen []string, yiyongshen []string, wuxing *Wu
 		}
 	}
 
-	shengKeScore := 0
-	shengMap := map[string]string{
-		"金": "水",
-		"木": "火",
-		"土": "火",
-		"水": "木",
-		"火": "土",
-	}
-
-	for _, xy := range xiyongshen {
-		ke := shengMap[xy]
-		switch ke {
-		case "金":
-			shengKeScore += wuxing.Jin
-		case "木":
-			shengKeScore += wuxing.Mu
-		case "水":
-			shengKeScore += wuxing.Shui
-		case "火":
-			shengKeScore += wuxing.Huo
-		case "土":
-			shengKeScore += wuxing.Tu
-		}
-	}
-
+	shengKeScore := calculateShengKeScore(xiyongshen, wuxing)
 	score += shengKeScore * 2
 
 	if len(yiyongshen) > 0 {
@@ -527,6 +566,35 @@ func calculateYongshenScore(xiyongshen []string, yiyongshen []string, wuxing *Wu
 	}
 
 	return score
+}
+
+func calculateShengKeScore(xiyongshen []string, wuxing *WuxingResult) int {
+	shengKeScore := 0
+	shengMap := map[string]string{
+		"金": "水",
+		"木": "火",
+		"土": "火",
+		"水": "木",
+		"火": "土",
+	}
+
+	for _, xy := range xiyongshen {
+		ke := shengMap[xy]
+		switch ke {
+		case "金":
+			shengKeScore += wuxing.Jin
+		case "木":
+			shengKeScore += wuxing.Mu
+		case "水":
+			shengKeScore += wuxing.Shui
+		case "火":
+			shengKeScore += wuxing.Huo
+		case "土":
+			shengKeScore += wuxing.Tu
+		}
+	}
+
+	return shengKeScore
 }
 
 func calculateDayMasterStrength(wuxing *WuxingResult, rishouWuxing string) string {
@@ -611,7 +679,6 @@ func calculateTiaohouShen(month int) []string {
 	return tiaohou
 }
 
-// calculateXiyongshen 计算喜用神
 func calculateXiyongshen(wuxing *WuxingResult, rishouWuxing string) []string {
 	minCount := math.MaxInt
 	minWuxing := ""
@@ -641,7 +708,6 @@ func calculateXiyongshen(wuxing *WuxingResult, rishouWuxing string) []string {
 	return result
 }
 
-// GetZodiac 获取生肖
 func GetZodiac(year int) string {
 	zodiacs := []string{"鼠", "牛", "虎", "兔", "龙", "蛇", "马", "羊", "猴", "鸡", "狗", "猪"}
 	index := (year - 1900) % 12
@@ -651,7 +717,6 @@ func GetZodiac(year int) string {
 	return zodiacs[index]
 }
 
-// GetShichen 根据小时获取时辰
 func GetShichen(hour int) string {
 	hourMap := []string{"子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"}
 	index := hour / 2
@@ -661,7 +726,6 @@ func GetShichen(hour int) string {
 	return hourMap[index]
 }
 
-// ParseTimeToHourMinute 将时间字符串解析为小时和分钟
 func ParseTimeToHourMinute(timeStr string) (hour, minute int, err error) {
 	_, err = time.Parse("15:04", timeStr)
 	if err != nil {
@@ -669,4 +733,24 @@ func ParseTimeToHourMinute(timeStr string) (hour, minute int, err error) {
 	}
 	fmt.Sscanf(timeStr, "%d:%d", &hour, &minute)
 	return hour, minute, nil
+}
+
+var SolarTermData = map[string]struct {
+	Month   int
+	Day     int
+	Hour    int
+	Minute  int
+}{
+	"小寒": {12, 5, 12, 0}, "大寒": {1, 20, 12, 0},
+	"立春": {2, 4, 12, 0}, "雨水": {2, 19, 12, 0},
+	"惊蛰": {3, 5, 12, 0}, "春分": {3, 20, 12, 0},
+	"清明": {4, 5, 12, 0}, "谷雨": {4, 20, 12, 0},
+	"立夏": {5, 5, 12, 0}, "小满": {5, 21, 12, 0},
+	"芒种": {6, 5, 12, 0}, "夏至": {6, 21, 12, 0},
+	"小暑": {7, 7, 12, 0}, "大暑": {7, 22, 12, 0},
+	"立秋": {8, 7, 12, 0}, "处暑": {8, 23, 12, 0},
+	"白露": {9, 7, 12, 0}, "秋分": {9, 23, 12, 0},
+	"寒露": {10, 8, 12, 0}, "霜降": {10, 23, 12, 0},
+	"立冬": {11, 7, 12, 0}, "小雪": {11, 22, 12, 0},
+	"大雪": {12, 7, 12, 0}, "冬至": {12, 21, 12, 0},
 }

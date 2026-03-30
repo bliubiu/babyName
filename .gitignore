@@ -62,3 +62,6 @@ logs/
 
 # Resource directory (optional exclusion)
 resource/
+
+# 排除 node_modules 目录
+node_modules/

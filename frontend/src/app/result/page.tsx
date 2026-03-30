@@ -1,11 +1,28 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNameStore } from '@/lib/store';
-import { Name } from '@/types';
+import { Name, FavoriteData } from '@/types';
 import { PageLoader } from '@/components/Spinner';
 import { useToast } from '@/components/Toast';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { saveFavorite, deleteFavorite } from '@/lib/api';
+import Navigation from '@/components/Navigation';
+import { NameFilters } from '@/components/NameFilter';
+
+// 懒加载大型组件
+const BaziAnalysis = lazy(() => import('@/components/BaziAnalysis'));
+const HexagramDisplay = lazy(() => import('@/components/HexagramDisplay'));
+const NameCard = lazy(() => import('@/components/NameCard').then(module => ({
+  default: module.default
+})));
+const NameDetail = lazy(() => import('@/components/NameDetail'));
+const ShareButtons = lazy(() => import('@/components/ShareButtons'));
+const NameFilter = lazy(() => import('@/components/NameFilter').then(module => ({
+  default: module.default
+})));
+const FullReport = lazy(() => import('@/components/FullReport'));
 
 export default function ResultPage() {
   const router = useRouter();
@@ -14,8 +31,20 @@ export default function ResultPage() {
   const [favoriteStatus, setFavoriteStatus] = useState<Record<number, boolean>>({});
   const [compareNames, setCompareNames] = useState<number[]>([]);
   const { showToast } = useToast();
+  
+  const queryClient = useQueryClient();
 
   const result = generateResult;
+  const [filters, setFilters] = useState<NameFilters>({});
+  const [showFullReport, setShowFullReport] = useState(false);
+
+  const filteredNames = result?.names ? result.names.filter((name: Name, index: number) => {
+    if (filters.gender && name.gender !== filters.gender) return false;
+    if (filters.wuxing && name.wuxing !== filters.wuxing) return false;
+    if (filters.minStrokes && name.strokes < filters.minStrokes) return false;
+    if (filters.maxStrokes && name.strokes > filters.maxStrokes) return false;
+    return true;
+  }) : [];
 
   useEffect(() => {
     const checkFavorites = async () => {
@@ -35,30 +64,113 @@ export default function ResultPage() {
     checkFavorites();
   }, [result, favorites]);
 
-  const toggleFavorite = (name: Name, index: number) => {
-    const fullName = name.surname + name.given_name;
-    const existing = favorites.find(
-      f => f.surname === name.surname && f.given_name === name.given_name
-    );
-    
-    if (existing) {
-      if (existing.id) {
-        removeFavorite(existing.id);
-      }
-      setFavoriteStatus(prev => ({ ...prev, [index]: false }));
-      showToast('已取消收藏', 'info');
-    } else {
-      const newFav = {
-        surname: name.surname,
-        given_name: name.given_name,
-        pinyin: name.pinyin,
-        gender: name.gender,
-        score: name.score,
-      };
-      addFavorite(newFav);
-      setFavoriteStatus(prev => ({ ...prev, [index]: true }));
-      showToast('收藏成功', 'success');
-    }
+   const toggleFavoriteMutation = useMutation({
+     mutationFn: async (name: Name) => {
+       const existing = favorites.find(
+         f => f.surname === name.surname && f.given_name === name.given_name
+       );
+       
+       if (existing) {
+         if (existing.id) {
+           await deleteFavorite(existing.id);
+         }
+       } else {
+         const newFav = {
+           surname: name.surname,
+           given_name: name.given_name,
+           pinyin: name.pinyin,
+           gender: name.gender,
+           score: name.score,
+         };
+         await saveFavorite(newFav);
+       }
+     },
+     onMutate: async (name: Name) => {
+       // Cancel any outgoing refetches to avoid overwriting optimistic update
+       await queryClient.cancelQueries({ queryKey: ['favorites'] });
+       
+       // Snapshot the previous value
+       const previousFavorites = queryClient.getQueryData<FavoriteData[]>(['favorites']) ?? [];
+       
+       // Optimistically update the cache
+       const existingIndex = previousFavorites.findIndex(
+         f => f.surname === name.surname && f.given_name === name.given_name
+       );
+       
+       if (existingIndex >= 0) {
+         // Remove from favorites
+         queryClient.setQueryData(['favorites'], previousFavorites.filter(
+           (_, index) => index !== existingIndex
+         ));
+       } else {
+         // Add to favorites
+         const newFav: FavoriteData = {
+           surname: name.surname,
+           given_name: name.given_name,
+           pinyin: name.pinyin,
+           gender: name.gender,
+           score: name.score,
+         };
+         queryClient.setQueryData(['favorites'], [...previousFavorites, newFav]);
+       }
+       
+       // Update local state for immediate UI feedback
+       setFavoriteStatus(prev => {
+         const newStatus = { ...prev };
+         Object.keys(newStatus).forEach(key => {
+           const index = parseInt(key);
+           if (result?.names[index]?.surname === name.surname && result.names[index]?.given_name === name.given_name) {
+             newStatus[index] = existingIndex >= 0 ? false : true;
+           }
+         });
+         return newStatus;
+       });
+       
+       // Return context with snapshot
+       return { previousFavorites };
+     },
+     onError: (err, name, context) => {
+       // Rollback to previous value on error
+       if (context?.previousFavorites) {
+         queryClient.setQueryData(['favorites'], context.previousFavorites);
+       }
+       
+       // Reset local state to reflect server state
+       if (result?.names) {
+         setFavoriteStatus(prev => {
+           const newStatus = { ...prev };
+           Object.keys(newStatus).forEach(key => {
+             const index = parseInt(key);
+             if (result?.names[index]?.surname === name.surname && result.names[index]?.given_name === name.given_name) {
+               const isFav = context?.previousFavorites.some(
+                 f => f.surname === name.surname && f.given_name === name.given_name
+               );
+               newStatus[index] = !!isFav;
+             }
+           });
+           return newStatus;
+         });
+       }
+       
+       showToast('操作失败，请重试', 'error');
+     },
+     onSuccess: () => {
+       // Invalidate and refetch favorites to get latest server state
+       queryClient.invalidateQueries({ queryKey: ['favorites'] });
+       
+       // Show success toast based on whether we added or removed
+       // Note: We can't easily determine this here without tracking state, 
+       // but the UI will show correct state due to optimistic update
+       showToast('操作成功', 'success');
+     },
+     onSettled: () => {
+       // Refetch whether successful or not
+       queryClient.invalidateQueries({ queryKey: ['favorites'] });
+     }
+   });
+
+  const toggleFavorite = (name: Name) => {
+    toggleFavoriteMutation.mutate(name);
   };
 
   const toggleCompare = (index: number) => {
@@ -71,12 +183,16 @@ export default function ResultPage() {
     }
   };
 
+  const handleSelect = (index: number) => {
+    setSelectedName(selectedName === index ? null : index);
+  };
+
   if (!result) {
     return <PageLoader />;
   }
 
   const { bazi, nayin, zodiac, hexagram, names } = result;
-  const topNames = names.slice(0, 20);
+  const topNames = filteredNames.slice(0, 20);
 
   const handleCompare = () => {
     if (compareNames.length < 2) {
@@ -111,198 +227,113 @@ export default function ResultPage() {
     }
   };
 
-  return (
-    <main className="min-h-screen py-6 md:py-8 px-3 md:px-4">
-      <div className="max-w-4xl mx-auto" ref={resultRef}>
-        <div className="flex justify-between items-center mb-4 md:mb-6">
-          <button
-            onClick={() => router.push('/')}
-            className="flex items-center gap-2 text-teal hover:text-crimson transition-colors text-sm md:text-base"
-          >
-            ← 返回首页
-          </button>
-          <div className="flex gap-3 text-sm md:text-base">
-            <button
-              onClick={() => router.push('/history')}
-              className="text-teal hover:text-crimson transition-colors"
-            >
-              📜 历史
-            </button>
-            <button
-              onClick={() => router.push('/favorites')}
-              className="text-teal hover:text-crimson transition-colors"
-            >
-              ❤️ 收藏
-            </button>
-            <button
-              onClick={() => exportAsImage()}
-              className="text-teal hover:text-crimson transition-colors"
-            >
-              📷 导出
-            </button>
-          </div>
-        </div>
+  const exportAsPDF = async () => {
+    if (!resultRef.current) return;
+    
+    try {
+      const html2pdf = (await import('html2pdf.js')).default;
+      
+      const opt = {
+        margin: 10,
+        filename: `名字推荐_${new Date().toISOString().slice(0, 10)}.pdf`,
+        image: { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas: {
+          scale: 2,
+          backgroundColor: '#FDF8F3'
+        },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
+      };
+      
+      await html2pdf().set(opt).from(resultRef.current).save();
+      showToast('导出PDF成功', 'success');
+    } catch (error) {
+      console.error('PDF export error:', error);
+      showToast('导出PDF失败', 'error');
+    }
+  };
 
-        <div className="card mb-6 md:mb-8 animate-fadeInUp">
-          <h2 className="font-serif text-xl md:text-2xl text-ink mb-3 md:mb-4">📊 八字分析</h2>
-          <div className="grid md:grid-cols-2 gap-4 md:gap-6">
-            <div>
-              <p className="text-sm text-teal mb-1 md:mb-2">八字</p>
-              <p className="font-serif text-lg md:text-xl text-ink">
-                {bazi.bazi.year}年 {bazi.bazi.month}月 {bazi.bazi.day}日 {bazi.bazi.hour}时
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-teal mb-1 md:mb-2">日主</p>
-              <p className="text-ink">{bazi.rishou} ({bazi.rishou_wuxing}性){bazi.rishou_wuxing === '木' ? '，身强' : '，身弱'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-teal mb-1 md:mb-2">五行分布</p>
-              <div className="space-y-1 md:space-y-2">
-                {Object.entries(bazi.wuxing).map(([key, value]) => (
-                  <div key={key} className="flex items-center gap-2">
-                    <span className="w-6 md:w-8 text-xs md:text-sm">
-                      {key === 'jin' ? '金' : key === 'mu' ? '木' : key === 'shui' ? '水' : key === 'huo' ? '火' : '土'}
-                    </span>
-                    <div className="flex-1 h-1.5 md:h-2 bg-warm-white rounded overflow-hidden">
-                      <div
-                        className="h-full bg-crimson"
-                        style={{ width: `${(value / 8) * 100}%` }}
-                      />
-                    </div>
-                    <span className="w-4 text-xs md:text-sm">{value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-sm text-teal mb-1 md:mb-2">喜用神</p>
-              <p className="text-base md:text-lg text-gold">{bazi.xiyongshen.join('、')}</p>
-              <p className="text-xs md:text-sm text-teal mt-1 md:mt-2">纳音：{nayin}</p>
-              <p className="text-xs md:text-sm text-teal">生肖：{zodiac}</p>
-            </div>
-          </div>
-        </div>
+  return (
+    <main className="min-h-screen py-4 md:py-6 lg:py-8 px-3 md:px-4">
+      <div className="max-w-4xl mx-auto" ref={resultRef}>
+        <Navigation 
+          showBackButton={true}
+          showHistory={true}
+          showFavorites={true}
+          showExport={true}
+          onExport={exportAsImage}
+          onExportPDF={exportAsPDF}
+        />
+
+        <Suspense fallback={<div className="p-4 text-stone-600">加载八字分析...</div>}>
+          <BaziAnalysis bazi={bazi} nayin={nayin} zodiac={zodiac} />
+        </Suspense>
 
         {hexagram && (
-          <div className="card mb-6 md:mb-8 animate-fadeInUp" style={{ animationDelay: '0.1s' }}>
-            <h2 className="font-serif text-xl md:text-2xl text-ink mb-3 md:mb-4">🔮 易经卦象</h2>
-            <div className="flex items-start gap-4 md:gap-6">
-              <div className="text-4xl md:text-6xl font-serif">{hexagram.symbol}</div>
-              <div>
-                <h3 className="text-lg md:text-xl text-ink mb-1 md:mb-2">{hexagram.name}卦</h3>
-                <p className="text-xs md:text-sm text-teal mb-1 md:mb-2">{hexagram.gua_ci}</p>
-                <p className="text-sm text-ink">{hexagram.interpretation}</p>
-              </div>
-            </div>
-          </div>
+          <Suspense fallback={<div className="p-4 text-stone-600">加载卦象...</div>}>
+            <HexagramDisplay hexagram={hexagram} />
+          </Suspense>
         )}
 
-        <div className="mb-6 md:mb-8">
-          <div className="flex justify-between items-center mb-3 md:mb-4">
-            <h2 className="font-serif text-xl md:text-2xl text-ink animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
+        <Suspense fallback={<div className="p-4 text-stone-600">加载筛选器...</div>}>
+          <NameFilter 
+            onFilterChange={setFilters}
+            totalNames={names.length}
+            filteredCount={filteredNames.length}
+          />
+        </Suspense>
+
+        <div className="mb-4 md:mb-6 lg:mb-8">
+          <div className="flex flex-wrap justify-between items-center gap-3 mb-2 md:mb-3 lg:mb-4">
+            <h2 className="font-serif text-lg md:text-xl lg:text-2xl text-ink animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
               ✨ 推荐名字
             </h2>
             {compareNames.length > 0 && (
               <button
                 onClick={handleCompare}
-                className="px-3 py-1.5 bg-crimson text-white rounded-lg text-sm hover:bg-crimson/90 transition-colors"
+                className="px-3 py-1.5 bg-crimson text-white rounded-lg text-sm hover:bg-crimson/90 transition-all duration-300 whitespace-nowrap hover-glow animate-pulse-slow"
               >
                 对比 {compareNames.length} 个名字
               </button>
             )}
+            <button
+              onClick={() => setShowFullReport(true)}
+              className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-gold text-white rounded-lg text-sm hover:from-amber-600 hover:to-gold/90 transition-all duration-300 whitespace-nowrap hover-glow"
+            >
+              📄 查看完整报告
+            </button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-            {topNames.map((name, index) => (
-              <div
-                key={index}
-                className={`card cursor-pointer transition-all duration-200 hover:shadow-lg animate-fadeInUp ${
-                  selectedName === index ? 'ring-2 ring-crimson' : ''
-                } ${compareNames.includes(index) ? 'ring-2 ring-gold' : ''}`}
-                style={{ animationDelay: `${0.3 + index * 0.05}s` }}
-                onClick={() => setSelectedName(selectedName === index ? null : index)}
-              >
-                <div className="flex items-start gap-2 mb-2">
-                  <input
-                    type="checkbox"
-                    checked={compareNames.includes(index)}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      toggleCompare(index);
-                    }}
-                    className="mt-1 w-4 h-4 accent-crimson"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <div className="flex-1 flex justify-between items-start">
-                    <div>
-                      <p className="font-serif text-xl md:text-2xl text-ink">
-                        {name.surname}{name.given_name}
-                      </p>
-                      <p className="text-xs md:text-sm text-teal">{name.pinyin}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleFavorite(name, index);
-                        }}
-                        className="text-xl md:text-2xl transition-transform hover:scale-110"
-                        title={favoriteStatus[index] ? '取消收藏' : '收藏'}
-                      >
-                        {favoriteStatus[index] ? '❤️' : '🤍'}
-                      </button>
-                      <div className="text-right">
-                        <p className="text-lg md:text-xl text-gold font-medium">{name.score}</p>
-                        <p className="text-xs text-teal">分</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1 md:gap-2 mt-2">
-                  {name.reasons?.map((reason, idx) => (
-                    <span
-                      key={idx}
-                      className="text-xs px-2 py-0.5 bg-warm-white text-teal rounded"
-                    >
-                      {reason}
-                    </span>
-                  ))}
-                </div>
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+            {topNames.map((name: Name, index: number) => (
+              <Suspense key={index} fallback={<div className="p-4 text-stone-600">加载名字卡片...</div>}>
+                <NameCard
+                  key={index}
+                  name={name}
+                  index={index}
+                  isSelected={selectedName === index}
+                  isComparing={compareNames.includes(index)}
+                  isFavorite={favoriteStatus[index] || false}
+                  onSelect={handleSelect}
+                  onToggleFavorite={toggleFavorite}
+                  onToggleCompare={toggleCompare}
+                />
+              </Suspense>
             ))}
           </div>
+          <ShareButtons 
+            title="宝宝起名大师 - 推荐名字" 
+            text={`为${result.bazi.bazi.year}年${result.bazi.bazi.month}月${result.bazi.bazi.day}日出生的${result.names[0].gender === 'male' ? '男孩' : '女孩'}推荐的名字`} 
+            url={window.location.href} 
+          />
         </div>
 
-        {selectedName !== null && (
-          <div className="card animate-fadeInUp">
-            <h3 className="font-serif text-lg md:text-xl text-ink mb-3 md:mb-4">
-              📖 名字详解 - {topNames[selectedName].surname}{topNames[selectedName].given_name}
-            </h3>
-            <div className="space-y-3 md:space-y-4">
-              <div>
-                <p className="text-sm text-teal mb-1">五行分析</p>
-                <p className="text-ink text-sm md:text-base">{topNames[selectedName].wuxing_analysis}</p>
-              </div>
-              <div>
-                <p className="text-sm text-teal mb-1">八字评分</p>
-                <p className="text-ink text-sm md:text-base">{topNames[selectedName].bazi_score_detail}</p>
-              </div>
-              <div>
-                <p className="text-sm text-teal mb-1">音韵意境</p>
-                <p className="text-ink text-sm md:text-base">{topNames[selectedName].yinyun}</p>
-              </div>
-              {topNames[selectedName].poetry_source && (
-                <div>
-                  <p className="text-sm text-teal mb-1">诗词典故</p>
-                  <p className="text-ink text-sm md:text-base">
-                    出自《{topNames[selectedName].poetry_source}》
-                    {topNames[selectedName].poetry_chapter && <>《{topNames[selectedName].poetry_chapter}》</>}
-                    {topNames[selectedName].poetry_sentence && <span className="text-teal">：{topNames[selectedName].poetry_sentence}</span>}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+        {selectedName !== null && <NameDetail name={topNames[selectedName]} />}
+
+        {showFullReport && result && (
+          <FullReport 
+            data={result}
+            onClose={() => setShowFullReport(false)}
+            selectedNameIndex={selectedName !== null ? names.findIndex((n: Name) => n.surname === topNames[selectedName].surname && n.given_name === topNames[selectedName].given_name) : undefined}
+          />
         )}
       </div>
     </main>

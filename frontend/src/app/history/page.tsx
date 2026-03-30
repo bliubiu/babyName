@@ -1,36 +1,28 @@
 'use client';
 
-import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useNameStore } from '@/lib/store';
-import { getHistory, deleteHistory } from '@/lib/api';
 import { GenerateResponse } from '@/types';
+import { useHistory, deleteHistory } from '@/lib/swr';
+import { useNameStore } from '@/lib/store';
 import { useToast } from '@/components/Toast';
 import { PageLoader } from '@/components/Spinner';
 
 export default function HistoryPage() {
   const router = useRouter();
   const { showToast } = useToast();
-  const { history, setHistory, removeHistory, isLoading, setLoading } = useNameStore();
-
-  useEffect(() => {
-    loadHistory();
-  }, []);
-
-  const loadHistory = async () => {
-    setLoading(true);
-    try {
-      const response = await getHistory();
-      if (response.success && response.data) {
-        setHistory(response.data);
-      }
-    } catch (error) {
-      console.error('Error loading history:', error);
-      showToast('加载历史记录失败', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { removeHistory, setGenerateResult } = useNameStore();
+  const { data: historyResponse, error, isLoading } = useHistory();
+  
+  const history: Array<{
+    id: string;
+    surname: string;
+    gender: 'male' | 'female';
+    birth_date: string;
+    birth_time: string;
+    birth_location: string;
+    results: string | GenerateResponse['data'];
+    created_at: string;
+  }> = historyResponse?.success ? historyResponse.data : [];
 
   const handleDelete = async (id: string) => {
     try {
@@ -48,12 +40,30 @@ export default function HistoryPage() {
       ? JSON.parse(record.results) 
       : record.results as GenerateResponse['data'];
     
-    useNameStore.getState().setGenerateResult(results);
+    setGenerateResult(results);
     router.push('/result');
   };
 
   if (isLoading) {
     return <PageLoader />;
+  }
+  
+  if (error) {
+    return (
+      <main className="min-h-screen py-6 md:py-8 px-3 md:px-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="card text-center py-8 md:py-12">
+            <p className="text-crimson mb-4">加载历史记录失败</p>
+            <button
+              onClick={() => router.push('/')}
+              className="btn-primary"
+            >
+              返回首页
+            </button>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -67,7 +77,7 @@ export default function HistoryPage() {
         </button>
 
         <div className="flex justify-between items-center mb-6 md:mb-8">
-          <h1 className="font-serif text-2xl md:text-3xl text-ink">📜 历史记录</h1>
+          <h1 className="font-serif text-2xl md:py-3 text-ink">📜 历史记录</h1>
           <button
             onClick={() => router.push('/favorites')}
             className="text-teal hover:text-crimson transition-colors text-sm md:text-base"

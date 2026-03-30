@@ -2,7 +2,7 @@
 基于DDD架构（领域驱动设计）和**TDD（测试驱动开发）**设计思想，使用go语言+Next.js + React + Tailwind CSS + TypeScript 开发一个桌面端和移动端多端适配的应用程序
 
 1、借鉴和利用https://github.com/holynova/gushi_namer项目，从诗经、楚辞、唐诗宋词等经典中选取名字，每个名字都有古典出处。增加到项目中
-2、https://github.com/babyname/fate使用周易卦象、生肖用字、八字吉凶的语料知识到项目
+2、https://github.com/babyname/fate 使用周易卦象、生肖用字、八字吉凶的语料知识到项目
 3、https://github.com/yuantiku/ChineseBazi 项目中生辰八字、五行缺失、喜用神 功能到本项目中
   根据出生年月日时（精确到分钟）计算生辰八字、天干地支、五行缺失；
   支持节气校正（八字排盘的关键，不同年份节气时间不同）；
@@ -10,6 +10,7 @@
 4、https://github.com/lihongxun945/gossip 项目基于生辰八字生成对应的八卦卦象（乾、坤、震、巽等）、卦象吉凶解析、卦辞 / 爻辞查询的功能到项目，卦象与名字笔画数的匹配度计算（玄学起名的延伸维度）。用于展示卦象匹配结果
 5、汉字仓库 https://github.com/mozillazg/unicode-cjk 到本项目中，使项目能在离线环境中运行
 6、重名率查询接口，可查询名字解析中展示 “重名率”信息，整合重名率查询、命理报告导出
+7、八字计算(用于计算生辰): https://github.com/godcong/chronos
 
 使用chronos 的 Go 语言库，专门用于高精度生辰八字转换
 

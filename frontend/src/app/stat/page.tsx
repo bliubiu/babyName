@@ -60,10 +60,11 @@ export default function StatPage() {
   };
 
   const getRateLevel = (rate: number) => {
-    if (rate >= 5) return { text: '极高', color: 'text-red-500' };
-    if (rate >= 2) return { text: '较高', color: 'text-orange-500' };
-    if (rate >= 0.5) return { text: '一般', color: 'text-yellow-500' };
-    return { text: '较低', color: 'text-green-500' };
+    if (rate >= 5) return { text: '极高', color: 'text-red-500', description: '重名风险高，建议考虑其他名字' };
+    if (rate >= 2) return { text: '较高', color: 'text-orange-500', description: '较常见，可以考虑其他名字' };
+    if (rate >= 0.5) return { text: '一般', color: 'text-yellow-500', description: '正常水平，可以接受' };
+    if (rate >= 0.001) return { text: '较低', color: 'text-green-500', description: '较少见，较为独特' };
+    return { text: '极低', color: 'text-emerald-600', description: '稀有独特，非常少见' };
   };
 
   return (
@@ -142,8 +143,11 @@ export default function StatPage() {
               </div>
 
               <div className="mt-4 text-center">
-                <p className="text-teal text-sm">
+                <p className="text-teal text-sm mb-2">
                   重名程度：<span className={`font-medium ${getRateLevel(stats.rate).color}`}>{getRateLevel(stats.rate).text}</span>
+                </p>
+                <p className="text-xs text-teal">
+                  {getRateLevel(stats.rate).description}
                 </p>
                 {stats.province && (
                   <p className="text-teal text-sm mt-2">
@@ -171,6 +175,32 @@ export default function StatPage() {
               <li>• 省份查询：查询该名字在特定省份的使用情况</li>
               <li>• 数据基于中国人口统计数据，仅供参考</li>
             </ul>
+          </div>
+
+          <div className="mt-4 p-4 bg-warm-white rounded-lg">
+            <h4 className="text-sm font-medium text-ink mb-2">重名率等级说明</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-teal">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-red-500">极高</span>
+                <span>(≥5%) - 重名风险高，建议考虑其他名字</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-orange-500">较高</span>
+                <span>(2%-5%) - 较常见，可以考虑其他名字</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-yellow-500">一般</span>
+                <span>(0.5%-2%) - 正常水平，可以接受</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-green-500">较低</span>
+                <span>(0.001%-0.5%) - 较少见，较为独特</span>
+              </div>
+              <div className="flex items-center gap-2 md:col-span-2">
+                <span className="font-medium text-emerald-600">极低</span>
+                <span>(&lt;0.001%) - 稀有独特，非常少见</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>

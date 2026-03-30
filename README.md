@@ -1,12 +1,13 @@
 # 🍼 宝宝起名大师 (NameMaster)
 
----
+***
 
 ## 📖 项目简介
 
 宝宝起名大师是一个免费的在线起名工具，旨在帮助新手父母为宝宝起一个寓意美好、符合中国传统玄学的名字。
 
 **核心功能：**
+
 - 🔮 八字五行分析 - 计算生辰八字、五行分布、喜用神
 - 🧘 纳音五行 - 60甲子纳音查询
 - 🐭 生肖属相 - 12生肖及喜忌
@@ -18,20 +19,20 @@
 - 🔍 重名率查询 - 名字重名率统计
 - 📷 图片导出 - 一键导出名字推荐
 
----
+***
 
 ## 🏗️ 技术架构
 
 ### 技术栈
 
-| 层级 | 技术 |
-|------|------|
-| 前端 | Next.js 14 + React 18 + TypeScript |
-| 样式 | Tailwind CSS |
-| 状态管理 | Zustand |
-| 后端 | Go + Gin |
-| 存储 | 内存存储（默认）/ PostgreSQL（可选） |
-| 架构 | DDD（领域驱动设计） |
+| 层级   | 技术                                 |
+| ---- | ---------------------------------- |
+| 前端   | Next.js 14 + React 18 + TypeScript |
+| 样式   | Tailwind CSS                       |
+| 状态管理 | Zustand                            |
+| 后端   | Go + Gin                           |
+| 存储   | 内存存储（默认）/ PostgreSQL（可选）           |
+| 架构   | DDD（领域驱动设计）                        |
 
 ### 目录结构
 
@@ -72,9 +73,21 @@ namemaster/
 │   └── tailwind.config.ts
 │
 └── docs/                           # 项目文档
+    ├── 00-页面原型设计及相关素材知识.md
+    ├── 01-需求规格说明书.md
+    ├── 02-API文档.md
+    ├── 02-原型图设计.md
+    ├── 03-UI设计规范.md
+    ├── 03-开发文档.md
+    ├── 04-功能增强方案.md
+    ├── 04-用户文档.md
+    ├── 05-开发文档.md
+    ├── 06-API.md
+    ├── 07-部署使用手册.md
+    └── 08-API相对路径与动态端口适配.md
 ```
 
----
+***
 
 ## 🚀 快速开始
 
@@ -84,22 +97,42 @@ namemaster/
 # 进入后端目录
 cd backend
 
-# 运行服务
-.\namemaster.exe
+# 运行服务（默认端口8080）
+.\namemaster.exe -mode all
 
-# 访问API http://localhost:8080
+# 访问 http://localhost:8080
 ```
 
 **参数选项：**
+
 ```bash
 -port 8080    # 指定端口（默认8080）
 -host localhost  # 指定主机（默认localhost）
--mode backend   # 运行模式：backend或all
+-mode all       # 运行模式：backend或all
+```
+
+**端口动态适配：**
+
+- 前端使用相对路径 `/api`，自动适配后端端口
+- 无需修改前端代码，支持任意端口配置
+- 详细说明请参考 [API相对路径与动态端口适配](./docs/08-API相对路径与动态端口适配.md)
+
+**示例：**
+
+```bash
+# 使用端口8083
+.\namemaster.exe -mode all -port 8083
+# 访问 http://localhost:8083
+
+# 使用端口8084
+.\namemaster.exe -mode all -port 8084
+# 访问 http://localhost:8084
 ```
 
 ### 方式二：前后端分离
 
 **1. 启动后端**
+
 ```bash
 cd backend
 go run cmd/server/main.go
@@ -107,6 +140,7 @@ go run cmd/server/main.go
 ```
 
 **2. 启动前端**
+
 ```bash
 cd frontend
 npm install
@@ -115,9 +149,9 @@ npm run dev
 ```
 
 **3. 访问应用**
-打开浏览器访问 http://localhost:3000
+打开浏览器访问 <http://localhost:3000>
 
----
+***
 
 ## 📡 API接口
 
@@ -167,62 +201,62 @@ npm run dev
 
 ### 历史记录
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v1/history` | 获取历史记录 |
-| POST | `/api/v1/history` | 保存历史记录 |
+| 方法     | 路径                    | 说明     |
+| ------ | --------------------- | ------ |
+| GET    | `/api/v1/history`     | 获取历史记录 |
+| POST   | `/api/v1/history`     | 保存历史记录 |
 | DELETE | `/api/v1/history/:id` | 删除历史记录 |
 
 ### 收藏管理
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v1/favorites` | 获取收藏列表 |
-| POST | `/api/v1/favorites` | 添加收藏 |
-| DELETE | `/api/v1/favorites/:id` | 删除收藏 |
-| GET | `/api/v1/favorites/check` | 检查是否已收藏 |
+| 方法     | 路径                        | 说明      |
+| ------ | ------------------------- | ------- |
+| GET    | `/api/v1/favorites`       | 获取收藏列表  |
+| POST   | `/api/v1/favorites`       | 添加收藏    |
+| DELETE | `/api/v1/favorites/:id`   | 删除收藏    |
+| GET    | `/api/v1/favorites/check` | 检查是否已收藏 |
 
 ### 名字统计
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v1/namestat/:name` | 获取名字重名率 |
-| GET | `/api/v1/namestat` | 获取常用名字排行 |
-| GET | `/api/v1/namestat/:name/province` | 获取省份重名率 |
+| 方法  | 路径                                | 说明       |
+| --- | --------------------------------- | -------- |
+| GET | `/api/v1/namestat/:name`          | 获取名字重名率  |
+| GET | `/api/v1/namestat`                | 获取常用名字排行 |
+| GET | `/api/v1/namestat/:name/province` | 获取省份重名率  |
 
 ### 其他接口
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/v1/bazi/analyze` | 八字分析 |
-| GET | `/api/v1/yijing/hexagram/:id` | 获取卦象 |
-| GET | `/api/v1/yijing/hexagram` | 获取全部卦象 |
-| GET | `/api/v1/zodiac/:animal` | 获取生肖信息 |
-| GET | `/api/v1/zodiac` | 获取全部生肖 |
-| POST | `/api/v1/report/pdf` | 生成PDF报告 |
-| POST | `/api/v1/report/html` | 生成HTML报告 |
+| 方法   | 路径                            | 说明       |
+| ---- | ----------------------------- | -------- |
+| POST | `/api/v1/bazi/analyze`        | 八字分析     |
+| GET  | `/api/v1/yijing/hexagram/:id` | 获取卦象     |
+| GET  | `/api/v1/yijing/hexagram`     | 获取全部卦象   |
+| GET  | `/api/v1/zodiac/:animal`      | 获取生肖信息   |
+| GET  | `/api/v1/zodiac`              | 获取全部生肖   |
+| POST | `/api/v1/report/pdf`          | 生成PDF报告  |
+| POST | `/api/v1/report/html`         | 生成HTML报告 |
 
----
+***
 
 ## 🎨 设计规范
 
 ### 色彩系统
 
-| 颜色名称 | 色值 | 用途 |
-|---------|------|------|
-| 温润米白 | `#FDF8F3` | 主背景 |
-| 暖白 | `#F5F0E8` | 卡片背景 |
-| 墨黑 | `#2C2C2C` | 主要文字 |
-| 深红 | `#8B2323` | 强调/按钮/心形 |
-| 金色 | `#C9A962` | 高亮/评分 |
-| 黛青 | `#4A6670` | 次要文字 |
+| 颜色名称 | 色值        | 用途       |
+| ---- | --------- | -------- |
+| 温润米白 | `#FDF8F3` | 主背景      |
+| 暖白   | `#F5F0E8` | 卡片背景     |
+| 墨黑   | `#2C2C2C` | 主要文字     |
+| 深红   | `#8B2323` | 强调/按钮/心形 |
+| 金色   | `#C9A962` | 高亮/评分    |
+| 黛青   | `#4A6670` | 次要文字     |
 
 ### 字体
 
 - 标题：Noto Serif SC（思源宋体）
 - 正文：Noto Sans SC（思源黑体）
 
----
+***
 
 ## 📋 功能说明
 
@@ -253,14 +287,14 @@ npm run dev
 
 ### 名字评分
 
-| 评分维度 | 权重 |
-|---------|------|
+| 评分维度  | 权重  |
+| ----- | --- |
 | 八字匹配度 | 30% |
-| 纳音五行 | 20% |
-| 生肖适配 | 15% |
-| 易经卦象 | 20% |
-| 读音韵律 | 10% |
-| 寓意内涵 | 5% |
+| 纳音五行  | 20% |
+| 生肖适配  | 15% |
+| 易经卦象  | 20% |
+| 读音韵律  | 10% |
+| 寓意内涵  | 5%  |
 
 ### 名字收藏
 
@@ -292,19 +326,19 @@ npm run dev
 - 将名字推荐导出为PNG图片
 - 方便分享给家人朋友
 
----
+***
 
 ## 🤝 贡献指南
 
 欢迎提交Issue和Pull Request！
 
-1. Fork 本仓库
+1. Fork 本仓库  github.com/bliubiao/name
 2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
 3. 提交更改 (`git commit -m 'Add amazing feature'`)
 4. 推送分支 (`git push origin feature/amazing-feature`)
 5. 打开Pull Request
 
----
+***
 
 ## 📄 许可证
 

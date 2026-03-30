@@ -5,35 +5,75 @@
 @layer base {
   html {
     font-family: 'Noto Sans SC', sans-serif;
+    scroll-behavior: smooth;
   }
   
   body {
-    @apply bg-warm-white text-ink;
+    @apply bg-warm-white text-ink transition-colors duration-300;
+  }
+  
+  body.dark {
+    @apply bg-dark-warm-white text-dark-ink;
   }
 }
 
 @layer components {
   .btn-primary {
     @apply bg-crimson text-white px-6 py-3 rounded-lg font-medium 
-           hover:brightness-110 transition-all duration-200 hover:-translate-y-0.5;
+           hover:brightness-110 transition-all duration-300 hover:-translate-y-0.5
+           shadow-md hover:shadow-lg active:translate-y-0
+           min-w-[120px] sm:min-w-[140px] md:min-w-[160px]
+           text-sm sm:text-base
+           touch-manipulation active:scale-95;
   }
   
   .btn-secondary {
     @apply border-2 border-gold text-gold px-6 py-2 rounded-lg font-medium
-           hover:bg-gold/10 transition-all duration-200;
+           hover:bg-gold/10 transition-all duration-300
+           shadow-sm hover:shadow-md active:translate-y-0
+           min-w-[100px] sm:min-w-[120px]
+           text-sm sm:text-base
+           touch-manipulation active:scale-95;
   }
   
   .card {
-    @apply bg-paper rounded-xl p-6;
+    @apply bg-paper rounded-xl p-4 sm:p-6 shadow-md hover:shadow-lg transition-all duration-300
+           w-full max-w-lg mx-auto;
   }
   
   .input-field {
     @apply w-full px-4 py-3 border border-paper rounded-md 
-           focus:border-gold focus:outline-none transition-colors;
+           focus:border-gold focus:outline-none transition-all duration-300
+           hover:border-gold/50 focus:shadow-sm
+           text-sm sm:text-base
+           min-h-[48px] sm:min-h-[56px]
+           touch-manipulation;
   }
   
   .label {
-    @apply block text-sm font-medium text-teal mb-2;
+    @apply block text-sm font-medium text-teal mb-2 transition-all duration-200
+           sm:text-base;
+  }
+  
+  /* 深色模式样式 */
+  .dark .btn-primary {
+    @apply bg-dark-crimson;
+  }
+  
+  .dark .btn-secondary {
+    @apply border-dark-gold text-dark-gold hover:bg-dark-gold/10;
+  }
+  
+  .dark .card {
+    @apply bg-dark-paper;
+  }
+  
+  .dark .input-field {
+    @apply border-dark-paper focus:border-dark-gold hover:border-dark-gold/50;
+  }
+  
+  .dark .label {
+    @apply text-dark-teal;
   }
 }
 
@@ -70,7 +110,166 @@
 }
 
 .animate-fadeInUp {
-  animation: fadeInUp 0.3s ease-out;
+  animation: fadeInUp 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slideInLeft {
+  animation: slideInLeft 0.5s ease-out;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slideInRight {
+  animation: slideInRight 0.5s ease-out;
+}
+
+@keyframes bounce {
+  0%, 20%, 50%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-10px);
+  }
+  60% {
+    transform: translateY(-5px);
+  }
+}
+
+.animate-bounce {
+  animation: bounce 1s ease-in-out infinite;
+}
+
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-5px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(5px);
+  }
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-rotate {
+  animation: rotate 1s linear infinite;
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slideDown {
+  animation: slideDown 0.4s ease-out;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* 悬停效果 */
+.hover-lift {
+  @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-md;
+}
+
+.hover-scale {
+  @apply transition-transform duration-300 hover:scale-105;
+}
+
+.hover-glow {
+  @apply transition-all duration-300 hover:shadow-lg hover:shadow-gold/20;
 }
 
 /* Toast 样式 */
@@ -143,9 +342,10 @@
   border-radius: 50%;
   border-style: solid;
   border-width: 3px;
-  border-color: currentColor;
-  border-top-color: transparent !important;
-  animation: spin 0.8s linear infinite;
+  border-color: rgba(93, 138, 130, 0.3);
+  border-top-color: #5d8a82 !important;
+  animation: spin 1s linear infinite;
+  box-shadow: 0 0 10px rgba(93, 138, 130, 0.3);
 }
 
 @keyframes spin {
@@ -157,16 +357,21 @@
 .spinner-small {
   width: 16px;
   height: 16px;
+  border-width: 2px;
 }
 
 .spinner-medium {
   width: 32px;
   height: 32px;
+  border-width: 3px;
 }
 
 .spinner-large {
   width: 48px;
   height: 48px;
+  border-width: 4px;
+  border-top-color: #c9a962 !important;
+  box-shadow: 0 0 20px rgba(201, 169, 98, 0.4);
 }
 
 .page-loader {
@@ -175,12 +380,37 @@
   align-items: center;
   justify-content: center;
   min-height: 60vh;
-  gap: 16px;
+  gap: 20px;
+  padding: 40px;
+  background: rgba(253, 248, 243, 0.8);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.dark .page-loader {
+  background: rgba(23, 23, 23, 0.8);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .page-loader-text {
   color: #5d8a82;
-  font-size: 14px;
+  font-size: 16px;
+  font-weight: 500;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.dark .page-loader-text {
+  color: #a8c6c0;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
 }
 
 .inline-loader {
@@ -212,4 +442,157 @@
   right: 12px;
   top: 50%;
   transform: translateY(-50%);
+}
+
+/* 原型风格装饰样式 */
+.corner-decoration {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #B91C1C;
+}
+
+.corner-tl {
+  border-right: none;
+  border-bottom: none;
+}
+
+.corner-tr {
+  border-left: none;
+  border-bottom: none;
+}
+
+.corner-bl {
+  border-right: none;
+  border-top: none;
+}
+
+.corner-br {
+  border-left: none;
+  border-top: none;
+}
+
+.side-decoration {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.side-dot-large {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #B91C1C;
+}
+
+.side-dot-small {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #B91C1C;
+}
+
+.vertical-label {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0.2em;
+}
+
+.proto-label {
+  background: linear-gradient(to bottom, #B91C1C, #991B1B);
+  color: #FEF3C7;
+  border: 4px solid #D97706;
+}
+
+.proto-input {
+  border: 1px solid #78716C;
+  background-color: white;
+}
+
+.proto-input:focus {
+  border-color: #B91C1C;
+  outline: none;
+}
+
+.proto-card {
+  background-color: #E7E5E4;
+  border: 4px solid #B91C1C;
+}
+
+.proto-btn-primary {
+  background: linear-gradient(to right, #B91C1C, #991B1B);
+  color: white;
+}
+
+.proto-btn-primary:hover {
+  background: linear-gradient(to right, #991B1B, #7F1D1D);
+}
+
+.dark .proto-input {
+  background-color: #1C1917;
+  border-color: #57534E;
+}
+
+.dark .proto-card {
+  background-color: #292524;
+  border-color: #B91C1C;
+}
+
+.preference-tag {
+  border: 2px solid #FDE68A;
+  background-color: #FFFBEB;
+}
+
+.preference-tag:hover {
+  border-color: #D97706;
+}
+
+.preference-tag.active {
+  border-color: #B91C1C;
+  background-color: #FEF2F2;
+}
+
+/* 导航栏样式 */
+.nav-container {
+  @apply flex flex-wrap justify-between items-center gap-4;
+}
+
+.nav-button {
+  @apply text-teal hover:text-crimson transition-all duration-300;
+  @apply px-2 py-1 rounded-md hover:bg-crimson/10 hover-lift;
+  @apply text-sm md:text-base flex items-center gap-1;
+}
+
+.nav-button.active {
+  @apply text-crimson bg-crimson/10;
+}
+
+.nav-button:hover {
+  @apply hover-glow;
+}
+
+.nav-mobile-overlay {
+  @apply fixed inset-0 z-50 bg-black/50 transition-opacity duration-300;
+}
+
+.nav-mobile-panel {
+  @apply fixed right-0 top-0 h-full w-64 max-w-full bg-white shadow-xl;
+  @apply transform transition-transform duration-300 ease-out;
+}
+
+.dark .nav-mobile-panel {
+  @apply bg-dark-warm-white;
+}
+
+/* 导航栏悬停发光效果 */
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(185, 28, 28, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(185, 28, 28, 0.4);
+  }
+}
+
+.hover-glow {
+  animation: glow 2s ease-in-out infinite;
 }

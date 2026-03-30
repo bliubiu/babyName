@@ -3,6 +3,7 @@ package logger
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"go.uber.org/zap"
@@ -54,12 +55,17 @@ func Init(cfg *Config) error {
 		encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
 		encoder = zapcore.NewJSONEncoder(encoderConfig)
 	} else {
+		// 如果输出到文件，不使用颜色代码
+		if cfg.OutputPath != "" {
+			encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
+		}
 		encoder = zapcore.NewConsoleEncoder(encoderConfig)
 	}
 
 	var writeSyncer zapcore.WriteSyncer
 	if cfg.OutputPath != "" {
-		dir := cfg.OutputPath[:len(cfg.OutputPath)-len("/app.log")]
+		// 提取日志文件所在目录
+		dir := filepath.Dir(cfg.OutputPath)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
 		}

@@ -7,6 +7,11 @@ export interface GenerateRequest {
   birth_hour: number;
   birth_minute?: number;
   birth_location?: string;
+  generation?: string;
+  generation_position?: 'middle' | 'end';
+  name_type?: 'double' | 'single';
+  birth_type?: 'solar' | 'lunar';
+  preferences?: string[];
   name_length?: number;
 }
 
@@ -53,15 +58,21 @@ export interface Hexagram {
 }
 
 export interface Name {
-  id: number;
+  id?: number;
   surname: string;
+  generation?: string;
   given_name: string;
+  full_name?: string;
   pinyin: string;
   meaning: string;
   wuxing: string;
+  nayin?: string;
   strokes: number;
-  gender: string;
+  gender: 'male' | 'female';
   score: number;
+  bazi_score?: number;
+  huangli?: string;
+  xiang?: string;
   reasons?: string[];
   wuxing_analysis?: string;
   bazi_score_detail?: string;
@@ -73,6 +84,7 @@ export interface Name {
 
 export interface GenerateResponse {
   success: boolean;
+  message?: string;
   data: {
     bazi: BaziAnalysis;
     nayin: string;
@@ -85,10 +97,50 @@ export interface GenerateResponse {
 export interface HistoryRecord {
   id: string;
   surname: string;
-  gender: string;
+  gender: 'male' | 'female';
   birth_date: string;
   birth_time: string;
   birth_location: string;
+  generation?: string;
   results: GenerateResponse['data'] | string;
   created_at: string;
+}
+
+export interface FavoriteData {
+  id?: string;
+  surname: string;
+  given_name: string;
+  pinyin: string;
+  gender: 'male' | 'female';
+  score: number;
+  created_at?: string;
+}
+
+export interface FormData {
+  surname: string;
+  gender: 'male' | 'female';
+  birthYear: number;
+  birthMonth: number;
+  birthDay: number;
+  birthHour: number;
+  birthMinute: number;
+  birthLocation: string;
+  generation: string;
+  generationPosition: 'middle' | 'end';
+  nameType: 'double' | 'single';
+  birthType: 'solar' | 'lunar';
+  preferences: string[];
+  nameLength: number;
+}
+
+export interface APIResponse<T = any> {
+  success: boolean;
+  message?: string;
+  data?: T;
+}
+
+export interface NameStat {
+  count: number;
+  rate: number;
+  province?: string;
 }

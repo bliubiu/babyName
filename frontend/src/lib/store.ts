@@ -1,5 +1,8 @@
+'use client';
+
 import { create } from 'zustand';
-import { GenerateRequest, GenerateResponse, HistoryRecord, Name } from '@/types';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { HistoryRecord, Name } from '@/types';
 import { FavoriteData } from './api';
 
 interface FormData {
@@ -12,20 +15,26 @@ interface FormData {
   birthMinute: number;
   birthLocation: string;
   generation: string;
+  generationPosition: 'middle' | 'end';
+  nameType: 'double' | 'single';
+  birthType: 'solar' | 'lunar';
+  preferences: string[];
+  nameLength: number;
 }
 
 interface NameStore {
   formData: FormData;
-  generateResult: GenerateResponse['data'] | null;
+  generateResult: any | null;
   compareResult: Name[] | null;
   history: HistoryRecord[];
   favorites: FavoriteData[];
   isLoading: boolean;
   error: string | null;
-  
+  _hasHydrated: boolean;
+
   setFormData: (data: Partial<FormData>) => void;
   resetFormData: () => void;
-  setGenerateResult: (result: GenerateResponse['data'] | null) => void;
+  setGenerateResult: (result: any | null) => void;
   setCompareResult: (result: Name[] | null) => void;
   setHistory: (history: HistoryRecord[]) => void;
   addHistory: (record: HistoryRecord) => void;
@@ -35,6 +44,7 @@ interface NameStore {
   removeFavorite: (id: string) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  setHasHydrated: (state: boolean) => void;
 }
 
 const initialFormData: FormData = {
@@ -47,48 +57,85 @@ const initialFormData: FormData = {
   birthMinute: 0,
   birthLocation: '',
   generation: '',
+  generationPosition: 'middle',
+  nameType: 'double',
+  birthType: 'solar',
+  preferences: [],
+  nameLength: 2,
 };
 
-export const useNameStore = create<NameStore>((set) => ({
-  formData: initialFormData,
-  generateResult: null,
-  compareResult: null,
-  history: [],
-  favorites: [],
-  isLoading: false,
-  error: null,
+const createMyStore = () => {
+  return create<NameStore>()(
+    persist(
+      (set) => ({
+        formData: initialFormData,
+        generateResult: null,
+        compareResult: null,
+        history: [],
+        favorites: [],
+        isLoading: false,
+        error: null,
+        _hasHydrated: false,
 
-  setFormData: (data) => set((state) => ({
-    formData: { ...state.formData, ...data }
-  })),
+        setFormData: (data) => set((state) => ({
+          formData: { ...state.formData, ...data }
+        })),
 
-  resetFormData: () => set({ formData: initialFormData }),
+        resetFormData: () => set({ formData: initialFormData }),
 
-  setGenerateResult: (result) => set({ generateResult: result }),
+        setGenerateResult: (result) => set({ generateResult: result }),
 
-  setCompareResult: (result) => set({ compareResult: result }),
+        setCompareResult: (result) => set({ compareResult: result }),
 
-  setHistory: (history) => set({ history }),
+        setHistory: (history) => set({ history }),
 
-  addHistory: (record) => set((state) => ({
-    history: [record, ...state.history]
-  })),
+        addHistory: (record) => set((state) => ({
+          history: [record, ...state.history]
+        })),
 
-  removeHistory: (id) => set((state) => ({
-    history: state.history.filter((item) => item.id !== id)
-  })),
+        removeHistory: (id) => set((state) => ({
+          history: state.history.filter((item) => item.id !== id)
+        })),
 
-  setFavorites: (favorites) => set({ favorites }),
+        setFavorites: (favorites) => set({ favorites }),
 
-  addFavorite: (favorite) => set((state) => ({
-    favorites: [...state.favorites, favorite]
-  })),
+        addFavorite: (favorite) => set((state) => ({
+          favorites: [...state.favorites, favorite]
+        })),
 
-  removeFavorite: (id) => set((state) => ({
-    favorites: state.favorites.filter((item) => item.id !== id)
-  })),
+        removeFavorite: (id) => set((state) => ({
+          favorites: state.favorites.filter((item) => item.id !== id)
+        })),
 
-  setLoading: (loading) => set({ isLoading: loading }),
+        setLoading: (loading) => set({ isLoading: loading }),
 
-  setError: (error) => set({ error }),
-}));
+        setError: (error) => set({ error }),
+
+        setHasHydrated: (state) => set({ _hasHydrated: state }),
+      }),
+      {
+        name: 'namemaster-storage',
+        storage: createJSONStorage(() => {
+          if (typeof window === 'undefined') {
+            return {
+              getItem: () => null,
+              setItem: () => {},
+              removeItem: () => {},
+            };
+          }
+          return localStorage;
+        }),
+        partialize: (state) => ({
+          formData: state.formData,
+          favorites: state.favorites,
+          history: state.history,
+        }),
+        onRehydrateStorage: () => (state) => {
+          state?.setHasHydrated(true);
+        },
+      }
+    )
+  );
+};
+
+export const useNameStore = createMyStore();

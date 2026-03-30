@@ -1,6 +1,8 @@
 package validator
 
 import (
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -28,20 +30,12 @@ func ValidateDate(year, month, day int) error {
 		return NewValidationError("birth_day", "日期必须在1-31之间")
 	}
 
-	_, err := time.Parse("2006-01-02", 
-		string(rune('0'+year/1000))+
-		string(rune('0'+(year/100)%10))+
-		string(rune('0'+(year/10)%10))+
-		string(rune('0'+year%10))+"-"+
-		string(rune('0'+month/10))+
-		string(rune('0'+month%10))+"-"+
-		string(rune('0'+day/10))+
-		string(rune('0'+day%10)))
-	
+	dateStr := fmt.Sprintf("%04d-%02d-%02d", year, month, day)
+	_, err := time.Parse("2006-01-02", dateStr)
 	if err != nil {
 		return NewValidationError("birth_date", "日期不合法")
 	}
-	
+
 	return nil
 }
 
@@ -59,8 +53,15 @@ func ValidateSurname(surname string) error {
 	if surname == "" {
 		return NewValidationError("surname", "姓氏不能为空")
 	}
+	// 去除首尾空格
+	surname = strings.TrimSpace(surname)
 	if len(surname) > 4 {
 		return NewValidationError("surname", "姓氏长度不能超过4个字符")
+	}
+	for _, r := range surname {
+		if r < '\u4e00' || r > '\u9fa5' {
+			return NewValidationError("surname", "姓氏只能包含中文字符")
+		}
 	}
 	return nil
 }
