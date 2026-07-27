@@ -2,6 +2,7 @@ package response
 
 import (
 	"github.com/gin-gonic/gin"
+	apperrors "name/internal/application/errors"
 )
 
 type Response struct {
@@ -82,6 +83,11 @@ func SuccessWithMessageJSON(c *gin.Context, data interface{}, message string) {
 
 func ErrorJSON(c *gin.Context, code int, message string) {
 	c.JSON(getHTTPStatus(code), Error(code, message))
+}
+
+// ErrorAppJSON 将 AppError 转为 HTTP 响应输出
+func ErrorAppJSON(c *gin.Context, appErr *apperrors.AppError) {
+	ErrorJSON(c, int(appErr.Code), appErr.Message)
 }
 
 func getHTTPStatus(code int) int {

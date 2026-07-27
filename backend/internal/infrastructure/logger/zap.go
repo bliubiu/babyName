@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
@@ -69,11 +70,15 @@ func Init(cfg *Config) error {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
 		}
-		file, err := os.OpenFile(cfg.OutputPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-		if err != nil {
-			return err
+		// 使用 lumberjack 实现日志轮转
+		lj := &lumberjack.Logger{
+			Filename:   cfg.OutputPath,
+			MaxSize:    100, // MB，单文件最大大小
+			MaxBackups: 32,  // 保留旧文件最大个数（与 MaxAge 一致，满足 AGENTS.md 保留 32 天要求）
+			MaxAge:     32,  // 保留旧文件最大天数
+			Compress:   true, // 压缩旧文件
 		}
-		writeSyncer = zapcore.AddSync(file)
+		writeSyncer = zapcore.AddSync(lj)
 	} else {
 		writeSyncer = zapcore.AddSync(os.Stdout)
 	}
@@ -106,9 +111,24 @@ func InitProduction() error {
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 
+	// 生产环境同时输出到文件和标准输出
+	lj := &lumberjack.Logger{
+		Filename:   "logs/app.log",
+		MaxSize:    100,
+		MaxBackups: 32,
+		MaxAge:     32,
+		Compress:   true,
+	}
+	_ = os.MkdirAll("logs", 0755)
+
+	writeSyncer := zapcore.NewMultiWriteSyncer(
+		zapcore.AddSync(lj),
+		zapcore.AddSync(os.Stdout),
+	)
+
 	core := zapcore.NewCore(
 		zapcore.NewJSONEncoder(cfg),
-		zapcore.AddSync(os.Stdout),
+		writeSyncer,
 		zapcore.InfoLevel,
 	)
 
@@ -119,43 +139,82 @@ func InitProduction() error {
 }
 
 func Debug(msg string, fields ...zap.Field) {
+	if Log == nil {
+		return
+	}
 	Log.Debug(msg, fields...)
 }
 
 func Info(msg string, fields ...zap.Field) {
+	if Log == nil {
+		return
+	}
 	Log.Info(msg, fields...)
 }
 
 func Warn(msg string, fields ...zap.Field) {
+	if Log == nil {
+		return
+	}
 	Log.Warn(msg, fields...)
 }
 
 func Fatal(msg string, fields ...zap.Field) {
-	Log.Fatal(msg, fields...)
+	if Log != nil {
+		Log.Fatal(msg, fields...)
+	}
+	os.Exit(1)
 }
 
+// Deprecated: 使用 Error(msg, ...) 替代 LogError 需要先重命名 Error(err) Field 辅助函数
 func LogError(msg string, fields ...zap.Field) {
+	if Log == nil {
+		return
+	}
+	Log.Error(msg, fields...)
+}
+
+// Error 记录错误日志
+func Error(msg string, fields ...zap.Field) {
+	if Log == nil {
+		return
+	}
 	Log.Error(msg, fields...)
 }
 
 func Debugf(template string, args ...interface{}) {
+	if Log == nil {
+		return
+	}
 	Sugar.Debugf(template, args...)
 }
 
 func Infof(template string, args ...interface{}) {
+	if Log == nil {
+		return
+	}
 	Sugar.Infof(template, args...)
 }
 
 func Warnf(template string, args ...interface{}) {
+	if Log == nil {
+		return
+	}
 	Sugar.Warnf(template, args...)
 }
 
 func Errorf(template string, args ...interface{}) {
+	if Log == nil {
+		return
+	}
 	Sugar.Errorf(template, args...)
 }
 
 func Fatalf(template string, args ...interface{}) {
-	Sugar.Fatalf(template, args...)
+	if Log != nil {
+		Sugar.Fatalf(template, args...)
+	}
+	os.Exit(1)
 }
 
 func With(fields ...zap.Field) *zap.Logger {
@@ -194,7 +253,7 @@ func Any(key string, value interface{}) Field {
 	return zap.Any(key, value)
 }
 
-func Error(err error) Field {
+func ErrField(err error) Field {
 	return zap.Error(err)
 }
 

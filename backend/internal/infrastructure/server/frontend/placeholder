@@ -1,0 +1,2 @@
+This file exists to ensure Go's //go:embed frontend compiles.
+It is replaced by build.ps1 with the actual frontend output.

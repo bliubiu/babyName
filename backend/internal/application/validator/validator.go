@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type ValidationError struct {
@@ -50,12 +51,13 @@ func ValidateTime(hour, minute int) error {
 }
 
 func ValidateSurname(surname string) error {
+	// 先去除首尾空格，再判空，避免纯空格绕过校验
+	surname = strings.TrimSpace(surname)
 	if surname == "" {
 		return NewValidationError("surname", "姓氏不能为空")
 	}
-	// 去除首尾空格
-	surname = strings.TrimSpace(surname)
-	if len(surname) > 4 {
+	// 按字符数（rune）判断，避免中文 UTF-8 字节长度误判（如"欧阳"=6字节）
+	if utf8.RuneCountInString(surname) > 4 {
 		return NewValidationError("surname", "姓氏长度不能超过4个字符")
 	}
 	for _, r := range surname {
@@ -69,6 +71,25 @@ func ValidateSurname(surname string) error {
 func ValidateGender(gender string) error {
 	if gender != "male" && gender != "female" {
 		return NewValidationError("gender", "性别必须是male或female")
+	}
+	return nil
+}
+
+// ValidateGivenName 验证名字
+func ValidateGivenName(name string) error {
+	// 先去除首尾空格，再判空，避免纯空格绕过校验
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return NewValidationError("given_name", "名字不能为空")
+	}
+	// 按字符数（rune）判断，避免中文 UTF-8 字节长度误判（如"诸葛孔明"=12字节）
+	if utf8.RuneCountInString(name) > 8 {
+		return NewValidationError("given_name", "名字长度不能超过8个字符")
+	}
+	for _, r := range name {
+		if r < '\u4e00' || r > '\u9fa5' {
+			return NewValidationError("given_name", "名字只能包含中文字符")
+		}
 	}
 	return nil
 }

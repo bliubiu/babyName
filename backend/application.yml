@@ -1,0 +1,36 @@
+# 起名项目配置文件
+
+# 服务器配置
+server:
+  host: "localhost"
+  port: 8080
+  read_header_timeout: "10s"  # 防止慢速客户端攻击
+
+# 运行模式: backend 或 all
+mode: "all"
+
+# 静态文件目录（前端构建输出目录）
+static: ""  # 默认为 frontend/out
+
+# 日志配置
+log:
+  level: "debug"        # 日志级别: debug, info, error
+  format: "console"     # 日志格式: console, json
+  output_path: "namer.log"  # 日志文件路径
+
+# 数据库配置
+database:
+  driver: "sqlite"      # 数据库驱动: sqlite, memory
+  path: "namer.db" # SQLite 数据库文件路径
+
+# 限流配置
+rate_limit:
+  capacity: 100  # 令牌桶容量（每个IP）
+  rate: 10       # 令牌生成速率（每秒）
+
+# Redis 配置（可选）
+redis:
+  enabled: false
+  addr: "localhost:6379"
+  password: ""
+  db: 0
