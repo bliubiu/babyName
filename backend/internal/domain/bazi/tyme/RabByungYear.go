@@ -18,7 +18,7 @@ type RabByungYear struct {
 
 func (RabByungYear) Validate(year int) error {
 	if year < 1027 || year > 9999 {
-		return fmt.Errorf(fmt.Sprintf("illegal rab-byung year: %d", year))
+		return fmt.Errorf("illegal rab-byung year: %d", year)
 	}
 	return nil
 }

@@ -1,170 +1,85 @@
 package classics
 
+import "sync"
+
+// classicsMu 保护所有经典数据的并发读写安全
+// 写入仅在启动时进行一次，为后续热更新预留保护
+var classicsMu sync.RWMutex
+
 type ClassicName struct {
-	Char     string
-	Pinyin   string
-	Meaning  string
-	Source   string
-	Work     string
-	Chapter  string
-	Wuxing   string
-	Gender   string
+	Char     string `json:"char"`
+	Pinyin   string `json:"pinyin"`
+	Meaning  string `json:"meaning"`
+	Source   string `json:"source"`
+	Work     string `json:"work"`
+	Chapter  string `json:"chapter"`
+	Wuxing   string `json:"wuxing"`
+	Gender   string `json:"gender"`
 }
 
-var ShijingNames = []ClassicName{
-	{Char: "思", Pinyin: "sī", Meaning: "思念、深思", Source: "诗经·国风", Work: "诗经", Chapter: "关雎", Wuxing: "金", Gender: "通用"},
-	{Char: "悠", Pinyin: "yōu", Meaning: "悠长、遥远", Source: "诗经·国风", Work: "诗经", Chapter: "关雎", Wuxing: "土", Gender: "通用"},
-	{Char: "淑", Pinyin: "shū", Meaning: "善良、贤淑", Source: "诗经·国风", Work: "诗经", Chapter: "关雎", Wuxing: "水", Gender: "female"},
-	{Char: "窈", Pinyin: "yǎo", Meaning: "文静、美好", Source: "诗经·国风", Work: "诗经", Chapter: "关雎", Wuxing: "土", Gender: "female"},
-	{Char: "睢", Pinyin: "suī", Meaning: "和谐", Source: "诗经·国风", Work: "诗经", Chapter: "关雎", Wuxing: "水", Gender: "通用"},
-	{Char: "芩", Pinyin: "qín", Meaning: "坚韧", Source: "诗经·小雅", Work: "诗经", Chapter: "鹿鸣", Wuxing: "木", Gender: "通用"},
-	{Char: "鸣", Pinyin: "míng", Meaning: "鸣叫", Source: "诗经·小雅", Work: "诗经", Chapter: "鹿鸣", Wuxing: "水", Gender: "通用"},
-	{Char: "乔", Pinyin: "qiáo", Meaning: "高大", Source: "诗经·小雅", Work: "诗经", Chapter: "车舝", Wuxing: "木", Gender: "male"},
-	{Char: "蕙", Pinyin: "huì", Meaning: "兰草", Source: "诗经·国风", Work: "诗经", Chapter: "郑风", Wuxing: "木", Gender: "female"},
-	{Char: "兰", Pinyin: "lán", Meaning: "兰花", Source: "诗经·国风", Work: "诗经", Chapter: "溱洧", Wuxing: "木", Gender: "通用"},
-	{Char: "芍", Pinyin: "sháo", Meaning: "芍药", Source: "诗经·国风", Work: "诗经", Chapter: "溱洧", Wuxing: "木", Gender: "female"},
-	{Char: "清", Pinyin: "qīng", Meaning: "清澈", Source: "诗经·国风", Work: "诗经", Chapter: "溱洧", Wuxing: "水", Gender: "通用"},
-	{Char: "扬", Pinyin: "yáng", Meaning: "昂扬", Source: "诗经·国风", Work: "诗经", Chapter: "溱洧", Wuxing: "火", Gender: "通用"},
-	{Char: "舟", Pinyin: "zhōu", Meaning: "小船", Source: "诗经·国风", Work: "诗经", Chapter: "柏舟", Wuxing: "金", Gender: "通用"},
-	{Char: "柏", Pinyin: "bǎi", Meaning: "柏树", Source: "诗经·国风", Work: "诗经", Chapter: "柏舟", Wuxing: "木", Gender: "通用"},
-	{Char: "如", Pinyin: "rú", Meaning: "如同", Source: "诗经·国风", Work: "诗经", Chapter: "柏舟", Wuxing: "土", Gender: "通用"},
-	{Char: "云", Pinyin: "yún", Meaning: "云彩", Source: "诗经·国风", Work: "诗经", Chapter: "君子偕老", Wuxing: "水", Gender: "通用"},
-	{Char: "归", Pinyin: "guī", Meaning: "归来", Source: "诗经·国风", Work: "诗经", Chapter: "君子于役", Wuxing: "土", Gender: "通用"},
-	{Char: "葛", Pinyin: "gě", Meaning: "葛藤", Source: "诗经·国风", Work: "诗经", Chapter: "葛覃", Wuxing: "木", Gender: "通用"},
-	{Char: "施", Pinyin: "shī", Meaning: "施予", Source: "诗经·国风", Work: "诗经", Chapter: "葛覃", Wuxing: "金", Gender: "通用"},
-	{Char: "池", Pinyin: "chí", Meaning: "池塘", Source: "诗经·国风", Work: "诗经", Chapter: "葛覃", Wuxing: "水", Gender: "通用"},
-	{Char: "木", Pinyin: "mù", Meaning: "树木", Source: "诗经·国风", Work: "诗经", Chapter: "葛覃", Wuxing: "木", Gender: "通用"},
-	{Char: "鸟", Pinyin: "niǎo", Meaning: "飞鸟", Source: "诗经·国风", Work: "诗经", Chapter: "葛覃", Wuxing: "火", Gender: "通用"},
-	{Char: "羽", Pinyin: "yǔ", Meaning: "雨露", Source: "诗经·小雅", Work: "诗经", Chapter: "鹿鸣", Wuxing: "水", Gender: "通用"},
-	{Char: "棘", Pinyin: "jí", Meaning: "酸枣", Source: "诗经·国风", Work: "诗经", Chapter: "凯风", Wuxing: "木", Gender: "通用"},
-	{Char: "桑", Pinyin: "sāng", Meaning: "桑树", Source: "诗经·国风", Work: "诗经", Chapter: "桑中", Wuxing: "木", Gender: "通用"},
-	{Char: "鹿", Pinyin: "lù", Meaning: "梅花鹿", Source: "诗经·小雅", Work: "诗经", Chapter: "鹿鸣", Wuxing: "火", Gender: "通用"},
-	{Char: "食", Pinyin: "shí", Meaning: "食物", Source: "诗经·小雅", Work: "诗经", Chapter: "鹿鸣", Wuxing: "金", Gender: "通用"},
-	{Char: "鹤", Pinyin: "hè", Meaning: "仙鹤", Source: "诗经·小雅", Work: "诗经", Chapter: "鹤鸣", Wuxing: "水", Gender: "通用"},
-	{Char: "渊", Pinyin: "yuān", Meaning: "深潭", Source: "诗经·小雅", Work: "诗经", Chapter: "鹤鸣", Wuxing: "水", Gender: "通用"},
-	{Char: "泉", Pinyin: "quán", Meaning: "泉水", Source: "诗经·小雅", Work: "诗经", Chapter: "鹤鸣", Wuxing: "水", Gender: "通用"},
-	{Char: "鱼", Pinyin: "yú", Meaning: "鱼儿", Source: "诗经·小雅", Work: "诗经", Chapter: "鱼藻", Wuxing: "水", Gender: "通用"},
-	{Char: "藻", Pinyin: "zǎo", Meaning: "水藻", Source: "诗经·小雅", Work: "诗经", Chapter: "鱼藻", Wuxing: "木", Gender: "通用"},
-	{Char: "荷", Pinyin: "hé", Meaning: "荷花", Source: "诗经·国风", Work: "诗经", Chapter: "泽陂", Wuxing: "木", Gender: "female"},
-	{Char: "梅", Pinyin: "méi", Meaning: "梅花", Source: "诗经·国风", Work: "诗经", Chapter: "摽有梅", Wuxing: "木", Gender: "female"},
-	{Char: "桃", Pinyin: "táo", Meaning: "桃子", Source: "诗经·国风", Work: "诗经", Chapter: "桃夭", Wuxing: "木", Gender: "female"},
-	{Char: "宜", Pinyin: "yí", Meaning: "适宜", Source: "诗经·国风", Work: "诗经", Chapter: "桃夭", Wuxing: "土", Gender: "通用"},
-	{Char: "家", Pinyin: "jiā", Meaning: "家庭", Source: "诗经·国风", Work: "诗经", Chapter: "桃夭", Wuxing: "木", Gender: "通用"},
-	{Char: "风", Pinyin: "fēng", Meaning: "风", Source: "诗经·国风", Work: "诗经", Chapter: "凯风", Wuxing: "水", Gender: "通用"},
-	{Char: "凯", Pinyin: "kǎi", Meaning: "和乐", Source: "诗经·国风", Work: "诗经", Chapter: "凯风", Wuxing: "木", Gender: "male"},
-	{Char: "山", Pinyin: "shān", Meaning: "高山", Source: "诗经·小雅", Work: "诗经", Chapter: "节南山", Wuxing: "土", Gender: "通用"},
-	{Char: "川", Pinyin: "chuān", Meaning: "河流", Source: "诗经·小雅", Work: "诗经", Chapter: "节南山", Wuxing: "金", Gender: "通用"},
-	{Char: "草", Pinyin: "cǎo", Meaning: "小草", Source: "诗经·国风", Work: "诗经", Chapter: "野有蔓草", Wuxing: "木", Gender: "通用"},
-	{Char: "露", Pinyin: "lù", Meaning: "雨露", Source: "诗经·国风", Work: "诗经", Chapter: "野有蔓草", Wuxing: "水", Gender: "通用"},
-	{Char: "苍", Pinyin: "cāng", Meaning: "青色", Source: "诗经·国风", Work: "诗经", Chapter: "蒹葭", Wuxing: "木", Gender: "通用"},
-	{Char: "霜", Pinyin: "shuāng", Meaning: "白霜", Source: "诗经·国风", Work: "诗经", Chapter: "蒹葭", Wuxing: "水", Gender: "通用"},
-	{Char: "葭", Pinyin: "jiā", Meaning: "芦苇", Source: "诗经·国风", Work: "诗经", Chapter: "蒹葭", Wuxing: "木", Gender: "通用"},
-	{Char: "采", Pinyin: "cǎi", Meaning: "采摘", Source: "诗经·国风", Work: "诗经", Chapter: "采薇", Wuxing: "火", Gender: "通用"},
-	{Char: "薇", Pinyin: "wēi", Meaning: "野豌豆", Source: "诗经·国风", Work: "诗经", Chapter: "采薇", Wuxing: "木", Gender: "通用"},
-	{Char: "柳", Pinyin: "liǔ", Meaning: "杨柳", Source: "诗经·国风", Work: "诗经", Chapter: "采薇", Wuxing: "木", Gender: "通用"},
-	{Char: "柔", Pinyin: "róu", Meaning: "柔软", Source: "诗经·国风", Work: "诗经", Chapter: "采薇", Wuxing: "金", Gender: "female"},
-	{Char: "星", Pinyin: "xīng", Meaning: "星星", Source: "诗经·国风", Work: "诗经", Chapter: "绸缪", Wuxing: "火", Gender: "通用"},
-	{Char: "月", Pinyin: "yuè", Meaning: "月亮", Source: "诗经·国风", Work: "诗经", Chapter: "月出", Wuxing: "木", Gender: "通用"},
-	{Char: "皎", Pinyin: "jiǎo", Meaning: "洁白", Source: "诗经·国风", Work: "诗经", Chapter: "月出", Wuxing: "木", Gender: "通用"},
-	{Char: "皓", Pinyin: "hào", Meaning: "明亮", Source: "诗经·国风", Work: "诗经", Chapter: "月出", Wuxing: "木", Gender: "male"},
-	{Char: "照", Pinyin: "zhào", Meaning: "照耀", Source: "诗经·国风", Work: "诗经", Chapter: "月出", Wuxing: "火", Gender: "通用"},
-	{Char: "泽", Pinyin: "zé", Meaning: "恩泽", Source: "诗经·国风", Work: "诗经", Chapter: "泽陂", Wuxing: "水", Gender: "通用"},
-	{Char: "莲", Pinyin: "lián", Meaning: "莲花", Source: "诗经·国风", Work: "诗经", Chapter: "泽陂", Wuxing: "木", Gender: "female"},
-	{Char: "心", Pinyin: "xīn", Meaning: "内心", Source: "诗经·国风", Work: "诗经", Chapter: "泽陂", Wuxing: "金", Gender: "通用"},
-	{Char: "静", Pinyin: "jìng", Meaning: "宁静", Source: "诗经·国风", Work: "诗经", Chapter: "静女", Wuxing: "金", Gender: "female"},
-	{Char: "女", Pinyin: "nǚ", Meaning: "女子", Source: "诗经·国风", Work: "诗经", Chapter: "静女", Wuxing: "火", Gender: "female"},
-	{Char: "彤", Pinyin: "tóng", Meaning: "红色", Source: "诗经·国风", Work: "诗经", Chapter: "静女", Wuxing: "火", Gender: "female"},
-	{Char: "黄", Pinyin: "huáng", Meaning: "黄色", Source: "诗经·国风", Work: "诗经", Chapter: "野有麂", Wuxing: "土", Gender: "通用"},
-	{Char: "翰", Pinyin: "hàn", Meaning: "高飞", Source: "诗经·小雅", Work: "诗经", Chapter: "常棣", Wuxing: "水", Gender: "male"},
-	{Char: "飞", Pinyin: "fēi", Meaning: "飞翔", Source: "诗经·小雅", Work: "诗经", Chapter: "常棣", Wuxing: "水", Gender: "通用"},
-	{Char: "常", Pinyin: "cháng", Meaning: "永恒", Source: "诗经·小雅", Work: "诗经", Chapter: "常棣", Wuxing: "木", Gender: "通用"},
-	{Char: "景", Pinyin: "jǐng", Meaning: "景色", Source: "诗经·小雅", Work: "诗经", Chapter: "车舝", Wuxing: "木", Gender: "通用"},
-	{Char: "章", Pinyin: "zhāng", Meaning: "文章", Source: "诗经·小雅", Work: "诗经", Chapter: "车舝", Wuxing: "火", Gender: "通用"},
-	{Char: "行", Pinyin: "xíng", Meaning: "行走", Source: "诗经·小雅", Work: "诗经", Chapter: "车舝", Wuxing: "金", Gender: "通用"},
-	{Char: "德", Pinyin: "dé", Meaning: "品德", Source: "诗经·大雅", Work: "诗经", Chapter: "板", Wuxing: "火", Gender: "通用"},
-	{Char: "业", Pinyin: "yè", Meaning: "事业", Source: "诗经·大雅", Work: "诗经", Chapter: "板", Wuxing: "木", Gender: "通用"},
-	{Char: "天", Pinyin: "tiān", Meaning: "天空", Source: "诗经·大雅", Work: "诗经", Chapter: "生民", Wuxing: "火", Gender: "通用"},
-	{Char: "地", Pinyin: "dì", Meaning: "大地", Source: "诗经·大雅", Work: "诗经", Chapter: "生民", Wuxing: "土", Gender: "通用"},
-	{Char: "神", Pinyin: "shén", Meaning: "神灵", Source: "诗经·大雅", Work: "诗经", Chapter: "生民", Wuxing: "金", Gender: "通用"},
-	{Char: "灵", Pinyin: "líng", Meaning: "灵验", Source: "诗经·大雅", Work: "诗经", Chapter: "生民", Wuxing: "火", Gender: "通用"},
-	{Char: "生", Pinyin: "shēng", Meaning: "生命", Source: "诗经·大雅", Work: "诗经", Chapter: "生民", Wuxing: "金", Gender: "通用"},
-	{Char: "民", Pinyin: "mín", Meaning: "人民", Source: "诗经·大雅", Work: "诗经", Chapter: "生民", Wuxing: "水", Gender: "通用"},
-	{Char: "道", Pinyin: "dào", Meaning: "道理", Source: "诗经·大雅", Work: "诗经", Chapter: "生民", Wuxing: "火", Gender: "通用"},
-	{Char: "古", Pinyin: "gǔ", Meaning: "古代", Source: "诗经·大雅", Work: "诗经", Chapter: "生民", Wuxing: "木", Gender: "通用"},
-	{Char: "福", Pinyin: "fú", Meaning: "福气", Source: "诗经·小雅", Work: "诗经", Chapter: "小明", Wuxing: "水", Gender: "通用"},
-	{Char: "寿", Pinyin: "shòu", Meaning: "长寿", Source: "诗经·小雅", Work: "诗经", Chapter: "天保", Wuxing: "金", Gender: "通用"},
-	{Char: "昌", Pinyin: "chāng", Meaning: "昌盛", Source: "诗经·小雅", Work: "诗经", Chapter: "天保", Wuxing: "火", Gender: "male"},
-	{Char: "明", Pinyin: "míng", Meaning: "明亮", Source: "诗经·小雅", Work: "诗经", Chapter: "小明", Wuxing: "火", Gender: "通用"},
-	{Char: "文", Pinyin: "wén", Meaning: "文化", Source: "诗经·小雅", Work: "诗经", Chapter: "宾之初筵", Wuxing: "水", Gender: "通用"},
-	{Char: "武", Pinyin: "wǔ", Meaning: "武力", Source: "诗经·小雅", Work: "诗经", Chapter: "宾之初筵", Wuxing: "水", Gender: "male"},
-	{Char: "成", Pinyin: "chéng", Meaning: "完成", Source: "诗经·小雅", Work: "诗经", Chapter: "车舝", Wuxing: "金", Gender: "通用"},
-	{Char: "君", Pinyin: "jūn", Meaning: "君主", Source: "诗经·小雅", Work: "诗经", Chapter: "小明", Wuxing: "木", Gender: "male"},
-	{Char: "子", Pinyin: "zǐ", Meaning: "子女", Source: "诗经·小雅", Work: "诗经", Chapter: "小明", Wuxing: "金", Gender: "通用"},
-	{Char: "宇", Pinyin: "yǔ", Meaning: "宇宙", Source: "诗经·大雅", Work: "诗经", Chapter: "板", Wuxing: "土", Gender: "通用"},
-}
+// ShijingNames 诗经用字列表，启动时由 LoadFromJSON 从 shijing.json 加载
+var ShijingNames []ClassicName
 
-var ChuciNames = []ClassicName{
-	{Char: "离", Pinyin: "lí", Meaning: "离别、离开", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "火", Gender: "通用"},
-	{Char: "骚", Pinyin: "sāo", Meaning: "忧愁、骚动", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "原", Pinyin: "yuán", Meaning: "本源、原因", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "木", Gender: "male"},
-	{Char: "灵", Pinyin: "líng", Meaning: "神灵、灵巧", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "火", Gender: "通用"},
-	{Char: "均", Pinyin: "jūn", Meaning: "平均、均匀", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "土", Gender: "通用"},
-	{Char: "修", Pinyin: "xiū", Meaning: "长、美好", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "博", Pinyin: "bó", Meaning: "广博、渊博", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "达", Pinyin: "dá", Meaning: "通达、显达", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "火", Gender: "通用"},
-	{Char: "贤", Pinyin: "xián", Meaning: "贤德、贤才", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "木", Gender: "通用"},
-	{Char: "善", Pinyin: "shàn", Meaning: "善良、擅长", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "美", Pinyin: "měi", Meaning: "美丽、美好", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "水", Gender: "通用"},
-	{Char: "佳", Pinyin: "jiā", Meaning: "美好、优秀", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "木", Gender: "通用"},
-	{Char: "兮", Pinyin: "xī", Meaning: "语气词", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "之", Pinyin: "zhī", Meaning: "的、往", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "为", Pinyin: "wéi", Meaning: "作为、成为", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "土", Gender: "通用"},
-	{Char: "若", Pinyin: "ruò", Meaning: "如、好像", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "木", Gender: "通用"},
-	{Char: "如", Pinyin: "rú", Meaning: "如同、比如", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "土", Gender: "通用"},
-	{Char: "云", Pinyin: "yún", Meaning: "云彩、说", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "水", Gender: "通用"},
-	{Char: "夫", Pinyin: "fū", Meaning: "丈夫、成人", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "土", Gender: "male"},
-	{Char: "君", Pinyin: "jūn", Meaning: "君主、君子", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "木", Gender: "male"},
-	{Char: "子", Pinyin: "zǐ", Meaning: "儿子、学者", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "王", Pinyin: "wáng", Meaning: "国王、帝王", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "土", Gender: "male"},
-	{Char: "皇", Pinyin: "huáng", Meaning: "皇帝、伟大", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "male"},
-	{Char: "天", Pinyin: "tiān", Meaning: "天空、天帝", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "火", Gender: "通用"},
-	{Char: "地", Pinyin: "dì", Meaning: "大地、土地", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "土", Gender: "通用"},
-	{Char: "神", Pinyin: "shén", Meaning: "神灵、精神", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "魂", Pinyin: "hún", Meaning: "灵魂、魂魄", Source: "楚辞", Work: "九歌", Chapter: "九歌", Wuxing: "水", Gender: "通用"},
-	{Char: "心", Pinyin: "xīn", Meaning: "心脏、内心", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "志", Pinyin: "zhì", Meaning: "志向、志气", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "火", Gender: "通用"},
-	{Char: "思", Pinyin: "sī", Meaning: "思考、思念", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "忧", Pinyin: "yōu", Meaning: "忧愁、忧虑", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "土", Gender: "通用"},
-	{Char: "愁", Pinyin: "chóu", Meaning: "忧愁、愁思", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "悲", Pinyin: "bēi", Meaning: "悲伤、悲痛", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "水", Gender: "通用"},
-	{Char: "哀", Pinyin: "āi", Meaning: "悲哀、哀伤", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "土", Gender: "通用"},
-	{Char: "壮", Pinyin: "zhuàng", Meaning: "雄壮、壮年", Source: "楚辞", Work: "九歌", Chapter: "国殇", Wuxing: "土", Gender: "male"},
-	{Char: "烈", Pinyin: "liè", Meaning: "刚烈、猛烈", Source: "楚辞", Work: "九歌", Chapter: "国殇", Wuxing: "火", Gender: "通用"},
-	{Char: "武", Pinyin: "wǔ", Meaning: "武力、英勇", Source: "楚辞", Work: "九歌", Chapter: "国殇", Wuxing: "水", Gender: "male"},
-	{Char: "忠", Pinyin: "zhōng", Meaning: "忠诚、忠心", Source: "楚辞", Work: "九歌", Chapter: "国殇", Wuxing: "火", Gender: "通用"},
-	{Char: "义", Pinyin: "yì", Meaning: "义气、正义", Source: "楚辞", Work: "九歌", Chapter: "国殇", Wuxing: "金", Gender: "通用"},
-	{Char: "玉", Pinyin: "yù", Meaning: "美玉、美好", Source: "楚辞", Work: "九歌", Chapter: "湘夫人", Wuxing: "木", Gender: "通用"},
-	{Char: "桂", Pinyin: "guì", Meaning: "桂花、芳香", Source: "楚辞", Work: "九歌", Chapter: "湘夫人", Wuxing: "木", Gender: "通用"},
-	{Char: "香", Pinyin: "xiāng", Meaning: "香气、美好", Source: "楚辞", Work: "九歌", Chapter: "湘夫人", Wuxing: "水", Gender: "通用"},
-	{Char: "芳", Pinyin: "fāng", Meaning: "芳香、美好", Source: "楚辞", Work: "九歌", Chapter: "湘夫人", Wuxing: "木", Gender: "通用"},
-	{Char: "杜", Pinyin: "dù", Meaning: "杜梨、杜绝", Source: "楚辞", Work: "九歌", Chapter: "山鬼", Wuxing: "木", Gender: "通用"},
-	{Char: "若", Pinyin: "ruò", Meaning: "香草、美好", Source: "楚辞", Work: "九歌", Chapter: "山鬼", Wuxing: "木", Gender: "通用"},
-	{Char: "思", Pinyin: "sī", Meaning: "思念", Source: "楚辞", Work: "九歌", Chapter: "湘君", Wuxing: "金", Gender: "通用"},
-	{Char: "慕", Pinyin: "mù", Meaning: "羡慕、仰慕", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "水", Gender: "通用"},
-	{Char: "怨", Pinyin: "yuàn", Meaning: "怨恨、抱怨", Source: "楚辞", Work: "九歌", Chapter: "湘君", Wuxing: "土", Gender: "通用"},
-	{Char: "公", Pinyin: "gōng", Meaning: "公正、公开", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "male"},
-	{Char: "平", Pinyin: "píng", Meaning: "平坦、公正", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "水", Gender: "通用"},
-	{Char: "专", Pinyin: "zhuān", Meaning: "专一、专注", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "火", Gender: "通用"},
-	{Char: "悟", Pinyin: "wù", Meaning: "觉悟、明白", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "木", Gender: "通用"},
-	{Char: "改", Pinyin: "gǎi", Meaning: "改变、改正", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "悔", Pinyin: "huǐ", Meaning: "后悔、悔恨", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "水", Gender: "通用"},
-	{Char: "相", Pinyin: "xiāng", Meaning: "相互、相当", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "接", Pinyin: "jiē", Meaning: "接受、连接", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "火", Gender: "通用"},
-	{Char: "疏", Pinyin: "shū", Meaning: "疏远、疏通", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "尤", Pinyin: "yóu", Meaning: "尤其、过错", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "土", Gender: "通用"},
-	{Char: "遵", Pinyin: "zūn", Meaning: "遵循、遵守", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "绳", Pinyin: "shéng", Meaning: "绳索、准则", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "金", Gender: "通用"},
-	{Char: "墨", Pinyin: "mò", Meaning: "墨水、黑色", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "土", Gender: "通用"},
-	{Char: "章", Pinyin: "zhāng", Meaning: "文章、明显", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "火", Gender: "通用"},
-	{Char: "显", Pinyin: "xiǎn", Meaning: "明显、显耀", Source: "楚辞", Work: "离骚", Chapter: "离骚", Wuxing: "火", Gender: "通用"},
+// ChuciNames 楚辞用字列表，启动时由 LoadFromJSON 从 chuci.json 加载
+var ChuciNames []ClassicName
+
+// ShijingExtracted 从诗经原文提取的起名用字（包内使用，通过 getExtracted/setExtracted 访问）
+var ShijingExtracted []PoetryChar
+
+// ChuciExtracted 从楚辞原文提取的起名用字（包内使用，通过 getExtracted/setExtracted 访问）
+var ChuciExtracted []PoetryChar
+
+// GuwenGuanzhiExtracted 从 guwenguanzhi.json 原文提取的起名用字
+var GuwenGuanzhiExtracted []PoetryChar
+
+// ShiCiExtracted 从 shici.json 原文提取的起名用字
+var ShiCiExtracted []PoetryChar
+
+// LunyuExtracted 论语
+var LunyuExtracted []PoetryChar
+
+// MengziExtracted 孟子
+var MengziExtracted []PoetryChar
+
+// DaxueExtracted 大学
+var DaxueExtracted []PoetryChar
+
+// ZhongyongExtracted 中庸
+var ZhongyongExtracted []PoetryChar
+
+// SanzijingExtracted 三字经
+var SanzijingExtracted []PoetryChar
+
+// QianziwenExtracted 千字文
+var QianziwenExtracted []PoetryChar
+
+// DiziguiExtracted 弟子规
+var DiziguiExtracted []PoetryChar
+
+// YouxueqionglinExtracted 幼学琼林
+var YouxueqionglinExtracted []PoetryChar
+
+// ZengguangxianwenExtracted 增广贤文
+var ZengguangxianwenExtracted []PoetryChar
+
+// ShenglvqimengExtracted 声律启蒙
+var ShenglvqimengExtracted []PoetryChar
+
+// ZhuzijiaxunExtracted 朱子家训
+var ZhuzijiaxunExtracted []PoetryChar
+
+// QianjiashiExtracted 千家诗
+var QianjiashiExtracted []PoetryChar
+
+// WenzimengqiuExtracted 文字蒙求
+var WenzimengqiuExtracted []PoetryChar
+
+// BaijiaxingExtracted 百家姓
+var BaijiaxingExtracted []PoetryChar
+
+// setExtracted 设置提取结果（写锁保护，供 loader 使用）
+func setExtracted(target *[]PoetryChar, val []PoetryChar) {
+	classicsMu.Lock()
+	*target = val
+	classicsMu.Unlock()
 }

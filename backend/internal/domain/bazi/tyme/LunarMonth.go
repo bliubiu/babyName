@@ -16,7 +16,7 @@ type LunarMonth struct {
 
 func (LunarMonth) Validate(year int, month int) error {
 	if month == 0 || month > 12 || month < -12 {
-		return fmt.Errorf(fmt.Sprintf("illegal lunar month: %d", month))
+		return fmt.Errorf("illegal lunar month: %d", month)
 	}
 	if month < 0 {
 		y, err := LunarYear{}.FromYear(year)
@@ -24,7 +24,7 @@ func (LunarMonth) Validate(year int, month int) error {
 			return err
 		}
 		if -month != y.GetLeapMonth() {
-			return fmt.Errorf(fmt.Sprintf("illegal leap month %d in lunar year %d", -month, year))
+			return fmt.Errorf("illegal leap month %d in lunar year %d", -month, year)
 		}
 	}
 	return nil

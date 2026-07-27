@@ -14,7 +14,7 @@ type SixtyCycleYear struct {
 
 func (SixtyCycleYear) FromYear(year int) (*SixtyCycleYear, error) {
 	if year < -1 || year > 9999 {
-		return nil, fmt.Errorf(fmt.Sprintf("illegal sixty cycle year: %d", year))
+		return nil, fmt.Errorf("illegal sixty cycle year: %d", year)
 	}
 	return &SixtyCycleYear{
 		year: year,

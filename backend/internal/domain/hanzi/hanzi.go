@@ -1,9 +1,23 @@
 package hanzi
 
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+)
+
 var RareChars = map[string]bool{
 	"龘": true, "靐": true, "齉": true, "齾": true, "龗": true,
 	"鱻": true, "麤": true, "灪": true, "馫": true, "譶": true,
 	"灨": true, "灩": true, "麷": true, "驫": true, "羴": true,
+	// 扩展超生僻字（《通用规范汉字表》表外字）
+	"龖": true, "龠": true, "爨": true, "灥": true, "厵": true,
+	"𪚥": true, "𠀾": true, "𡿻": true, "𠄌": true, "𠂉": true,
+	"𠃋": true, "𠃌": true, "𠆢": true, "𠂊": true, "𠂤": true,
+	"㐬": true, "㐭": true, "㐱": true, "㑳": true, "㒭": true,
+	"㓦": true, "㕭": true, "㖈": true, "㗂": true, "㘄": true,
 }
 
 func IsCommonChar(char string) bool {
@@ -24,311 +38,116 @@ type Hanzi struct {
 	Meaning  string
 	Wuxing   string
 	Gender   string
+
+	// 以下字段来自 chars.json 精选起名用字库
+	Tone           int      // 声调
+	GenderTags     []string // 性别标签（更细粒度，如 ["male","female"]）
+	StyleTags      []string // 风格标签（如 "古典"、"现代"、"幽深"）
+	UsageLevel     int      // 常用等级（1-5）
+	PositiveScore  int      // 寓意评分（0-100）
+	PhoneticScore  int      // 音韵评分（0-100）
+	ModernScore    int      // 现代感评分（0-100）
+	ClassicalScore int      // 古典感评分（0-100）
+	IsPolyphonic   bool     // 是否多音字
+	IsRare         bool     // 是否生僻字
+	IsNegative     bool     // 是否消极含义
+	PairBlacklist  []string // 搭配黑名单
+	CurationLevel  int      // 精选等级（1-5）
+	NamePenalty    int      // 起名扣分
+
+	// NamingCategories 起名分类标签列表（0~N 个分类）
+	// 由 classifier 自动标注 + 策展覆盖表修正
+	NamingCategories []string
 }
 
-var HanziData = map[string]Hanzi{
-	"一": {Char: "一", Pinyin: "yī", Strokes: 1, Radical: "一", Meaning: "第一", Wuxing: "土", Gender: "通用"},
-	"二": {Char: "二", Pinyin: "èr", Strokes: 2, Radical: "二", Meaning: "第二", Wuxing: "土", Gender: "通用"},
-	"三": {Char: "三", Pinyin: "sān", Strokes: 3, Radical: "一", Meaning: "三次", Wuxing: "木", Gender: "通用"},
-	"上": {Char: "上", Pinyin: "shàng", Strokes: 3, Radical: "一", Meaning: "上方", Wuxing: "金", Gender: "通用"},
-	"下": {Char: "下", Pinyin: "xià", Strokes: 3, Radical: "一", Meaning: "下方", Wuxing: "土", Gender: "通用"},
-	"不": {Char: "不", Pinyin: "bù", Strokes: 4, Radical: "一", Meaning: "不屈", Wuxing: "水", Gender: "通用"},
-	"世": {Char: "世", Pinyin: "shì", Strokes: 5, Radical: "一", Meaning: "世界", Wuxing: "金", Gender: "通用"},
-	"中": {Char: "中", Pinyin: "zhōng", Strokes: 4, Radical: "丨", Meaning: "中间", Wuxing: "火", Gender: "通用"},
-	"主": {Char: "主", Pinyin: "zhǔ", Strokes: 5, Radical: "丶", Meaning: "主人", Wuxing: "火", Gender: "通用"},
-	"之": {Char: "之", Pinyin: "zhī", Strokes: 3, Radical: "丶", Meaning: "之前", Wuxing: "火", Gender: "通用"},
-	"丹": {Char: "丹", Pinyin: "dān", Strokes: 4, Radical: "丶", Meaning: "丹心", Wuxing: "火", Gender: "通用"},
-	"丽": {Char: "丽", Pinyin: "lì", Strokes: 7, Radical: "丶", Meaning: "美丽", Wuxing: "火", Gender: "female"},
-	"九": {Char: "九", Pinyin: "jiǔ", Strokes: 2, Radical: "九", Meaning: "九州", Wuxing: "火", Gender: "通用"},
-	"书": {Char: "书", Pinyin: "shū", Strokes: 4, Radical: "乙", Meaning: "书籍", Wuxing: "金", Gender: "通用"},
-	"于": {Char: "于", Pinyin: "yú", Strokes: 3, Radical: "二", Meaning: "于是", Wuxing: "土", Gender: "通用"},
-	"五": {Char: "五", Pinyin: "wǔ", Strokes: 4, Radical: "二", Meaning: "五行", Wuxing: "土", Gender: "通用"},
-	"人": {Char: "人", Pinyin: "rén", Strokes: 2, Radical: "人", Meaning: "人才", Wuxing: "金", Gender: "通用"},
-	"入": {Char: "入", Pinyin: "rù", Strokes: 2, Radical: "入", Meaning: "进入", Wuxing: "金", Gender: "通用"},
-	"八": {Char: "八", Pinyin: "bā", Strokes: 2, Radical: "八", Meaning: "八方", Wuxing: "金", Gender: "通用"},
-	"六": {Char: "六", Pinyin: "liù", Strokes: 4, Radical: "八", Meaning: "六福", Wuxing: "水", Gender: "通用"},
-	"公": {Char: "公", Pinyin: "gōng", Strokes: 4, Radical: "八", Meaning: "公平", Wuxing: "木", Gender: "通用"},
-	"其": {Char: "其", Pinyin: "qí", Strokes: 8, Radical: "八", Meaning: "其他", Wuxing: "木", Gender: "通用"},
-	"内": {Char: "内", Pinyin: "nèi", Strokes: 4, Radical: "入", Meaning: "内外", Wuxing: "火", Gender: "通用"},
-	"冬": {Char: "冬", Pinyin: "dōng", Strokes: 5, Radical: "冫", Meaning: "冬天", Wuxing: "火", Gender: "通用"},
-	"冰": {Char: "冰", Pinyin: "bīng", Strokes: 6, Radical: "冫", Meaning: "冰冻", Wuxing: "水", Gender: "通用"},
-	"冲": {Char: "冲", Pinyin: "chōng", Strokes: 6, Radical: "冫", Meaning: "冲动", Wuxing: "水", Gender: "通用"},
-	"净": {Char: "净", Pinyin: "jìng", Strokes: 8, Radical: "冫", Meaning: "干净", Wuxing: "金", Gender: "通用"},
-	"文": {Char: "文", Pinyin: "wén", Strokes: 4, Radical: "文", Meaning: "文化", Wuxing: "水", Gender: "通用"},
-	"刘": {Char: "刘", Pinyin: "liú", Strokes: 6, Radical: "文", Meaning: "刘姓", Wuxing: "火", Gender: "通用"},
-	"齐": {Char: "齐", Pinyin: "qí", Strokes: 6, Radical: "文", Meaning: "齐全", Wuxing: "金", Gender: "通用"},
-	"方": {Char: "方", Pinyin: "fāng", Strokes: 4, Radical: "方", Meaning: "方向", Wuxing: "水", Gender: "通用"},
-	"施": {Char: "施", Pinyin: "shī", Strokes: 9, Radical: "方", Meaning: "施行", Wuxing: "金", Gender: "通用"},
-	"旋": {Char: "旋", Pinyin: "xuán", Strokes: 11, Radical: "方", Meaning: "旋转", Wuxing: "金", Gender: "通用"},
-	"无": {Char: "无", Pinyin: "wú", Strokes: 4, Radical: "无", Meaning: "无论", Wuxing: "水", Gender: "通用"},
-	"日": {Char: "日", Pinyin: "rì", Strokes: 4, Radical: "日", Meaning: "日子", Wuxing: "火", Gender: "通用"},
-	"月": {Char: "月", Pinyin: "yuè", Strokes: 4, Radical: "月", Meaning: "月亮", Wuxing: "木", Gender: "通用"},
-	"木": {Char: "木", Pinyin: "mù", Strokes: 4, Radical: "木", Meaning: "树木", Wuxing: "木", Gender: "通用"},
-	"本": {Char: "本", Pinyin: "běn", Strokes: 5, Radical: "木", Meaning: "本来", Wuxing: "木", Gender: "通用"},
-	"未": {Char: "未", Pinyin: "wèi", Strokes: 5, Radical: "木", Meaning: "未来", Wuxing: "木", Gender: "通用"},
-	"末": {Char: "末", Pinyin: "mò", Strokes: 5, Radical: "木", Meaning: "末期", Wuxing: "木", Gender: "通用"},
-	"术": {Char: "术", Pinyin: "shù", Strokes: 5, Radical: "木", Meaning: "技术", Wuxing: "木", Gender: "通用"},
-	"朱": {Char: "朱", Pinyin: "zhū", Strokes: 6, Radical: "木", Meaning: "朱红", Wuxing: "木", Gender: "通用"},
-	"李": {Char: "李", Pinyin: "lǐ", Strokes: 7, Radical: "木", Meaning: "李姓", Wuxing: "火", Gender: "通用"},
-	"林": {Char: "林", Pinyin: "lín", Strokes: 8, Radical: "木", Meaning: "森林", Wuxing: "木", Gender: "通用"},
-	"杨": {Char: "杨", Pinyin: "yáng", Strokes: 13, Radical: "木", Meaning: "杨树", Wuxing: "火", Gender: "male"},
-	"柳": {Char: "柳", Pinyin: "liǔ", Strokes: 9, Radical: "木", Meaning: "柳树", Wuxing: "木", Gender: "通用"},
-	"枫": {Char: "枫", Pinyin: "fēng", Strokes: 13, Radical: "木", Meaning: "枫树", Wuxing: "木", Gender: "通用"},
-	"森": {Char: "森", Pinyin: "sēn", Strokes: 12, Radical: "木", Meaning: "森林", Wuxing: "木", Gender: "通用"},
-	"梅": {Char: "梅", Pinyin: "méi", Strokes: 11, Radical: "木", Meaning: "梅花", Wuxing: "木", Gender: "female"},
-	"梦": {Char: "梦", Pinyin: "mèng", Strokes: 11, Radical: "木", Meaning: "梦想", Wuxing: "木", Gender: "female"},
-	"梓": {Char: "梓", Pinyin: "zǐ", Strokes: 11, Radical: "木", Meaning: "梓树", Wuxing: "木", Gender: "通用"},
-	"楚": {Char: "楚", Pinyin: "chǔ", Strokes: 13, Radical: "木", Meaning: "清楚", Wuxing: "金", Gender: "通用"},
-	"楠": {Char: "楠", Pinyin: "nán", Strokes: 13, Radical: "木", Meaning: "楠木", Wuxing: "木", Gender: "通用"},
-	"乐": {Char: "乐", Pinyin: "lè", Strokes: 5, Radical: "丿", Meaning: "快乐", Wuxing: "火", Gender: "通用"},
-	"兆": {Char: "兆", Pinyin: "zhào", Strokes: 6, Radical: "儿", Meaning: "兆头", Wuxing: "火", Gender: "通用"},
-	"先": {Char: "先", Pinyin: "xiān", Strokes: 6, Radical: "儿", Meaning: "先生", Wuxing: "金", Gender: "通用"},
-	"光": {Char: "光", Pinyin: "guāng", Strokes: 6, Radical: "儿", Meaning: "光明", Wuxing: "火", Gender: "通用"},
-	"克": {Char: "克", Pinyin: "kè", Strokes: 7, Radical: "十", Meaning: "克服", Wuxing: "木", Gender: "通用"},
-	"儿": {Char: "儿", Pinyin: "ér", Strokes: 2, Radical: "儿", Meaning: "儿子", Wuxing: "金", Gender: "通用"},
-	"全": {Char: "全", Pinyin: "quán", Strokes: 6, Radical: "入", Meaning: "完全", Wuxing: "火", Gender: "通用"},
-	"兰": {Char: "兰", Pinyin: "lán", Strokes: 5, Radical: "八", Meaning: "兰花", Wuxing: "木", Gender: "female"},
-	"关": {Char: "关", Pinyin: "guān", Strokes: 6, Radical: "八", Meaning: "关系", Wuxing: "木", Gender: "通用"},
-	"兴": {Char: "兴", Pinyin: "xìng", Strokes: 6, Radical: "八", Meaning: "高兴", Wuxing: "水", Gender: "通用"},
-	"处": {Char: "处", Pinyin: "chǔ", Strokes: 5, Radical: "夂", Meaning: "处理", Wuxing: "金", Gender: "通用"},
-	"夏": {Char: "夏", Pinyin: "xià", Strokes: 10, Radical: "夂", Meaning: "夏天", Wuxing: "火", Gender: "通用"},
-	"外": {Char: "外", Pinyin: "wài", Strokes: 5, Radical: "夕", Meaning: "外面", Wuxing: "金", Gender: "通用"},
-	"多": {Char: "多", Pinyin: "duō", Strokes: 6, Radical: "夕", Meaning: "多少", Wuxing: "火", Gender: "通用"},
-	"夜": {Char: "夜", Pinyin: "yè", Strokes: 8, Radical: "夕", Meaning: "夜晚", Wuxing: "土", Gender: "通用"},
-	"大": {Char: "大", Pinyin: "dà", Strokes: 3, Radical: "大", Meaning: "大小", Wuxing: "火", Gender: "通用"},
-	"天": {Char: "天", Pinyin: "tiān", Strokes: 4, Radical: "大", Meaning: "天空", Wuxing: "火", Gender: "通用"},
-	"太": {Char: "太", Pinyin: "tài", Strokes: 4, Radical: "大", Meaning: "太阳", Wuxing: "火", Gender: "通用"},
-	"夫": {Char: "夫", Pinyin: "fū", Strokes: 4, Radical: "大", Meaning: "丈夫", Wuxing: "火", Gender: "male"},
-	"央": {Char: "央", Pinyin: "yāng", Strokes: 5, Radical: "大", Meaning: "中央", Wuxing: "土", Gender: "通用"},
-	"奇": {Char: "奇", Pinyin: "qí", Strokes: 8, Radical: "大", Meaning: "奇怪", Wuxing: "木", Gender: "通用"},
-	"美": {Char: "美", Pinyin: "měi", Strokes: 9, Radical: "大", Meaning: "美丽", Wuxing: "水", Gender: "female"},
-	"奥": {Char: "奥", Pinyin: "ào", Strokes: 12, Radical: "大", Meaning: "奥秘", Wuxing: "土", Gender: "通用"},
-	"女": {Char: "女", Pinyin: "nǚ", Strokes: 3, Radical: "女", Meaning: "女人", Wuxing: "土", Gender: "female"},
-	"如": {Char: "如", Pinyin: "rú", Strokes: 6, Radical: "女", Meaning: "如果", Wuxing: "金", Gender: "通用"},
-	"好": {Char: "好", Pinyin: "hǎo", Strokes: 6, Radical: "女", Meaning: "美好", Wuxing: "火", Gender: "通用"},
-	"妍": {Char: "妍", Pinyin: "yán", Strokes: 7, Radical: "女", Meaning: "妍丽", Wuxing: "金", Gender: "female"},
-	"妙": {Char: "妙", Pinyin: "miào", Strokes: 7, Radical: "女", Meaning: "奇妙", Wuxing: "水", Gender: "female"},
-	"妆": {Char: "妆", Pinyin: "zhuāng", Strokes: 6, Radical: "女", Meaning: "化妆", Wuxing: "火", Gender: "female"},
-	"妥": {Char: "妥", Pinyin: "tuǒ", Strokes: 7, Radical: "女", Meaning: "妥当", Wuxing: "火", Gender: "通用"},
-	"妮": {Char: "妮", Pinyin: "nī", Strokes: 8, Radical: "女", Meaning: "妮子", Wuxing: "土", Gender: "female"},
-	"姚": {Char: "姚", Pinyin: "yáo", Strokes: 9, Radical: "女", Meaning: "姚姓", Wuxing: "金", Gender: "通用"},
-	"姜": {Char: "姜", Pinyin: "jiāng", Strokes: 9, Radical: "女", Meaning: "姜姓", Wuxing: "木", Gender: "通用"},
-	"姝": {Char: "姝", Pinyin: "shū", Strokes: 9, Radical: "女", Meaning: "姝丽", Wuxing: "金", Gender: "female"},
-	"娜": {Char: "娜", Pinyin: "nà", Strokes: 9, Radical: "女", Meaning: "婀娜", Wuxing: "火", Gender: "female"},
-	"娟": {Char: "娟", Pinyin: "juān", Strokes: 10, Radical: "女", Meaning: "娟秀", Wuxing: "木", Gender: "female"},
-	"婉": {Char: "婉", Pinyin: "wǎn", Strokes: 11, Radical: "女", Meaning: "婉转", Wuxing: "土", Gender: "female"},
-	"婷": {Char: "婷", Pinyin: "tíng", Strokes: 12, Radical: "女", Meaning: "婷婷", Wuxing: "火", Gender: "female"},
-	"媚": {Char: "媚", Pinyin: "mèi", Strokes: 12, Radical: "女", Meaning: "明媚", Wuxing: "水", Gender: "female"},
-	"媛": {Char: "媛", Pinyin: "yuàn", Strokes: 12, Radical: "女", Meaning: "名媛", Wuxing: "火", Gender: "female"},
-	"嫩": {Char: "嫩", Pinyin: "nèn", Strokes: 14, Radical: "女", Meaning: "娇嫩", Wuxing: "木", Gender: "female"},
-	"嫣": {Char: "嫣", Pinyin: "yān", Strokes: 14, Radical: "女", Meaning: "嫣然", Wuxing: "土", Gender: "female"},
-	"燕": {Char: "燕", Pinyin: "yàn", Strokes: 16, Radical: "女", Meaning: "燕子", Wuxing: "土", Gender: "female"},
-	"蕾": {Char: "蕾", Pinyin: "lěi", Strokes: 16, Radical: "女", Meaning: "花蕾", Wuxing: "木", Gender: "female"},
-	"甲": {Char: "甲", Pinyin: "jiǎ", Strokes: 5, Radical: "甲", Meaning: "甲等", Wuxing: "木", Gender: "通用"},
-	"乙": {Char: "乙", Pinyin: "yǐ", Strokes: 1, Radical: "乙", Meaning: "乙方", Wuxing: "木", Gender: "通用"},
-	"戊": {Char: "戊", Pinyin: "wù", Strokes: 5, Radical: "戈", Meaning: "戊己", Wuxing: "土", Gender: "通用"},
-	"己": {Char: "己", Pinyin: "jǐ", Strokes: 3, Radical: "己", Meaning: "自己", Wuxing: "土", Gender: "通用"},
-	"庚": {Char: "庚", Pinyin: "gēng", Strokes: 8, Radical: "庚", Meaning: "庚帖", Wuxing: "金", Gender: "通用"},
-	"辛": {Char: "辛", Pinyin: "xīn", Strokes: 7, Radical: "辛", Meaning: "辛苦", Wuxing: "金", Gender: "通用"},
-	"子": {Char: "子", Pinyin: "zǐ", Strokes: 3, Radical: "子", Meaning: "子女", Wuxing: "水", Gender: "通用"},
-	"孔": {Char: "孔", Pinyin: "kǒng", Strokes: 4, Radical: "子", Meaning: "孔子", Wuxing: "木", Gender: "通用"},
-	"字": {Char: "字", Pinyin: "zì", Strokes: 6, Radical: "子", Meaning: "文字", Wuxing: "金", Gender: "通用"},
-	"孝": {Char: "孝", Pinyin: "xiào", Strokes: 7, Radical: "子", Meaning: "孝顺", Wuxing: "水", Gender: "通用"},
-	"孟": {Char: "孟", Pinyin: "mèng", Strokes: 8, Radical: "子", Meaning: "孟子", Wuxing: "水", Gender: "通用"},
-	"季": {Char: "季", Pinyin: "jì", Strokes: 8, Radical: "子", Meaning: "季节", Wuxing: "木", Gender: "通用"},
-	"学": {Char: "学", Pinyin: "xué", Strokes: 8, Radical: "子", Meaning: "学习", Wuxing: "水", Gender: "通用"},
-	"安": {Char: "安", Pinyin: "ān", Strokes: 6, Radical: "宀", Meaning: "平安", Wuxing: "土", Gender: "通用"},
-	"宇": {Char: "宇", Pinyin: "yǔ", Strokes: 6, Radical: "宀", Meaning: "宇宙", Wuxing: "土", Gender: "male"},
-	"守": {Char: "守", Pinyin: "shǒu", Strokes: 6, Radical: "宀", Meaning: "守护", Wuxing: "金", Gender: "通用"},
-	"宏": {Char: "宏", Pinyin: "hóng", Strokes: 7, Radical: "宀", Meaning: "宏大", Wuxing: "水", Gender: "通用"},
-	"官": {Char: "官", Pinyin: "guān", Strokes: 8, Radical: "宀", Meaning: "官员", Wuxing: "木", Gender: "通用"},
-	"定": {Char: "定", Pinyin: "dìng", Strokes: 8, Radical: "宀", Meaning: "决定", Wuxing: "火", Gender: "通用"},
-	"宜": {Char: "宜", Pinyin: "yí", Strokes: 8, Radical: "宀", Meaning: "适宜", Wuxing: "木", Gender: "通用"},
-	"宝": {Char: "宝", Pinyin: "bǎo", Strokes: 8, Radical: "宀", Meaning: "宝贝", Wuxing: "火", Gender: "通用"},
-	"实": {Char: "实", Pinyin: "shí", Strokes: 8, Radical: "宀", Meaning: "实际", Wuxing: "金", Gender: "通用"},
-	"客": {Char: "客", Pinyin: "kè", Strokes: 9, Radical: "宀", Meaning: "客人", Wuxing: "金", Gender: "通用"},
-	"宣": {Char: "宣", Pinyin: "xuān", Strokes: 9, Radical: "宀", Meaning: "宣传", Wuxing: "金", Gender: "通用"},
-	"室": {Char: "室", Pinyin: "shì", Strokes: 9, Radical: "宀", Meaning: "室内", Wuxing: "金", Gender: "通用"},
-	"宫": {Char: "宫", Pinyin: "gōng", Strokes: 9, Radical: "宀", Meaning: "宫殿", Wuxing: "金", Gender: "通用"},
-	"家": {Char: "家", Pinyin: "jiā", Strokes: 10, Radical: "宀", Meaning: "家庭", Wuxing: "木", Gender: "通用"},
-	"宸": {Char: "宸", Pinyin: "chén", Strokes: 10, Radical: "宀", Meaning: "宸居", Wuxing: "金", Gender: "male"},
-	"容": {Char: "容", Pinyin: "róng", Strokes: 10, Radical: "宀", Meaning: "容易", Wuxing: "土", Gender: "通用"},
-	"密": {Char: "密", Pinyin: "mì", Strokes: 11, Radical: "宀", Meaning: "秘密", Wuxing: "火", Gender: "通用"},
-	"富": {Char: "富", Pinyin: "fù", Strokes: 12, Radical: "宀", Meaning: "富贵", Wuxing: "水", Gender: "通用"},
-	"寒": {Char: "寒", Pinyin: "hán", Strokes: 12, Radical: "宀", Meaning: "寒冷", Wuxing: "水", Gender: "通用"},
-	"寸": {Char: "寸", Pinyin: "cùn", Strokes: 3, Radical: "寸", Meaning: "尺寸", Wuxing: "金", Gender: "通用"},
-	"对": {Char: "对", Pinyin: "duì", Strokes: 5, Radical: "寸", Meaning: "对待", Wuxing: "火", Gender: "通用"},
-	"寺": {Char: "寺", Pinyin: "sì", Strokes: 6, Radical: "寸", Meaning: "寺庙", Wuxing: "金", Gender: "通用"},
-	"导": {Char: "导", Pinyin: "dǎo", Strokes: 6, Radical: "寸", Meaning: "指导", Wuxing: "火", Gender: "通用"},
-	"寿": {Char: "寿", Pinyin: "shòu", Strokes: 7, Radical: "寸", Meaning: "长寿", Wuxing: "金", Gender: "通用"},
-	"将": {Char: "将", Pinyin: "jiāng", Strokes: 9, Radical: "寸", Meaning: "将军", Wuxing: "火", Gender: "male"},
-	"小": {Char: "小", Pinyin: "xiǎo", Strokes: 3, Radical: "小", Meaning: "大小", Wuxing: "金", Gender: "通用"},
-	"少": {Char: "少", Pinyin: "shǎo", Strokes: 4, Radical: "小", Meaning: "少年", Wuxing: "金", Gender: "通用"},
-	"尔": {Char: "尔", Pinyin: "ěr", Strokes: 5, Radical: "小", Meaning: "偶尔", Wuxing: "火", Gender: "通用"},
-	"尘": {Char: "尘", Pinyin: "chén", Strokes: 6, Radical: "小", Meaning: "尘埃", Wuxing: "火", Gender: "通用"},
-	"尚": {Char: "尚", Pinyin: "shàng", Strokes: 8, Radical: "小", Meaning: "高尚", Wuxing: "金", Gender: "通用"},
-	"尤": {Char: "尤", Pinyin: "yóu", Strokes: 4, Radical: "尢", Meaning: "尤其", Wuxing: "土", Gender: "通用"},
-	"尧": {Char: "尧", Pinyin: "yáo", Strokes: 6, Radical: "尢", Meaning: "尧舜", Wuxing: "木", Gender: "通用"},
-	"尺": {Char: "尺", Pinyin: "chǐ", Strokes: 4, Radical: "尸", Meaning: "尺度", Wuxing: "火", Gender: "通用"},
-	"尼": {Char: "尼", Pinyin: "ní", Strokes: 5, Radical: "尸", Meaning: "尼姑", Wuxing: "土", Gender: "通用"},
-	"局": {Char: "局", Pinyin: "jú", Strokes: 7, Radical: "尸", Meaning: "局面", Wuxing: "木", Gender: "通用"},
-	"屈": {Char: "屈", Pinyin: "qū", Strokes: 8, Radical: "尸", Meaning: "委屈", Wuxing: "木", Gender: "通用"},
-	"居": {Char: "居", Pinyin: "jū", Strokes: 8, Radical: "尸", Meaning: "居住", Wuxing: "木", Gender: "通用"},
-	"屋": {Char: "屋", Pinyin: "wū", Strokes: 9, Radical: "尸", Meaning: "房屋", Wuxing: "土", Gender: "通用"},
-	"展": {Char: "展", Pinyin: "zhǎn", Strokes: 10, Radical: "尸", Meaning: "展开", Wuxing: "火", Gender: "通用"},
-	"山": {Char: "山", Pinyin: "shān", Strokes: 3, Radical: "山", Meaning: "高山", Wuxing: "土", Gender: "通用"},
-	"屹": {Char: "屹", Pinyin: "yì", Strokes: 6, Radical: "山", Meaning: "屹立", Wuxing: "土", Gender: "通用"},
-	"岭": {Char: "岭", Pinyin: "lǐng", Strokes: 8, Radical: "山", Meaning: "山岭", Wuxing: "土", Gender: "通用"},
-	"岳": {Char: "岳", Pinyin: "yuè", Strokes: 8, Radical: "山", Meaning: "岳父", Wuxing: "土", Gender: "male"},
-	"崇": {Char: "崇", Pinyin: "chóng", Strokes: 11, Radical: "山", Meaning: "崇高", Wuxing: "金", Gender: "通用"},
-	"巍": {Char: "巍", Pinyin: "wēi", Strokes: 20, Radical: "山", Meaning: "巍峨", Wuxing: "土", Gender: "通用"},
-	"工": {Char: "工", Pinyin: "gōng", Strokes: 3, Radical: "工", Meaning: "工作", Wuxing: "土", Gender: "通用"},
-	"左": {Char: "左", Pinyin: "zuǒ", Strokes: 5, Radical: "工", Meaning: "左边", Wuxing: "金", Gender: "通用"},
-	"巧": {Char: "巧", Pinyin: "qiǎo", Strokes: 5, Radical: "工", Meaning: "巧妙", Wuxing: "金", Gender: "通用"},
-	"巨": {Char: "巨", Pinyin: "jù", Strokes: 4, Radical: "巨", Meaning: "巨大", Wuxing: "木", Gender: "通用"},
-	"干": {Char: "干", Pinyin: "gān", Strokes: 3, Radical: "干", Meaning: "干净", Wuxing: "木", Gender: "通用"},
-	"年": {Char: "年", Pinyin: "nián", Strokes: 6, Radical: "干", Meaning: "年轻", Wuxing: "火", Gender: "通用"},
-	"幼": {Char: "幼", Pinyin: "yòu", Strokes: 5, Radical: "幺", Meaning: "幼儿", Wuxing: "土", Gender: "通用"},
-	"幽": {Char: "幽", Pinyin: "yōu", Strokes: 9, Radical: "幺", Meaning: "幽静", Wuxing: "土", Gender: "通用"},
-	"广": {Char: "广", Pinyin: "guǎng", Strokes: 3, Radical: "广", Meaning: "广大", Wuxing: "木", Gender: "通用"},
-	"庄": {Char: "庄", Pinyin: "zhuāng", Strokes: 6, Radical: "广", Meaning: "庄严", Wuxing: "火", Gender: "通用"},
-	"庆": {Char: "庆", Pinyin: "qìng", Strokes: 6, Radical: "广", Meaning: "庆祝", Wuxing: "木", Gender: "通用"},
-	"床": {Char: "床", Pinyin: "chuáng", Strokes: 7, Radical: "广", Meaning: "床铺", Wuxing: "木", Gender: "通用"},
-	"庙": {Char: "庙", Pinyin: "miào", Strokes: 8, Radical: "广", Meaning: "寺庙", Wuxing: "金", Gender: "通用"},
-	"府": {Char: "府", Pinyin: "fǔ", Strokes: 8, Radical: "广", Meaning: "政府", Wuxing: "火", Gender: "通用"},
-	"康": {Char: "康", Pinyin: "kāng", Strokes: 11, Radical: "广", Meaning: "健康", Wuxing: "木", Gender: "通用"},
-	"延": {Char: "延", Pinyin: "yán", Strokes: 7, Radical: "廴", Meaning: "延长", Wuxing: "土", Gender: "通用"},
-	"廷": {Char: "廷", Pinyin: "tíng", Strokes: 7, Radical: "廴", Meaning: "朝廷", Wuxing: "火", Gender: "通用"},
-	"建": {Char: "建", Pinyin: "jiàn", Strokes: 9, Radical: "廴", Meaning: "建设", Wuxing: "木", Gender: "通用"},
-	"卉": {Char: "卉", Pinyin: "huì", Strokes: 5, Radical: "十", Meaning: "花卉", Wuxing: "木", Gender: "通用"},
-	"卑": {Char: "卑", Pinyin: "bēi", Strokes: 8, Radical: "十", Meaning: "卑微", Wuxing: "土", Gender: "通用"},
-	"卓": {Char: "卓", Pinyin: "zhuó", Strokes: 8, Radical: "十", Meaning: "卓越", Wuxing: "金", Gender: "通用"},
-	"单": {Char: "单", Pinyin: "dān", Strokes: 8, Radical: "十", Meaning: "简单", Wuxing: "火", Gender: "通用"},
-	"南": {Char: "南", Pinyin: "nán", Strokes: 9, Radical: "十", Meaning: "南方", Wuxing: "火", Gender: "通用"},
-	"博": {Char: "博", Pinyin: "bó", Strokes: 12, Radical: "十", Meaning: "博士", Wuxing: "火", Gender: "male"},
-	"卜": {Char: "卜", Pinyin: "bǔ", Strokes: 2, Radical: "卜", Meaning: "占卜", Wuxing: "金", Gender: "通用"},
-	"卦": {Char: "卦", Pinyin: "guà", Strokes: 8, Radical: "卜", Meaning: "八卦", Wuxing: "金", Gender: "通用"},
-	"卫": {Char: "卫", Pinyin: "wèi", Strokes: 3, Radical: "卩", Meaning: "保卫", Wuxing: "土", Gender: "通用"},
-	"印": {Char: "印", Pinyin: "yìn", Strokes: 5, Radical: "卩", Meaning: "印象", Wuxing: "水", Gender: "通用"},
-	"危": {Char: "危", Pinyin: "wēi", Strokes: 6, Radical: "卩", Meaning: "危险", Wuxing: "金", Gender: "通用"},
-	"即": {Char: "即", Pinyin: "jí", Strokes: 7, Radical: "卩", Meaning: "立即", Wuxing: "金", Gender: "通用"},
-	"卷": {Char: "卷", Pinyin: "juǎn", Strokes: 8, Radical: "卩", Meaning: "试卷", Wuxing: "木", Gender: "通用"},
-	"卸": {Char: "卸", Pinyin: "xiè", Strokes: 9, Radical: "卩", Meaning: "卸货", Wuxing: "土", Gender: "通用"},
-	"卿": {Char: "卿", Pinyin: "qīng", Strokes: 10, Radical: "卩", Meaning: "卿相", Wuxing: "木", Gender: "通用"},
-	"厚": {Char: "厚", Pinyin: "hòu", Strokes: 9, Radical: "厂", Meaning: "厚重", Wuxing: "水", Gender: "通用"},
-	"原": {Char: "原", Pinyin: "yuán", Strokes: 10, Radical: "厂", Meaning: "原来", Wuxing: "木", Gender: "通用"},
-	"去": {Char: "去", Pinyin: "qù", Strokes: 5, Radical: "厶", Meaning: "过去", Wuxing: "金", Gender: "通用"},
-	"又": {Char: "又", Pinyin: "yòu", Strokes: 2, Radical: "又", Meaning: "又是", Wuxing: "土", Gender: "通用"},
-	"友": {Char: "友", Pinyin: "yǒu", Strokes: 4, Radical: "又", Meaning: "朋友", Wuxing: "土", Gender: "通用"},
-	"反": {Char: "反", Pinyin: "fǎn", Strokes: 4, Radical: "又", Meaning: "反对", Wuxing: "水", Gender: "通用"},
-	"发": {Char: "发", Pinyin: "fā", Strokes: 5, Radical: "又", Meaning: "发展", Wuxing: "水", Gender: "通用"},
-	"取": {Char: "取", Pinyin: "qǔ", Strokes: 8, Radical: "又", Meaning: "取得", Wuxing: "火", Gender: "通用"},
-	"受": {Char: "受", Pinyin: "shòu", Strokes: 8, Radical: "又", Meaning: "接受", Wuxing: "金", Gender: "通用"},
-	"叛": {Char: "叛", Pinyin: "pàn", Strokes: 9, Radical: "又", Meaning: "背叛", Wuxing: "水", Gender: "通用"},
-	"叔": {Char: "叔", Pinyin: "shū", Strokes: 8, Radical: "又", Meaning: "叔叔", Wuxing: "金", Gender: "通用"},
-	"口": {Char: "口", Pinyin: "kǒu", Strokes: 3, Radical: "口", Meaning: "嘴巴", Wuxing: "木", Gender: "通用"},
-	"右": {Char: "右", Pinyin: "yòu", Strokes: 5, Radical: "口", Meaning: "右边", Wuxing: "金", Gender: "通用"},
-	"司": {Char: "司", Pinyin: "sī", Strokes: 5, Radical: "口", Meaning: "司机", Wuxing: "金", Gender: "通用"},
-	"叶": {Char: "叶", Pinyin: "yè", Strokes: 5, Radical: "口", Meaning: "叶子", Wuxing: "土", Gender: "通用"},
-	"可": {Char: "可", Pinyin: "kě", Strokes: 5, Radical: "口", Meaning: "可以", Wuxing: "木", Gender: "通用"},
-	"台": {Char: "台", Pinyin: "tái", Strokes: 5, Radical: "口", Meaning: "台阶", Wuxing: "火", Gender: "通用"},
-	"名": {Char: "名", Pinyin: "míng", Strokes: 6, Radical: "口", Meaning: "名字", Wuxing: "水", Gender: "通用"},
-	"后": {Char: "后", Pinyin: "hòu", Strokes: 6, Radical: "口", Meaning: "后面", Wuxing: "金", Gender: "通用"},
-	"向": {Char: "向", Pinyin: "xiàng", Strokes: 6, Radical: "口", Meaning: "方向", Wuxing: "金", Gender: "通用"},
-	"君": {Char: "君", Pinyin: "jūn", Strokes: 7, Radical: "口", Meaning: "君子", Wuxing: "木", Gender: "通用"},
-	"吟": {Char: "吟", Pinyin: "yín", Strokes: 7, Radical: "口", Meaning: "吟诗", Wuxing: "金", Gender: "通用"},
-	"含": {Char: "含", Pinyin: "hán", Strokes: 7, Radical: "口", Meaning: "包含", Wuxing: "水", Gender: "通用"},
-	"听": {Char: "听", Pinyin: "tīng", Strokes: 7, Radical: "口", Meaning: "听说", Wuxing: "火", Gender: "通用"},
-	"启": {Char: "启", Pinyin: "qǐ", Strokes: 7, Radical: "口", Meaning: "启发", Wuxing: "金", Gender: "通用"},
-	"味": {Char: "味", Pinyin: "wèi", Strokes: 8, Radical: "口", Meaning: "味道", Wuxing: "金", Gender: "通用"},
-	"呼": {Char: "呼", Pinyin: "hū", Strokes: 8, Radical: "口", Meaning: "呼吸", Wuxing: "水", Gender: "通用"},
-	"命": {Char: "命", Pinyin: "mìng", Strokes: 8, Radical: "口", Meaning: "生命", Wuxing: "金", Gender: "通用"},
-	"和": {Char: "和", Pinyin: "hé", Strokes: 8, Radical: "口", Meaning: "和平", Wuxing: "水", Gender: "通用"},
-	"咏": {Char: "咏", Pinyin: "yǒng", Strokes: 8, Radical: "口", Meaning: "歌咏", Wuxing: "土", Gender: "通用"},
-	"品": {Char: "品", Pinyin: "pǐn", Strokes: 9, Radical: "口", Meaning: "品德", Wuxing: "金", Gender: "通用"},
-	"响": {Char: "响", Pinyin: "xiǎng", Strokes: 9, Radical: "口", Meaning: "响声", Wuxing: "金", Gender: "通用"},
-	"喜": {Char: "喜", Pinyin: "xǐ", Strokes: 12, Radical: "口", Meaning: "喜欢", Wuxing: "水", Gender: "通用"},
-	"嘉": {Char: "嘉", Pinyin: "jiā", Strokes: 14, Radical: "口", Meaning: "嘉奖", Wuxing: "木", Gender: "通用"},
-	"器": {Char: "器", Pinyin: "qì", Strokes: 16, Radical: "口", Meaning: "机器", Wuxing: "金", Gender: "通用"},
-	"园": {Char: "园", Pinyin: "yuán", Strokes: 7, Radical: "囗", Meaning: "公园", Wuxing: "土", Gender: "通用"},
-	"国": {Char: "国", Pinyin: "guó", Strokes: 8, Radical: "囗", Meaning: "国家", Wuxing: "木", Gender: "通用"},
-	"固": {Char: "固", Pinyin: "gù", Strokes: 8, Radical: "囗", Meaning: "固定", Wuxing: "金", Gender: "通用"},
-	"圆": {Char: "圆", Pinyin: "yuán", Strokes: 10, Radical: "囗", Meaning: "圆满", Wuxing: "土", Gender: "通用"},
-	"土": {Char: "土", Pinyin: "tǔ", Strokes: 3, Radical: "土", Meaning: "土地", Wuxing: "土", Gender: "通用"},
-	"在": {Char: "在", Pinyin: "zài", Strokes: 6, Radical: "土", Meaning: "现在", Wuxing: "土", Gender: "通用"},
-	"均": {Char: "均", Pinyin: "jūn", Strokes: 7, Radical: "土", Meaning: "均匀", Wuxing: "土", Gender: "通用"},
-	"坎": {Char: "坎", Pinyin: "kǎn", Strokes: 7, Radical: "土", Meaning: "坎坷", Wuxing: "土", Gender: "通用"},
-	"坤": {Char: "坤", Pinyin: "kūn", Strokes: 8, Radical: "土", Meaning: "乾坤", Wuxing: "土", Gender: "通用"},
-	"城": {Char: "城", Pinyin: "chéng", Strokes: 9, Radical: "土", Meaning: "城市", Wuxing: "金", Gender: "通用"},
-	"培": {Char: "培", Pinyin: "péi", Strokes: 11, Radical: "土", Meaning: "培养", Wuxing: "土", Gender: "通用"},
-	"基": {Char: "基", Pinyin: "jī", Strokes: 11, Radical: "土", Meaning: "基础", Wuxing: "土", Gender: "通用"},
-	"堂": {Char: "堂", Pinyin: "táng", Strokes: 11, Radical: "土", Meaning: "礼堂", Wuxing: "金", Gender: "通用"},
-	"增": {Char: "增", Pinyin: "zēng", Strokes: 15, Radical: "土", Meaning: "增加", Wuxing: "土", Gender: "通用"},
-	"墨": {Char: "墨", Pinyin: "mò", Strokes: 15, Radical: "土", Meaning: "墨水", Wuxing: "土", Gender: "通用"},
-	"士": {Char: "士", Pinyin: "shì", Strokes: 3, Radical: "士", Meaning: "士兵", Wuxing: "金", Gender: "male"},
-	"壮": {Char: "壮", Pinyin: "zhuàng", Strokes: 6, Radical: "士", Meaning: "强壮", Wuxing: "金", Gender: "通用"},
-	"声": {Char: "声", Pinyin: "shēng", Strokes: 7, Radical: "士", Meaning: "声音", Wuxing: "金", Gender: "通用"},
-	"备": {Char: "备", Pinyin: "bèi", Strokes: 8, Radical: "夂", Meaning: "准备", Wuxing: "金", Gender: "通用"},
-	"夕": {Char: "夕", Pinyin: "xī", Strokes: 3, Radical: "夕", Meaning: "夕阳", Wuxing: "金", Gender: "通用"},
-	"雨": {Char: "雨", Pinyin: "yǔ", Strokes: 8, Radical: "雨", Meaning: "雨水", Wuxing: "水", Gender: "通用"},
-	"雪": {Char: "雪", Pinyin: "xuě", Strokes: 11, Radical: "雨", Meaning: "雪花", Wuxing: "水", Gender: "通用"},
-	"云": {Char: "云", Pinyin: "yún", Strokes: 4, Radical: "二", Meaning: "白云", Wuxing: "水", Gender: "通用"},
-	"风": {Char: "风", Pinyin: "fēng", Strokes: 4, Radical: "风", Meaning: "风景", Wuxing: "水", Gender: "通用"},
-	"花": {Char: "花", Pinyin: "huā", Strokes: 7, Radical: "艹", Meaning: "花朵", Wuxing: "木", Gender: "female"},
-	"草": {Char: "草", Pinyin: "cǎo", Strokes: 9, Radical: "艹", Meaning: "小草", Wuxing: "木", Gender: "通用"},
-	"苗": {Char: "苗", Pinyin: "miáo", Strokes: 8, Radical: "艹", Meaning: "禾苗", Wuxing: "木", Gender: "通用"},
-	"若": {Char: "若", Pinyin: "ruò", Strokes: 8, Radical: "艹", Meaning: "若是", Wuxing: "木", Gender: "通用"},
-	"荣": {Char: "荣", Pinyin: "róng", Strokes: 9, Radical: "艹", Meaning: "繁荣", Wuxing: "木", Gender: "通用"},
-	"华": {Char: "华", Pinyin: "huá", Strokes: 7, Radical: "十", Meaning: "华丽", Wuxing: "水", Gender: "通用"},
-	"芸": {Char: "芸", Pinyin: "yún", Strokes: 7, Radical: "艹", Meaning: "芸苔", Wuxing: "木", Gender: "通用"},
-	"芷": {Char: "芷", Pinyin: "zhǐ", Strokes: 7, Radical: "艹", Meaning: "芷兰", Wuxing: "木", Gender: "female"},
-	"芳": {Char: "芳", Pinyin: "fāng", Strokes: 7, Radical: "艹", Meaning: "芳香", Wuxing: "木", Gender: "female"},
-	"芯": {Char: "芯", Pinyin: "xīn", Strokes: 7, Radical: "艹", Meaning: "灯芯", Wuxing: "木", Gender: "通用"},
-	"芙": {Char: "芙", Pinyin: "fú", Strokes: 7, Radical: "艹", Meaning: "芙蓉", Wuxing: "木", Gender: "female"},
-	"芝": {Char: "芝", Pinyin: "zhī", Strokes: 6, Radical: "艹", Meaning: "灵芝", Wuxing: "木", Gender: "通用"},
-	"萱": {Char: "萱", Pinyin: "xuān", Strokes: 12, Radical: "艹", Meaning: "萱草", Wuxing: "木", Gender: "female"},
-	"茂": {Char: "茂", Pinyin: "mào", Strokes: 8, Radical: "艹", Meaning: "茂盛", Wuxing: "木", Gender: "通用"},
-	"莹": {Char: "莹", Pinyin: "yíng", Strokes: 10, Radical: "艹", Meaning: "晶莹", Wuxing: "木", Gender: "female"},
-	"蕴": {Char: "蕴", Pinyin: "yùn", Strokes: 15, Radical: "艹", Meaning: "蕴含", Wuxing: "木", Gender: "通用"},
-	"虹": {Char: "虹", Pinyin: "hóng", Strokes: 9, Radical: "虫", Meaning: "彩虹", Wuxing: "金", Gender: "通用"},
-	"蝶": {Char: "蝶", Pinyin: "dié", Strokes: 15, Radical: "虫", Meaning: "蝴蝶", Wuxing: "火", Gender: "female"},
-	"蝉": {Char: "蝉", Pinyin: "chán", Strokes: 16, Radical: "虫", Meaning: "蝉鸣", Wuxing: "金", Gender: "通用"},
-	"鹏": {Char: "鹏", Pinyin: "péng", Strokes: 13, Radical: "鸟", Meaning: "大鹏", Wuxing: "金", Gender: "male"},
-	"鹰": {Char: "鹰", Pinyin: "yīng", Strokes: 18, Radical: "鸟", Meaning: "雄鹰", Wuxing: "金", Gender: "通用"},
-	"鹤": {Char: "鹤", Pinyin: "hè", Strokes: 15, Radical: "鸟", Meaning: "仙鹤", Wuxing: "水", Gender: "通用"},
-	"鸾": {Char: "鸾", Pinyin: "luán", Strokes: 22, Radical: "鸟", Meaning: "鸾凤", Wuxing: "火", Gender: "通用"},
-	"龙": {Char: "龙", Pinyin: "lóng", Strokes: 5, Radical: "龙", Meaning: "龙凤", Wuxing: "火", Gender: "male"},
-	"麒": {Char: "麒", Pinyin: "qí", Strokes: 19, Radical: "鹿", Meaning: "麒麟", Wuxing: "木", Gender: "通用"},
-	"麟": {Char: "麟", Pinyin: "lín", Strokes: 19, Radical: "鹿", Meaning: "麒麟", Wuxing: "火", Gender: "通用"},
-	"玉": {Char: "玉", Pinyin: "yù", Strokes: 5, Radical: "玉", Meaning: "玉石", Wuxing: "金", Gender: "通用"},
-	"玥": {Char: "玥", Pinyin: "yuè", Strokes: 8, Radical: "玉", Meaning: "神珠", Wuxing: "金", Gender: "female"},
-	"璇": {Char: "璇", Pinyin: "xuán", Strokes: 15, Radical: "玉", Meaning: "璇玉", Wuxing: "火", Gender: "female"},
-	"琳": {Char: "琳", Pinyin: "lín", Strokes: 12, Radical: "玉", Meaning: "琳琅", Wuxing: "木", Gender: "female"},
-	"琦": {Char: "琦", Pinyin: "qí", Strokes: 12, Radical: "玉", Meaning: "琦玉", Wuxing: "木", Gender: "通用"},
-	"琪": {Char: "琪", Pinyin: "qí", Strokes: 12, Radical: "玉", Meaning: "琪花", Wuxing: "木", Gender: "通用"},
-	"瑶": {Char: "瑶", Pinyin: "yáo", Strokes: 13, Radical: "玉", Meaning: "瑶池", Wuxing: "火", Gender: "female"},
-	"瑾": {Char: "瑾", Pinyin: "jǐn", Strokes: 15, Radical: "玉", Meaning: "瑾瑜", Wuxing: "火", Gender: "通用"},
-	"璧": {Char: "璧", Pinyin: "bì", Strokes: 18, Radical: "玉", Meaning: "璧玉", Wuxing: "金", Gender: "通用"},
-	"王": {Char: "王", Pinyin: "wáng", Strokes: 4, Radical: "玉", Meaning: "国王", Wuxing: "土", Gender: "通用"},
-	"瓜": {Char: "瓜", Pinyin: "guā", Strokes: 5, Radical: "瓜", Meaning: "瓜果", Wuxing: "木", Gender: "通用"},
-	"瓦": {Char: "瓦", Pinyin: "wǎ", Strokes: 4, Radical: "瓦", Meaning: "瓦片", Wuxing: "土", Gender: "通用"},
-	"瓶": {Char: "瓶", Pinyin: "píng", Strokes: 11, Radical: "瓦", Meaning: "瓶子", Wuxing: "土", Gender: "通用"},
-	"生": {Char: "生", Pinyin: "shēng", Strokes: 5, Radical: "生", Meaning: "生命", Wuxing: "金", Gender: "通用"},
-	"用": {Char: "用", Pinyin: "yòng", Strokes: 5, Radical: "用", Meaning: "使用", Wuxing: "土", Gender: "通用"},
-	"电": {Char: "电", Pinyin: "diàn", Strokes: 5, Radical: "田", Meaning: "电话", Wuxing: "火", Gender: "通用"},
-	"田": {Char: "田", Pinyin: "tián", Strokes: 5, Radical: "田", Meaning: "田地", Wuxing: "火", Gender: "通用"},
-	"男": {Char: "男", Pinyin: "nán", Strokes: 7, Radical: "田", Meaning: "男人", Wuxing: "火", Gender: "male"},
+var HanziData = map[string]Hanzi{}
+
+// --- 运行时 word.json 释义加载 ---
+
+var (
+	wordMeanings map[string]string
+	wordMu       sync.Mutex
+	wordLoaded   bool
+)
+
+// wordEntry word.json 条目结构
+type wordEntry struct {
+	Word        string `json:"word"`
+	Explanation string `json:"explanation"`
 }
 
-func init() {
-	for char, hanzi := range ExtendedHanziData {
-		if _, exists := HanziData[char]; !exists {
-			HanziData[char] = hanzi
+// LoadWordData 从 data/word.json 加载词语释义，用于非精选字的含义回退
+func LoadWordData(dir string) error {
+	wordMu.Lock()
+	defer wordMu.Unlock()
+
+	if wordLoaded {
+		return nil
+	}
+
+	path := filepath.Join(dir, "word.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("读取 word.json 失败: %w", err)
+	}
+
+	var entries []wordEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return fmt.Errorf("解析 word.json 失败: %w", err)
+	}
+
+	wordMeanings = make(map[string]string, len(entries))
+	for _, e := range entries {
+		if e.Word == "" {
+			continue
+		}
+		char := string([]rune(e.Word)[0])
+		if _, exists := wordMeanings[char]; !exists && e.Explanation != "" {
+			wordMeanings[char] = e.Explanation
 		}
 	}
-	for char, hanzi := range GeneratedHanziData {
-		if _, exists := HanziData[char]; !exists {
-			HanziData[char] = hanzi
+
+	wordLoaded = true
+	return nil
+}
+
+// ApplyWuxingOverrides 为 HanziData 中所有汉字标注五行
+//
+// 优先级：
+//   1. CharacterWuxingOverride（字义法覆盖表）— 无条件应用
+//   2. 已有五行值 — 保留（人工校正值）
+//   3. 部首映射表计算 — 仅对空值兜底
+//
+// 必须在 HanziData 填充完毕（JSON 加载后）调用
+func ApplyWuxingOverrides() {
+	for char, data := range HanziData {
+		// 1. 覆盖表优先（字义法）
+		if wx, ok := CharacterWuxingOverride[char]; ok {
+			if wx != data.Wuxing {
+				data.Wuxing = wx
+				HanziData[char] = data
+			}
+			continue
+		}
+		// 2. 已有五行 → 保留（已人工校正）
+		if data.Wuxing != "" {
+			continue
+		}
+		// 3. 部首映射兜底
+		if wx := GetWuxingByRadical(data.Radical); wx != "" {
+			data.Wuxing = wx
+			HanziData[char] = data
 		}
 	}
+}
+
+// WordMeaning 返回汉字的词语级释义（来自 word.json），空字符串表示无数据
+func WordMeaning(char string) string {
+	wordMu.Lock()
+	defer wordMu.Unlock()
+
+	if wordMeanings == nil {
+		return ""
+	}
+	return wordMeanings[char]
 }

@@ -19,7 +19,7 @@ type LunarYear struct {
 
 func (LunarYear) Validate(year int) error {
 	if year < -1 || year > 9999 {
-		return fmt.Errorf(fmt.Sprintf("illegal lunar year: %d", year))
+		return fmt.Errorf("illegal lunar year: %d", year)
 	}
 	return nil
 }

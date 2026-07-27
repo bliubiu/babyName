@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bliubiu/babyName/internal/domain/bazi/tyme"
-	"github.com/bliubiu/babyName/internal/domain/yijing"
+	"name/internal/domain/bazi/tyme"
+	"name/internal/domain/yijing"
 )
 
 const (
@@ -33,25 +33,24 @@ var (
 	}
 )
 
-type SolarTermResult struct {
-	Name      string
-	ExactTime time.Time
-	IsLeapMonth bool
+// GetSolarTerm 根据月日获取节气名（已废弃，精度低）
+// 请使用 GetSolarTermByDate(year, month, day int) 替代
+// Deprecated: 使用 tyme4go 天文精度版
+func GetSolarTerm(month, day int) string {
+	return GetSolarTermByDate(2000, month, day)
 }
 
-func GetSolarTerm(month, day int) string {
-	terms := []string{
-		"小寒", "大寒", "立春", "雨水", "惊蛰", "春分",
-		"清明", "谷雨", "立夏", "小满", "芒种", "夏至",
-		"小暑", "大暑", "立秋", "处暑", "白露", "秋分",
-		"寒露", "霜降", "立冬", "小雪", "大雪", "冬至",
+// GetSolarTermByDate 使用 tyme4go 天文计算获取指定日期的节气名
+func GetSolarTermByDate(year, month, day int) string {
+	solarDay, err := tyme.SolarDay{}.FromYmd(year, month, day)
+	if err != nil {
+		return ""
 	}
-	termDays := []int{5, 20, 4, 19, 5, 20, 5, 20, 5, 21, 5, 21, 7, 22, 7, 23, 7, 23, 8, 23, 8, 22, 7, 21}
-
-	for i, td := range termDays {
-		if month == (i/2)+1 && day == td {
-			return terms[i]
-		}
+	term := solarDay.GetTerm()
+	if term.GetSolarDay().GetYear() == year &&
+		term.GetSolarDay().GetMonth() == month &&
+		term.GetSolarDay().GetDay() == day {
+		return term.GetName()
 	}
 	return ""
 }
@@ -69,19 +68,25 @@ func GetSolarTermFromTyme(year, month, day, hour, minute int) (string, bool, err
 	return term.GetName(), isLeapMonth, nil
 }
 
+// SolarTermOffset 判断给定时间是否已越过节气临界点
+// 使用 tyme4go 天文精度计算，比较当日0时和当前时刻的节气是否不同
 func SolarTermOffset(year, month, day, hour, minute int) bool {
-	term := GetSolarTerm(month, day)
-	if term == "" {
+	currentTime, err := tyme.SolarTime{}.FromYmdHms(year, month, day, hour, minute, 0)
+	if err != nil {
 		return false
 	}
-	if data, ok := SolarTermData[term]; ok {
-		if month == data.Month && day == data.Day {
-			hour = hour*60 + minute
-			targetHour := data.Hour*60 + data.Minute
-			return hour >= targetHour
-		}
+	// 获取当前时刻的节气
+	currentTerm := currentTime.GetTerm()
+
+	// 获取当日0时的节气（未越过节气临界点的情况）
+	dayStart, err := tyme.SolarTime{}.FromYmdHms(year, month, day, 0, 0, 0)
+	if err != nil {
+		return false
 	}
-	return false
+	dayStartTerm := dayStart.GetTerm()
+
+	// 如果节气不同，说明已越过临界点
+	return currentTerm.GetName() != dayStartTerm.GetName()
 }
 
 type WuxingStrengthResult struct {
@@ -264,8 +269,9 @@ func AnalyzeBazi(year, month, day, hour, minute int) (*BaziAnalysis, error) {
 	dayGanzhi := bazi.DayGanzhi
 	dayTiangan := string([]rune(dayGanzhi)[0])
 	rishouWuxing := WuxingMap[dayTiangan]
+	dayMasterStrength := calculateDayMasterStrength(wuxing, rishouWuxing)
 
-	xiyongshen := calculateXiyongshen(wuxing, rishouWuxing)
+	xiyongshen := calculateXiyongshen(wuxing, rishouWuxing, dayMasterStrength)
 	iyongshen := calculateYiyongshen(wuxing, rishouWuxing)
 	tiaohouShen := calculateTiaohouShen(month)
 
@@ -277,7 +283,6 @@ func AnalyzeBazi(year, month, day, hour, minute int) (*BaziAnalysis, error) {
 	}
 
 	season := getSeason(month, day)
-	dayMasterStrength := calculateDayMasterStrength(wuxing, rishouWuxing)
 	wuxingStrength := CalculateWuxingStrength(wuxing)
 
 	hexagram := yijing.GetHexagramByStrokes(10)
@@ -419,8 +424,8 @@ func getHourGanzhi(hour int, dayGanzhi string) string {
 func calculateWuxing(ganzhi string) *WuxingResult {
 	result := &WuxingResult{}
 
-	for i := 0; i < len(ganzhi); i++ {
-		char := string(ganzhi[i])
+	for _, r := range ganzhi {
+		char := string(r)
 
 		if wuxing, ok := WuxingMap[char]; ok {
 			switch wuxing {
@@ -679,33 +684,49 @@ func calculateTiaohouShen(month int) []string {
 	return tiaohou
 }
 
-func calculateXiyongshen(wuxing *WuxingResult, rishouWuxing string) []string {
-	minCount := math.MaxInt
-	minWuxing := ""
-
-	counts := map[string]int{
-		"金": wuxing.Jin,
-		"木": wuxing.Mu,
-		"水": wuxing.Shui,
-		"火": wuxing.Huo,
-		"土": wuxing.Tu,
+func calculateXiyongshen(wuxing *WuxingResult, rishouWuxing string, dayMasterStrength string) []string {
+	total := wuxing.Jin + wuxing.Mu + wuxing.Shui + wuxing.Huo + wuxing.Tu
+	if total == 0 {
+		// 无五行数据时，返回日主本身作为喜用神
+		return []string{rishouWuxing}
 	}
 
-	for w, count := range counts {
-		if count < minCount {
-			minCount = count
-			minWuxing = w
+	// 构建反向映射表（运行时计算，与 WuxingShengkeMap 保持同步）
+	// shengWoMap: 生我者（印绶） — WuxingShengkeMap[X][0] = X所生, 则谁生Y即查找谁的[0]==Y
+	shengWoMap := map[string]string{}
+	// keWoMap: 克我者（官杀） — WuxingShengkeMap[X][1] = X所克, 则谁克Y即查找谁的[1]==Y
+	keWoMap := map[string]string{}
+	for k, v := range WuxingShengkeMap {
+		shengWoMap[v[0]] = k // k 生 v[0]
+		keWoMap[v[1]] = k    // k 克 v[1]
+	}
+
+	switch dayMasterStrength {
+	case "身旺":
+		// 日主强 → 克泄耗：官杀(克我) + 食伤(我生) + 妻财(我克)
+		result := make([]string, 0, 3)
+		if ke, ok := keWoMap[rishouWuxing]; ok {
+			result = append(result, ke)
 		}
+		if shengList, ok := WuxingShengkeMap[rishouWuxing]; ok {
+			result = append(result, shengList[0]) // 我生（食伤）
+			result = append(result, shengList[1]) // 我克（妻财）
+		}
+		return result
+
+	case "身弱", "身衰":
+		// 日主弱 → 生扶：比劫(本身) + 印绶(生我)
+		result := make([]string, 0, 2)
+		result = append(result, rishouWuxing)
+		if sheng, ok := shengWoMap[rishouWuxing]; ok {
+			result = append(result, sheng)
+		}
+		return result
+
+	default: // "身中" 或未知值
+		// 中和 → 以日主本身为喜用神
+		return []string{rishouWuxing}
 	}
-
-	result := []string{minWuxing}
-
-	sheng := WuxingShengkeMap[minWuxing]
-	if len(sheng) > 0 {
-		result = append(result, sheng[0])
-	}
-
-	return result
 }
 
 func GetZodiac(year int) string {
@@ -735,22 +756,3 @@ func ParseTimeToHourMinute(timeStr string) (hour, minute int, err error) {
 	return hour, minute, nil
 }
 
-var SolarTermData = map[string]struct {
-	Month   int
-	Day     int
-	Hour    int
-	Minute  int
-}{
-	"小寒": {12, 5, 12, 0}, "大寒": {1, 20, 12, 0},
-	"立春": {2, 4, 12, 0}, "雨水": {2, 19, 12, 0},
-	"惊蛰": {3, 5, 12, 0}, "春分": {3, 20, 12, 0},
-	"清明": {4, 5, 12, 0}, "谷雨": {4, 20, 12, 0},
-	"立夏": {5, 5, 12, 0}, "小满": {5, 21, 12, 0},
-	"芒种": {6, 5, 12, 0}, "夏至": {6, 21, 12, 0},
-	"小暑": {7, 7, 12, 0}, "大暑": {7, 22, 12, 0},
-	"立秋": {8, 7, 12, 0}, "处暑": {8, 23, 12, 0},
-	"白露": {9, 7, 12, 0}, "秋分": {9, 23, 12, 0},
-	"寒露": {10, 8, 12, 0}, "霜降": {10, 23, 12, 0},
-	"立冬": {11, 7, 12, 0}, "小雪": {11, 22, 12, 0},
-	"大雪": {12, 7, 12, 0}, "冬至": {12, 21, 12, 0},
-}

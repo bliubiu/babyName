@@ -17,7 +17,7 @@ type SolarHalfYear struct {
 
 func (SolarHalfYear) FromIndex(year int, index int) (*SolarHalfYear, error) {
 	if index < 0 || index > 1 {
-		return nil, fmt.Errorf(fmt.Sprintf("illegal solar half year index: %d", index))
+		return nil, fmt.Errorf("illegal solar half year index: %d", index)
 	}
 	y, err := SolarYear{}.FromYear(year)
 	if err != nil {

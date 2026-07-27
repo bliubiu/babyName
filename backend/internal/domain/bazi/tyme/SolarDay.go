@@ -15,11 +15,11 @@ type SolarDay struct {
 
 func (SolarDay) Validate(year int, month int, day int) error {
 	if day < 1 {
-		return fmt.Errorf(fmt.Sprintf("illegal solar day: %d-%d-%d", year, month, day))
+		return fmt.Errorf("illegal solar day: %d-%d-%d", year, month, day)
 	}
 	if 1582 == year && 10 == month {
 		if (day > 4 && day < 15) || day > 31 {
-			return fmt.Errorf(fmt.Sprintf("illegal solar day: %d-%d-%d", year, month, day))
+			return fmt.Errorf("illegal solar day: %d-%d-%d", year, month, day)
 		}
 	} else {
 		m, err := SolarMonth{}.FromYm(year, month)
@@ -27,7 +27,7 @@ func (SolarDay) Validate(year int, month int, day int) error {
 			return err
 		}
 		if day > m.GetDayCount() {
-			return fmt.Errorf(fmt.Sprintf("illegal solar day: %d-%d-%d", year, month, day))
+			return fmt.Errorf("illegal solar day: %d-%d-%d", year, month, day)
 		}
 	}
 	return nil

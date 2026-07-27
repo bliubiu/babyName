@@ -21,7 +21,7 @@ func (LunarWeek) Validate(year int, month int, index int, start int) error {
 		return err
 	}
 	if index >= m.GetWeekCount(start) {
-		return fmt.Errorf(fmt.Sprintf("illegal lunar week index: %d in month: %v", index, m))
+		return fmt.Errorf("illegal lunar week index: %d in month: %v", index, m)
 	}
 	return nil
 }

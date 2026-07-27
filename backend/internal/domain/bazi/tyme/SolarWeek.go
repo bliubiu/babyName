@@ -21,7 +21,7 @@ func (SolarWeek) Validate(year int, month int, index int, start int) error {
 		return err
 	}
 	if index >= m.GetWeekCount(start) {
-		return fmt.Errorf(fmt.Sprintf("illegal solar week index: %d in month: %v", index, m))
+		return fmt.Errorf("illegal solar week index: %d in month: %v", index, m)
 	}
 	return nil
 }

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bliubiu/babyName/internal/domain/bazi/tyme"
+	"name/internal/domain/bazi/tyme"
 )
 
 type HolidayType string

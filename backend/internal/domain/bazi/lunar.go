@@ -3,7 +3,7 @@ package bazi
 import (
 	"fmt"
 	"time"
-	"github.com/bliubiu/babyName/internal/domain/bazi/tyme"
+	"name/internal/domain/bazi/tyme"
 )
 
 type LunarCalendar struct {
@@ -23,6 +23,14 @@ type LunarCalendar struct {
 	YearNayin string `json:"yearNayin"`
 	MonthNayin string `json:"monthNayin"`
 	DayNayin string `json:"dayNayin"`
+	// 农历显示字段 - 用于替代前端 chinese-lunar-calendar 库
+	LunarYearName  string `json:"lunarYearName"`  // 如"甲辰年"
+	LunarMonthName string `json:"lunarMonthName"` // 如"正月"
+	LunarDayName   string `json:"lunarDayName"`   // 如"初一"
+	DateStr        string `json:"dateStr"`         // 如"正月十五"
+	LunarDate      string `json:"lunarDate"`       // 如"十五"，仅日期部分
+	LunarMonth     string `json:"lunarMonth"`      // 如"正月"，仅月份部分
+	SolarTerm      string `json:"solarTerm"`       // 如"清明"
 }
 
 func GetLunarCalendar(year, month, day, hour, minute int) *LunarCalendar {
@@ -50,7 +58,15 @@ func GetLunarCalendar(year, month, day, hour, minute int) *LunarCalendar {
 		MonthNayin: sixtyCycleDay.GetMonth().GetSound().GetName(),
 		DayNayin: sixtyCycleDay.GetSixtyCycle().GetSound().GetName(),
 		Nayin: sixtyCycleDay.GetSixtyCycle().GetSound().GetName(),
+		// 农历显示字段
+		LunarYearName:  sixtyCycleDay.GetYear().GetHeavenStem().GetName() + sixtyCycleDay.GetYear().GetEarthBranch().GetName() + "年",
+		LunarMonthName: lunarDay.GetLunarMonth().GetName(),
+		LunarDayName:   lunarDay.GetName(),
+		LunarMonth:     lunarDay.GetLunarMonth().GetName(),
+		LunarDate:      lunarDay.GetName(),
+		SolarTerm:      GetCurrentJieQi(year, month, day),
 	}
+	lc.DateStr = lc.LunarMonthName + lc.LunarDayName
 
 	return lc
 }
@@ -682,48 +698,19 @@ type JieQi struct {
 	Time    int    `json:"time"`
 }
 
-var JieQiDates = map[string][2]int{
-	"小寒": {1, 5}, "大寒": {1, 20}, "立春": {2, 4}, "雨水": {2, 19},
-	"惊蛰": {3, 6}, "春分": {3, 21}, "清明": {4, 5}, "谷雨": {4, 20},
-	"立夏": {5, 6}, "小满": {5, 21}, "芒种": {6, 6}, "夏至": {6, 21},
-	"小暑": {7, 7}, "大暑": {7, 23}, "立秋": {8, 8}, "处暑": {8, 23},
-	"白露": {9, 8}, "秋分": {9, 23}, "寒露": {10, 8}, "霜降": {10, 23},
-	"立冬": {11, 7}, "小雪": {11, 22}, "大雪": {12, 7}, "冬至": {12, 22},
-}
-
-func GetJieQiName(month, day int) string {
-	for name, data := range JieQiDates {
-		if data[0] == month && data[1] == day {
-			return name
-		}
-	}
-	return ""
-}
-
+// GetCurrentJieQi 使用 tyme4go 天文精度计算当前节气
 func GetCurrentJieQi(year, month, day int) string {
-	monthJieQiMap := map[int][]string{
-		1: {"小寒", "大寒"}, 2: {"立春", "雨水"}, 3: {"惊蛰", "春分"},
-		4: {"清明", "谷雨"}, 5: {"立夏", "小满"}, 6: {"芒种", "夏至"},
-		7: {"小暑", "大暑"}, 8: {"立秋", "处暑"}, 9: {"白露", "秋分"},
-		10: {"寒露", "霜降"}, 11: {"立冬", "小雪"}, 12: {"大雪", "冬至"},
+	solarDay, err := tyme.SolarDay{}.FromYmd(year, month, day)
+	if err != nil {
+		return ""
 	}
-
-	if mjq, ok := monthJieQiMap[month]; ok {
-		firstDate := JieQiDates[mjq[0]]
-		secondDate := JieQiDates[mjq[1]]
-
-		if day < firstDate[1] {
-			if month == 1 {
-				return "冬至"
-			}
-			prevMonth := month - 1
-			prevJieQi := monthJieQiMap[prevMonth]
-			return prevJieQi[1]
-		} else if day < secondDate[1] {
-			return mjq[0]
-		} else {
-			return mjq[1]
-		}
+	term := solarDay.GetTerm()
+	termDay := term.GetSolarDay()
+	// 返回距离最近且与当天最接近的节气名
+	if termDay.GetYear() == year && termDay.GetMonth() == month && termDay.GetDay() == day {
+		return term.GetName()
 	}
-	return ""
+	// 获取前一个节气
+	prevTerm := solarDay.GetTermDay().GetSolarTerm()
+	return prevTerm.GetName()
 }

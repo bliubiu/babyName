@@ -15,7 +15,7 @@ type SolarMonth struct {
 
 func (SolarMonth) Validate(year int, month int) error {
 	if month < 1 || month > 12 {
-		return fmt.Errorf(fmt.Sprintf("illegal solar month: %d", month))
+		return fmt.Errorf("illegal solar month: %d", month)
 	}
 	return SolarYear{}.Validate(year)
 }

@@ -24,10 +24,10 @@ func (o WeekUnit) GetStart() Week {
 
 func (WeekUnit) Validate(_ int, _ int, index int, start int) error {
 	if index < 0 || index > 5 {
-		return fmt.Errorf(fmt.Sprintf("illegal week index: %d", index))
+		return fmt.Errorf("illegal week index: %d", index)
 	}
 	if start < 0 || start > 6 {
-		return fmt.Errorf(fmt.Sprintf("illegal week start: %d", start))
+		return fmt.Errorf("illegal week start: %d", start)
 	}
 	return nil
 }

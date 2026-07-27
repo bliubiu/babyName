@@ -13,14 +13,14 @@ type LunarDay struct {
 
 func (LunarDay) Validate(year int, month int, day int) error {
 	if day < 1 {
-		return fmt.Errorf(fmt.Sprintf("illegal lunar day %d", day))
+		return fmt.Errorf("illegal lunar day %d", day)
 	}
 	m, err := LunarMonth{}.FromYm(year, month)
 	if err != nil {
 		return err
 	}
 	if day > m.GetDayCount() {
-		return fmt.Errorf(fmt.Sprintf("illegal day %d in %v", day, m))
+		return fmt.Errorf("illegal day %d in %v", day, m)
 	}
 	return nil
 }

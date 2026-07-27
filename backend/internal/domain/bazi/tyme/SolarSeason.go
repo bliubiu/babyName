@@ -17,7 +17,7 @@ type SolarSeason struct {
 
 func (SolarSeason) FromIndex(year int, index int) (*SolarSeason, error) {
 	if index < 0 || index > 3 {
-		return nil, fmt.Errorf(fmt.Sprintf("illegal solar season index: %d", index))
+		return nil, fmt.Errorf("illegal solar season index: %d", index)
 	}
 	y, err := SolarYear{}.FromYear(year)
 	if err != nil {

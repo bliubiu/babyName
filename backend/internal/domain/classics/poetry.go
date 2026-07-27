@@ -289,16 +289,87 @@ func GetPoetryCharList(source string) []PoetryChar {
 		for _, ps := range PoetrySources {
 			allChars = append(allChars, ps.Chars...)
 		}
+		// 追加从全文提取的数据
+		allChars = append(allChars, ShijingExtracted...)
+		allChars = append(allChars, ChuciExtracted...)
+		allChars = append(allChars, GuwenGuanzhiExtracted...)
+		ensureShiCiLoaded()
+		allChars = append(allChars, ShiCiExtracted...)
+		allChars = appendAllExtracted(allChars)
 		return allChars
 	}
+
+	// 先从硬编码库获取
 	if ps, ok := PoetrySources[source]; ok {
 		return ps.Chars
 	}
+
+	// 再从提取数据获取
+	switch source {
+	case "诗经":
+		return ShijingExtracted
+	case "楚辞":
+		return ChuciExtracted
+	case "古文观止":
+		return GuwenGuanzhiExtracted
+	case "唐诗宋词":
+		ensureShiCiLoaded()
+		return ShiCiExtracted
+	case "论语":
+		return LunyuExtracted
+	case "孟子":
+		return MengziExtracted
+	case "大学":
+		return DaxueExtracted
+	case "中庸":
+		return ZhongyongExtracted
+	case "三字经":
+		return SanzijingExtracted
+	case "千字文":
+		return QianziwenExtracted
+	case "弟子规":
+		return DiziguiExtracted
+	case "幼学琼林":
+		return YouxueqionglinExtracted
+	case "增广贤文":
+		return ZengguangxianwenExtracted
+	case "声律启蒙":
+		return ShenglvqimengExtracted
+	case "朱子家训":
+		return ZhuzijiaxunExtracted
+	case "千家诗":
+		return QianjiashiExtracted
+	case "文字蒙求":
+		return WenzimengqiuExtracted
+	case "百家姓":
+		return BaijiaxingExtracted
+	}
+
 	return nil
 }
 
+// appendAllExtracted 追加 P2/P3 全部经典提取数据
+func appendAllExtracted(chars []PoetryChar) []PoetryChar {
+	allExtracted := [][]PoetryChar{
+		LunyuExtracted, MengziExtracted, DaxueExtracted, ZhongyongExtracted,
+		SanzijingExtracted, QianziwenExtracted, DiziguiExtracted,
+		YouxueqionglinExtracted, ZengguangxianwenExtracted, ShenglvqimengExtracted,
+		ZhuzijiaxunExtracted, QianjiashiExtracted, WenzimengqiuExtracted,
+		BaijiaxingExtracted,
+	}
+	for _, extracted := range allExtracted {
+		chars = append(chars, extracted...)
+	}
+	return chars
+}
+
 func GetPoetrySourceNames() []string {
-	return []string{"诗经", "楚辞", "唐诗", "宋词", "乐府", "古文名句"}
+	return []string{"诗经", "楚辞", "唐诗", "宋词", "乐府", "古文名句",
+		"古文观止", "唐诗宋词",
+		"论语", "孟子", "大学", "中庸",
+		"三字经", "千字文", "弟子规", "声律启蒙", "增广贤文",
+		"幼学琼林", "朱子家训", "千家诗", "文字蒙求", "百家姓",
+	}
 }
 
 type GuwenMingju struct {
