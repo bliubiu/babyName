@@ -1,169 +1,242 @@
 'use client';
 
+import { useState } from 'react';
+
 import { useNameForm } from '@/hooks/useNameForm';
+import type { FormData } from '@/types';
 import { BirthdayPicker } from './BirthdayPicker';
 import { PreferenceSelector } from './PreferenceSelector';
+import { RadicalSelector } from './RadicalSelector';
 import { Spinner } from './Spinner';
+
+interface NameFormSubmission {
+  formData: FormData;
+  keywords: string;
+  selectedChars?: string[];
+}
 
 interface NameFormProps {
   isGenerating: boolean;
-  onSubmit: (formData: any) => void;
+  onSubmit: (data: NameFormSubmission) => void;
+  sourceClassic: string;
+  onSourceClassicChange: (source: string) => void;
 }
 
-export function NameForm({ isGenerating, onSubmit }: NameFormProps) {
+export function NameForm({ isGenerating, onSubmit, sourceClassic, onSourceClassicChange }: NameFormProps) {
   const {
     formData,
     errors,
     touched,
-    preferences,
     keywords,
     setFormData,
-    setPreferences,
     setKeywords,
     handleSurnameChange,
     handleBlur,
-    handlePreferenceToggle,
     handleBirthdayConfirm,
   } = useNameForm();
-  const validateSurname = (value: string): string | undefined => {
-    if (!value || value.trim() === '') {
-      return '请输入姓氏';
-    }
-    if (value.length > 4) {
-      return '姓氏不能超过4个字符';
-    }
-    if (!/^[\u4e00-\u9fa5]+$/.test(value)) {
-      return '姓氏只能包含中文';
-    }
-    return undefined;
-  };
+
+  const [showRadicalSelector, setShowRadicalSelector] = useState(false);
+  const [selectedChars, setSelectedChars] = useState<string[]>([]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit({
       formData,
-      preferences,
       keywords,
+      selectedChars: selectedChars.length > 0 ? selectedChars : undefined,
     });
   };
 
+  const handleRadicalToggle = (chars: string[]) => {
+    setSelectedChars(chars);
+    const charStr = chars.join('');
+    if (charStr) {
+      const existing = keywords.replace(/包含字[：:][^\s]*/, '').trim();
+      setKeywords(existing ? `${existing} 包含字：${charStr}` : `包含字：${charStr}`);
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-        <label htmlFor="surname-input" className="w-20 text-right text-stone-700 tracking-wider sm:block hidden">姓 氏:</label>
-        <label htmlFor="surname-input" className="text-stone-700 tracking-wider sm:hidden">姓 氏:</label>
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* 姓氏 */}
+      <div className="space-y-1.5">
+        <label htmlFor="surname-input" className="form-label">姓氏</label>
         <input
           id="surname-input"
           type="text"
-          className={`proto-input flex-1 max-w-xs px-4 py-2 border border-stone-300 bg-white focus:outline-none focus:border-red-500 ${touched.surname && errors.surname ? 'border-red-500' : ''}`}
+          className={`input-field ${touched.surname && errors.surname ? 'border-crimson/60 ring-2 ring-crimson/10' : ''}`}
           placeholder="请输入姓氏"
           value={formData.surname}
           onChange={(e) => handleSurnameChange(e.target.value)}
           onBlur={() => handleBlur('surname')}
           aria-describedby="surname-error"
         />
+        {touched.surname && errors.surname && (
+          <p id="surname-error" className="text-crimson text-xs mt-1">{errors.surname}</p>
+        )}
       </div>
-      {touched.surname && errors.surname && (
-        <p id="surname-error" className="input-error-message ml-0 sm:ml-20">{errors.surname}</p>
-      )}
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-        <label htmlFor="gender-male" className="w-20 text-right text-stone-700 tracking-wider sm:block hidden">性 别:</label>
-        <label htmlFor="gender-male" className="text-stone-700 tracking-wider sm:hidden">性 别:</label>
+      {/* 性别 */}
+      <div className="space-y-1.5">
+        <label className="form-label">性别</label>
         <fieldset>
           <legend className="sr-only">性别</legend>
-          <div className="flex gap-6">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                id="gender-male"
-                type="radio"
-                name="gender"
-                value="male"
-                checked={formData.gender === 'male'}
-                onChange={() => setFormData({ gender: 'male' })}
-                className="w-4 h-4 accent-blue-600"
-                aria-label="男性"
-              />
-              <span className="text-stone-700">男</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                id="gender-female"
-                type="radio"
-                name="gender"
-                value="female"
-                checked={formData.gender === 'female'}
-                onChange={() => setFormData({ gender: 'female' })}
-                className="w-4 h-4 accent-blue-600"
-                aria-label="女性"
-              />
-              <span className="text-stone-700">女</span>
-            </label>
+          <div className="flex gap-3">
+            {(['male', 'female'] as const).map((g) => (
+              <label
+                key={g}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border cursor-pointer transition-all duration-200 ${
+                  formData.gender === g
+                    ? 'border-crimson/40 bg-crimson/5 text-crimson'
+                    : 'border-paper/60 bg-white/50 text-ink-light hover:border-crimson/20'
+                }`}
+              >
+                <input
+                  id={`gender-${g}`}
+                  type="radio"
+                  name="gender"
+                  value={g}
+                  checked={formData.gender === g}
+                  onChange={() => setFormData({ gender: g })}
+                  className="sr-only"
+                />
+                <span className="text-lg">{g === 'male' ? '♂' : '♀'}</span>
+                <span className="font-medium">{g === 'male' ? '男' : '女'}</span>
+              </label>
+            ))}
           </div>
         </fieldset>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-        <label className="w-20 text-right text-stone-700 tracking-wider sm:block hidden">生 日:</label>
-        <label className="text-stone-700 tracking-wider sm:hidden">生 日:</label>
+      {/* 生日 */}
+      <div className="space-y-1.5">
+        <label className="form-label">出生时间</label>
         <BirthdayPicker onConfirm={handleBirthdayConfirm} />
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4">
-        <label className="w-20 text-right text-stone-700 text-sm sm:block hidden">名字类型:</label>
-        <label className="text-stone-700 text-sm sm:hidden">名字类型:</label>
-        <div className="flex flex-col sm:flex-row gap-3 sm:gap-6">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="nameType" value="double" checked={formData.nameType === 'double'} onChange={() => setFormData({ nameType: 'double' })} className="w-4 h-4 accent-blue-600" />
-            <span className="text-stone-700">双字名 <span className="text-stone-400 text-sm">(如: 周伯通)</span></span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="nameType" value="single" checked={formData.nameType === 'single'} onChange={() => setFormData({ nameType: 'single' })} className="w-4 h-4 accent-blue-600" />
-            <span className="text-stone-700">单字名 <span className="text-stone-400 text-sm">(如: 曹操)</span></span>
-          </label>
+      {/* 名字类型 */}
+      <div className="space-y-1.5">
+        <label className="form-label">名字类型</label>
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { value: 'double', label: '双字名', hint: '如 周伯通' },
+            { value: 'single', label: '单字名', hint: '如 曹操' },
+          ].map((opt) => (
+            <label
+              key={opt.value}
+              className={`flex flex-col items-center py-3 px-4 rounded-xl border cursor-pointer transition-all duration-200 ${
+                formData.nameType === opt.value
+                  ? 'border-crimson/40 bg-crimson/5'
+                  : 'border-paper/60 bg-white/50 hover:border-crimson/20'
+              }`}
+            >
+              <input
+                type="radio"
+                name="nameType"
+                value={opt.value}
+                checked={formData.nameType === opt.value}
+                onChange={() => setFormData({ nameType: opt.value as 'double' | 'single' })}
+                className="sr-only"
+              />
+              <span className={`font-medium ${formData.nameType === opt.value ? 'text-crimson' : 'text-ink-light'}`}>
+                {opt.label}
+              </span>
+              <span className="text-xs text-ink-light/50 mt-0.5">{opt.hint}</span>
+            </label>
+          ))}
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-        <label className="w-20 text-right text-red-600 tracking-wider sm:block hidden">字辈:</label>
-        <label className="text-red-600 tracking-wider sm:hidden">字辈:</label>
-        <div className="flex flex-wrap items-center gap-2">
+      {/* 字辈 */}
+      <div className="space-y-1.5">
+        <label className="form-label" htmlFor="generation-input">
+          字辈 <span className="text-ink-light/40 font-normal">（可不填）</span>
+        </label>
+        <div className="flex gap-2">
           <input
+            id="generation-input"
             type="text"
-            className="w-20 px-4 py-2 border border-stone-300 bg-white focus:outline-none focus:border-red-500"
-            placeholder=""
+            className="input-field flex-1"
+            placeholder="辈分字"
             value={formData.generation}
             onChange={(e) => setFormData({ generation: e.target.value })}
           />
           <select
-            className="px-3 py-2 border border-stone-300 bg-white focus:outline-none focus:border-red-500"
+            id="generation-position"
+            className="input-field w-auto min-w-[110px]"
             value={formData.generationPosition}
             onChange={(e) => setFormData({ generationPosition: e.target.value as 'middle' | 'end' })}
+            aria-label="字辈位置"
           >
             <option value="middle">固定中间</option>
             <option value="end">固定最后</option>
           </select>
-          <span className="text-blue-500 text-sm">可以不填写</span>
         </div>
       </div>
 
+      {/* 经典来源 + 个性补充 */}
       <PreferenceSelector
-        preferences={preferences}
-        onToggle={handlePreferenceToggle}
         keywords={keywords}
         onKeywordsChange={setKeywords}
+        sourceClassic={sourceClassic}
+        onSourceClassicChange={onSourceClassicChange}
       />
 
-      <div className="pt-6 flex justify-center">
+      {/* 避讳长辈 */}
+      <div className="space-y-1.5">
+        <label className="form-label" htmlFor="avoid-elder-input">
+          避讳长辈 <span className="text-ink-light/40 font-normal">（可不填，多个姓名用逗号分隔）</span>
+        </label>
+        <input
+          id="avoid-elder-input"
+          type="text"
+          className="input-field"
+          placeholder="如：张三，李四（排除同音同形字）"
+          value={formData.avoidElderNames}
+          onChange={(e) => setFormData({ avoidElderNames: e.target.value })}
+        />
+      </div>
+
+      {/* 展开偏旁选字 */}
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => setShowRadicalSelector(!showRadicalSelector)}
+          className="text-sm text-jade hover:text-crimson transition-colors flex items-center gap-1.5 py-1"
+          aria-expanded={showRadicalSelector}
+        >
+          {showRadicalSelector ? '收起' : '展开'}偏旁选字
+          <svg
+            className={`w-3.5 h-3.5 transition-transform duration-200 ${showRadicalSelector ? 'rotate-180' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </div>
+
+      {showRadicalSelector && (
+        <RadicalSelector
+          onSelectChars={handleRadicalToggle}
+          selectedChars={selectedChars}
+          disabled={isGenerating}
+        />
+      )}
+
+      {/* 提交按钮 */}
+      <div className="pt-4 flex justify-center">
         <button
           type="submit"
           disabled={isGenerating}
-          className={`bg-gradient-to-r from-red-700 to-red-800 text-white text-lg sm:text-xl font-bold rounded-lg shadow-lg hover:from-red-800 hover:to-red-900 transition-all transform hover:scale-105 px-12 sm:px-16 py-3 sm:py-4 w-full sm:w-auto ${isGenerating ? 'opacity-70 cursor-not-allowed' : ''}`}
+          className="btn-seal w-full sm:w-auto text-lg font-bold px-16 py-3.5 tracking-widest"
         >
           {isGenerating ? (
             <div className="flex items-center justify-center gap-2">
               <Spinner size="small" color="white" />
-              <span>正在生成...</span>
+              <span>正在生成</span>
             </div>
           ) : (
             '开始取名'

@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { IconSun, IconMoon } from './Icons';
 
 export default function ThemeToggle() {
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
-    // 检查本地存储中的主题设置
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'dark') {
       enableDarkMode();
@@ -36,10 +36,11 @@ export default function ThemeToggle() {
   return (
     <button
       onClick={toggleTheme}
-      className="flex items-center gap-2 text-teal hover:text-crimson transition-all duration-300 px-2 py-1 rounded-md hover:bg-crimson/10 hover-lift"
+      className="flex items-center gap-1.5 text-jade hover:text-crimson transition-all duration-300 px-2 py-1.5 rounded-lg hover:bg-crimson/5 text-sm"
       title={isDark ? '切换到浅色模式' : '切换到深色模式'}
     >
-      {isDark ? '☀️ 浅色' : '🌙 深色'}
+      {isDark ? <IconSun size={16} /> : <IconMoon size={16} />}
+      <span className="hidden sm:inline">{isDark ? '浅色' : '深色'}</span>
     </button>
   );
 }

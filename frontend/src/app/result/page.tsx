@@ -1,170 +1,162 @@
 'use client';
 
-import { useEffect, useState, useRef, lazy, Suspense } from 'react';
+import { useEffect, useState, useMemo, lazy, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNameStore } from '@/lib/store';
 import { Name, FavoriteData } from '@/types';
-import { PageLoader } from '@/components/Spinner';
+import { ResultPageSkeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/Toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { saveFavorite, deleteFavorite } from '@/lib/api';
+import type { FavoritesResponse } from '@/types/api/favorites';
 import Navigation from '@/components/Navigation';
 import { NameFilters } from '@/components/NameFilter';
 
-// 懒加载大型组件
 const BaziAnalysis = lazy(() => import('@/components/BaziAnalysis'));
 const HexagramDisplay = lazy(() => import('@/components/HexagramDisplay'));
 const NameCard = lazy(() => import('@/components/NameCard').then(module => ({
   default: module.default
 })));
 const NameDetail = lazy(() => import('@/components/NameDetail'));
-const ShareButtons = lazy(() => import('@/components/ShareButtons'));
 const NameFilter = lazy(() => import('@/components/NameFilter').then(module => ({
   default: module.default
 })));
 const FullReport = lazy(() => import('@/components/FullReport'));
 
+// 用 surname:given_name 作为收藏状态键，避免 filter 后 index 错位
+const nameKey = (n: Name) => `${n.surname}:${n.given_name}`;
+
+// 从缓存中提取收藏列表（缓存类型为 FavoritesResponse，需取 .data）
+const getCachedFavorites = (queryClient: ReturnType<typeof useQueryClient>): FavoriteData[] => {
+  const cached = queryClient.getQueryData<FavoritesResponse>(['favorites']);
+  return cached?.success ? cached.data ?? [] : [];
+};
+
 export default function ResultPage() {
   const router = useRouter();
-  const { generateResult, setGenerateResult, setCompareResult, favorites, addFavorite, removeFavorite } = useNameStore();
+  const { generateResult, setGenerateResult, setCompareResult, _hasHydrated } = useNameStore();
   const [selectedName, setSelectedName] = useState<number | null>(null);
-  const [favoriteStatus, setFavoriteStatus] = useState<Record<number, boolean>>({});
+  const [favoriteStatus, setFavoriteStatus] = useState<Record<string, boolean>>({});
   const [compareNames, setCompareNames] = useState<number[]>([]);
   const { showToast } = useToast();
-  
+
   const queryClient = useQueryClient();
 
   const result = generateResult;
   const [filters, setFilters] = useState<NameFilters>({});
   const [showFullReport, setShowFullReport] = useState(false);
 
-  const filteredNames = result?.names ? result.names.filter((name: Name, index: number) => {
+  const filteredNames = useMemo(() => result?.names ? result.names.filter((name: Name) => {
     if (filters.gender && name.gender !== filters.gender) return false;
     if (filters.wuxing && name.wuxing !== filters.wuxing) return false;
     if (filters.minStrokes && name.strokes < filters.minStrokes) return false;
     if (filters.maxStrokes && name.strokes > filters.maxStrokes) return false;
     return true;
-  }) : [];
+  }) : [], [result, filters]);
 
   useEffect(() => {
     const checkFavorites = async () => {
       if (!result?.names) return;
-      
-      const status: Record<number, boolean> = {};
-      for (let i = 0; i < result.names.length; i++) {
-        const name = result.names[i];
-        const isFav = favorites.some(
+
+      const cached = getCachedFavorites(queryClient);
+      const status: Record<string, boolean> = {};
+      for (const name of result.names) {
+        const key = nameKey(name);
+        status[key] = cached.some(
           f => f.surname === name.surname && f.given_name === name.given_name
         );
-        status[i] = isFav;
       }
       setFavoriteStatus(status);
     };
-    
+
     checkFavorites();
-  }, [result, favorites]);
+  }, [result, queryClient]);
 
    const toggleFavoriteMutation = useMutation({
      mutationFn: async (name: Name) => {
-       const existing = favorites.find(
+       const cached = getCachedFavorites(queryClient);
+       const existing = cached.find(
          f => f.surname === name.surname && f.given_name === name.given_name
        );
-       
+
        if (existing) {
          if (existing.id) {
            await deleteFavorite(existing.id);
          }
        } else {
          const newFav = {
-           surname: name.surname,
-           given_name: name.given_name,
-           pinyin: name.pinyin,
-           gender: name.gender,
-           score: name.score,
-         };
+          surname: name.surname,
+          given_name: name.given_name,
+          pinyin: name.pinyin,
+          gender: name.gender,
+          score: name.total_score ?? name.score,
+        };
          await saveFavorite(newFav);
        }
      },
      onMutate: async (name: Name) => {
-       // Cancel any outgoing refetches to avoid overwriting optimistic update
        await queryClient.cancelQueries({ queryKey: ['favorites'] });
-       
-       // Snapshot the previous value
-       const previousFavorites = queryClient.getQueryData<FavoriteData[]>(['favorites']) ?? [];
-       
-       // Optimistically update the cache
+       const previousFavorites = getCachedFavorites(queryClient);
        const existingIndex = previousFavorites.findIndex(
          f => f.surname === name.surname && f.given_name === name.given_name
        );
-       
+
        if (existingIndex >= 0) {
-         // Remove from favorites
-         queryClient.setQueryData(['favorites'], previousFavorites.filter(
-           (_, index) => index !== existingIndex
-         ));
-       } else {
-         // Add to favorites
-         const newFav: FavoriteData = {
-           surname: name.surname,
-           given_name: name.given_name,
-           pinyin: name.pinyin,
-           gender: name.gender,
-           score: name.score,
-         };
-         queryClient.setQueryData(['favorites'], [...previousFavorites, newFav]);
-       }
-       
-       // Update local state for immediate UI feedback
-       setFavoriteStatus(prev => {
-         const newStatus = { ...prev };
-         Object.keys(newStatus).forEach(key => {
-           const index = parseInt(key);
-           if (result?.names[index]?.surname === name.surname && result.names[index]?.given_name === name.given_name) {
-             newStatus[index] = existingIndex >= 0 ? false : true;
-           }
+         // 保持缓存结构为 FavoritesResponse
+         queryClient.setQueryData<FavoritesResponse>(['favorites'], (old) => {
+           if (!old) return old;
+           return {
+             ...old,
+             data: previousFavorites.filter((_, index) => index !== existingIndex),
+           };
          });
-         return newStatus;
-       });
-       
-       // Return context with snapshot
+       } else {
+         const newFav: FavoriteData = {
+          surname: name.surname,
+          given_name: name.given_name,
+          pinyin: name.pinyin,
+          gender: name.gender,
+          score: name.total_score ?? name.score,
+        };
+         queryClient.setQueryData<FavoritesResponse>(['favorites'], (old) => {
+           if (!old) return old;
+           return {
+             ...old,
+             data: [...previousFavorites, newFav],
+           };
+         });
+       }
+
+       const key = nameKey(name);
+       setFavoriteStatus(prev => ({
+         ...prev,
+         [key]: existingIndex < 0
+       }));
+
        return { previousFavorites };
      },
      onError: (err, name, context) => {
-       // Rollback to previous value on error
        if (context?.previousFavorites) {
-         queryClient.setQueryData(['favorites'], context.previousFavorites);
-       }
-       
-       // Reset local state to reflect server state
-       if (result?.names) {
-         setFavoriteStatus(prev => {
-           const newStatus = { ...prev };
-           Object.keys(newStatus).forEach(key => {
-             const index = parseInt(key);
-             if (result?.names[index]?.surname === name.surname && result.names[index]?.given_name === name.given_name) {
-               const isFav = context?.previousFavorites.some(
-                 f => f.surname === name.surname && f.given_name === name.given_name
-               );
-               newStatus[index] = !!isFav;
-             }
-           });
-           return newStatus;
+         queryClient.setQueryData<FavoritesResponse>(['favorites'], (old) => {
+           if (!old) return old;
+           return {
+             ...old,
+             data: context.previousFavorites,
+           };
          });
        }
-       
+       const key = nameKey(name);
+       const isFav = context?.previousFavorites.some(
+         f => f.surname === name.surname && f.given_name === name.given_name
+       );
+       setFavoriteStatus(prev => ({ ...prev, [key]: !!isFav }));
        showToast('操作失败，请重试', 'error');
      },
      onSuccess: () => {
-       // Invalidate and refetch favorites to get latest server state
        queryClient.invalidateQueries({ queryKey: ['favorites'] });
-       
-       // Show success toast based on whether we added or removed
-       // Note: We can't easily determine this here without tracking state, 
-       // but the UI will show correct state due to optimistic update
        showToast('操作成功', 'success');
      },
      onSettled: () => {
-       // Refetch whether successful or not
        queryClient.invalidateQueries({ queryKey: ['favorites'] });
      }
    });
@@ -187,8 +179,15 @@ export default function ResultPage() {
     setSelectedName(selectedName === index ? null : index);
   };
 
-  if (!result) {
-    return <PageLoader />;
+  // hydrate 未完成时显示骨架屏，避免 SSR/CSR 不一致和刷新时短暂 null
+  if (!_hasHydrated || !result) {
+    return (
+      <main className="min-h-screen py-6 md:py-8 px-4 md:px-6">
+        <div className="max-w-2xl mx-auto">
+          <ResultPageSkeleton />
+        </div>
+      </main>
+    );
   }
 
   const { bazi, nayin, zodiac, hexagram, names } = result;
@@ -204,114 +203,104 @@ export default function ResultPage() {
     router.push('/compare');
   };
 
-  const resultRef = useRef<HTMLDivElement>(null);
-
-  const exportAsImage = async () => {
-    if (!resultRef.current) return;
-    
-    try {
-      const html2canvas = (await import('html2canvas')).default;
-      const canvas = await html2canvas(resultRef.current, {
-        backgroundColor: '#FDF8F3',
-        scale: 2,
-      });
-      
-      const link = document.createElement('a');
-      link.download = `名字推荐_${new Date().toISOString().slice(0, 10)}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-      showToast('导出成功', 'success');
-    } catch (error) {
-      console.error('Export error:', error);
-      showToast('导出失败', 'error');
-    }
-  };
-
-  const exportAsPDF = async () => {
-    if (!resultRef.current) return;
-    
-    try {
-      const html2pdf = (await import('html2pdf.js')).default;
-      
-      const opt = {
-        margin: 10,
-        filename: `名字推荐_${new Date().toISOString().slice(0, 10)}.pdf`,
-        image: { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas: {
-          scale: 2,
-          backgroundColor: '#FDF8F3'
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
-      };
-      
-      await html2pdf().set(opt).from(resultRef.current).save();
-      showToast('导出PDF成功', 'success');
-    } catch (error) {
-      console.error('PDF export error:', error);
-      showToast('导出PDF失败', 'error');
-    }
-  };
-
   return (
-    <main className="min-h-screen py-4 md:py-6 lg:py-8 px-3 md:px-4">
-      <div className="max-w-4xl mx-auto" ref={resultRef}>
-        <Navigation 
+    <main className="min-h-screen py-4 md:py-8 px-4 md:px-6">
+      <div className="max-w-4xl mx-auto">
+        <Navigation
           showBackButton={true}
           showHistory={true}
           showFavorites={true}
-          showExport={true}
-          onExport={exportAsImage}
-          onExportPDF={exportAsPDF}
+          showExport={false}
         />
 
-        <Suspense fallback={<div className="p-4 text-stone-600">加载八字分析...</div>}>
+        {/* 八字分析 */}
+        <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载八字分析...</div>}>
           <BaziAnalysis bazi={bazi} nayin={nayin} zodiac={zodiac} />
         </Suspense>
 
+        {/* 卦象 */}
         {hexagram && (
-          <Suspense fallback={<div className="p-4 text-stone-600">加载卦象...</div>}>
+          <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载卦象...</div>}>
             <HexagramDisplay hexagram={hexagram} />
           </Suspense>
         )}
 
-        <Suspense fallback={<div className="p-4 text-stone-600">加载筛选器...</div>}>
-          <NameFilter 
+        {/* 竖向名帖 */}
+        {topNames.length > 0 && (
+          <div className="hidden sm:block mb-6 animate-fade-in-up">
+            <div className="consultation-sheet py-6 px-8 corner-decor">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="seal-badge seal-stamp-sm">名</span>
+                <div className="brush-divider flex-1" />
+                <span className="text-paper-edge/40 text-xs tracking-[0.5em] font-serif">帖</span>
+                <div className="brush-divider flex-1" />
+                <span className="seal-badge seal-stamp-sm">帖</span>
+              </div>
+              <div className="flex justify-center gap-8 md:gap-12 overflow-x-auto py-4" style={{ direction: 'rtl' }}>
+                {topNames.slice(0, 6).map((name: Name, idx: number) => (
+                  <div
+                    key={nameKey(name)}
+                    className="name-scroll-wrapper flex-shrink-0"
+                    style={{ animationDelay: `${idx * 0.12}s` }}
+                  >
+                    <div className="flex flex-col items-center">
+                      <div
+                        className="name-scroll text-3xl md:text-4xl text-ink px-4 py-2 name-scroll-border"
+                      >
+                        <span className="text-crimson">{name.surname}</span>
+                        <span>{name.given_name}</span>
+                      </div>
+                      <div className="mt-3 text-center">
+                        <div className="text-xs text-jade/70">{name.pinyin}</div>
+                        <div className="text-xs text-gold mt-0.5 font-medium">{(name.total_score ?? name.score).toFixed(1)}分</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 筛选器 */}
+        <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载筛选器...</div>}>
+          <NameFilter
             onFilterChange={setFilters}
             totalNames={names.length}
             filteredCount={filteredNames.length}
           />
         </Suspense>
 
-        <div className="mb-4 md:mb-6 lg:mb-8">
-          <div className="flex flex-wrap justify-between items-center gap-3 mb-2 md:mb-3 lg:mb-4">
-            <h2 className="font-serif text-lg md:text-xl lg:text-2xl text-ink animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
-              ✨ 推荐名字
-            </h2>
-            {compareNames.length > 0 && (
+        {/* 名字列表 */}
+        <div className="mb-6 md:mb-8">
+          <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+            <h2 className="section-title">推荐名字</h2>
+            <div className="flex items-center gap-2">
+              {compareNames.length > 0 && (
+                <button
+                  onClick={handleCompare}
+                  className="px-3.5 py-1.5 bg-crimson text-white rounded-xl text-sm hover:bg-crimson-light transition-all duration-200"
+                >
+                  对比 {compareNames.length} 个
+                </button>
+              )}
               <button
-                onClick={handleCompare}
-                className="px-3 py-1.5 bg-crimson text-white rounded-lg text-sm hover:bg-crimson/90 transition-all duration-300 whitespace-nowrap hover-glow animate-pulse-slow"
+                onClick={() => setShowFullReport(true)}
+                className="px-3.5 py-1.5 bg-ink/5 text-ink rounded-xl text-sm hover:bg-ink/10 transition-all duration-200"
               >
-                对比 {compareNames.length} 个名字
+                完整报告
               </button>
-            )}
-            <button
-              onClick={() => setShowFullReport(true)}
-              className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-gold text-white rounded-lg text-sm hover:from-amber-600 hover:to-gold/90 transition-all duration-300 whitespace-nowrap hover-glow"
-            >
-              📄 查看完整报告
-            </button>
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
             {topNames.map((name: Name, index: number) => (
-              <Suspense key={index} fallback={<div className="p-4 text-stone-600">加载名字卡片...</div>}>
+              <Suspense key={nameKey(name)} fallback={<div className="p-4 text-jade/60 text-sm">加载名字卡片...</div>}>
                 <NameCard
-                  key={index}
                   name={name}
                   index={index}
                   isSelected={selectedName === index}
                   isComparing={compareNames.includes(index)}
-                  isFavorite={favoriteStatus[index] || false}
+                  isFavorite={favoriteStatus[nameKey(name)] || false}
                   onSelect={handleSelect}
                   onToggleFavorite={toggleFavorite}
                   onToggleCompare={toggleCompare}
@@ -319,17 +308,12 @@ export default function ResultPage() {
               </Suspense>
             ))}
           </div>
-          <ShareButtons 
-            title="宝宝起名大师 - 推荐名字" 
-            text={`为${result.bazi.bazi.year}年${result.bazi.bazi.month}月${result.bazi.bazi.day}日出生的${result.names[0].gender === 'male' ? '男孩' : '女孩'}推荐的名字`} 
-            url={window.location.href} 
-          />
         </div>
 
         {selectedName !== null && <NameDetail name={topNames[selectedName]} />}
 
         {showFullReport && result && (
-          <FullReport 
+          <FullReport
             data={result}
             onClose={() => setShowFullReport(false)}
             selectedNameIndex={selectedName !== null ? names.findIndex((n: Name) => n.surname === topNames[selectedName].surname && n.given_name === topNames[selectedName].given_name) : undefined}

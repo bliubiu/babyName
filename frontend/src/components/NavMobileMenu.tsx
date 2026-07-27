@@ -72,7 +72,7 @@ function NavMobileMenuComponent({
             <h2 className="text-lg font-bold text-ink">导航菜单</h2>
             <button
               onClick={onClose}
-              className="p-2 text-teal hover:text-crimson transition-colors"
+              className="p-2 text-jade hover:text-crimson transition-colors"
               aria-label="关闭菜单"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -94,12 +94,12 @@ function NavMobileMenuComponent({
             ))}
 
             {showExport && onExport && onExportPDF && (
-              <div className="pt-4 border-t border-stone-200">
+              <div className="pt-4 border-t border-paper">
                 <NavExportButtons onExport={onExport} onExportPDF={onExportPDF} />
               </div>
             )}
 
-            <div className="pt-4 border-t border-stone-200">
+            <div className="pt-4 border-t border-paper">
               <ThemeToggle />
             </div>
           </div>

@@ -1,0 +1,12 @@
+allowBuilds:
+  '0': c
+  '1': o
+  '2': r
+  '3': e
+  '4': '-'
+  '5': j
+  '6': s
+  core-js: set this to true or false
+  sharp: true
+onlyBuiltDependencies: '[]'
+onlyBuiltDependenciesFile: ''

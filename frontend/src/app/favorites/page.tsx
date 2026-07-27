@@ -2,28 +2,36 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useNameStore } from '@/lib/store';
-import { useFavorites, deleteFavorite, FavoriteData } from '@/lib/swr';
-import { PageLoader } from '@/components/Spinner';
+import { useQuery } from '@tanstack/react-query';
+import { getFavorites, deleteFavorite } from '@/lib/api';
+import type { FavoriteData } from '@/types';
+import { useQueryClient } from '@tanstack/react-query';
+import { FavoritesListSkeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/Toast';
+import Navigation from '@/components/Navigation';
+import { IconHeart, IconHeartFilled, IconTrash } from '@/components/Icons';
+
+
 
 export default function FavoritesPage() {
   const router = useRouter();
-  const { removeFavorite } = useNameStore();
+  const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const { data: favoritesResponse, error, isLoading } = useFavorites();
+  const { data: favoritesResponse, error, isLoading } = useQuery({
+    queryKey: ['favorites'],
+    queryFn: getFavorites,
+  });
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  
+
   const favorites: FavoriteData[] = favoritesResponse?.success ? favoritesResponse.data || [] : [];
 
   const handleDelete = async (id: string) => {
     try {
       setDeletingId(id);
       await deleteFavorite(id);
-      removeFavorite(id);
+      queryClient.invalidateQueries({ queryKey: ['favorites'] });
       showToast('删除成功', 'success');
-    } catch (error) {
-      console.error('Error deleting favorite:', error);
+    } catch {
       showToast('删除失败', 'error');
     } finally {
       setDeletingId(null);
@@ -31,21 +39,23 @@ export default function FavoritesPage() {
   };
 
   if (isLoading) {
-    return <PageLoader />;
+    return (
+      <main className="min-h-screen py-6 md:py-8 px-4 md:px-6 cloud-bg">
+        <div className="max-w-4xl mx-auto">
+          <FavoritesListSkeleton count={6} />
+        </div>
+      </main>
+    );
   }
-  
+
   if (error) {
     return (
-      <main className="min-h-screen py-6 md:py-8 px-3 md:px-4">
+      <main className="min-h-screen py-6 md:py-8 px-4 md:px-6 cloud-bg">
         <div className="max-w-4xl mx-auto">
-          <div className="card text-center py-12">
+          <Navigation showBackButton={true} showHistory={true} showFavorites={true} />
+          <div className="consultation-sheet text-center py-12 corner-decor">
             <p className="text-crimson mb-4">加载收藏失败</p>
-            <button
-              onClick={() => router.push('/')}
-              className="btn-primary"
-            >
-              返回首页
-            </button>
+            <button onClick={() => router.push('/')} className="btn-primary">返回首页</button>
           </div>
         </div>
       </main>
@@ -53,71 +63,66 @@ export default function FavoritesPage() {
   }
 
   return (
-    <main className="min-h-screen py-6 md:py-8 px-3 md:px-4">
+    <main className="min-h-screen py-6 md:py-8 px-4 md:px-6 cloud-bg">
       <div className="max-w-4xl mx-auto">
-        <button
-          onClick={() => router.push('/')}
-          className="flex items-center gap-2 text-teal hover:text-crimson mb-4 md:mb-6 transition-all duration-300 text-sm md:text-base hover-lift animate-fadeInUp"
-        >
-          ← 返回首页
-        </button>
+        <Navigation showBackButton={true} showHistory={true} showFavorites={true} />
 
-        <div className="flex justify-between items-center mb-6 md:mb-8 animate-fadeInUp" style={{ animationDelay: '0.1s' }}>
-          <h1 className="font-serif text-2xl md:text-3xl text-ink animate-slideInLeft">❤️ 我的收藏</h1>
-          <button
-            onClick={() => router.push('/history')}
-            className="text-teal hover:text-crimson transition-all duration-300 text-sm md:text-base hover-lift animate-slideInRight"
-          >
-            📜 历史记录
-          </button>
+        {/* 标题 */}
+        <div className="text-center mb-6 md:mb-8 animate-fade-in-up">
+          <h1 className="font-serif text-2xl md:text-3xl text-ink ink-calligraphy">我的收藏</h1>
+          <div className="flex items-center justify-center gap-4 mt-3">
+            <div className="brush-divider max-w-[60px] flex-1" />
+            <span className="text-paper-edge/40 text-xs tracking-[0.5em] font-serif">珍藏</span>
+            <div className="brush-divider max-w-[60px] flex-1" />
+          </div>
         </div>
 
         {favorites.length === 0 ? (
-          <div className="card text-center py-12 animate-fadeInUp hover-glow">
-            <p className="text-2xl mb-4 animate-pulse-slow">📭</p>
-            <p className="text-teal text-sm md:text-base">还没有收藏的名字</p>
+          <div className="consultation-sheet text-center py-16 animate-fade-in-up corner-decor">
+            <div className="flex justify-center mb-4">
+              <IconHeart size={48} className="text-paper-edge/40" />
+            </div>
+            <p className="text-jade text-sm tracking-wider">尚未收藏名字</p>
+            <p className="text-ink-light/40 text-xs mt-2">在结果页点击心形即可收藏</p>
             <button
               onClick={() => router.push('/')}
-              className="mt-4 px-4 py-2 bg-crimson text-white rounded-lg hover:bg-crimson/90 transition-all duration-300 text-sm md:text-base hover-glow animate-pulse-slow"
+              className="mt-6 btn-primary"
             >
               去生成名字
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
             {favorites.map((fav, index) => (
               <div
                 key={fav.id || index}
-                className="card animate-fadeInUp hover-lift hover-glow"
+                className="card animate-fade-in-up group"
                 style={{ animationDelay: `${index * 0.05}s` }}
               >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-serif text-xl md:text-2xl text-ink transition-all duration-200 hover:text-crimson">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-serif text-xl text-ink truncate">
                       {fav.surname}{fav.given_name}
                     </p>
-                    <p className="text-xs md:text-sm text-teal">{fav.pinyin}</p>
-                    <div className="flex gap-2 mt-2">
-                      <span className="text-xs px-2 py-0.5 bg-warm-white text-teal rounded hover:bg-warm-white/80 transition-colors duration-200">
-                        {fav.gender === 'male' ? '男' : '女'}
-                      </span>
-                      <span className="text-xs px-2 py-0.5 bg-gold/20 text-gold rounded hover:bg-gold/30 transition-colors duration-200">
-                        {fav.score}分
-                      </span>
-                    </div>
+                    <p className="text-xs text-jade/70 mt-0.5">{fav.pinyin}</p>
                   </div>
                   <button
                     onClick={() => fav.id && handleDelete(fav.id)}
                     disabled={deletingId === fav.id}
-                    className="text-teal hover:text-crimson transition-all duration-300 p-2 hover:scale-110 hover:bg-crimson/10 rounded-full"
-                    title="删除"
+                    className="p-1.5 rounded-full text-ink-light/30 hover:text-crimson transition-all hover:scale-110 opacity-0 group-hover:opacity-100"
+                    title="删除收藏"
                   >
-                    {deletingId === fav.id ? (
-                      <span className="text-xs animate-pulse">...</span>
-                    ) : (
-                      '🗑️'
-                    )}
+                    <IconTrash size={16} />
                   </button>
+                </div>
+
+                <div className="flex items-center gap-2 mt-3">
+                  <span className="text-xs px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">
+                    {fav.gender === 'male' ? '男' : '女'}
+                  </span>
+                  <span className="text-xs px-2 py-0.5 bg-gold/10 text-gold-dark rounded-full font-medium">
+                    {typeof fav.score === 'number' ? fav.score.toFixed(1) : fav.score}分
+                  </span>
                 </div>
               </div>
             ))}

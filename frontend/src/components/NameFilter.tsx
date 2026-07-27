@@ -57,16 +57,18 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
     <div className="card mb-4 md:mb-6">
       <div className="flex items-center justify-between">
         <h3 className="font-serif text-lg md:text-xl text-ink">
-          🔍 名字筛选
+          名字筛选
           {hasActiveFilters && (
-            <span className="ml-2 text-sm text-teal">
+            <span className="ml-2 text-sm text-jade">
               ({filteredCount}/{totalNames})
             </span>
           )}
         </h3>
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="text-teal hover:text-crimson transition-colors text-sm"
+          className="text-jade hover:text-crimson transition-colors text-sm"
+          aria-label={isExpanded ? '收起筛选面板' : '展开筛选面板'}
+          aria-expanded={isExpanded}
         >
           {isExpanded ? '收起' : '展开'}
         </button>
@@ -75,7 +77,7 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
       {isExpanded && (
         <div className="mt-4 space-y-4">
           <div>
-            <label className="block text-sm text-teal mb-2">性别</label>
+            <label className="block text-sm text-jade mb-2">性别</label>
             <div className="flex gap-3">
               <button
                 onClick={() => handleGenderChange(filters.gender === 'male' ? undefined : 'male')}
@@ -84,6 +86,8 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
                     ? 'bg-blue-500 text-white'
                     : 'bg-warm-white text-ink hover:bg-warm-white/80'
                 }`}
+                aria-label={`筛选男性名字${filters.gender === 'male' ? '（已选中）' : ''}`}
+                aria-pressed={filters.gender === 'male'}
               >
                 男
               </button>
@@ -94,6 +98,8 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
                     ? 'bg-pink-500 text-white'
                     : 'bg-warm-white text-ink hover:bg-warm-white/80'
                 }`}
+                aria-label={`筛选女性名字${filters.gender === 'female' ? '（已选中）' : ''}`}
+                aria-pressed={filters.gender === 'female'}
               >
                 女
               </button>
@@ -101,7 +107,7 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
           </div>
 
           <div>
-            <label className="block text-sm text-teal mb-2">五行</label>
+            <label className="block text-sm text-jade mb-2">五行</label>
             <div className="flex flex-wrap gap-2">
               {wuxingOptions.map((option) => (
                 <button
@@ -112,6 +118,8 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
                       ? 'bg-crimson text-white'
                       : 'bg-warm-white text-ink hover:bg-warm-white/80'
                   }`}
+                  aria-label={`筛选${option.label}五行名字${filters.wuxing === option.value ? '（已选中）' : ''}`}
+                  aria-pressed={filters.wuxing === option.value}
                 >
                   {option.label}
                 </button>
@@ -120,7 +128,7 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
           </div>
 
           <div>
-            <label className="block text-sm text-teal mb-2">笔画数</label>
+            <label className="block text-sm text-jade mb-2">笔画数</label>
             <div className="flex items-center gap-3">
               <input
                 type="number"
@@ -132,9 +140,10 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
                   handleStrokeChange(value, filters.maxStrokes);
                 }}
                 placeholder="最小"
+                aria-label="最小笔画数"
                 className="w-20 px-3 py-2 border border-warm-white rounded-lg focus:outline-none focus:ring-2 focus:ring-crimson text-ink bg-white"
               />
-              <span className="text-teal">-</span>
+              <span className="text-jade" aria-hidden="true">-</span>
               <input
                 type="number"
                 min="1"
@@ -145,6 +154,7 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
                   handleStrokeChange(filters.minStrokes, value);
                 }}
                 placeholder="最大"
+                aria-label="最大笔画数"
                 className="w-20 px-3 py-2 border border-warm-white rounded-lg focus:outline-none focus:ring-2 focus:ring-crimson text-ink bg-white"
               />
             </div>
@@ -154,7 +164,8 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
             <div className="pt-2 border-t border-warm-white">
               <button
                 onClick={resetFilters}
-                className="text-sm text-teal hover:text-crimson transition-colors"
+                className="text-sm text-jade hover:text-crimson transition-colors"
+                aria-label="清除所有筛选条件"
               >
                 清除所有筛选
               </button>

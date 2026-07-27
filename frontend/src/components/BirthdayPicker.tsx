@@ -4,7 +4,6 @@ import { useState } from 'react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { zhCN } from 'date-fns/locale';
-import { formatLunarDate, formatSolarDate } from '@/lib/lunarUtils';
 
 interface BirthdayPickerProps {
   onConfirm: (data: {
@@ -18,10 +17,18 @@ interface BirthdayPickerProps {
   initialDisplay?: string;
 }
 
+function formatDate(date: Date): string {
+  const y = date.getFullYear();
+  const M = (date.getMonth() + 1).toString().padStart(2, '0');
+  const d = date.getDate().toString().padStart(2, '0');
+  const h = date.getHours().toString().padStart(2, '0');
+  const m = date.getMinutes().toString().padStart(2, '0');
+  return `${y}-${M}-${d} ${h}:${m}`;
+}
+
 export function BirthdayPicker({ onConfirm, initialDisplay = '请选择出生时间' }: BirthdayPickerProps) {
   const [showModal, setShowModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [calendarType, setCalendarType] = useState<'solar' | 'lunar'>('solar');
   const [display, setDisplay] = useState<string>(initialDisplay);
 
   const openPicker = () => setShowModal(true);
@@ -35,13 +42,9 @@ export function BirthdayPicker({ onConfirm, initialDisplay = '请选择出生时
         birthDay: selectedDate.getDate(),
         birthHour: selectedDate.getHours(),
         birthMinute: selectedDate.getMinutes(),
-        birthType: calendarType
+        birthType: 'solar'
       });
-      if (calendarType === 'solar') {
-        setDisplay(formatSolarDate(selectedDate));
-      } else {
-        setDisplay(formatLunarDate(selectedDate));
-      }
+      setDisplay(formatDate(selectedDate));
     }
     closePicker();
   };
@@ -51,42 +54,21 @@ export function BirthdayPicker({ onConfirm, initialDisplay = '请选择出生时
       <button
         type="button"
         onClick={openPicker}
-        className="flex-1 max-w-md px-4 py-2 border border-stone-300 bg-white text-left text-red-600 hover:border-red-500 transition-colors"
+        className="input-field flex-1 max-w-md text-left cursor-pointer"
       >
         {display}
       </button>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg w-full max-w-md mx-4 overflow-hidden">
-            <div className="text-center py-4 border-b border-stone-200">
-              <span className="text-lg font-medium text-stone-800">选择出生时间</span>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-warm-white-light rounded-xl w-full max-w-md mx-4 overflow-hidden shadow-xl border border-paper">
+            <div className="text-center py-4 border-b border-paper">
+              <span className="text-lg font-serif text-ink">选择出生时间</span>
             </div>
 
             <div className="p-6">
-              <div className="text-center text-lg font-medium mb-4">
-                {calendarType === 'solar' ? (
-                  <span>公历:{selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月{selectedDate.getDate()}日 {selectedDate.getHours()}时{selectedDate.getMinutes()}分</span>
-                ) : (
-                  <span>{formatLunarDate(selectedDate)}</span>
-                )}
-              </div>
-
-              <div className="flex mb-6">
-                <button
-                  onClick={() => setCalendarType('solar')}
-                  className={`flex-1 py-2 text-center font-medium ${calendarType === 'solar' ? 'bg-red-700 text-white' : 'bg-white text-red-700 border border-red-700'}`}
-                  style={{ borderTopLeftRadius: '4px', borderBottomLeftRadius: '4px' }}
-                >
-                  公历
-                </button>
-                <button
-                  onClick={() => setCalendarType('lunar')}
-                  className={`flex-1 py-2 text-center font-medium ${calendarType === 'lunar' ? 'bg-red-700 text-white' : 'bg-white text-red-700 border border-red-700'}`}
-                  style={{ borderTopRightRadius: '4px', borderBottomRightRadius: '4px', borderLeft: 'none' }}
-                >
-                  农历
-                </button>
+              <div className="text-center text-lg font-serif text-ink mb-4">
+                {selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月{selectedDate.getDate()}日 {selectedDate.getHours()}时{selectedDate.getMinutes()}分
               </div>
 
               <div className="mb-6">
@@ -97,21 +79,22 @@ export function BirthdayPicker({ onConfirm, initialDisplay = '请选择出生时
                   timeFormat="HH:mm"
                   timeIntervals={15}
                   dateFormat="yyyy-MM-dd HH:mm"
-                  className="w-full p-3 border border-stone-300 rounded-lg"
+                  className="input-field"
                   locale={zhCN}
+                  inline
                 />
               </div>
 
               <div className="flex justify-center gap-4">
                 <button
                   onClick={closePicker}
-                  className="px-6 py-2 border border-stone-300 rounded-lg text-stone-700 hover:bg-stone-50 transition-colors"
+                  className="px-6 py-2 rounded-lg border border-paper text-ink-light hover:bg-paper/50 transition-colors text-sm"
                 >
                   取消
                 </button>
                 <button
                   onClick={confirm}
-                  className="px-6 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 transition-colors"
+                  className="px-6 py-2 bg-crimson text-white rounded-lg hover:bg-crimson-light transition-colors text-sm"
                 >
                   确定
                 </button>

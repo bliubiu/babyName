@@ -23,7 +23,7 @@ const NavButton = forwardRef<HTMLButtonElement, NavButtonProps>(function NavButt
       ref={ref}
       onClick={onClick}
       className={cn(
-        'text-teal hover:text-crimson transition-all duration-300',
+        'text-jade hover:text-crimson transition-all duration-300',
         'px-2 py-1 rounded-md hover:bg-crimson/10 hover-lift',
         'text-sm md:text-base flex items-center gap-1',
         isActive && 'text-crimson bg-crimson/10',

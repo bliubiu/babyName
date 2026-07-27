@@ -56,7 +56,7 @@ export class ErrorBoundary extends Component<Props, State> {
             >
               刷新页面
             </button>
-            <p className="text-xs text-teal mt-4">
+            <p className="text-xs text-jade mt-4">
               错误信息: {error?.message}
             </p>
           </div>

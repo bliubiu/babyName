@@ -1,7 +1,15 @@
 export interface ZodiacInfo {
-  animal: string;
-  // Add other zodiac properties as needed based on actual API response
-  [key: string]: any;
+  id: number;
+  name: string;
+  wuxing: string;
+  compatible: string[];
+  conflicting: string[];
+  avoid_chars: string;
+  lucky_number: number[];
+  lucky_color: string;
+  lucky_direction: string;
+  good_pianpang: string;
+  bad_pianpang: string;
 }
 
 export interface ZodiacsResponse {

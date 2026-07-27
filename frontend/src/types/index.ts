@@ -13,6 +13,18 @@ export interface GenerateRequest {
   birth_type?: 'solar' | 'lunar';
   preferences?: string[];
   name_length?: number;
+  source_classic?: string;
+  // 筛选条件
+  exclude_rare?: boolean;
+  wuxing_match?: string[];
+  min_strokes?: number;
+  max_strokes?: number;
+  include_poetry?: boolean;
+  include_classic?: boolean;
+  meaning_keywords?: string[];
+  pinyin_initial?: string;
+  // 避讳长辈姓名列表（父系/母系直系长辈，建议往上两代）
+  avoid_elder_names?: string[];
 }
 
 export interface Bazi {
@@ -57,19 +69,22 @@ export interface Hexagram {
   interpretation: string;
 }
 
-export interface Name {
-  id?: number;
+export interface NameBase {
   surname: string;
-  generation?: string;
   given_name: string;
-  full_name?: string;
   pinyin: string;
+  gender: 'male' | 'female';
+  score: number;
+}
+
+export interface Name extends NameBase {
+  id?: number;
+  generation?: string;
+  full_name?: string;
   meaning: string;
   wuxing: string;
   nayin?: string;
   strokes: number;
-  gender: 'male' | 'female';
-  score: number;
   bazi_score?: number;
   huangli?: string;
   xiang?: string;
@@ -80,6 +95,15 @@ export interface Name {
   poetry_source?: string;
   poetry_chapter?: string;
   poetry_sentence?: string;
+  // 统一评分体系：7 维评分
+  total_score?: number;     // 综合总分（0-100）
+  wuxing_score?: number;    // 五行匹配分
+  yinyun_score?: number;    // 音韵律动分
+  meaning_score?: number;   // 字义内涵分
+  sancai_score?: number;    // 三才五格分
+  zodiac_score?: number;    // 生肖适配分
+  nayin_score?: number;     // 纳音评分
+  sancai_analysis?: string; // 三才分析描述
 }
 
 export interface GenerateResponse {
@@ -90,7 +114,10 @@ export interface GenerateResponse {
     nayin: string;
     zodiac: string;
     hexagram: Hexagram;
+    hexagram_match?: Record<string, unknown>;
+    ziwei?: Record<string, unknown>;
     names: Name[];
+    suggestions?: string[];
   };
 }
 
@@ -106,14 +133,11 @@ export interface HistoryRecord {
   created_at: string;
 }
 
-export interface FavoriteData {
+export interface FavoriteData extends NameBase {
   id?: string;
-  surname: string;
-  given_name: string;
-  pinyin: string;
-  gender: 'male' | 'female';
-  score: number;
   created_at?: string;
+  source?: string;
+  notes?: string;
 }
 
 export interface FormData {
@@ -131,12 +155,35 @@ export interface FormData {
   birthType: 'solar' | 'lunar';
   preferences: string[];
   nameLength: number;
+  sourceClassic: string;
+  // 避讳长辈姓名（逗号分隔的字符串，提交时转为数组）
+  avoidElderNames: string;
 }
 
-export interface APIResponse<T = any> {
+export interface APIResponse<T = unknown> {
   success: boolean;
   message?: string;
   data?: T;
+}
+
+// 偏旁选字类型
+export interface StandardCharGroup {
+  radical: string;
+  name: string;
+  meaning: string;
+  chars: string[];
+}
+
+export interface CuratedName {
+  name: string;
+  pinyin: string;
+  gender: string;
+  source: string;
+  meaning: string;
+  wuxing: string;
+  yinyun_score: number;
+  styles?: string[];
+  tags?: string[];
 }
 
 export interface NameStat {

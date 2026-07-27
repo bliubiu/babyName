@@ -1,53 +1,76 @@
 'use client';
 
 interface PreferenceSelectorProps {
-  preferences: string[];
-  onToggle: (preference: string) => void;
   keywords: string;
   onKeywordsChange: (keywords: string) => void;
+  sourceClassic: string;
+  onSourceClassicChange: (source: string) => void;
 }
 
-const preferenceOptions = [
-  { id: 'poetry', emoji: '📜', label: '诗词起名', color: 'text-red-500' },
-  { id: 'sound', emoji: '🔊', label: '音形义起名', color: 'text-purple-500' },
-  { id: 'zodiac', emoji: '🐲', label: '生肖起名', color: 'text-green-500' },
-  { id: 'data', emoji: '📊', label: '大数据起名', color: 'text-blue-500' },
-  { id: 'expectation', emoji: '✨', label: '期望起名', color: 'text-yellow-500' },
-  { id: 'plant', emoji: '🌸', label: '花草起名', color: 'text-pink-500' },
+const classicOptions = [
+  { id: '诗经', label: '诗经' },
+  { id: '楚辞', label: '楚辞' },
+  { id: '唐诗宋词', label: '唐诗宋词' },
+  { id: '古文观止', label: '古文观止' },
+  { id: '论语', label: '论语' },
+  { id: '孟子', label: '孟子' },
+  { id: '三字经', label: '三字经' },
+  { id: '千字文', label: '千字文' },
+  { id: '声律启蒙', label: '声律启蒙' },
 ];
 
-export function PreferenceSelector({ preferences, onToggle, keywords, onKeywordsChange }: PreferenceSelectorProps) {
+export function PreferenceSelector({
+  keywords, onKeywordsChange,
+  sourceClassic, onSourceClassicChange,
+}: PreferenceSelectorProps) {
   return (
-    <div className="pt-6 border-t border-stone-300">
-      <h3 className="text-lg font-medium text-stone-700 mb-4">偏好选择</h3>
+    <div className="pt-6 border-t border-paper space-y-6">
 
-      <div className="flex flex-wrap gap-2 sm:gap-3 mb-4">
-        {preferenceOptions.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            onClick={() => onToggle(option.id)}
-            className={`preference-tag px-3 sm:px-4 py-2 rounded-full border-2 border-amber-200 bg-amber-50 text-stone-700 hover:border-amber-400 transition-colors flex items-center gap-2 text-sm sm:text-base ${
-              preferences.includes(option.id) ? 'active' : ''
-            }`}
-          >
-            <span className={option.color}>{option.emoji}</span> {option.label}
-          </button>
-        ))}
-      </div>
+      {/* ---- 经典来源 ---- */}
+      <section>
+        <h3 className="form-label mb-1">经典来源</h3>
+        <p className="text-xs text-ink-light/50 mb-3">选择特定经典文本作为起名来源（可不选，默认综合所有经典）</p>
+        <div className="flex flex-wrap gap-2">
+          {classicOptions.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => onSourceClassicChange(sourceClassic === option.id ? '' : option.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                sourceClassic === option.id
+                  ? 'bg-crimson text-white shadow-sm'
+                  : 'bg-paper text-ink-light hover:bg-crimson/10 hover:text-crimson border border-paper-edge/30'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        {sourceClassic && (
+          <p className="text-xs text-jade mt-2">
+            当前已选择：<span className="font-semibold">{sourceClassic}</span>
+            ，起名将优先从此来源选字
+          </p>
+        )}
+      </section>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-        <label className="flex-shrink-0 text-stone-600 text-sm flex items-center gap-1">
-          <span className="text-yellow-500">🌙</span> 个性补充 (诗词/花草关键词):
-        </label>
-        <input
-          type="text"
-          className="flex-1 px-4 py-2 rounded-full border border-stone-300 bg-white focus:outline-none focus:border-amber-500 text-sm"
-          placeholder="如: 清莲, 明德, 鹤影, 竹韵, 静秋"
-          value={keywords}
-          onChange={(e) => onKeywordsChange(e.target.value)}
-        />
-      </div>
+      {/* ---- 个性补充 ---- */}
+      <section>
+        <h3 className="form-label mb-3">个性补充</h3>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+          <label className="flex-shrink-0 text-ink-light text-sm">
+            寓意关键词：
+          </label>
+          <input
+            type="text"
+            className="input-field flex-1 max-w-md"
+            placeholder="输入关键词，如：清莲、竹韵、明德、鹤影"
+            value={keywords}
+            onChange={(e) => onKeywordsChange(e.target.value)}
+          />
+        </div>
+      </section>
+
     </div>
   );
 }

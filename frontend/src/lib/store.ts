@@ -2,46 +2,22 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { HistoryRecord, Name } from '@/types';
-import { FavoriteData } from './api';
+import { Name, GenerateResponse, FormData } from '@/types';
 
-interface FormData {
-  surname: string;
-  gender: 'male' | 'female';
-  birthYear: number;
-  birthMonth: number;
-  birthDay: number;
-  birthHour: number;
-  birthMinute: number;
-  birthLocation: string;
-  generation: string;
-  generationPosition: 'middle' | 'end';
-  nameType: 'double' | 'single';
-  birthType: 'solar' | 'lunar';
-  preferences: string[];
-  nameLength: number;
-}
+type GenerateResult = GenerateResponse['data'];
 
 interface NameStore {
   formData: FormData;
-  generateResult: any | null;
+  generateResult: GenerateResult | null;
   compareResult: Name[] | null;
-  history: HistoryRecord[];
-  favorites: FavoriteData[];
   isLoading: boolean;
   error: string | null;
   _hasHydrated: boolean;
 
   setFormData: (data: Partial<FormData>) => void;
   resetFormData: () => void;
-  setGenerateResult: (result: any | null) => void;
+  setGenerateResult: (result: GenerateResult | null) => void;
   setCompareResult: (result: Name[] | null) => void;
-  setHistory: (history: HistoryRecord[]) => void;
-  addHistory: (record: HistoryRecord) => void;
-  removeHistory: (id: string) => void;
-  setFavorites: (favorites: FavoriteData[]) => void;
-  addFavorite: (favorite: FavoriteData) => void;
-  removeFavorite: (id: string) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setHasHydrated: (state: boolean) => void;
@@ -62,6 +38,8 @@ const initialFormData: FormData = {
   birthType: 'solar',
   preferences: [],
   nameLength: 2,
+  sourceClassic: '',
+  avoidElderNames: '',
 };
 
 const createMyStore = () => {
@@ -71,8 +49,6 @@ const createMyStore = () => {
         formData: initialFormData,
         generateResult: null,
         compareResult: null,
-        history: [],
-        favorites: [],
         isLoading: false,
         error: null,
         _hasHydrated: false,
@@ -87,26 +63,6 @@ const createMyStore = () => {
 
         setCompareResult: (result) => set({ compareResult: result }),
 
-        setHistory: (history) => set({ history }),
-
-        addHistory: (record) => set((state) => ({
-          history: [record, ...state.history]
-        })),
-
-        removeHistory: (id) => set((state) => ({
-          history: state.history.filter((item) => item.id !== id)
-        })),
-
-        setFavorites: (favorites) => set({ favorites }),
-
-        addFavorite: (favorite) => set((state) => ({
-          favorites: [...state.favorites, favorite]
-        })),
-
-        removeFavorite: (id) => set((state) => ({
-          favorites: state.favorites.filter((item) => item.id !== id)
-        })),
-
         setLoading: (loading) => set({ isLoading: loading }),
 
         setError: (error) => set({ error }),
@@ -114,7 +70,7 @@ const createMyStore = () => {
         setHasHydrated: (state) => set({ _hasHydrated: state }),
       }),
       {
-        name: 'namemaster-storage',
+        name: 'namer-storage',
         storage: createJSONStorage(() => {
           if (typeof window === 'undefined') {
             return {
@@ -127,9 +83,9 @@ const createMyStore = () => {
         }),
         partialize: (state) => ({
           formData: state.formData,
-          favorites: state.favorites,
-          history: state.history,
+          // 不持久化 generateResult 和 compareResult（大数据对象可能超出 localStorage 配额）
         }),
+        version: 1,
         onRehydrateStorage: () => (state) => {
           state?.setHasHydrated(true);
         },

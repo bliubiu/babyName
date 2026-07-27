@@ -1,44 +1,47 @@
 {
-  "name": "namemaster-frontend",
+  "name": "namer-frontend",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint . --ext .ts,.tsx",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.95.2",
-    "@types/react-datepicker": "^6.2.0",
-    "chinese-lunar-calendar": "^1.0.1",
     "clsx": "^2.1.1",
-    "critters": "^0.0.23",
     "date-fns": "^4.1.0",
     "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.14.0",
-    "next": "14.2.3",
-    "react": "18.3.1",
+    "next": "16.2.6",
+    "react": "^19.2.7",
     "react-datepicker": "^9.1.0",
-    "react-dom": "18.3.1",
-    "swr": "^2.4.1",
+    "react-dom": "^19.2.7",
     "tailwind-merge": "^3.5.0",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "20.12.12",
-    "@types/react": "18.3.2",
-    "@types/react-dom": "18.3.0",
-    "@typescript-eslint/eslint-plugin": "^8.57.1",
-    "@typescript-eslint/parser": "^8.57.1",
+    "@types/react": "^19.1.2",
+    "@types/react-datepicker": "^6.2.0",
+    "@types/react-dom": "^19.1.2",
+    "@typescript-eslint/eslint-plugin": "^8.65.0",
+    "@typescript-eslint/parser": "^8.65.0",
     "autoprefixer": "10.4.19",
+    "critters": "^0.0.23",
     "eslint": "^9.39.4",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "next-pwa": "^5.6.0",
+    "happy-dom": "^20.10.3",
     "postcss": "8.4.38",
     "prettier": "^3.8.1",
     "tailwindcss": "3.4.3",
-    "typescript": "5.4.5"
+    "typescript": "6.0.3",
+    "vitest": "^4.1.8"
   }
 }
