@@ -1,6 +1,6 @@
 # API接口文档
 
-> 宝宝起名大师 - 后端API接口定义
+> 起名 - 后端API接口定义
 
 **Base URL:** 
 - 开发环境：`/api` (相对路径，自动适配当前页面端口)
@@ -669,6 +669,180 @@ const getApiBaseUrl = (): string => {
 
 ---
 
+## 10. 名字反馈
+
+### 保存名字反馈
+
+**POST** `/api/v1/feedback`
+
+保存用户对生成名字的反馈（喜欢/不喜欢）
+
+**请求参数：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| given_name | string | 是 | 名字 |
+| surname | string | 否 | 姓氏 |
+| feedback | string | 否 | 反馈内容（positive/negative） |
+| score | number | 否 | 用户评分 |
+
+**响应：**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1
+  }
+}
+```
+
+### 记录名字生成请求
+
+**POST** `/api/v1/feedback/request`
+
+记录用户的名字生成请求，用于算法性能分析
+
+**请求参数：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| surname | string | 是 | 姓氏 |
+| gender | string | 否 | 性别 |
+| name_count | int | 否 | 生成数量 |
+
+**响应：**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1
+  }
+}
+```
+
+### 获取算法性能统计
+
+**GET** `/api/v1/feedback/algorithm-performance`
+
+获取名字生成算法的性能统计数据
+
+**响应：**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "algorithm": "enhanced_generator",
+      "avg_duration_ms": 45.2,
+      "total_calls": 1280,
+      "success_rate": 0.98
+    }
+  ]
+}
+```
+
+---
+
+## 11. 健康检查
+
+### 服务健康检查
+
+**GET** `/healthz`
+
+检查服务是否正常运行
+
+**响应：**
+```json
+{
+  "status": "ok",
+  "timestamp": 1715856000
+}
+```
+
+### 服务就绪检查
+
+**GET** `/readyz`
+
+检查服务是否就绪（含数据库连接检查）
+
+**响应：**
+```json
+// 正常
+{
+  "status": "ready",
+  "db": "connected"
+}
+
+// 异常
+{
+  "status": "not ready",
+  "db": "disconnected"
+}
+```
+
+---
+
+## 12. 名字生成（含详细分析）
+
+### 生成带详细分析的名字
+
+**POST** `/api/v1/names/generate/analysis`
+
+与 `/api/v1/names/generate` 类似，但返回的结果中每个名字包含更详细的分析数据
+
+**请求参数：**
+
+与名字生成接口相同
+
+**响应示例：**
+```json
+{
+  "success": true,
+  "data": {
+    "bazi": {
+      "bazi": { ... },
+      "wuxing": { ... },
+      "xiyongshen": ["水", "金"],
+      "rishou": "戊",
+      "rishou_wuxing": "土",
+      "nayin": "海中金",
+      "day_master": "土"
+    },
+    "nayin": "海中金",
+    "zodiac": "兔",
+    "hexagram": { ... },
+    "ziwei": { ... },
+    "names": [
+      {
+        "id": 1,
+        "surname": "王",
+        "given_name": "磊",
+        "pinyin": "lěi",
+        "meaning": "光明磊落",
+        "wuxing": "土",
+        "strokes": 15,
+        "gender": "male",
+        "score": 92.5,
+        "bazi_score": 28,
+        "wuxing_analysis": "土旺，与日主五行相符",
+        "bazi_score_detail": "八字匹配度: 28/30",
+        "yinyun": "仄平，响亮有力",
+        "reasons": ["五行匹配", "寓意美好", "音韵和谐"],
+        "poetry_source": "《诗经》",
+        "poetry_chapter": "《大雅·文王》",
+        "poetry_sentence": "王之荩臣，无念尔祖"
+      }
+    ],
+    "suggestions": [
+      "建议优先选择五行属金的字以补充喜用神",
+      "避免使用五行属火的字"
+    ]
+  }
+}
+```
+
+---
+
 ## 错误响应
 
 所有接口的错误响应格式：
@@ -686,15 +860,21 @@ const getApiBaseUrl = (): string => {
 |--------|------|
 | 200 | 成功 |
 | 400 | 请求参数错误 |
+| 401 | 未授权 |
+| 403 | 无权限 |
 | 404 | 资源不存在 |
+| 408 | 请求超时 |
+| 429 | 请求过于频繁（限流） |
 | 500 | 服务器内部错误 |
+| 504 | 网关超时 |
 
 ---
 
 ## 速率限制
 
-- 每个IP每分钟最多请求100次
+- 每个IP使用令牌桶算法限流，默认容量100个令牌，每秒生成10个令牌
 - 超出限制将返回429状态码
+- 可通过命令行参数 `-rate-capacity` 和 `-rate-rate` 调整
 
 ---
 

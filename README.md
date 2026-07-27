@@ -1,10 +1,10 @@
-# 🍼 宝宝起名大师 (NameMaster)
+# 🍼 起名 (Name)
 
 ***
 
 ## 📖 项目简介
 
-宝宝起名大师是一个免费的在线起名工具，旨在帮助新手父母为宝宝起一个寓意美好、符合中国传统玄学的名字。
+起名是一个免费的在线起名工具，旨在帮助新手父母为宝宝起一个寓意美好、符合中国传统玄学的名字。
 
 **核心功能：**
 
@@ -25,19 +25,21 @@
 
 ### 技术栈
 
-| 层级   | 技术                                 |
-| ---- | ---------------------------------- |
-| 前端   | Next.js 14 + React 18 + TypeScript |
-| 样式   | Tailwind CSS                       |
-| 状态管理 | Zustand                            |
-| 后端   | Go + Gin                           |
-| 存储   | 内存存储（默认）/ PostgreSQL（可选）           |
-| 架构   | DDD（领域驱动设计）                        |
+| 层级     | 技术                                     |
+| -------- | ---------------------------------------- |
+| 前端     | Next.js 14 + React 18 + TypeScript       |
+| 样式     | Tailwind CSS                             |
+| 状态管理 | Zustand                                  |
+| 图表库   | ECharts                                  |
+| 包管理器 | pnpm                                     |
+| 后端     | Go + Gin                                 |
+| 存储     | SQLite（默认）/ 内存环形缓存   冷热数据  |
+| 架构     | DDD（领域驱动设计）+ TDD（测试驱动开发） |
 
 ### 目录结构
 
 ```
-namemaster/
+name/
 ├── backend/                         # Go后端
 │   ├── cmd/server/
 │   │   └── main.go                 # 入口文件
@@ -53,9 +55,11 @@ namemaster/
 │   │   │   ├── namestat/          # 名字统计
 │   │   │   └── classics/           # 诗词典故
 │   │   └── infrastructure/          # 基础设施层
-│   │       └── database/memory/    # 内存存储
+│   │       └── database/
+│   │           ├── memory/          # 内存存储（默认）
+│   │           └── sqlite/          # SQLite 存储（推荐）
 │   ├── go.mod
-│   └── namemaster.exe              # 编译后的可执行文件
+│   └── namer.exe              # 编译后的可执行文件
 │
 ├── frontend/                        # Next.js前端
 │   ├── src/
@@ -93,12 +97,14 @@ namemaster/
 
 ### 方式一：直接运行EXE（推荐）
 
+运行单体二进制可执行文件启动所有服务。【单二进制，内嵌 Web 静态页面】
+
 ```bash
 # 进入后端目录
 cd backend
 
 # 运行服务（默认端口8080）
-.\namemaster.exe -mode all
+.\namer.exe -mode all
 
 # 访问 http://localhost:8080
 ```
@@ -106,27 +112,25 @@ cd backend
 **参数选项：**
 
 ```bash
--port 8080    # 指定端口（默认8080）
--host localhost  # 指定主机（默认localhost）
--mode all       # 运行模式：backend或all
+-port 8080        # 指定端口（默认8080）
+-host localhost   # 指定主机（默认localhost）
+-mode all         # 运行模式：backend 或 all
+-db memory        # 数据库类型：memory（默认，重启后数据丢失）
+-db sqlite        # 数据库类型：sqlite（推荐，数据持久化）
+-dsn name.db # SQLite 数据库文件路径（配合 -db sqlite 使用）
 ```
-
-**端口动态适配：**
-
-- 前端使用相对路径 `/api`，自动适配后端端口
-- 无需修改前端代码，支持任意端口配置
-- 详细说明请参考 [API相对路径与动态端口适配](./docs/08-API相对路径与动态端口适配.md)
 
 **示例：**
 
 ```bash
-# 使用端口8083
-.\namemaster.exe -mode all -port 8083
-# 访问 http://localhost:8083
+# 使用 SQLite 持久化存储（推荐）
+.\namer.exe -mode all -db sqlite -dsn name.db
 
-# 使用端口8084
-.\namemaster.exe -mode all -port 8084
-# 访问 http://localhost:8084
+# 使用端口8083
+.\namer.exe -mode all -port 8083
+
+# 使用端口8084 + SQLite
+.\namer.exe -mode all -db sqlite -port 8084
 ```
 
 ### 方式二：前后端分离
@@ -143,8 +147,8 @@ go run cmd/server/main.go
 
 ```bash
 cd frontend
-npm install
-npm run dev
+pnpm install
+pnpm dev
 # 前端运行在 http://localhost:3000
 ```
 
@@ -328,6 +332,69 @@ npm run dev
 
 ***
 
+## 🔨 构建与部署
+
+### 一键构建（推荐）
+
+```bash
+# 项目根目录执行
+.\scripts\build.ps1
+```
+
+此脚本会：
+1. 构建前端（`pnpm run build` + `pnpm run export`）
+2. 编译 Go 后端（单文件二进制）
+3. 导出前端静态文件 + 后端 EXE 到 `dist/` 目录
+
+### 手动构建
+
+**构建前端：**
+
+```bash
+cd frontend
+pnpm install
+pnpm run build
+```
+
+**编译后端：**
+
+```bash
+cd backend
+go build -o namer.exe ./cmd/server/
+```
+
+### 部署
+
+**单文件部署（推荐）：**
+
+```bash
+# 启动 SQLite 模式（数据持久化，重启不丢失）
+.\namer.exe -mode all -db sqlite -dsn name.db
+```
+
+所有数据（历史记录、收藏、名字反馈、汉字词库）持久化到 `name.db`。
+首次启动会自动创建 SQLite 数据库并导入汉字数据。
+
+**内存模式（开发测试）：**
+
+```bash
+.\namer.exe -mode all
+# 数据仅存于内存，重启后丢失
+```
+
+### 环境变量
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `SQLITE_PATH` | SQLite 文件路径 | `name.db` |
+| `HANZI_DATA_PATH` | 汉字数据 JSON 路径 | `hanzi_data.json` |
+| `FRONTEND_STATIC_PATH` | 前端静态文件目录 | `../frontend/out` |
+| `CACHE_TYPE` | 缓存类型 | 空（无缓存） |
+| `RATE_LIMIT_CAPACITY` | 限流容量 | 100 |
+| `RATE_LIMIT_RATE` | 限流速率 | 10 |
+
+***
+
 ## 🤝 贡献指南
 
 欢迎提交Issue和Pull Request！
@@ -340,6 +407,4 @@ npm run dev
 
 ***
 
-## 📄 许可证
 
-MIT License
