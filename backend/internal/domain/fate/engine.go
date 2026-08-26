@@ -3,7 +3,10 @@ package fate
 import (
 	"context"
 	"fmt"
+	"runtime"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"name/internal/domain/classics"
@@ -256,6 +259,19 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		return nil, fmt.Errorf("加载汉字数据失败: %w", err)
 	}
 
+	// 4. 合并外部注入的额外候选字（诗词/经典字库），去重
+	if len(input.Options.ExtraChars) > 0 {
+		existingChars := make(map[string]bool, len(allChars))
+		for _, c := range allChars {
+			existingChars[c.Char] = true
+		}
+		for _, c := range input.Options.ExtraChars {
+			if !existingChars[c.Char] {
+				allChars = append(allChars, c)
+			}
+		}
+	}
+
 	// 5. 对每个字符进行过滤（含负面反馈排除的字符）
 	// 仅在读取 excludedChars/excludedCombos 时短暂加锁，复制快照后立即释放，
 	// 避免长时间持锁阻塞 State()/Result()/Stop()/ExcludeChar() 等方法。
@@ -315,14 +331,86 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		if !allowSensitive && IsSensitiveChar(c.Char) {
 			continue
 		}
+		// 负面语义：硬禁用字（秽物/尸棺/淫猥/盗匪/暴虐/贬义等）直接剔除
+		// 软惩罚字（病/疾/哀/愁等）保留入池资格，由评分器重罚（支持"去病/弃疾"式祈福）
+		if IsHardNegativeChar(c.Char) || c.IsNegative {
+			continue
+		}
+		// 名字用字质量门禁：虚词/排行字/口语物名/数字量词/叹词等
+		// 在「组合级」由策展感知门禁处理（IsNonNamingCombo），此处不剔除，
+		// 以免误伤策展好名（如「与砺」「若兮」中的「与/兮」）。
+		// 单名场景（无策展单名）在单名循环内单独剔除。
 		if s.filter.CheckCharacter(c) {
 			validChars = append(validChars, c)
 		}
 	}
 
-	// 6. 生成名字候选
+	// 6. 喜用神五行收窄候选池（性能优化 + 方案B：含生助五行）
+	//
+	// 旧版（纯性能优化）：仅保留喜用神五行字 → 所有候选五行相同 → WuxingRater 恒分，无区分度。
+	// 方案B：收窄池扩展为「喜用神 + 生助喜用神」的五行集合。
+	//   例：喜用神=土、金 → 收窄池含土、金（喜用）+ 火（火生土）+ 土（土生金已含）→ 合计3种五行。
+	//   这样 WuxingRater 的间接生助梯度（生喜用+8 / 中性+3）才能真正区分候选。
+	//
+	// 收窄后若候选过少（<80），放弃收窄避免过度限制（降级保护）。
+	// 单名例外：候选池仅 ~1100 字，串行枚举足够快，无需性能收窄。
+	effectiveWuxing := s.filter.PreferredWuXing()
+	if input.Options.NameLength != 1 && len(effectiveWuxing) == 0 && len(fateData.WuXingXiji.XiYongShen) > 0 {
+		// 构建收窄集：喜用神 + 每个喜用神的"生我"元素（谁生我）
+		// 五行相生：木→火→土→金→水→木（wuXingShengMap[a]=b 表示 a 生 b）
+		// "生我"即反查：wuXingShengMap[x]==target → x 生 target
+		narrowSet := make(map[string]bool)
+		for _, wx := range fateData.WuXingXiji.XiYongShen {
+			narrowSet[wx] = true // 直接匹配喜用神
+		}
+		// 反查"谁生我"：遍历所有五行，找到生喜用神的元素
+		for _, wx := range fateData.WuXingXiji.XiYongShen {
+			for src, dst := range wuXingShengMap {
+				if dst == wx {
+					narrowSet[src] = true // src 生 wx（生助喜用神）
+				}
+			}
+		}
+
+		narrowed := make([]*Character, 0, len(validChars))
+		for _, c := range validChars {
+			if narrowSet[c.WuXing] {
+				narrowed = append(narrowed, c)
+			}
+		}
+		// 降级保护：收窄后候选过少时保留全量，避免结果单一或空
+		if len(narrowed) >= 80 {
+			validChars = narrowed
+		}
+	}
+
+	// 6. 预计算每个候选字的固定属性
+	// 避免双重循环内重复调用 GetCharacterStroke / firstPinyin / 诗词检索
+	type charInfo struct {
+		ch          *Character
+		stroke      int
+		pinyin      string
+		poetryFound bool
+		poetryDesc  string
+	}
+
+	infos := make([]charInfo, len(validChars))
+	for i, c := range validChars {
+		found, desc, _ := classics.FindPoetryByChars(c.Char)
+		infos[i] = charInfo{
+			ch:          c,
+			stroke:      s.filter.GetCharacterStroke(c),
+			pinyin:      firstPinyin(c.Pinyin),
+			poetryFound: found,
+			poetryDesc:  desc,
+		}
+	}
+
+	surnamePinyin := firstPinyinForSurname(input.Surname, s.engine.provider)
+
+	// 生成名字候选 */
 	table := NewExcellentTable()
-	totalCount := 0
+	var totalCount atomic.Int64
 
 	nameLen := input.Options.NameLength
 	if nameLen <= 0 {
@@ -334,117 +422,232 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	}
 
 	if nameLen == 1 {
-		// 单名：仅迭代第一个字
-		for _, c1 := range validChars {
+		// 单名：仅迭代第一个字（候选集小，串行足够快）
+		for i := range infos {
 			if cancelled(ctx) {
 				break
 			}
-			stroke1 := s.filter.GetCharacterStroke(c1)
-			if !s.filter.CheckStrokePair(stroke1, 0) {
+			a := infos[i]
+			if !s.filter.CheckStrokePair(a.stroke, 0) {
+				continue
+			}
+			// 名字用字质量门禁：单名若为门禁字（虚词/排行字/口语物名等）直接剔除。
+			// 策展库无单名，故单名门禁不会误伤策展推荐。
+			if IsNonNamingChar(a.ch.Char) {
 				continue
 			}
 
-			poetryFound, poetryDesc, _ := classics.FindPoetryByChars(c1.Char)
 			candidate := &NameCandidate{
-				Char1:      c1.Char,
-				Pinyin1:    firstPinyin(c1.Pinyin),
-				WuXing1:    c1.WuXing,
-				Stroke1:    stroke1,
+				Char1:      a.ch.Char,
+				Pinyin1:    a.pinyin,
+				WuXing1:    a.ch.WuXing,
+				Stroke1:    a.stroke,
 				WuXing2:    "",
 				Stroke2:    0,
-				HasPoetry:  poetryFound,
-				PoetryFrom: poetryDesc,
-				IsRegular:  c1.IsRegular,
-				SurnamePinyin: firstPinyinForSurname(input.Surname, s.engine.provider),
+				HasPoetry:  a.poetryFound,
+				PoetryFrom: a.poetryDesc,
+				IsRegular:  a.ch.IsRegular,
+				CommonLevel1: a.ch.CommonLevel,
+				NamePenalty1: a.ch.NamePenalty,
+				IsCurated1: a.ch.IsCurated,
+				PositiveScore1: a.ch.PositiveScore,
+				SurnamePinyin: surnamePinyin,
 			}
 			ns := RateName(candidate, fateData, s.raters)
 			entry := ExcellentEntry{
-				Char1:     c1.Char,
-				Score:     ns.Total,
-				Grade:     ns.Grade,
-				WuXing1:   c1.WuXing,
-				Stroke1:   candidate.Stroke1,
-				HasPoetry: poetryFound,
-				Items:     ns.Items,
+				Char1:      a.ch.Char,
+				Pinyin1:    a.pinyin,
+				Meaning1:   a.ch.Meaning,
+				Score:      ns.Total,
+				Grade:      ns.Grade,
+				WuXing1:    a.ch.WuXing,
+				Stroke1:    candidate.Stroke1,
+				HasPoetry:  a.poetryFound,
+				PoetryFrom: a.poetryDesc,
+				Items:      ns.Items,
 			}
 			table.TryPush(entry)
-			totalCount++
+			totalCount.Add(1)
 		}
+		table.Finalize()
 	} else {
-		// 双名：迭代 Char1 × Char2
-		for _, c1 := range validChars {
-			if cancelled(ctx) {
-				break
+		// 双名：迭代 Char1 × Char2（全量枚举，按外层 Char1 分片并行）
+		workers := runtime.NumCPU()
+		if workers < 1 {
+			workers = 1
+		}
+		if workers > len(infos) {
+			workers = len(infos)
+		}
+		if workers == 0 {
+			workers = 1
+		}
+
+		chunkSize := (len(infos) + workers - 1) / workers
+		localTables := make([]*ExcellentTable, workers)
+		var wg sync.WaitGroup
+
+		for w := 0; w < workers; w++ {
+			start := w * chunkSize
+			end := start + chunkSize
+			if end > len(infos) {
+				end = len(infos)
 			}
-			stroke1 := s.filter.GetCharacterStroke(c1)
-			if !s.filter.CheckStrokePair(stroke1, 0) {
+			if start >= end {
 				continue
 			}
 
-			for _, c2 := range validChars {
-				if cancelled(ctx) {
-					goto done
-				}
-				stroke2 := s.filter.GetCharacterStroke(c2)
-				if !s.filter.CheckStrokePair(stroke1, stroke2) {
-					continue
-				}
+			wg.Add(1)
+			go func(start, end, w int) {
+				defer wg.Done()
+				local := NewExcellentTable()
 
-				// 避免重复字（双名一般不用相同字）
-				if c1.Char == c2.Char {
-					continue
-				}
+				for i := start; i < end; i++ {
+					if cancelled(ctx) {
+						return
+					}
+					a := infos[i]
+					if !s.filter.CheckStrokePair(a.stroke, 0) {
+						continue
+					}
 
-				// 负面反馈：排除组合（使用快照，无需加锁）
-				if isComboExcluded(c1.Char, c2.Char) {
-					continue
-				}
+					for j := range infos {
+						if cancelled(ctx) {
+							return
+						}
+						b := infos[j]
+						if !s.filter.CheckStrokePair(a.stroke, b.stroke) {
+							continue
+						}
 
-				poetryFound, poetryDesc, _ := classics.FindPoetryByChars(c1.Char, c2.Char)
-				candidate := &NameCandidate{
-					Char1:      c1.Char,
-					Char2:      c2.Char,
-					Pinyin1:    firstPinyin(c1.Pinyin),
-					Pinyin2:    firstPinyin(c2.Pinyin),
-					WuXing1:    c1.WuXing,
-					WuXing2:    c2.WuXing,
-					Stroke1:    stroke1,
-					Stroke2:    stroke2,
-					Meaning1:   c1.Meaning,
-					Meaning2:   c2.Meaning,
-					Radical1:   c1.Radical,
-					Radical2:   c2.Radical,
-					HasPoetry:  poetryFound,
-					PoetryFrom: poetryDesc,
-					IsRegular:  c1.IsRegular && c2.IsRegular,
-					GenderHint: bestGenderHint(c1.GenderHint, c2.GenderHint),
-					// 姓氏拼音取自 input，用于音韵评分器检测跨字谐音
-					SurnamePinyin: firstPinyinForSurname(input.Surname, s.engine.provider),
-				}
+						// 避免重复字（双名一般不用相同字）
+						if a.ch.Char == b.ch.Char {
+							continue
+						}
 
-				ns := RateName(candidate, fateData, s.raters)
-				entry := ExcellentEntry{
-					Char1:     candidate.Char1,
-					Char2:     candidate.Char2,
-					Score:     ns.Total,
-					Grade:     ns.Grade,
-					WuXing1:   candidate.WuXing1,
-					WuXing2:   candidate.WuXing2,
-					Stroke1:   candidate.Stroke1,
-					Stroke2:   candidate.Stroke2,
-					HasPoetry: candidate.HasPoetry,
-					Items:     ns.Items,
+						// 负面反馈：排除组合（使用快照，无需加锁）
+						if isComboExcluded(a.ch.Char, b.ch.Char) {
+							continue
+						}
+
+						// 负面语义：组合禁忌（亲属称谓/物名/动词等，「父母」「蜂蜜」类直接剔除）
+						if IsBadCombo(a.ch.Char, b.ch.Char) {
+							continue
+						}
+
+						// 历史人物字/号专名：剔除「仲尼」「尼仲」「孔明」等与历史人物撞车组合
+						// （GetBigramScore 会因《论语》"仲尼曰"等典籍共现给高分，需在此拦截）
+						if IsHistoricalFigureCombo(a.ch.Char, b.ch.Char) {
+							continue
+						}
+
+						// 名字用字质量门禁（纯语义）：若任一位置为门禁字
+						// （虚词/排行字/口语物名/数字量词等），组合即无命名价值，
+						// 直接剔除——不复依赖策展库豁免。
+						// 策展库已降级为纯出典参考：其本身是历史人物名采集
+						// （混入仲尼/若兮/七政/与砺 等 962 条垃圾），不可作为质量基准。
+						if IsNonNamingChar(a.ch.Char) || IsNonNamingChar(b.ch.Char) {
+							continue
+						}
+
+						// 数据层搭配黑名单：策展标注的 PairBlacklist（如 瑾-艳/妍-艳/嫣-艳）
+						if hasPairBlacklist(a.ch, b.ch.Char) || hasPairBlacklist(b.ch, a.ch.Char) {
+							continue
+						}
+
+						poetryFound := a.poetryFound || b.poetryFound
+						poetryDesc := ""
+						if a.poetryFound {
+							poetryDesc = a.poetryDesc
+						} else if b.poetryFound {
+							poetryDesc = b.poetryDesc
+						}
+
+						candidate := &NameCandidate{
+							Char1:      a.ch.Char,
+							Char2:      b.ch.Char,
+							Pinyin1:    a.pinyin,
+							Pinyin2:    b.pinyin,
+							WuXing1:    a.ch.WuXing,
+							WuXing2:    b.ch.WuXing,
+							Stroke1:    a.stroke,
+							Stroke2:    b.stroke,
+							Meaning1:   a.ch.Meaning,
+							Meaning2:   b.ch.Meaning,
+							Radical1:   a.ch.Radical,
+							Radical2:   b.ch.Radical,
+							HasPoetry:  poetryFound,
+							PoetryFrom: poetryDesc,
+							IsRegular:  a.ch.IsRegular && b.ch.IsRegular,
+							CommonLevel1: a.ch.CommonLevel,
+							CommonLevel2: b.ch.CommonLevel,
+							GenderHint: bestGenderHint(a.ch.GenderHint, b.ch.GenderHint),
+							NamePenalty1: a.ch.NamePenalty,
+							NamePenalty2: b.ch.NamePenalty,
+							// 策展覆盖表标记：人工精选起名好字，供 WenHuaRater 文化加分（破荒谬字同分）
+							IsCurated1: a.ch.IsCurated,
+							IsCurated2: b.ch.IsCurated,
+							// 寓意评分：与 IsCurated 结合将策展加分收窄为「策展 ∩ positiveScore>=85」精选好字
+							PositiveScore1: a.ch.PositiveScore,
+							PositiveScore2: b.ch.PositiveScore,
+							// 姓氏拼音取自 input，用于音韵评分器检测跨字谐音
+							SurnamePinyin: surnamePinyin,
+						}
+
+						ns := RateName(candidate, fateData, s.raters)
+						entry := ExcellentEntry{
+							Char1:      candidate.Char1,
+							Char2:      candidate.Char2,
+							Pinyin1:    a.pinyin,
+							Pinyin2:    b.pinyin,
+							Meaning1:   a.ch.Meaning,
+							Meaning2:   b.ch.Meaning,
+							Score:      ns.Total,
+							Grade:      ns.Grade,
+							WuXing1:    candidate.WuXing1,
+							WuXing2:    candidate.WuXing2,
+							Stroke1:    candidate.Stroke1,
+							Stroke2:    candidate.Stroke2,
+							HasPoetry:  candidate.HasPoetry,
+							PoetryFrom: poetryDesc,
+							Items:      ns.Items,
+						}
+						local.TryPush(entry)
+						totalCount.Add(1)
+					}
 				}
-				table.TryPush(entry)
-				totalCount++
+				localTables[w] = local
+			}(start, end, w)
+		}
+
+		wg.Wait()
+
+		// 合并各分片的局部 Top-N 到主表（全局 Top-k 必落在某分片局部 Top-容量内）
+		table = NewExcellentTable()
+		for _, lt := range localTables {
+			if lt == nil {
+				continue
+			}
+			lt.Finalize()
+			for _, e := range lt.entries {
+				table.TryPush(e)
 			}
 		}
+		table.Finalize()
 	}
-done:
-	table.Finalize()
 
 	// 7. 构建 TopNames 输出（过滤禁止的国家机关单位名称）
-	topEntries := table.TopN(topCount)
+	// 五行多样性保底策略：取更多候选（Top10N），确保每种五行组合至少1个代表，
+	// 避免单一五行组合（如金金）垄断排名。未达多样性要求时退化为纯分数排序。
+	// 注意：ExcellentTable容量10000，远超Top10N（~1000），不会溢出。
+	poolSize := topCount * 10
+	if poolSize > table.Len() {
+		poolSize = table.Len()
+	}
+	topEntries := table.TopN(poolSize)
+	if poolSize > topCount {
+		topEntries = ensureWuxingDiversity(topEntries, topCount)
+	}
 	topNames := make([]NameResult, 0, len(topEntries))
 	rank := 0
 	for _, e := range topEntries {
@@ -471,9 +674,16 @@ done:
 			Surname:   input.Surname,
 			GivenName: givenName,
 			FullName:  fullName,
-			Pinyin:    "", // 拼音由 pinyin 字段组合，ExcellentEntry 不存储，后续由 provider 补充
+			// 拼音回填：ExcellentEntry 已携带预计算的候选字读音，
+			// 双名以空格组合，单名仅首字读音（TrimSpace 清理尾随空格）
+			Pinyin:    strings.TrimSpace(e.Pinyin1 + " " + e.Pinyin2),
+			// 释义回填：候选字释义组合为名字寓意描述，
+			// 单名仅首字释义，双名以「；」连接；超长释义按 rune 截断防撑爆响应
+			Meaning:   combineCharMeanings(e.Meaning1, e.Meaning2),
 			Strokes:   totalStrokes,
 			WuXing:    e.WuXing1 + e.WuXing2,
+			// 诗词出处回填：从 ExcellentEntry 透传
+			PoetryFrom: e.PoetryFrom,
 			Score: NameScore{
 				Total: e.Score,
 				Grade: e.Grade,
@@ -487,7 +697,7 @@ done:
 		FateData:       fateData,
 		TopNames:       topNames,
 		ExcellentTable: table,
-		TotalCount:     totalCount,
+		TotalCount:     int(totalCount.Load()),
 	}, nil
 }
 
@@ -603,6 +813,40 @@ func cancelled(ctx context.Context) bool {
 	}
 }
 
+// maxPerCharMeaningRunes 单字释义保留的最大 rune 数
+// （hanzi.json 部分条目含《说文》类数百字长释义，需截断防撑爆响应与前端展示）
+const maxPerCharMeaningRunes = 60
+
+// combineCharMeanings 组合候选字释义为名字寓意描述。
+// 单名仅取首字释义；双名以「；」连接两字释义；
+// 每字释义按 rune 截断至 maxPerCharMeaningRunes 并补省略号。
+func combineCharMeanings(m1, m2 string) string {
+	trunc := func(m string) string {
+		m = strings.TrimSpace(m)
+		if m == "" {
+			return ""
+		}
+		r := []rune(m)
+		if len(r) > maxPerCharMeaningRunes {
+			return string(r[:maxPerCharMeaningRunes]) + "…"
+		}
+		return m
+	}
+	c1 := trunc(m1)
+	if m2 == "" {
+		return c1
+	}
+	c2 := trunc(m2)
+	switch {
+	case c1 == "":
+		return c2
+	case c2 == "":
+		return c1
+	default:
+		return c1 + "；" + c2
+	}
+}
+
 // firstPinyin 获取拼音列表中的第一个拼音（去掉声调数字）
 func firstPinyin(pinyins []string) string {
 	if len(pinyins) == 0 {
@@ -642,6 +886,72 @@ func bestGenderHint(a, b string) string {
 		return a
 	}
 	return b
+}
+
+// hasPairBlacklist 检查字符的策展搭配黑名单中是否包含指定字
+// 命中表示策展判定该字与此字组合不宜（如 瑾-艳/妍-艳/嫣-艳）
+func hasPairBlacklist(ch *Character, other string) bool {
+	if ch == nil || len(ch.PairBlacklist) == 0 {
+		return false
+	}
+	for _, bl := range ch.PairBlacklist {
+		if bl == other {
+			return true
+		}
+	}
+	return false
+}
+
+// ensureWuxingDiversity 五行多样性保底策略
+//
+// 从候选池中选取 topCount 个条目，确保每种五行组合（如金金、火土、金火等）
+// 至少有1个代表。选取规则：
+// 1. 按分数从高到低遍历候选池
+// 2. 对于未出现过的五行组合，直接入选
+// 3. 对于已出现过的五行组合，仅在有空位时入选
+// 4. 所有空位填满后停止
+//
+// 这确保了 TopN 中既有高分候选（金金组合），也有不同五行组合的候选（火土/火金等），
+// 使 WuxingRater 的间接生助梯度真正发挥作用。
+func ensureWuxingDiversity(entries []ExcellentEntry, topCount int) []ExcellentEntry {
+	if len(entries) <= topCount {
+		return entries
+	}
+
+	result := make([]ExcellentEntry, 0, topCount)
+	seenWuxing := make(map[string]bool) // 已出现的五行组合
+
+	// 第一轮：每种五行组合取1个代表
+	for _, e := range entries {
+		if len(result) >= topCount {
+			break
+		}
+		wuxing := e.WuXing1 + e.WuXing2
+		if !seenWuxing[wuxing] {
+			seenWuxing[wuxing] = true
+			result = append(result, e)
+		}
+	}
+
+	// 第二轮：未达 topCount 时，按分数填充剩余空位
+	for _, e := range entries {
+		if len(result) >= topCount {
+			break
+		}
+		// 检查是否已在结果中（按 Char1+Char2 去重）
+		dup := false
+		for _, r := range result {
+			if r.Char1 == e.Char1 && r.Char2 == e.Char2 {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			result = append(result, e)
+		}
+	}
+
+	return result
 }
 
 

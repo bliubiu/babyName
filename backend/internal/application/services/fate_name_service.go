@@ -8,6 +8,7 @@ import (
 	"name/internal/application/errors"
 	"name/internal/domain/bazi"
 	"name/internal/domain/fate"
+	"name/internal/domain/hanzi"
 	"name/internal/domain/name"
 	"name/internal/infrastructure/logger"
 
@@ -26,17 +27,30 @@ func NewFateNameService(engine fate.Fate) *FateNameService {
 	return &FateNameService{engine: engine}
 }
 
+// buildFilterOption 根据请求构建 FilterOption
+// 优先使用请求的 WuxingMatch（用户显式指定五行）；
+// 否则按喜用神五行收紧候选池（缩小全量枚举规模，提升性能）。
+func (s *FateNameService) buildFilterOption(req *GenerateRequest) fate.Filter {
+	fo := fate.NewFilterOption().
+		WithMinStroke(req.MinStrokes).
+		WithMaxStroke(req.MaxStrokes).
+		WithGenderFilter(req.Gender).
+		WithStrictness("moderate")
+
+	// 用户显式指定五行偏好时，直接以其收窄候选池（避免全量枚举 8105²）
+	if len(req.WuxingMatch) > 0 {
+		fo = fo.WithPreferredWuXing(req.WuxingMatch...)
+	}
+
+	return fo.Build()
+}
+
 // GenerateWithAnalysis 使用 fate 引擎生成带详细分析的名字
 func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *GenerateRequest) (*GenerateWithAnalysisResponse, error) {
 	born := time.Date(req.BirthYear, time.Month(req.BirthMonth), req.BirthDay, req.BirthHour, req.BirthMinute, 0, 0, time.UTC)
 
 	session := s.engine.NewSessionWithFilter(
-		fate.NewFilterOption().
-			WithMinStroke(req.MinStrokes).
-			WithMaxStroke(req.MaxStrokes).
-			WithGenderFilter(req.Gender).
-			WithStrictness("moderate").
-			Build(),
+		s.buildFilterOption(req),
 	)
 
 	input := &fate.Input{
@@ -53,6 +67,7 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 			IncludeClassic:  req.IncludeClassic,
 			MeaningKeywords: req.MeaningKeywords,
 			PinyinInitial:   req.PinyinInitial,
+			ExtraChars:      s.resolveExtraChars(req),
 		},
 		AvoidElderNames: req.AvoidElderNames,
 	}
@@ -92,7 +107,15 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 				na.ZodiacScore = v
 			case "文化印象":
 				na.MeaningScore = v
+			case "新颖度":
+				na.NoveltyScore = v
+			case "共现":
+				na.BigramScore = v
 			}
+		}
+		// 诗词出处回填（engine 构建 NameResult 时未设 PoetryFrom，需单独传递）
+		if nr.PoetryFrom != "" {
+			na.PoetrySource = nr.PoetryFrom
 		}
 		names = append(names, na)
 	}
@@ -173,4 +196,46 @@ func incrementWuxing(w *bazi.WuxingResult, wuxing string) {
 	case "土":
 		w.Tu++
 	}
+}
+
+// resolveExtraChars 根据请求的诗词/经典来源解析额外候选字
+// 将 SourceClassic / IncludePoetry / IncludeClassic 转为 []*fate.Character，
+// 供 engine.generate() 合入主候选池（"加字不缩池"策略）。
+func (s *FateNameService) resolveExtraChars(req *GenerateRequest) []*fate.Character {
+	if req.SourceClassic == "" && !req.IncludePoetry && !req.IncludeClassic {
+		return nil
+	}
+
+	// 1. 按来源收集字名列表
+	var charNames []string
+	if req.SourceClassic != "" {
+		charNames = append(charNames, name.GetPoetryNames(req.Gender, req.SourceClassic)...)
+	}
+	if req.IncludePoetry && req.SourceClassic == "" {
+		// IncludePoetry=true 但未指定具体来源时，取全量诗词字
+		charNames = append(charNames, name.GetPoetryNames(req.Gender, "poetry")...)
+	}
+	if req.IncludeClassic {
+		charNames = append(charNames, name.GetClassicNames(req.Gender)...)
+	}
+
+	if len(charNames) == 0 {
+		return nil
+	}
+
+	// 2. 去重后转为 fate.Character（查 HanziData 获取完整属性）
+	seen := make(map[string]bool, len(charNames))
+	result := make([]*fate.Character, 0, len(charNames))
+	for _, cn := range charNames {
+		if seen[cn] {
+			continue
+		}
+		seen[cn] = true
+		h, ok := hanzi.HanziData[cn]
+		if !ok {
+			continue
+		}
+		result = append(result, hanziToCharacter(h))
+	}
+	return result
 }

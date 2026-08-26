@@ -17,6 +17,10 @@ const (
 type ExcellentEntry struct {
 	Char1     string             `json:"char1"`
 	Char2     string             `json:"char2"`
+	Pinyin1   string             `json:"pinyin1,omitempty"` // 首字读音（带声调，预计算自 Character.Pinyin）
+	Pinyin2   string             `json:"pinyin2,omitempty"` // 次字读音（单名为空）
+	Meaning1  string             `json:"meaning1,omitempty"` // 首字释义（预计算自 Character.Meaning）
+	Meaning2  string             `json:"meaning2,omitempty"` // 次字释义（单名为空）
 	Score     float64            `json:"score"`
 	Grade     string             `json:"grade"`
 	WuXing1   string             `json:"wu_xing1"`
@@ -24,6 +28,7 @@ type ExcellentEntry struct {
 	Stroke1   int                `json:"stroke1,omitempty"`
 	Stroke2   int                `json:"stroke2,omitempty"`
 	HasPoetry bool               `json:"has_poetry"`
+	PoetryFrom string            `json:"poetry_from,omitempty"` // 诗词出处
 	Items     map[string]float64 `json:"items,omitempty"` // 各维度评分明细
 }
 

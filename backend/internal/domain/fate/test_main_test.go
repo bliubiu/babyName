@@ -1,0 +1,30 @@
+package fate
+
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+
+	"name/internal/domain/classics"
+)
+
+// packageDir 返回本测试文件所在目录（不依赖运行 CWD）
+func packageDir() string {
+	_, file, _, _ := runtime.Caller(0)
+	return filepath.Dir(file)
+}
+
+// TestMain 在包测试前加载诗词经典数据
+// WenHuaRater 的单名语义共现分支（checkSingleNameBigram）依赖 classics 包，
+// 该包通过 ensureShiCiLoaded 惰性等待 shici.json 异步加载完成，
+// 独立运行测试时必须先 LoadFromJSON 触发加载，否则会永久阻塞超时。
+// 数据目录基于本文件位置定位（backend/data），避免独立二进制 CWD 漂移。
+func TestMain(m *testing.M) {
+	dataDir := filepath.Join(packageDir(), "..", "..", "..", "data")
+	if err := classics.LoadFromJSON(dataDir); err != nil {
+		// 非关键：部分测试不依赖诗词数据
+	}
+
+	os.Exit(m.Run())
+}

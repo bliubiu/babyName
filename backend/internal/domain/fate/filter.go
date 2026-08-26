@@ -64,6 +64,10 @@ type Filter interface {
 	// GetDisplayName 获取显示用字符（简体/繁体转换）
 	GetDisplayName(c *Character) string
 
+	// PreferredWuXing 返回显式指定的偏好五行（未指定时返回空）
+	// 供引擎判断是否已由用户显式指定五行：未指定时引擎可按喜用神五行收窄候选池
+	PreferredWuXing() []string
+
 	// Degrade 降级严格度一个级别：strict → moderate → relaxed → ""（终点）
 	// 用于当无匹配结果时自动放宽过滤条件
 	Degrade() string
@@ -477,6 +481,11 @@ func (f *filterImpl) GetCharacterStroke(c *Character) int {
 
 func (f *filterImpl) GetDisplayName(c *Character) string {
 	return c.Char
+}
+
+// PreferredWuXing 返回显式指定的偏好五行（未指定时返回空）
+func (f *filterImpl) PreferredWuXing() []string {
+	return f.option.PreferredWuXing
 }
 
 func (f *filterImpl) init() {

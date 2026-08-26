@@ -283,7 +283,37 @@ var PoetrySources = map[string]PoetrySource{
 	},
 }
 
+// sourceAlias 诗词来源别名映射（拼音 → 中文）
+// CLI/frontend 传入拼音（如 "shijing"），PoetrySources 和 switch case 使用中文
+var sourceAlias = map[string]string{
+	"诗经": "诗经", "shijing": "诗经",
+	"楚辞": "楚辞", "chuci": "楚辞",
+	"唐诗": "唐诗", "tangshi": "唐诗",
+	"宋词": "宋词", "songci": "宋词",
+	"乐府": "乐府", "yuefu": "乐府",
+	"古文观止": "古文观止", "guwen": "古文观止", "guwenguanzhi": "古文观止",
+	"论语": "论语", "lunyu": "论语",
+	"孟子": "孟子", "mengzi": "孟子",
+	"大学": "大学", "daxue": "大学",
+	"中庸": "中庸", "zhongyong": "中庸",
+	"三字经": "三字经", "sanzijing": "三字经",
+	"千字文": "千字文", "qianziwen": "千字文",
+	"弟子规": "弟子规", "dizigui": "弟子规",
+	"幼学琼林": "幼学琼林", "youxueqionglin": "幼学琼林",
+	"增广贤文": "增广贤文", "zengguangxianwen": "增广贤文",
+	"声律启蒙": "声律启蒙", "shenglvqimeng": "声律启蒙",
+	"朱子家训": "朱子家训", "zhuzijiaxun": "朱子家训",
+	"千家诗": "千家诗", "qianjiashi": "千家诗",
+	"文字蒙求": "文字蒙求", "wenzimengqiu": "文字蒙求",
+	"百家姓": "百家姓", "baijiaxing": "百家姓",
+}
+
 func GetPoetryCharList(source string) []PoetryChar {
+	// 别名解析：拼音 → 中文来源名
+	if alias, ok := sourceAlias[source]; ok {
+		source = alias
+	}
+
 	if source == "" {
 		var allChars []PoetryChar
 		for _, ps := range PoetrySources {

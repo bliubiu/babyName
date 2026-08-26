@@ -45,14 +45,15 @@ type Input struct {
 
 // GenerateOptions 名字生成选项
 type GenerateOptions struct {
-	NameLength      int      // 名字字数（1-4）
-	Count           int      // 生成数量
-	ExcludeRare     bool     // 排除生僻字
-	SourceClassic   string   // 诗词来源
-	IncludePoetry   bool     // 包含诗词用字
-	IncludeClassic  bool     // 包含经典用字
-	MeaningKeywords []string // 寓意关键词
-	PinyinInitial   string   // 拼音首字母
+	NameLength      int           // 名字字数（1-4）
+	Count           int           // 生成数量
+	ExcludeRare     bool          // 排除生僻字
+	SourceClassic   string        // 诗词来源（shijing/chuci/poetry 等）
+	IncludePoetry   bool          // 包含诗词用字
+	IncludeClassic  bool          // 包含经典用字
+	MeaningKeywords []string      // 寓意关键词
+	PinyinInitial   string        // 拼音首字母
+	ExtraChars      []*Character  // 外部注入的额外候选字（诗词/经典字库来源）
 }
 
 // NameCandidate 名字候选（不含姓氏，仅名字部分）
@@ -73,8 +74,29 @@ type NameCandidate struct {
 	HasPoetry   bool   // 是否有诗词出处
 	PoetryFrom  string // 诗词来源
 	IsRegular   bool   // 是否为常用字
-	CommonLevel int    // 常用等级（1-5）
-	GenderHint  string // 性别暗示
+
+	// IsCurated1/IsCurated2 逐字是否在人工策展起名分类覆盖表中（由 hanzi 层经 Adapter 透传）
+	// 策展覆盖表（约 446 字）是荒谬字与好字的强区分信号：好字 8/12 在表内，
+	// 荒谬字（贪/疟/骂/吠/靶等）21/22 不在表内。WenHuaRater 据此给策展字文化加分，
+	// 打破单名 Top5 荒谬字与好字五维同分的僵局（门禁黑名单打地鼠打不完的治本方案）。
+	IsCurated1 bool
+	IsCurated2 bool
+
+	// PositiveScore1/PositiveScore2 逐字寓意评分（namer.json positiveScore，0-100）
+	// 策展表是「分类字表」而非「精选好字表」，平庸字（软/际/映/耿等）也在表内拿到 +8 文化加分，
+	// 导致单名 Top5 被平庸字霸榜。结合 positiveScore>=85 可把策展加分收窄为「精选好字」专属。
+	PositiveScore1 int
+	PositiveScore2 int
+
+	// CommonLevel1/CommonLevel2 逐字常用等级（《通用规范汉字表》level，1=一级/2=二级/3=三级，0=表外补充字）
+	// 由 engine.go 从 Character.CommonLevel 透传，供评分器判断生僻/表外字
+	CommonLevel1 int
+	CommonLevel2 int
+	GenderHint   string // 性别暗示
+
+	// 数据层策展标注（来自 hanzi.json，由 Adapter 映射）
+	NamePenalty1 int // 字1 起名扣分（0=无）
+	NamePenalty2 int // 字2 起名扣分（0=无）
 
 	SurnamePinyin string // 姓氏拼音，用于音韵评分器检测跨字谐音
 }
@@ -145,6 +167,20 @@ type Character struct {
 	GenderHint        string   `json:"gender_hint"`
 	HasPoetry         bool     `json:"has_poetry"`
 	NamingCategory    []string `json:"naming_category,omitempty"` // 精选起名分类标签
+
+	// 数据层策展标注（来自 hanzi.json，由 Adapter 映射，供引擎/评分器消费）
+	IsNegative    bool     `json:"is_negative,omitempty"`    // 策展判定不宜入名（压迫级）
+	NamePenalty   int      `json:"name_penalty,omitempty"`   // 起名扣分（0-20，越高越不宜）
+	PairBlacklist []string `json:"pair_blacklist,omitempty"` // 搭配黑名单（与这些字组合亦不宜）
+
+	// IsCurated 是否在人工策展起名分类覆盖表中（由 hanzi.IsCuratedNamingChar 经 Adapter 透传）
+	// 策展覆盖表是荒谬字与好字的强区分信号，WenHuaRater 据此给策展字文化加分破同分。
+	IsCurated bool `json:"is_curated,omitempty"`
+
+	// PositiveScore 寓意评分（namer.json positiveScore，0-100）
+	// 策展表是「分类字表」而非「精选好字表」，平庸字（软/际/映/耿 等）也在表内。
+	// 结合 PositiveScore>=85 可将策展文化加分收窄为精选好字专属（优质字 87-91，平庸/荒谬字空）。
+	PositiveScore int `json:"positive_score,omitempty"`
 }
 
 // CharacterQuery 汉字查询接口（用于 Filter 下推查询条件）

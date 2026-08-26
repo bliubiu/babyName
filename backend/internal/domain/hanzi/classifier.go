@@ -278,6 +278,17 @@ func GetNamingCategories(char string) []string {
 	return h.NamingCategories
 }
 
+// IsCuratedNamingChar 判断某字是否在人工策展起名用字覆盖表中
+//
+// 注意：与 GetNamingCategories（可能被自动分类/五行兜底污染，荒谬字如"贪"水→"清新水韵"
+// 也会获分类）不同，本表是 17 个起名分类的人工精选字（characterCategoryList，约 446 字）。
+// verify_fate 复测验证：经典好字（毅/辉/涛/英/琳/雅/梅/强/凯）8/12 在表内，
+// 荒谬字（贪/疟/骂/吠/靶/振/凑/递等）21/22 不在表内——是荒谬字与好字的强区分信号。
+func IsCuratedNamingChar(char string) bool {
+	_, ok := characterCategoryOverride[char]
+	return ok
+}
+
 // ReclassifyAll 对 HanziData 中所有字执行自动分类
 // force=true 时，即使已有分类也重新计算（用于 radicalCategoryMap 更新后刷新）
 // force=false 时，仅补充未分类字符（向后兼容）

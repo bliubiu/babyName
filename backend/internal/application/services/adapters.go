@@ -257,8 +257,16 @@ func (p *HanziDataProvider) CountCharacters(query fate.CharacterQuery) (int, err
 
 // hanziToCharacter 将 hanzi.Hanzi 转换为 fate.Character
 func hanziToCharacter(h hanzi.Hanzi) *fate.Character {
-	isRegular := h.Strokes <= 25 && !hanzi.RareChars[h.Char]
-	isNameable := h.Strokes <= 20 && isRegular
+	// 以《通用规范汉字表》等级为准判定常用字（namer.json level：1=一级3500常用字）
+	// level==0 表示不在规范表中（旧版精选字库补充字），保守沿用笔画+生僻字表判定
+	level := hanzi.GetNamerLevel(h.Char)
+	// 一级字(3500)+二级字(3000) 全量纳入，三级字(1605)暂不纳入需逐字审核
+	// 表外字(level=0)按笔画+生僻字表保守判定
+	isRegular := level == 1 || level == 2
+	if level == 0 {
+		isRegular = h.Strokes <= 25 && !hanzi.RareChars[h.Char]
+	}
+	isNameable := h.Strokes <= 30 && isRegular
 
 	c := &fate.Character{
 		Char:              h.Char,
@@ -272,9 +280,23 @@ func hanziToCharacter(h hanzi.Hanzi) *fate.Character {
 		Meaning:           h.Meaning,
 		IsRegular:         isRegular,
 		IsNameable:        isNameable,
-		CommonLevel:       3,
+		CommonLevel:       level,
 		GenderHint:        h.Gender,
 		HasPoetry:         false,
+
+		// 数据层策展标注：直接透传 hanzi.json 的策展判断
+		// （isNegative=不宜入名 / namePenalty=起名扣分 / pairBlacklist=搭配黑名单）
+		IsNegative:    h.IsNegative,
+		NamePenalty:   h.NamePenalty,
+		PairBlacklist: h.PairBlacklist,
+
+		// 策展覆盖表标记：人工精选起名好字（17 分类约 446 字）是荒谬字与好字的强区分信号，
+		// WenHuaRater 据此给策展字文化加分，打破单名 Top5 五维同分的僵局。
+		IsCurated: hanzi.IsCuratedNamingChar(h.Char),
+
+		// 寓意评分：namer.json positiveScore（0-100），策展加分收窄为「策展字 ∩ positiveScore>=85」
+		// 的精选好字专属，平庸字（软/际/映/耿 等分类字）虽然也在策展表内但不享受加分。
+		PositiveScore: h.PositiveScore,
 	}
 
 	// 标注起名分类（优先使用 HanziData 的全量分类数据，其次 fallback 到 fate 精选库）

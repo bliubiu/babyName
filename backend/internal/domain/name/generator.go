@@ -45,6 +45,8 @@ type Name struct {
 	SancaiScore  float64 `json:"sancai_score"`  // 天地人三才评分
 	ZodiacScore  float64 `json:"zodiac_score"`  // 生肖评分
 	NayinScore   float64 `json:"nayin_score"`   // 纳音评分
+	NoveltyScore float64 `json:"novelty_score"` // 新颖度评分
+	BigramScore  float64 `json:"bigram_score"`  // 诗词共现评分
 	SancaiAnalysis string `json:"sancai_analysis"` // 三才分析详情
 	Hexagram       string `json:"hexagram"`          // 卦象名称
 	HexagramMeaning string `json:"hexagram_meaning"` // 卦象解读

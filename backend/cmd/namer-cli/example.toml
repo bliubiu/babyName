@@ -1,0 +1,36 @@
+# namer-cli 示例配置文件
+#
+# 用法: go run ./cmd/namer-cli -config cmd/namer-cli/example.toml
+# 字段与 Web API POST /api/v1/names/generate/analysis 请求体一致（snake_case）。
+# 命令行显式传入的参数会覆盖本文件中的对应值。
+
+# ── 核心输入 ──────────────────────────────
+surname = "王"              # 姓氏（必填）
+gender = "male"             # 性别：male / female（必填）
+birth_year = 2024           # 出生年（必填，1900-2100）
+birth_month = 1             # 出生月（必填）
+birth_day = 15              # 出生日（必填）
+birth_hour = 12             # 出生时，24小时制（必填）
+birth_minute = 30           # 出生分
+birth_location = "北京"      # 出生地
+# generation = "承"         # 字辈
+# generation_position = "middle"  # 字辈位置：middle（名中）/ tail（名尾）
+
+# ── 筛选条件（可选）────────────────────────
+name_length = 2             # 名字长度（不含姓）：1 单字 / 2 双字
+exclude_rare = true         # 排除生僻字
+wuxing_match = ["水", "木"]  # 五行偏好
+min_strokes = 3             # 候选字最小笔画
+max_strokes = 20            # 候选字最大笔画
+source_classic = "shijing"  # 典籍来源：shijing / chuci / poetry 等
+include_poetry = true       # 包含诗词字库
+include_classic = false     # 包含经典字库
+meaning_keywords = ["志", "远"]  # 寓意关键词
+pinyin_initial = ""         # 拼音首字母筛选
+
+# 避讳长辈：排除同形/同音字（建议父系+母系直系长辈，往上两代）
+avoid_elder_names = []
+
+# ── 输出控制 ──────────────────────────────
+format = "text"             # text / json（json 与 Web API 响应结构一致）
+count = 10                  # text 展示数量上限

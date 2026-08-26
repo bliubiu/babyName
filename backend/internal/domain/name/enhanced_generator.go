@@ -57,6 +57,12 @@ type NameAnalysis struct {
 	ZodiacMatch    string   `json:"zodiac_match"`
 	ZodiacScore    float64  `json:"zodiac_score"`
 	
+	// 新颖度分析
+	NoveltyScore   float64  `json:"novelty_score"`
+	
+	// 诗词共现评分
+	BigramScore    float64  `json:"bigram_score"`
+	
 	// 纳音分析
 	NayinScore     float64  `json:"nayin_score"`
 	NayinAnalysis  string   `json:"nayin_analysis"`
@@ -1623,18 +1629,16 @@ func (eng *EnhancedNameGenerator) buildCandidates(opts GenerateOptions) []string
 	}
 
 	// 扩展字池：使用预计算的性别候选字池替代全表扫描 HanziData
-	// 只有当基础池较小或未指定特定来源时扩展，以保证名字多样性
-	if opts.SourceClassic == "" && !opts.IncludePoetry && !opts.IncludeClassic {
-		prebuilt := eng.prebuiltMaleChars
-		if opts.Gender == "female" {
-			prebuilt = eng.prebuiltFemaleChars
+	// 始终合并 prebuilt 大池（诗词/经典字仅作为补充，不替代大池）
+	prebuilt := eng.prebuiltMaleChars
+	if opts.Gender == "female" {
+		prebuilt = eng.prebuiltFemaleChars
+	}
+	for _, c := range prebuilt {
+		if charMap[c] {
+			continue // 已在池中
 		}
-		for _, c := range prebuilt {
-			if charMap[c] {
-				continue // 已在池中
-			}
-			charMap[c] = true
-		}
+		charMap[c] = true
 	}
 
 	// 避讳长辈：构建同形字与同音拼音排除集

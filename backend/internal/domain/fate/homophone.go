@@ -102,17 +102,47 @@ var BadPinyinCombos = []BadPinyinCombo{
 	{Combo: []string{"mei", "gui"}, Description: "玫瑰（用于名字花哨）"},
 }
 
-// stripTone 去除拼音声调数字后缀（"wang2" → "wang"）
+// stripTone 去除拼音声调并归一化，得到纯拼音（"wánɡ" → "wang"、"wang2" → "wang"）
+//
+// 适配生产数据两种格式：
+//   - Unicode 声调符号：wánɡ → wang（顺带归一化 U+0261 ɡ → g，hanzi.json 中
+//     「王」拼音即为此特殊字形，不归一化则谐音词表匹配失败）
+//   - 数字后缀：wang2 → wang
 func stripTone(pinyin string) string {
 	if pinyin == "" {
 		return ""
 	}
 	runes := []rune(pinyin)
-	last := string(runes[len(runes)-1])
-	if last >= "1" && last <= "4" {
-		return string(runes[:len(runes)-1])
+	// 1. 数字后缀（wang2 → wang）
+	last := runes[len(runes)-1]
+	if last >= '1' && last <= '4' {
+		runes = runes[:len(runes)-1]
 	}
-	return pinyin
+	// 2. Unicode 声调符号 → 基本元音；U+0261(ɡ) → g；ǖ/ǘ/ǚ/ǜ → v（与词表纯拼音一致）
+	var b strings.Builder
+	for _, r := range runes {
+		switch r {
+		case 'ā', 'á', 'ǎ', 'à':
+			b.WriteRune('a')
+		case 'ē', 'é', 'ě', 'è':
+			b.WriteRune('e')
+		case 'ī', 'í', 'ǐ', 'ì':
+			b.WriteRune('i')
+		case 'ō', 'ó', 'ǒ', 'ò':
+			b.WriteRune('o')
+		case 'ū', 'ú', 'ǔ', 'ù':
+			b.WriteRune('u')
+		case 'ǖ', 'ǘ', 'ǚ', 'ǜ':
+			b.WriteRune('v')
+		case 'ń', 'ň', 'ǹ':
+			b.WriteRune('n')
+		case '\u0261': // U+0261 Latin small letter script g（hanzi.json 特殊字形）
+			b.WriteRune('g')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // CheckBadHomophone 检测单个拼音是否有不吉谐音

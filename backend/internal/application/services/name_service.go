@@ -378,14 +378,23 @@ func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, b
 func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateRequest, baziAnalysis *bazi.BaziAnalysis) ([]name.Name, error) {
 	born := time.Date(req.BirthYear, time.Month(req.BirthMonth), req.BirthDay, req.BirthHour, max(0, req.BirthMinute), 0, 0, time.UTC)
 
-	session := s.fateService.engine.NewSessionWithFilter(
-		fate.NewFilterOption().
-			WithMinStroke(req.MinStrokes).
-			WithMaxStroke(req.MaxStrokes).
-			WithGenderFilter(req.Gender).
-			WithStrictness("moderate").
-			Build(),
-	)
+	fo := fate.NewFilterOption().
+		WithMinStroke(req.MinStrokes).
+		WithMaxStroke(req.MaxStrokes).
+		WithGenderFilter(req.Gender).
+		WithStrictness("moderate")
+
+	// 用经典喜用神收窄候选池，保证名字五行与 API 响应 Bazi 的喜用神一致
+	// （fate 引擎内部 BalanceXiYongJi 与经典 BaziAdapter 算法不同，
+	//   若不传入，Top10 可能全是引擎内部喜用神五行，与响应 Bazi 矛盾）
+	// 用户显式指定五行偏好时优先用用户的
+	if len(req.WuxingMatch) > 0 {
+		fo = fo.WithPreferredWuXing(req.WuxingMatch...)
+	} else if baziAnalysis != nil && len(baziAnalysis.Xiyongshen) > 0 {
+		fo = fo.WithPreferredWuXing(baziAnalysis.Xiyongshen...)
+	}
+
+	session := s.fateService.engine.NewSessionWithFilter(fo.Build())
 
 	input := &fate.Input{
 		Surname:    req.Surname,
@@ -455,6 +464,10 @@ func convertFateToNameNames(results []fate.NameResult) []name.Name {
 				n.MeaningScore = v
 			case "生肖":
 				n.ZodiacScore = v
+			case "新颖度":
+				n.NoveltyScore = v
+			case "共现":
+				n.BigramScore = v
 			}
 		}
 		n.Reasons = nr.Reasons
