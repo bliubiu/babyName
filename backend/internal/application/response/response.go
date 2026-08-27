@@ -2,7 +2,6 @@ package response
 
 import (
 	"github.com/gin-gonic/gin"
-	apperrors "name/internal/application/errors"
 )
 
 type Response struct {
@@ -12,33 +11,10 @@ type Response struct {
 	Data    interface{} `json:"data,omitempty"`
 }
 
-type PageInfo struct {
-	Page     int   `json:"page"`
-	PageSize int   `json:"page_size"`
-	Total    int64 `json:"total"`
-}
-
-type PageResponse struct {
-	Code    int         `json:"code"`
-	Success bool        `json:"success"`
-	Message string      `json:"message,omitempty"`
-	Data    interface{} `json:"data,omitempty"`
-	Page    *PageInfo  `json:"page,omitempty"`
-}
-
 func Success(data interface{}) Response {
 	return Response{
 		Code:    200,
 		Success: true,
-		Data:    data,
-	}
-}
-
-func SuccessWithMessage(data interface{}, message string) Response {
-	return Response{
-		Code:    200,
-		Success: true,
-		Message: message,
 		Data:    data,
 	}
 }
@@ -51,43 +27,12 @@ func Error(code int, message string) Response {
 	}
 }
 
-func ErrorWithData(code int, message string, data interface{}) Response {
-	return Response{
-		Code:    code,
-		Success: false,
-		Message: message,
-		Data:    data,
-	}
-}
-
-func Page(data interface{}, page, pageSize int, total int64) PageResponse {
-	return PageResponse{
-		Code:    200,
-		Success: true,
-		Data:    data,
-		Page: &PageInfo{
-			Page:     page,
-			PageSize: pageSize,
-			Total:    total,
-		},
-	}
-}
-
 func SuccessJSON(c *gin.Context, data interface{}) {
 	c.JSON(200, Success(data))
 }
 
-func SuccessWithMessageJSON(c *gin.Context, data interface{}, message string) {
-	c.JSON(200, SuccessWithMessage(data, message))
-}
-
 func ErrorJSON(c *gin.Context, code int, message string) {
 	c.JSON(getHTTPStatus(code), Error(code, message))
-}
-
-// ErrorAppJSON 将 AppError 转为 HTTP 响应输出
-func ErrorAppJSON(c *gin.Context, appErr *apperrors.AppError) {
-	ErrorJSON(c, int(appErr.Code), appErr.Message)
 }
 
 func getHTTPStatus(code int) int {

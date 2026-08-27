@@ -1,7 +1,6 @@
 package classics
 
 import (
-	"sort"
 	"sync"
 )
 
@@ -204,35 +203,4 @@ func GetBigramScore(char1, char2 string) (score int, sourceDesc string, found bo
 	}
 
 	return score, entry.SourceDesc, true
-}
-
-// CountBigram 统计共现词条总数
-func CountBigram() int {
-	bigramOnce.Do(buildBigramIndex)
-
-	bigramMu.RLock()
-	defer bigramMu.RUnlock()
-
-	return len(bigramIdx)
-}
-
-// TopBigram 返回频次最高的前 N 个共现组合（用于调试/展示）
-func TopBigram(n int) []BigramEntry {
-	bigramOnce.Do(buildBigramIndex)
-
-	bigramMu.RLock()
-	entries := make([]BigramEntry, 0, len(bigramIdx))
-	for _, v := range bigramIdx {
-		entries = append(entries, *v)
-	}
-	bigramMu.RUnlock()
-
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Frequency > entries[j].Frequency
-	})
-
-	if n > 0 && n < len(entries) {
-		entries = entries[:n]
-	}
-	return entries
 }

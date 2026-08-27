@@ -389,9 +389,9 @@ func TestRateNameCuratedExempt(t *testing.T) {
 		}
 	}
 
-	// 总分不应被封顶压制到 70 以下（权重调整后预期降低）
-	if sc.Total < 75 {
-		t.Errorf("策展组合总分 = %.1f，期望豁免封顶 ≥75", sc.Total)
+	// 总分不应被封顶压制到 70 以下（权重调整后预期降低，含6%人名频率维度）
+	if sc.Total < 74 {
+		t.Errorf("策展组合总分 = %.1f，期望豁免封顶 ≥74", sc.Total)
 	}
 }
 

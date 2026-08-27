@@ -1,11 +1,5 @@
 package name
 
-// NamesGenerator 名字生成接口
-// 提供基础的名字生成能力，由应用层适配器实现
-type NamesGenerator interface {
-	Generate(opts GenerateOptions) []Name
-}
-
 // EnhancedNameAnalyzer 增强名字分析接口
 // 提供带多维评分的名字生成和分析能力，由应用层适配器实现
 type EnhancedNameAnalyzer interface {

@@ -42,6 +42,11 @@ func (s *FateNameService) buildFilterOption(req *GenerateRequest) fate.Filter {
 		fo = fo.WithPreferredWuXing(req.WuxingMatch...)
 	}
 
+	// 人名频率过滤（来自 Chinese-Names-Corpus 语料统计）
+	if req.MinFrequencyTier > 0 || req.MaxFrequencyTier > 0 {
+		fo = fo.WithFrequencyTier(req.MinFrequencyTier, req.MaxFrequencyTier)
+	}
+
 	return fo.Build()
 }
 
@@ -111,6 +116,8 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 				na.NoveltyScore = v
 			case "共现":
 				na.BigramScore = v
+			case "人名频率":
+				na.FrequencyScore = v
 			}
 		}
 		// 诗词出处回填（engine 构建 NameResult 时未设 PoetryFrom，需单独传递）

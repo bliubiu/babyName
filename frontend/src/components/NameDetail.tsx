@@ -19,6 +19,7 @@ const dims: DimConfig[] = [
   { key: 'meaning', label: '字义内涵', color: 'bg-emerald-500', getValue: n => n.meaning_score ?? 0 },
   { key: 'sancai', label: '天地人三才', color: 'bg-violet-400', getValue: n => n.sancai_score ?? 0 },
   { key: 'zodiac', label: '生肖适配', color: 'bg-rose-400', getValue: n => n.zodiac_score ?? 0 },
+  { key: 'frequency', label: '人名频率', color: 'bg-indigo-400', getValue: n => n.frequency_score ?? 0 },
 ];
 
 export default function NameDetail({ name }: NameDetailProps) {

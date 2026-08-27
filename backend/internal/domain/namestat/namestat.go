@@ -57,15 +57,6 @@ func GetNameCount(name string) int {
 	return 0
 }
 
-func GetNameRate(name string) float64 {
-	total := 140000000.0
-	count := GetNameCount(name)
-	if count == 0 {
-		return 0.0
-	}
-	return float64(count) / total * 100
-}
-
 func GetNameStats(name string) *NameStat {
 	count := GetNameCount(name)
 	if count == 0 {

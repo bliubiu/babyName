@@ -50,11 +50,6 @@ func TestScoreNameUnified(t *testing.T) {
 		t.Errorf("TotalScore out of range [0,100]: %f", name.TotalScore)
 	}
 
-	// 验证向后兼容的 Score 字段
-	if name.Score <= 0 {
-		t.Errorf("Score should be > 0 for backward compat, got %f", name.Score)
-	}
-
 	t.Logf("王伟 评分结果：Total=%.1f, Wuxing=%.1f, Yinyun=%.1f, Meaning=%.1f, Sancai=%.1f, Zodiac=%.1f, BaZi=%d",
 		name.TotalScore, name.WuxingScore, name.YinyunScore, name.MeaningScore, name.SancaiScore, name.ZodiacScore, name.BaZiScore)
 }

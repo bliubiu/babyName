@@ -24,7 +24,6 @@ type NameService struct {
 	baziAnalyzer     bazi.BaziAnalyzer
 	hexagramFinder   yijing.HexagramFinder
 	ziweiAnalyzer    ziwei.ZiweiAnalyzer
-	nameGenerator    name.NamesGenerator
 	enhancedAnalyzer name.EnhancedNameAnalyzer
 	zodiacFinder     zodiac.ZodiacFinder
 	fateService      *FateNameService // fate 路径委托服务（可选）
@@ -47,11 +46,6 @@ func WithHexagramFinder(f yijing.HexagramFinder) NameServiceOption {
 // WithZiweiAnalyzer 设置紫微斗数分析器
 func WithZiweiAnalyzer(a ziwei.ZiweiAnalyzer) NameServiceOption {
 	return func(s *NameService) { s.ziweiAnalyzer = a }
-}
-
-// WithNameGenerator 设置名字生成器
-func WithNameGenerator(g name.NamesGenerator) NameServiceOption {
-	return func(s *NameService) { s.nameGenerator = g }
 }
 
 // WithEnhancedAnalyzer 设置增强分析器
@@ -122,6 +116,10 @@ type GenerateRequest struct {
 	// 避讳长辈：父系/母系直系长辈姓名（建议往上两代）
 	// 生成名字时排除同形字与同音字，避免"压运"
 	AvoidElderNames []string `json:"avoid_elder_names"`
+
+	// 人名频率过滤（来自 Chinese-Names-Corpus 语料统计）
+	MinFrequencyTier int `json:"min_frequency_tier"` // 最小频率档位（1-5，0=不限）
+	MaxFrequencyTier int `json:"max_frequency_tier"` // 最大频率档位（1-5，0=不限）
 }
 
 // GenerateResponse 生成名字响应
@@ -336,14 +334,12 @@ func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, b
 		if s.enhancedAnalyzer != nil {
 			names, err = s.enhancedAnalyzer.GenerateUnified(genOpts)
 			if err != nil {
-				logger.Warn("GenerateUnified failed, falling back to classic generator",
+				logger.Warn("GenerateUnified failed",
 					zap.Error(err),
 				)
-				names = s.nameGenerator.Generate(genOpts)
-				err = nil // fallback 成功则清除错误
 			}
 		} else {
-			names = s.nameGenerator.Generate(genOpts)
+			err = errors.NewError(errors.ErrCodeInternalError, "未配置名字生成引擎")
 		}
 	}
 
@@ -392,6 +388,11 @@ func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateReq
 		fo = fo.WithPreferredWuXing(req.WuxingMatch...)
 	} else if baziAnalysis != nil && len(baziAnalysis.Xiyongshen) > 0 {
 		fo = fo.WithPreferredWuXing(baziAnalysis.Xiyongshen...)
+	}
+
+	// 人名频率过滤（来自 Chinese-Names-Corpus 语料统计）
+	if req.MinFrequencyTier > 0 || req.MaxFrequencyTier > 0 {
+		fo = fo.WithFrequencyTier(req.MinFrequencyTier, req.MaxFrequencyTier)
 	}
 
 	session := s.fateService.engine.NewSessionWithFilter(fo.Build())
@@ -443,7 +444,6 @@ func convertFateToNameNames(results []fate.NameResult) []name.Name {
 			Meaning:    nr.Meaning,
 			Wuxing:     nr.WuXing,
 			Strokes:    nr.Strokes,
-			Score:      nr.Score.Total,
 			TotalScore: nr.Score.Total,
 		}
 		// 诗词出处映射
@@ -468,6 +468,8 @@ func convertFateToNameNames(results []fate.NameResult) []name.Name {
 				n.NoveltyScore = v
 			case "共现":
 				n.BigramScore = v
+			case "人名频率":
+				n.FrequencyScore = v
 			}
 		}
 		n.Reasons = nr.Reasons

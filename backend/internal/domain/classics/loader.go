@@ -26,6 +26,11 @@ func LoadFromJSON(dataDir string) error {
 	// shici.json（6.7MB）→ 后台异步加载，不阻塞 HTTP 启动
 	loadShiCiAsync(dataDir)
 
+	// 构建增强的诗词索引（支持从名字反查诗词出处）
+	if err := BuildPoemIndexFromJSON(dataDir); err != nil {
+		logger.Warn("诗词索引构建失败", zap.Error(err))
+	}
+
 	// ===== P2：儒家经典 =====
 
 	loadClassicSafe(dataDir, "lunyu.json", "论语", &LunyuExtracted)

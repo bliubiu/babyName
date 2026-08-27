@@ -13,6 +13,8 @@ export interface NameFilters {
   wuxing?: string;
   minStrokes?: number;
   maxStrokes?: number;
+  minFrequencyTier?: number;
+  maxFrequencyTier?: number;
 }
 
 const wuxingOptions = [
@@ -45,13 +47,19 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
     onFilterChange(newFilters);
   };
 
+  const handleFrequencyTierChange = (min?: number, max?: number) => {
+    const newFilters = { ...filters, minFrequencyTier: min, maxFrequencyTier: max };
+    setFilters(newFilters);
+    onFilterChange(newFilters);
+  };
+
   const resetFilters = () => {
     const newFilters: NameFilters = {};
     setFilters(newFilters);
     onFilterChange(newFilters);
   };
 
-  const hasActiveFilters = filters.gender || filters.wuxing || filters.minStrokes || filters.maxStrokes;
+  const hasActiveFilters = filters.gender || filters.wuxing || filters.minStrokes || filters.maxStrokes || filters.minFrequencyTier || filters.maxFrequencyTier;
 
   return (
     <div className="card mb-4 md:mb-6">
@@ -158,6 +166,47 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
                 className="w-20 px-3 py-2 border border-warm-white rounded-lg focus:outline-none focus:ring-2 focus:ring-crimson text-ink bg-white"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-jade mb-2">人名频率</label>
+            <p className="text-xs text-jade/60 mb-2">基于120万人名语料统计，筛选常用/罕见人名用字</p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { value: 5, label: '极高频(Top1%)' },
+                { value: 4, label: '高频(Top5%)' },
+                { value: 3, label: '中频(Top20%)' },
+                { value: 2, label: '低频(Top50%)' },
+                { value: 1, label: '极低频' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => {
+                    if (filters.minFrequencyTier === option.value) {
+                      // 取消选择
+                      handleFrequencyTierChange(undefined, undefined);
+                    } else {
+                      // 选择该档位及以上
+                      handleFrequencyTierChange(option.value, undefined);
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-lg transition-colors ${
+                    filters.minFrequencyTier === option.value
+                      ? 'bg-indigo-500 text-white'
+                      : 'bg-warm-white text-ink hover:bg-warm-white/80'
+                  }`}
+                  aria-label={`筛选人名频率${option.label}${filters.minFrequencyTier === option.value ? '（已选中）' : ''}`}
+                  aria-pressed={filters.minFrequencyTier === option.value}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {(filters.minFrequencyTier || filters.maxFrequencyTier) && (
+              <p className="text-xs text-jade mt-2">
+                当前筛选：人名频率 ≥ {filters.minFrequencyTier || 1} 档
+              </p>
+            )}
           </div>
 
           {hasActiveFilters && (

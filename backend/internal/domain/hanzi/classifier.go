@@ -289,44 +289,7 @@ func IsCuratedNamingChar(char string) bool {
 	return ok
 }
 
-// ReclassifyAll 对 HanziData 中所有字执行自动分类
-// force=true 时，即使已有分类也重新计算（用于 radicalCategoryMap 更新后刷新）
-// force=false 时，仅补充未分类字符（向后兼容）
-func ReclassifyAll(force bool) {
-	mu.Lock()
-	defer mu.Unlock()
-
-	for char, h := range HanziData {
-		// 策展覆盖表始终保留（人工标注不自动覆盖）
-		if _, ok := characterCategoryOverride[char]; ok {
-			continue
-		}
-		if !force && len(h.NamingCategories) > 0 {
-			continue
-		}
-		cats := ClassifyNaming(char, h.Radical, h.Meaning, h.Wuxing)
-		if cats != nil {
-			h.NamingCategories = cats
-			HanziData[char] = h
-		}
-	}
-}
-
 // init 构建策展覆盖表倒排索引，供 ClassifyNaming 优先使用
 func init() {
 	characterCategoryOverride = buildOverrideMap()
-}
-
-// CountClassified 统计已分类字数和各类别分布
-func CountClassified() (total int, dist map[string]int) {
-	dist = make(map[string]int)
-	for _, h := range HanziData {
-		if len(h.NamingCategories) > 0 {
-			total++
-			for _, c := range h.NamingCategories {
-				dist[c]++
-			}
-		}
-	}
-	return
 }

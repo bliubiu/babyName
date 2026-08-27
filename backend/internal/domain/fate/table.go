@@ -30,6 +30,10 @@ type ExcellentEntry struct {
 	HasPoetry bool               `json:"has_poetry"`
 	PoetryFrom string            `json:"poetry_from,omitempty"` // 诗词出处
 	Items     map[string]float64 `json:"items,omitempty"` // 各维度评分明细
+
+	// 人名频率档位（1-5，0=未收录），供前端展示频率信息
+	NameFreqTier1 int `json:"name_freq_tier1,omitempty"`
+	NameFreqTier2 int `json:"name_freq_tier2,omitempty"`
 }
 
 // excellentMinHeap 最小堆，用于维护 Top-N
@@ -156,6 +160,24 @@ func (t *ExcellentTable) Len() int {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return len(t.entries)
+}
+
+// MinScore 返回堆顶（最小分），用于早停判断
+// 表为空时返回 0
+func (t *ExcellentTable) MinScore() float64 {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	if len(t.h) == 0 {
+		return 0
+	}
+	return t.h[0].Score
+}
+
+// IsFull 返回表是否已满（达到容量上限）
+func (t *ExcellentTable) IsFull() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return len(t.h) >= t.cap
 }
 
 // Explore 随机采样 N 个名字，支持过滤和去重

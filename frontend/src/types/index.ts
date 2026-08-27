@@ -25,6 +25,9 @@ export interface GenerateRequest {
   pinyin_initial?: string;
   // 避讳长辈姓名列表（父系/母系直系长辈，建议往上两代）
   avoid_elder_names?: string[];
+  // 人名频率过滤（来自 Chinese-Names-Corpus 语料统计）
+  min_frequency_tier?: number; // 最小频率档位（1-5，0=不限）
+  max_frequency_tier?: number; // 最大频率档位（1-5，0=不限）
 }
 
 export interface Bazi {
@@ -95,15 +98,18 @@ export interface Name extends NameBase {
   poetry_source?: string;
   poetry_chapter?: string;
   poetry_sentence?: string;
-  // 统一评分体系：7 维评分
-  total_score?: number;     // 综合总分（0-100）
-  wuxing_score?: number;    // 五行匹配分
-  yinyun_score?: number;    // 音韵律动分
-  meaning_score?: number;   // 字义内涵分
-  sancai_score?: number;    // 三才五格分
-  zodiac_score?: number;    // 生肖适配分
-  nayin_score?: number;     // 纳音评分
-  sancai_analysis?: string; // 三才分析描述
+  // 统一评分体系：8 维评分
+  total_score?: number;      // 综合总分（0-100）
+  wuxing_score?: number;     // 五行匹配分
+  yinyun_score?: number;     // 音韵律动分
+  meaning_score?: number;    // 字义内涵分
+  sancai_score?: number;     // 三才五格分
+  zodiac_score?: number;     // 生肖适配分
+  nayin_score?: number;      // 纳音评分
+  novelty_score?: number;    // 新颖度评分
+  bigram_score?: number;     // 诗词共现评分
+  frequency_score?: number;  // 人名频率评分（来自 Chinese-Names-Corpus 语料统计）
+  sancai_analysis?: string;  // 三才分析描述
 }
 
 export interface GenerateResponse {
@@ -158,6 +164,9 @@ export interface FormData {
   sourceClassic: string;
   // 避讳长辈姓名（逗号分隔的字符串，提交时转为数组）
   avoidElderNames: string;
+  // 人名频率过滤
+  minFrequencyTier: number;
+  maxFrequencyTier: number;
 }
 
 export interface APIResponse<T = unknown> {

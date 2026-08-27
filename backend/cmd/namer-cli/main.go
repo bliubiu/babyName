@@ -206,7 +206,6 @@ func generate(req *services.GenerateRequest, dataDir string) (*services.Generate
 		services.WithBaziAnalyzer(&services.BaziAdapter{}),
 		services.WithHexagramFinder(&services.HexagramAdapter{}),
 		services.WithZiweiAnalyzer(&services.ZiweiAdapter{}),
-		services.WithNameGenerator(services.NewNameGeneratorAdapter()),
 		services.WithEnhancedAnalyzer(services.NewEnhancedNameAnalyzerAdapter(absDataDir, services.NewCuratedPersisterAdapter(store))),
 		services.WithZodiacFinder(&services.ZodiacAdapter{}),
 		services.WithCache(cache.GetCache()),

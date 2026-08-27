@@ -92,6 +92,11 @@ type NameCandidate struct {
 	// 由 engine.go 从 Character.CommonLevel 透传，供评分器判断生僻/表外字
 	CommonLevel1 int
 	CommonLevel2 int
+
+	// NameFreqTier1/NameFreqTier2 逐字人名频率档位（1-5，5=最高频，0=未收录）
+	// 来自 Chinese-Names-Corpus 120万人名语料统计，供 FrequencyRater 评分
+	NameFreqTier1 int
+	NameFreqTier2 int
 	GenderHint   string // 性别暗示
 
 	// 数据层策展标注（来自 hanzi.json，由 Adapter 映射）
@@ -181,6 +186,10 @@ type Character struct {
 	// 策展表是「分类字表」而非「精选好字表」，平庸字（软/际/映/耿 等）也在表内。
 	// 结合 PositiveScore>=85 可将策展文化加分收窄为精选好字专属（优质字 87-91，平庸/荒谬字空）。
 	PositiveScore int `json:"positive_score,omitempty"`
+
+	// NameFreqTier 人名频率档位（1-5，5=最高频，0=未收录）
+	// 来自 Chinese-Names-Corpus 120万人名语料统计，由 Adapter 从 HanziData 透传
+	NameFreqTier int `json:"name_freq_tier,omitempty"`
 }
 
 // CharacterQuery 汉字查询接口（用于 Filter 下推查询条件）

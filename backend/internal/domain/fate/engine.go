@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -406,6 +407,22 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		}
 	}
 
+	// 预排序候选池：按「潜力分」降序排列
+	// 潜力分 = 五行匹配(0-24) + 策展好字(0-16) + 寓意评分(0-9) + 诗词出典(0-5)
+	// 高潜力字排在前面，使笛卡尔积循环中高分组合优先进入 ExcellentTable，
+	// 后续低潜力组合在早停检查中被跳过，减少无效评分计算。
+	xiSet := make(map[string]bool)
+	if fateData != nil {
+		for _, wx := range fateData.WuXingXiji.XiYongShen {
+			xiSet[wx] = true
+		}
+	}
+	sort.SliceStable(infos, func(i, j int) bool {
+		pi := charPotentialScore(infos[i].ch.WuXing, infos[i].ch.IsCurated, infos[i].ch.PositiveScore, infos[i].poetryFound, xiSet)
+		pj := charPotentialScore(infos[j].ch.WuXing, infos[j].ch.IsCurated, infos[j].ch.PositiveScore, infos[j].poetryFound, xiSet)
+		return pi > pj
+	})
+
 	surnamePinyin := firstPinyinForSurname(input.Surname, s.engine.provider)
 
 	// 生成名字候选 */
@@ -448,6 +465,7 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 				PoetryFrom: a.poetryDesc,
 				IsRegular:  a.ch.IsRegular,
 				CommonLevel1: a.ch.CommonLevel,
+				NameFreqTier1: a.ch.NameFreqTier,
 				NamePenalty1: a.ch.NamePenalty,
 				IsCurated1: a.ch.IsCurated,
 				PositiveScore1: a.ch.PositiveScore,
@@ -465,6 +483,7 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 				HasPoetry:  a.poetryFound,
 				PoetryFrom: a.poetryDesc,
 				Items:      ns.Items,
+				NameFreqTier1: a.ch.NameFreqTier,
 			}
 			table.TryPush(entry)
 			totalCount.Add(1)
@@ -555,6 +574,20 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 							continue
 						}
 
+						// 早停检查：表已满时，跳过组合潜力分明显不足的配对
+						// 潜力分 = charPotentialScore(a) + charPotentialScore(b)
+						// 低于当前表最小分时，即使满分各维度也难以入表
+						if local.IsFull() {
+							pa := charPotentialScore(a.ch.WuXing, a.ch.IsCurated, a.ch.PositiveScore, a.poetryFound, xiSet)
+							pb := charPotentialScore(b.ch.WuXing, b.ch.IsCurated, b.ch.PositiveScore, b.poetryFound, xiSet)
+							combined := pa + pb
+							minScore := local.MinScore()
+							// 潜力分上限约40，实际得分约60-90，保守阈值=最小分的60%
+							if float64(combined) < minScore*0.6 {
+								continue
+							}
+						}
+
 						poetryFound := a.poetryFound || b.poetryFound
 						poetryDesc := ""
 						if a.poetryFound {
@@ -579,9 +612,11 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 							HasPoetry:  poetryFound,
 							PoetryFrom: poetryDesc,
 							IsRegular:  a.ch.IsRegular && b.ch.IsRegular,
-							CommonLevel1: a.ch.CommonLevel,
-							CommonLevel2: b.ch.CommonLevel,
-							GenderHint: bestGenderHint(a.ch.GenderHint, b.ch.GenderHint),
+						CommonLevel1: a.ch.CommonLevel,
+						CommonLevel2: b.ch.CommonLevel,
+						NameFreqTier1: a.ch.NameFreqTier,
+						NameFreqTier2: b.ch.NameFreqTier,
+						GenderHint: bestGenderHint(a.ch.GenderHint, b.ch.GenderHint),
 							NamePenalty1: a.ch.NamePenalty,
 							NamePenalty2: b.ch.NamePenalty,
 							// 策展覆盖表标记：人工精选起名好字，供 WenHuaRater 文化加分（破荒谬字同分）
@@ -611,6 +646,8 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 							HasPoetry:  candidate.HasPoetry,
 							PoetryFrom: poetryDesc,
 							Items:      ns.Items,
+							NameFreqTier1: candidate.NameFreqTier1,
+							NameFreqTier2: candidate.NameFreqTier2,
 						}
 						local.TryPush(entry)
 						totalCount.Add(1)
@@ -886,6 +923,36 @@ func bestGenderHint(a, b string) string {
 		return a
 	}
 	return b
+}
+
+// charPotentialScore 计算候选字的潜力分，用于预排序
+// 高潜力字排在前面，使笛卡尔积循环中高分组合优先进入 ExcellentTable
+func charPotentialScore(wuxing string, isCurated bool, positiveScore int, poetryFound bool, xiSet map[string]bool) int {
+	score := 0
+	// 五行匹配：喜用神 +12，生助喜用神 +8
+	if xiSet[wuxing] {
+		score += 12
+	} else {
+		for xi := range xiSet {
+			if isWuXingSheng(wuxing, xi) {
+				score += 8
+				break
+			}
+		}
+	}
+	// 策展好字 +8
+	if isCurated && positiveScore >= 90 {
+		score += 8
+	}
+	// 寓意评分（0-9分，归一化）
+	if positiveScore > 0 {
+		score += int(positiveScore) / 10
+	}
+	// 诗词出典 +5
+	if poetryFound {
+		score += 5
+	}
+	return score
 }
 
 // hasPairBlacklist 检查字符的策展搭配黑名单中是否包含指定字

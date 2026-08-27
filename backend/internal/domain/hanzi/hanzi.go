@@ -55,6 +55,9 @@ type Hanzi struct {
 	CurationLevel  int      // 精选等级（1-5）
 	NamePenalty    int      // 起名扣分
 
+	// P3 — 人名频率（来自 Chinese-Names-Corpus 语料统计）
+	NameFreqTier int // 人名频率档位（1-5，5=最高频，0=未收录）
+
 	// NamingCategories 起名分类标签列表（0~N 个分类）
 	// 由 classifier 自动标注 + 策展覆盖表修正
 	NamingCategories []string

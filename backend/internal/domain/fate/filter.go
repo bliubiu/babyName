@@ -123,6 +123,10 @@ type FilterOption struct {
 	GenderFilter        string
 	PoetryMode          int // 0-不限, 1-优先, 2-仅诗词
 
+	// 人名频率过滤（来自 Chinese-Names-Corpus 语料统计）
+	MinFrequencyTier int // 最小频率档位（1-5，0=不限）
+	MaxFrequencyTier int // 最大频率档位（1-5，0=不限）
+
 	// 严格度
 	FilterStrictness string // strict / moderate / relaxed
 
@@ -257,6 +261,13 @@ func (fo FilterOption) WithXiYongMethod(method string) FilterOption {
 	return fo
 }
 
+// WithFrequencyTier 设置人名频率档位过滤范围
+func (fo FilterOption) WithFrequencyTier(min, max int) FilterOption {
+	fo.MinFrequencyTier = min
+	fo.MaxFrequencyTier = max
+	return fo
+}
+
 // WithStrokeMode 设置笔画计算模式
 func (fo FilterOption) WithStrokeMode(mode StrokeMode) FilterOption {
 	fo.StrokeMode = mode
@@ -385,6 +396,18 @@ func (f *filterImpl) CheckCharacter(c *Character) bool {
 	// 性别检查
 	if f.option.GenderFilter != "" {
 		if c.GenderHint != f.option.GenderFilter && c.GenderHint != "neutral" {
+			return false
+		}
+	}
+
+	// 人名频率档位检查（来自 Chinese-Names-Corpus 语料统计）
+	if f.option.MinFrequencyTier > 0 {
+		if c.NameFreqTier < f.option.MinFrequencyTier {
+			return false
+		}
+	}
+	if f.option.MaxFrequencyTier > 0 {
+		if c.NameFreqTier > f.option.MaxFrequencyTier {
 			return false
 		}
 	}

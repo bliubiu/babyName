@@ -470,28 +470,6 @@ func getZhuXingAnalysis(zhuXing string) string {
 	return "命主性格温和，做事稳重，适合稳定的工作环境。"
 }
 
-func GetZiweiInfo(year, month, day, hour int) map[string]interface{} {
-	chart := CalculateZiweiChart(year, month, day, hour, "")
-
-	return map[string]interface{}{
-		"nian_zhu":        chart.NianZhu,
-		"yue_zhu":         chart.YueZhu,
-		"ri_zhu":          chart.RiZhu,
-		"shi_zhu":         chart.ShiZhu,
-		"ming_gong":       chart.MingGong,
-		"shen_gong":       chart.ShenGong,
-		"zhu_xing":        chart.ZhuXing,
-		"fu_xing":         chart.FuXing,
-		"si_hua":          chart.SiHua,
-		"analysis":        chart.Analysis,
-		"lucky_direction": getLuckyDirection(year),
-		"lucky_color":     getLuckyColor(year),
-		"lucky_number":    getLuckyNumber(year),
-		"career_suggestion": getCareerSuggestion(chart.ZhuXing[chart.MingGong]),
-		"relationship":    getRelationshipAdvice(chart.ZhuXing[chart.MingGong]),
-	}
-}
-
 func getLuckyDirection(year int) string {
 	directions := []string{"东方", "南方", "西方", "北方", "东南方", "西南方", "东北方", "西北方"}
 	index := year % len(directions)

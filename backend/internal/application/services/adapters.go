@@ -33,15 +33,6 @@ func SyncNamingIndexFromHanzi() {
 	namingIndexSynced = true
 }
 
-// ForceSyncNamingIndex 强制重新同步命名索引（热更新后调用）
-func ForceSyncNamingIndex() {
-	namingSyncMu.Lock()
-	defer namingSyncMu.Unlock()
-
-	syncNamingIndex()
-	namingIndexSynced = true
-}
-
 func syncNamingIndex() {
 	for char, h := range hanzi.HanziData {
 		if len(h.NamingCategories) > 0 {
@@ -83,19 +74,6 @@ type ZiweiAdapter struct{}
 
 func (a *ZiweiAdapter) Analyze(year, month, day, hour int) *ziwei.ZiweiAnalysis {
 	return ziwei.AnalyzeZiwei(year, month, day, hour)
-}
-
-// NameGeneratorAdapter 名字生成适配器
-type NameGeneratorAdapter struct {
-	generator *name.NameGenerator
-}
-
-func NewNameGeneratorAdapter() *NameGeneratorAdapter {
-	return &NameGeneratorAdapter{generator: name.NewNameGenerator()}
-}
-
-func (a *NameGeneratorAdapter) Generate(opts name.GenerateOptions) []name.Name {
-	return a.generator.Generate(opts)
 }
 
 // EnhancedNameAnalyzerAdapter 增强名字分析适配器
@@ -171,12 +149,6 @@ func (a *ZodiacAdapter) FindByYear(year int) string {
 
 // HanziDataProvider 基于 hanzi.HanziData 的 CharacterProvider 实现
 type HanziDataProvider struct{}
-
-func NewHanziDataProvider() *HanziDataProvider {
-	// 同步 HanziData 的起名分类到 fate 层，使得全量分类对引擎可用
-	SyncNamingIndexFromHanzi()
-	return &HanziDataProvider{}
-}
 
 func (p *HanziDataProvider) GetCharacter(char string) (*fate.Character, error) {
 	h, ok := hanzi.HanziData[char]
@@ -297,6 +269,9 @@ func hanziToCharacter(h hanzi.Hanzi) *fate.Character {
 		// 寓意评分：namer.json positiveScore（0-100），策展加分收窄为「策展字 ∩ positiveScore>=85」
 		// 的精选好字专属，平庸字（软/际/映/耿 等分类字）虽然也在策展表内但不享受加分。
 		PositiveScore: h.PositiveScore,
+
+		// 人名频率档位（1-5），来自 Chinese-Names-Corpus 语料统计
+		NameFreqTier: h.NameFreqTier,
 	}
 
 	// 标注起名分类（优先使用 HanziData 的全量分类数据，其次 fallback 到 fate 精选库）
@@ -468,7 +443,6 @@ func joinStrings(s []string, sep string) string {
 var _ bazi.BaziAnalyzer = (*BaziAdapter)(nil)
 var _ yijing.HexagramFinder = (*HexagramAdapter)(nil)
 var _ ziwei.ZiweiAnalyzer = (*ZiweiAdapter)(nil)
-var _ name.NamesGenerator = (*NameGeneratorAdapter)(nil)
 var _ name.EnhancedNameAnalyzer = (*EnhancedNameAnalyzerAdapter)(nil)
 var _ zodiac.ZodiacFinder = (*ZodiacAdapter)(nil)
 

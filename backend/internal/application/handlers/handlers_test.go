@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"name/internal/application/services"
+	"name/internal/domain/hanzi"
 	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/database/memory"
 	"name/internal/infrastructure/logger"
@@ -19,6 +20,12 @@ import (
 func TestMain(m *testing.M) {
 	_ = logger.InitProduction()
 	gin.SetMode(gin.TestMode)
+	// 加载汉字数据（经典 Generate 路径使用统一引擎 GenerateUnified，依赖 HanziData）
+	dataDir := "../../../data/"
+	if err := hanzi.LoadNamerFromJSON(dataDir); err != nil {
+		// 非关键：仅在未加载数据时影响依赖完整字库的用例
+		_ = err
+	}
 	os.Exit(m.Run())
 }
 
@@ -46,7 +53,6 @@ func newTestNameService() *services.NameService {
 		services.WithBaziAnalyzer(&services.BaziAdapter{}),
 		services.WithHexagramFinder(&services.HexagramAdapter{}),
 		services.WithZiweiAnalyzer(&services.ZiweiAdapter{}),
-		services.WithNameGenerator(services.NewNameGeneratorAdapter()),
 		services.WithEnhancedAnalyzer(services.NewEnhancedNameAnalyzerAdapter("")),
 		services.WithZodiacFinder(&services.ZodiacAdapter{}),
 		services.WithCache(cacheInst),

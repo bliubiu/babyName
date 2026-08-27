@@ -40,6 +40,8 @@ const initialFormData: FormData = {
   nameLength: 2,
   sourceClassic: '',
   avoidElderNames: '',
+  minFrequencyTier: 0,
+  maxFrequencyTier: 0,
 };
 
 const createMyStore = () => {

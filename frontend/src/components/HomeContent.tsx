@@ -88,6 +88,9 @@ export default function HomeContent() {
       avoid_elder_names: formData.avoidElderNames
         ? formData.avoidElderNames.split(/[,，\s]+/).filter(Boolean)
         : undefined,
+      // 人名频率过滤（来自 Chinese-Names-Corpus 语料统计）
+      min_frequency_tier: formData.minFrequencyTier || undefined,
+      max_frequency_tier: formData.maxFrequencyTier || undefined,
     };
 
     generateNamesMutate(formDataForApi);

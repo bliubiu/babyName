@@ -39,28 +39,12 @@ func NewError(code Code, message string) *AppError {
 	}
 }
 
-func NewErrorWithErr(code Code, message string, err error) *AppError {
-	return &AppError{
-		Code:    code,
-		Message: message,
-		Err:     err,
-	}
-}
-
 func BadRequest(message string) *AppError {
 	return NewError(ErrCodeBadRequest, message)
 }
 
 func NotFound(resource string) *AppError {
 	return NewError(ErrCodeNotFound, resource+"不存在")
-}
-
-func InternalError(message string) *AppError {
-	return NewError(ErrCodeInternalError, message)
-}
-
-func ValidationFailed(message string) *AppError {
-	return NewError(ErrCodeValidationFailed, message)
 }
 
 var (

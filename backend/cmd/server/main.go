@@ -222,7 +222,6 @@ func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *a
 	baziAdapter := &services.BaziAdapter{}
 	hexagramAdapter := &services.HexagramAdapter{}
 	ziweiAdapter := &services.ZiweiAdapter{}
-	nameGenAdapter := services.NewNameGeneratorAdapter()
 	enhancedAdapter := services.NewEnhancedNameAnalyzerAdapter(dataDir, services.NewCuratedPersisterAdapter(store))
 	zodiacAdapter := &services.ZodiacAdapter{}
 
@@ -240,7 +239,6 @@ func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *a
 		services.WithBaziAnalyzer(baziAdapter),
 		services.WithHexagramFinder(hexagramAdapter),
 		services.WithZiweiAnalyzer(ziweiAdapter),
-		services.WithNameGenerator(nameGenAdapter),
 		services.WithEnhancedAnalyzer(enhancedAdapter),
 		services.WithZodiacFinder(zodiacAdapter),
 		services.WithCache(cacheInst),

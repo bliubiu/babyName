@@ -239,33 +239,35 @@ func (r *WuxingRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 	}
 
 	score = clampScore(score)
-	detail := "五行信息良好"
+	detail := "五行搭配均衡，喜用神匹配良好"
 	if len(details) > 0 {
 		detail = strings.Join(details, "；")
 	}
 	return NameRating{Score: score, Detail: detail}
 }
 
-// DefaultRaters 返回默认的六维评分器列表
+// DefaultRaters 返回默认的七维评分器列表
 //
-// 移除了 WuGeRater（熊崎五格数理），新增 SancaiRater（天地人三才）+ NoveltyRater（新颖度），
-// 权重重新分配：
-//   - WuxingRater    28%（命理层核心，原30%，腾挪2%给新颖度）
-//   - WenHuaRater    18%（字象层，原20%，腾挪2%给新颖度）
-//   - YinYunRater    18%（字象层，原20%，腾挪2%给新颖度）
-//   - ShengXiaoRater 14%（命理层，原15%，腾挪1%给新颖度）
-//   - SancaiRater    10%（三才，原15%，腾挪5%给新颖度）
-//   - NoveltyRater   12%（新增维度：新颖度，区分度核心）
-//   - BigramRater    10%（新增维度：诗词二字共现频率）
+// 移除了 WuGeRater（熊崎五格数理），新增 SancaiRater（天地人三才）+ NoveltyRater（新颖度）
+// + FrequencyRater（人名频率），权重重新分配：
+//   - WuxingRater     24%（命理层核心）
+//   - WenHuaRater     14%（字象层）
+//   - YinYunRater     14%（字象层）
+//   - ShengXiaoRater  11%（命理层）
+//   - SancaiRater      8%（三才）
+//   - NoveltyRater    14%（新颖度，区分度核心）
+//   - BigramRater      9%（诗词二字共现频率）
+//   - FrequencyRater   6%（人名频率，真实语料统计）
 func DefaultRaters() []Rater {
 	return []Rater{
-		NewWuxingRaterWithWeight(0.25),    // 25% 命理层
-		NewWenHuaRaterWithWeight(0.15),    // 15% 字象层
-		NewYinYunRaterWithWeight(0.15),    // 15% 字象层
-		NewShengXiaoRaterWithWeight(0.12), // 12% 命理层
+		NewWuxingRaterWithWeight(0.24),    // 24% 命理层
+		NewWenHuaRaterWithWeight(0.14),    // 14% 字象层
+		NewYinYunRaterWithWeight(0.14),    // 14% 字象层
+		NewShengXiaoRaterWithWeight(0.11), // 11% 命理层
 		NewSancaiRaterWithWeight(0.08),    //  8% 三才
-		NewNoveltyRaterWithWeight(0.15),   // 15% 新颖度
-		NewBigramRaterWithWeight(0.10),    // 10% 共现分
+		NewNoveltyRaterWithWeight(0.14),   // 14% 新颖度
+		NewBigramRaterWithWeight(0.09),    //  9% 共现分
+		NewFrequencyRaterWithWeight(0.06), //  6% 人名频率
 	}
 }
 
@@ -482,7 +484,7 @@ func (r *WenHuaRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 	}
 
 	score = clampScore(score)
-	detail := "文化印象良好"
+	detail := "常用字搭配，字义明确，文化内涵良好"
 	if len(details) > 0 {
 		detail = strings.Join(details, "；")
 	}
@@ -541,7 +543,7 @@ func (r *YinYunRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 	// 恢复音韵维度区分度。历史缺陷：直接返回恒定 80 使单名 Top5 全部同分，
 	// 荒谬字与好字并列，排序由候选池枚举顺序决定 → 门禁字永远打不完。
 	if p1 == "" {
-		return NameRating{Score: score, Detail: "音韵信息良好"}
+		return NameRating{Score: score, Detail: "声调起伏有致，韵母搭配和谐"}
 	}
 
 	if p2 == "" {
@@ -589,7 +591,7 @@ func (r *YinYunRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 			}
 		}
 		score = clampScore(score)
-		detail := "音韵信息良好"
+		detail := "声调起伏有致，韵母搭配和谐"
 		if len(details) > 0 {
 			detail = strings.Join(details, "；")
 		}
@@ -664,7 +666,7 @@ func (r *YinYunRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 	}
 
 	score = clampScore(score)
-	detail := "音韵信息良好"
+	detail := "声调起伏有致，韵母搭配和谐"
 	if len(details) > 0 {
 		detail = strings.Join(details, "；")
 	}
@@ -690,7 +692,7 @@ func (r *ShengXiaoRater) Weight() float64 { return r.weight }
 
 func (r *ShengXiaoRater) Rate(candidate *NameCandidate, fateData *FateData) NameRating {
 	if fateData == nil {
-		return NameRating{Score: 80, Detail: "生肖信息良好"}
+		return NameRating{Score: 80, Detail: "生肖与名字五行搭配和谐"}
 	}
 
 	score := 80.0
@@ -699,7 +701,7 @@ func (r *ShengXiaoRater) Rate(candidate *NameCandidate, fateData *FateData) Name
 	zodiacWx := getZodiacWuXing(zodiac)
 
 	if zodiacWx == "" {
-		return NameRating{Score: score, Detail: "生肖信息良好"}
+		return NameRating{Score: score, Detail: "生肖五行信息待完善"}
 	}
 
 	details = append(details, fmt.Sprintf("生肖%s，五行属%s", zodiac, zodiacWx))
@@ -722,7 +724,7 @@ func (r *ShengXiaoRater) Rate(candidate *NameCandidate, fateData *FateData) Name
 	}
 
 	score = clampScore(score)
-	detail := "生肖信息良好"
+	detail := "生肖五行搭配合理，无明显冲突"
 	if len(details) > 0 {
 		detail = strings.Join(details, "；")
 	}
@@ -857,7 +859,7 @@ func (r *SancaiRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 	}
 
 	score = clampScore(score)
-	detail := "三才信息良好"
+	detail := "天地人三才搭配均衡，阴阳刚柔相济"
 	if len(details) > 0 {
 		detail = strings.Join(details, "；")
 	}
@@ -1063,7 +1065,7 @@ func (r *NoveltyRater) Rate(candidate *NameCandidate, fateData *FateData) NameRa
 	}
 
 	score = clampScore(score)
-	detail := "新颖度适中"
+	detail := "字形搭配有变化，语义差异化良好"
 	if len(details) > 0 {
 		detail = strings.Join(details, "；")
 	}
@@ -1145,7 +1147,7 @@ func (r *BigramRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 	}
 
 	// 无任何诗词信号
-	return NameRating{Score: baseScore, Detail: "无诗词共现信息"}
+	return NameRating{Score: baseScore, Detail: "该组合暂无诗词典籍中的二字共现记录"}
 }
 
 // evaluateTonePattern 三字声调旋律评分（姓+名1+名2）

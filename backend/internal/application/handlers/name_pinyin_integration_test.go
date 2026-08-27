@@ -66,7 +66,6 @@ func setupFateNameService(t *testing.T) (*services.NameService, error) {
 			services.WithBaziAnalyzer(&services.BaziAdapter{}),
 			services.WithHexagramFinder(&services.HexagramAdapter{}),
 			services.WithZiweiAnalyzer(&services.ZiweiAdapter{}),
-			services.WithNameGenerator(services.NewNameGeneratorAdapter()),
 			services.WithEnhancedAnalyzer(services.NewEnhancedNameAnalyzerAdapter(absDir, services.NewCuratedPersisterAdapter(store))),
 			services.WithZodiacFinder(&services.ZodiacAdapter{}),
 			services.WithCache(cache.GetCache()),

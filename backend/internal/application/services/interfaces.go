@@ -5,7 +5,6 @@ import (
 
 	"name/internal/domain/bazi"
 	"name/internal/domain/name"
-	"name/internal/domain/namestat"
 	"name/internal/domain/yijing"
 	"name/internal/domain/zodiac"
 	"name/internal/infrastructure/database"
@@ -55,12 +54,6 @@ type FavoriteServiceInterface interface {
 	DeleteFavorite(ctx context.Context, id string) error
 	BatchDeleteFavorite(ctx context.Context, ids []string) error
 	CheckFavorite(ctx context.Context, surname, givenName string) bool
-}
-
-// StatServiceInterface 统计服务接口
-type StatServiceInterface interface {
-	GetNameStats(ctx context.Context, name string) (*namestat.NameStat, error)
-	GetProvinceStats(ctx context.Context, name, province string) (*namestat.NameStat, error)
 }
 
 // ReportServiceInterface 报告服务接口

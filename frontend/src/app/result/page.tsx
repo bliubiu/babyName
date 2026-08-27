@@ -51,6 +51,18 @@ export default function ResultPage() {
     if (filters.wuxing && name.wuxing !== filters.wuxing) return false;
     if (filters.minStrokes && name.strokes < filters.minStrokes) return false;
     if (filters.maxStrokes && name.strokes > filters.maxStrokes) return false;
+    // 人名频率过滤（基于 frequency_score 评分，0-100 分制）
+    if (filters.minFrequencyTier && name.frequency_score !== undefined) {
+      // 将 frequency_score 映射回 tier（简化逻辑：分数越高 = tier 越高）
+      // frequency_score 的 tier 映射：5→100, 4→80, 3→60, 2→40, 1→20, 未收录→50
+      const estimatedTier = name.frequency_score >= 90 ? 5
+        : name.frequency_score >= 70 ? 4
+        : name.frequency_score >= 55 ? 3
+        : name.frequency_score >= 35 ? 2
+        : name.frequency_score >= 15 ? 1
+        : 0;
+      if (estimatedTier < filters.minFrequencyTier) return false;
+    }
     return true;
   }) : [], [result, filters]);
 

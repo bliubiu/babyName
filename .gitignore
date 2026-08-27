@@ -8,6 +8,7 @@ node_modules/
 out/
 dist/
 build/
+Chinese-Names-Corpus(wainshine).zip
 
 # Testing
 coverage/
@@ -64,6 +65,7 @@ vendor/
 namemaster.exe
 server.exe
 *.exe
+data*.zip
 
 # Logs
 *.log

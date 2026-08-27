@@ -72,6 +72,7 @@ function NameCard({
     { key: 'meaning', label: '字义', value: name.meaning_score ?? 0, color: 'bg-emerald-500' },
     { key: 'sancai', label: '天地人三才', value: name.sancai_score ?? 0, color: 'bg-violet-400' },
     { key: 'zodiac', label: '生肖', value: name.zodiac_score ?? 0, color: 'bg-rose-400' },
+    { key: 'frequency', label: '人名频率', value: name.frequency_score ?? 0, color: 'bg-indigo-400' },
   ];
   const hasDimScores = dims.some(d => d.value > 0);
 

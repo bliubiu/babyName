@@ -63,6 +63,9 @@ type NameAnalysis struct {
 	// 诗词共现评分
 	BigramScore    float64  `json:"bigram_score"`
 	
+	// 人名频率评分（来自 Chinese-Names-Corpus 语料统计）
+	FrequencyScore float64  `json:"frequency_score"`
+	
 	// 纳音分析
 	NayinScore     float64  `json:"nayin_score"`
 	NayinAnalysis  string   `json:"nayin_analysis"`
@@ -83,7 +86,6 @@ type NameAnalysis struct {
 
 // EnhancedNameGenerator 增强版名字生成器
 type EnhancedNameGenerator struct {
-	*NameGenerator
 	analysisCache  map[string]*NameAnalysis
 	cacheMu        sync.RWMutex
 	yinyunAnalyzer *YinyunAnalyzer
@@ -105,6 +107,31 @@ type EnhancedNameGenerator struct {
 	poetryZodiacOnce        sync.Once                        // 生肖宜用/忌用字集惰性初始化
 	zodiacGoodCharSets      map[string]map[string]bool       // 生肖→宜用字集
 	zodiacTabooCharSets     map[string]map[string]bool       // 生肖→忌用字集
+
+	// 可配置的常用字表（从 NameGenerator 迁移）
+	MaleNames   []string
+	FemaleNames []string
+
+	// 字符信息缓存（从 NameGenerator 迁移）
+	charMutex       sync.RWMutex
+	charInfoCache   map[string]struct {
+		pinyin   string
+		meaning  string
+		wuxing   string
+		strokes  int
+	}
+	charExtraCache map[string]struct {
+		radical   string
+		structure string
+	}
+	poetryInfoCache map[string]struct {
+		pinyin   string
+		meaning  string
+		source   string
+		chapter  string
+		sentence string
+		wuxing   string
+	}
 }
 
 // poetrySentenceEntry 诗词句子条目（用于双字共现检索）
@@ -130,12 +157,31 @@ func NewEnhancedNameGenerator(dataDir string, persisters ...CuratedPersister) *E
 	}
 
 	eng := &EnhancedNameGenerator{
-		NameGenerator: NewNameGenerator(),
 		analysisCache:  make(map[string]*NameAnalysis),
 		yinyunAnalyzer: NewYinyunAnalyzer(),
 		nameDB:         nameDB,
 		nameFilter:     NewNameFilter(),
 		initErr:        err,
+		charInfoCache: make(map[string]struct {
+			pinyin  string
+			meaning string
+			wuxing  string
+			strokes int
+		}),
+		charExtraCache: make(map[string]struct {
+			radical   string
+			structure string
+		}),
+		poetryInfoCache: make(map[string]struct {
+			pinyin   string
+			meaning  string
+			source   string
+			chapter  string
+			sentence string
+			wuxing   string
+		}),
+		MaleNames:   CommonMaleNames,
+		FemaleNames: CommonFemaleNames,
 	}
 	// 启动时预计算性别候选字池
 	eng.initCharPool()
@@ -185,14 +231,12 @@ func (eng *EnhancedNameGenerator) initCharPool() {
 
 // GenerateNamesWithAnalysis 生成带详细分析的名字
 func (eng *EnhancedNameGenerator) GenerateNamesWithAnalysis(opts GenerateOptions) ([]*NameAnalysis, error) {
-	// 生成基础名字列表
-	names := eng.GenerateNamesWithGeneration(
-		opts.Surname, opts.Generation, opts.Gender, opts.Xiyongshen, opts.Count, opts.NameLength,
-		opts.ExcludeRare, opts.WuxingMatch, opts.SourceClassic, opts.MinStrokes, opts.MaxStrokes,
-		opts.IncludePoetry, opts.IncludeClassic, opts.MeaningKeywords, opts.PinyinInitial,
-		opts.GenerationPosition, opts.NameType,
-	)
-	
+	// 使用统一引擎生成名字列表（含综合评分与增强信息）
+	names, err := eng.GenerateUnified(opts)
+	if err != nil {
+		return nil, err
+	}
+
 	if len(names) == 0 {
 		return nil, fmt.Errorf("未生成符合条件的名字")
 	}
@@ -927,15 +971,6 @@ func (eng *EnhancedNameGenerator) loadZodiacCharSets() {
 	})
 }
 
-// zodiacCharInSet 检查字符是否在生肖字集中（O(1) 查找，替代线性扫描）
-func (eng *EnhancedNameGenerator) zodiacCharInSet(char, zodiac string, isGood bool) bool {
-	eng.loadZodiacCharSets()
-	if isGood {
-		return eng.zodiacGoodCharSets[zodiac][char]
-	}
-	return eng.zodiacTabooCharSets[zodiac][char]
-}
-
 // calculateTotalScore 计算综合评分（使用 ScoringWeights 统一权重配置）
 func (eng *EnhancedNameGenerator) calculateTotalScore(analysis *NameAnalysis) float64 {
 	totalScore := analysis.WuxingScore*ScoringWeights["wuxing"] +
@@ -1161,11 +1196,6 @@ func (eng *EnhancedNameGenerator) ValidateName(name Name) (bool, []string) {
 	return result.Valid, result.Issues
 }
 
-// hasBadHomophones 检查是否有不良谐音（保留接口兼容）
-func (eng *EnhancedNameGenerator) hasBadHomophones(name string) bool {
-	return false // 已由 NameFilter 替代
-}
-
 // ============================================================
 // 统一评分体系 — 对 Name 做7维综合评分
 // ============================================================
@@ -1245,9 +1275,6 @@ func (eng *EnhancedNameGenerator) calculateTotalScoreFromName(name *Name) float6
 			total += dbScore * ScoringWeights["namedb"]
 		}
 	}
-
-	// 保留 Score 字段向后兼容
-	name.Score = math.Round(total)
 
 	total = math.Round(total*10) / 10
 	if total > 100 {
@@ -1726,17 +1753,22 @@ func (eng *EnhancedNameGenerator) buildCandidates(opts GenerateOptions) []string
 			result = append(result, c)
 	}
 
-	// 候选字数量剪枝：当候选字超过 100 时，按精选等级+常用等级排序保留 Top 100
+	// 候选字数量剪枝：当候选字超过 100 时，按精选等级+常用等级+人名频率排序保留 Top 100
 	// 双字名组合复杂度为 O(n²)，100 字 → 10K 组合，22,500→10,000 (-55%)
-	// 优先保留高精选等级的字，确保质量不因减少候选数而明显下降
+	// 优先保留高精选等级的字，其次高频人名字，确保质量不因减少候选数而明显下降
 	const maxCandidates = 100
 	if len(result) > maxCandidates {
 		sort.SliceStable(result, func(i, j int) bool {
 			hi, hji := hanzi.HanziData[result[i]], hanzi.HanziData[result[j]]
-			// 优先 CurationLevel，次优 UsageLevel
+			// 优先 CurationLevel
 			if hi.CurationLevel != hji.CurationLevel {
 				return hi.CurationLevel > hji.CurationLevel
 			}
+			// 次优 NameFreqTier（人名频率高的字优先参与组合）
+			if hi.NameFreqTier != hji.NameFreqTier {
+				return hi.NameFreqTier > hji.NameFreqTier
+			}
+			// 兜底 UsageLevel
 			return hi.UsageLevel > hji.UsageLevel
 		})
 		result = result[:maxCandidates]
@@ -2004,39 +2036,58 @@ func (eng *EnhancedNameGenerator) buildNameFromPair(chars string, opts GenerateO
 
 // loadPoetrySentences 惰性加载所有诗词句子（去重），同时构建字符串→句子倒排索引
 // 以及 charSentenceSet（O(1) 交集判断）和 sentenceInfo（快速获取原句元数据）
+// 数据来源：1) 硬编码 PoetrySources（古文名句库） 2) PoemIndex（诗经/楚辞/唐诗/宋词/元曲全文）
 func (eng *EnhancedNameGenerator) loadPoetrySentences() {
 	eng.poetrySentencesOnce.Do(func() {
 		eng.poetryCharIndex = make(map[string][]poetrySentenceEntry)
 		eng.poetryCharSentenceSet = make(map[string]map[string]bool)
 		eng.poetrySentenceInfo = make(map[string]poetrySentenceEntry)
 		seen := make(map[string]bool)
-		for _, ps := range classics.PoetrySources {
-			for _, pc := range ps.Chars {
-				if pc.Sentence == "" || seen[pc.Sentence] {
+
+		// 辅助：添加句子到索引
+		addSentence := func(source, chapter, sentence string) {
+			if sentence == "" || seen[sentence] {
+				return
+			}
+			seen[sentence] = true
+			entry := poetrySentenceEntry{
+				Source:   source,
+				Chapter:  chapter,
+				Sentence: sentence,
+			}
+			eng.poetrySentences = append(eng.poetrySentences, entry)
+			eng.poetrySentenceInfo[sentence] = entry
+
+			// 对句中每个字符建立倒排索引 + 句子集合
+			seenChar := make(map[rune]bool)
+			for _, r := range sentence {
+				if seenChar[r] {
 					continue
 				}
-				seen[pc.Sentence] = true
-				entry := poetrySentenceEntry{
-					Source:   pc.Work,
-					Chapter:  pc.Chapter,
-					Sentence: pc.Sentence,
+				seenChar[r] = true
+				char := string(r)
+				eng.poetryCharIndex[char] = append(eng.poetryCharIndex[char], entry)
+				if eng.poetryCharSentenceSet[char] == nil {
+					eng.poetryCharSentenceSet[char] = make(map[string]bool)
 				}
-				eng.poetrySentences = append(eng.poetrySentences, entry)
-				eng.poetrySentenceInfo[pc.Sentence] = entry
+				eng.poetryCharSentenceSet[char][sentence] = true
+			}
+		}
 
-				// 对句中每个字符建立倒排索引 + 句子集合
-				seenChar := make(map[rune]bool)
-				for _, r := range pc.Sentence {
-					if seenChar[r] {
-						continue
-					}
-					seenChar[r] = true
-					char := string(r)
-					eng.poetryCharIndex[char] = append(eng.poetryCharIndex[char], entry)
-					if eng.poetryCharSentenceSet[char] == nil {
-						eng.poetryCharSentenceSet[char] = make(map[string]bool)
-					}
-					eng.poetryCharSentenceSet[char][pc.Sentence] = true
+		// 1) 硬编码古文名句库（PoetrySources）
+		for _, ps := range classics.PoetrySources {
+			for _, pc := range ps.Chars {
+				addSentence(pc.Work, pc.Chapter, pc.Sentence)
+			}
+		}
+
+		// 2) 增强诗词索引（PoemIndex）— 覆盖诗经/楚辞/唐诗/宋词/元曲全文
+		if poemIdx := classics.GetGlobalPoemIndex(); poemIdx != nil {
+			for _, poem := range poemIdx.GetEntries() {
+				src := poem.Source
+				ch := poem.Title
+				for _, line := range poem.Content {
+					addSentence(src, ch, line)
 				}
 			}
 		}

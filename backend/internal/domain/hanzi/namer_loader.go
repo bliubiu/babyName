@@ -32,6 +32,9 @@ type NamerChar struct {
 	StyleTags     []string `json:"styleTags,omitempty"`     // 风格标签
 	UsageLevel    int      `json:"usageLevel,omitempty"`    // 常用等级（1-5）
 	PositiveScore int      `json:"positiveScore,omitempty"` // 寓意评分（0-100）
+
+	// P3 — 人名频率（来自 Chinese-Names-Corpus 语料统计）
+	NameFreqTier  int `json:"nameFreqTier,omitempty"`  // 人名频率档位（1-5，5=最高频，0=未收录）
 }
 
 // NamerData 顶层容器，对应 namer.json 根结构
@@ -108,6 +111,19 @@ func LoadNamerFromJSON(dataDir string) error {
 	// 五行覆盖表和部首兜底（必须在 HanziData 填充完毕后运行）
 	ApplyWuxingOverrides()
 
+	// 加载人名频率数据并合并到 HanziData（仅对 namer.json 8105 字生效）
+	if err := LoadFrequencyDB(dataDir); err == nil {
+		mu.Lock()
+		for char, data := range HanziData {
+			if tier := GetCharTier(char); tier > 0 {
+				data.NameFreqTier = tier
+				HanziData[char] = data
+			}
+		}
+		mu.Unlock()
+	}
+	// 频率文件不存在时静默跳过（非强制依赖）
+
 	return nil
 }
 
@@ -127,14 +143,6 @@ func ReloadNamerFromJSON(dataDir string) error {
 	return nil
 }
 
-// GetNamerChar 线程安全获取 namer 字符数据
-func GetNamerChar(char string) (NamerChar, bool) {
-	namerMu.RLock()
-	defer namerMu.RUnlock()
-	nc, ok := NamerCharMap[char]
-	return nc, ok
-}
-
 // GetNamerLevel 获取汉字等级（1/2/3），不含时返回 0
 func GetNamerLevel(char string) int {
 	namerMu.RLock()
@@ -144,22 +152,4 @@ func GetNamerLevel(char string) int {
 		return 0
 	}
 	return nc.Level
-}
-
-// GetNamerStats 返回 namer 数据统计
-func GetNamerStats() (total int, l1, l2, l3 int) {
-	namerMu.RLock()
-	defer namerMu.RUnlock()
-	total = len(NamerCharMap)
-	for _, nc := range NamerCharMap {
-		switch nc.Level {
-		case 1:
-			l1++
-		case 2:
-			l2++
-		case 3:
-			l3++
-		}
-	}
-	return
 }
