@@ -2,7 +2,7 @@
 import json
 from collections import Counter
 
-base = r'D:\19-Training\learngo\name\backend\data'
+base = r'D:\19-Training\learngo\name\backend\data\raw'
 
 with open(f'{base}/hanzi.json', 'r', encoding='utf8') as f:
     h = json.load(f)

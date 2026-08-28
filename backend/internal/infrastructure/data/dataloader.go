@@ -24,14 +24,15 @@ type fileCache struct {
 var cache = &fileCache{data: make(map[string][]byte)}
 
 // Init 统一加载所有JSON数据文件
-// 按依赖顺序加载：hanzi → yijing → classic → zodiac
+// 按依赖顺序加载：namer → yijing → classic → zodiac
 func Init(dataDir string) error {
-	// 1. 加载《通用规范汉字表》8105字数据（namer.json — 主数据源）
+	// 1. 加载《通用规范汉字表》8105字数据（namer.json — 运行时唯一汉字数据源）
 	//
-	// namer.json 为统一的起名用字数据，含五行校正和起名分类标注，覆盖全部 8105 标准字。
-	// hanzi.json（14814 字）中的非标准字已不在启动时加载，以符合项目以标准字表为准的要求。
-	// namer.json 为统一的起名用字数据，含五行校正和起名分类标注。
+	// namer.json 为统一的起名用字数据，含五行校正、起名分类标注，
+	// 以及并入的精选偏旁分组（charGroups），覆盖全部 8105 标准字。
 	// 通过 namer_loader.go 同步到 HanziData，使所有依赖 HanziData 的代码自动受益。
+	// 历史遗留的 hanzi.json / standard_chars.json 已降级为 export_namer 的
+	// 离线生成原料，不再于运行时加载。
 	if err := hanzi.LoadNamerFromJSON(dataDir); err != nil {
 		return fmt.Errorf("加载 namer 数据失败: %w", err)
 	}

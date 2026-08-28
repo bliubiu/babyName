@@ -65,6 +65,15 @@ type Hanzi struct {
 
 var HanziData = map[string]Hanzi{}
 
+// ForEachHanzi 遍历 HanziData 中的每个汉字（只读、线程安全）
+func ForEachHanzi(fn func(Hanzi)) {
+	mu.RLock()
+	defer mu.RUnlock()
+	for _, h := range HanziData {
+		fn(h)
+	}
+}
+
 // --- 运行时 word.json 释义加载 ---
 
 var (

@@ -2,7 +2,7 @@
 import json, os
 from collections import Counter
 
-base = r'D:\19-Training\learngo\name\backend\data'
+base = r'D:\19-Training\learngo\name\backend\data\raw'
 
 # hanzi.json 完整分析
 with open(os.path.join(base, 'hanzi.json'), 'r', encoding='utf8') as f:

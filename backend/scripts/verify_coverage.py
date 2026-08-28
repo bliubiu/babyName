@@ -2,7 +2,7 @@
 """验证五行映射覆盖范围"""
 import json
 
-base = r'D:\19-Training\learngo\name\backend\data'
+base = r'D:\19-Training\learngo\name\backend\data\raw'
 
 # 我的部首映射 (same as Go code)
 radical_map = {

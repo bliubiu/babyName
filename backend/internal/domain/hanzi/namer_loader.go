@@ -37,18 +37,32 @@ type NamerChar struct {
 	NameFreqTier  int `json:"nameFreqTier,omitempty"`  // 人名频率档位（1-5，5=最高频，0=未收录）
 }
 
+// StandardCharGroup 标准起名用字（按偏旁分组）
+// 与老版 standard_chars.json 的数据结构一致，现已合并进
+// namer.json 的顶层 charGroups 字段，作为统一单文件真源的组成部分。
+type StandardCharGroup struct {
+	Radical string   `json:"radical"`
+	Name    string   `json:"name"`
+	Meaning string   `json:"meaning"`
+	Chars   []string `json:"chars"`
+}
+
 // NamerData 顶层容器，对应 namer.json 根结构
 type NamerData struct {
-	Version     string     `json:"version"`
-	Generated   string     `json:"generated"`
-	Description string     `json:"description"`
-	TotalChars  int        `json:"totalChars"`
-	Chars       []NamerChar `json:"chars"`
+	Version     string             `json:"version"`
+	Generated   string             `json:"generated"`
+	Description string             `json:"description"`
+	TotalChars  int                `json:"totalChars"`
+	Chars       []NamerChar        `json:"chars"`
+	CharGroups  []StandardCharGroup `json:"charGroups,omitempty"` // 精选起名用字按偏旁分组
 }
 
 var (
 	// NamerCharMap 汉字 → namer 数据的快速查找表
 	NamerCharMap map[string]NamerChar
+
+	// NamerGroups 精选起名用字的分偏旁分组（来自 namer.json 顶层 charGroups）
+	NamerGroups []StandardCharGroup
 
 	namerMu sync.RWMutex
 )
@@ -80,6 +94,9 @@ func LoadNamerFromJSON(dataDir string) error {
 		m[nc.Char] = nc
 	}
 	NamerCharMap = m
+
+	// 承载精选起名用字分组（来自顶层 charGroups，取代独立 standard_chars.json）
+	NamerGroups = nd.CharGroups
 
 	// 同步到 HanziData — 以 namer 数据为准
 	mu.Lock()
@@ -152,4 +169,22 @@ func GetNamerLevel(char string) int {
 		return 0
 	}
 	return nc.Level
+}
+
+// GetNamerGroups 获取精选起名用字的分偏旁分组（namer.json 顶层 charGroups）
+func GetNamerGroups() []StandardCharGroup {
+	namerMu.RLock()
+	defer namerMu.RUnlock()
+	return NamerGroups
+}
+
+// GetCharRadicalFromNamer 从 namer 数据获取汉字的偏旁（取代对 standard_chars.json 的磁盘读取）
+func GetCharRadicalFromNamer(char string) string {
+	namerMu.RLock()
+	defer namerMu.RUnlock()
+	nc, ok := NamerCharMap[char]
+	if !ok {
+		return ""
+	}
+	return nc.Radical
 }

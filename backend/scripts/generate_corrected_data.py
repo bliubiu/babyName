@@ -2,7 +2,7 @@
 """生成修正后的 hanzi.json"""
 import json
 
-base = r'D:\19-Training\learngo\name\backend\data'
+base = r'D:\19-Training\learngo\name\backend\data\raw'
 
 # 映射表（同上个脚本的 radical_map + overrides）
 radical_map = {

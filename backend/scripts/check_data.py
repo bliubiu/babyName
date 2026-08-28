@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import json, os
 
-base = r'D:\19-Training\learngo\name\backend\data'
+base = r'D:\19-Training\learngo\name\backend\data\raw'
 
 # standard_chars.json
 with open(os.path.join(base, 'standard_chars.json'), 'r', encoding='utf8') as f:

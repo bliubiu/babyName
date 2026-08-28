@@ -31,7 +31,7 @@ def load_namer(path="data/namer.json"):
     with open(path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-def load_csv(path="data/gsc_pinyin.csv"):
+def load_csv(path="data/raw/gsc_pinyin.csv"):
     with open(path, 'r', encoding='utf-8') as f:
         return list(csv.DictReader(f))
 

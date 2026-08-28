@@ -38,7 +38,11 @@ type JSONHanzi struct {
 	NamingCategories []string `json:"namingCategories,omitempty"`
 }
 
-// LoadFromJSON 从 JSON 文件加载汉字数据
+// LoadFromJSON 从 JSON 文件加载汉字数据（历史实现，读 data/raw/hanzi.json）
+//
+// 注意：该函数当前无运行时调用方——运行时统一由 LoadNamerFromJSON 从
+// namer.json 加载。hanzi.json 已物理隔离至 data/raw/ 生成原料目录。
+// 若需读取，请传入 raw 目录，例如 filepath.Join(dataDir, "raw")。
 func LoadFromJSON(dataDir string) error {
 	path := filepath.Join(dataDir, "hanzi.json")
 	data, err := os.ReadFile(path)

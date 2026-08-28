@@ -10,6 +10,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"name/internal/domain/hanzi"
 	"name/internal/infrastructure/logger"
 	"go.uber.org/zap"
 )
@@ -47,25 +48,13 @@ type CuratedNameEntry struct {
 	Source string  `json:"source,omitempty"`
 }
 
-// StandardCharGroup 标准起名用字（按偏旁分组）
-type StandardCharGroup struct {
-	Radical string   `json:"radical"`
-	Name    string   `json:"name"`
-	Meaning string   `json:"meaning"`
-	Chars   []string `json:"chars"`
-}
-
-// ============================================================
 // NameDB 候选名库管理器
-// ============================================================
-
-// NameDB 候选名库管理器（支持热更新）
 type NameDB struct {
 	mu           sync.RWMutex
 	dataDir      string
 	curatedNames []CuratedName
 	shiyunNames  []CuratedName  // 诗云等开源项目精选名字库
-	charGroups   []StandardCharGroup
+	charGroups   []hanzi.StandardCharGroup
 	// 持久化
 	persister CuratedPersister
 	// 缓存
@@ -291,17 +280,27 @@ func (db *NameDB) loadShiYunNames() error {
 	return nil
 }
 
-// loadStandardChars 从 JSON 加载标准起名用字
+// loadStandardChars 加载标准起名用字（按偏旁分组）
+//
+// 分组数据已并入 namer.json 顶层 charGroups（单一文件真源），由 hanzi 包
+// 在 LoadNamerFromJSON 时解析并暴露。此处直接从内存取用，不再读盘
+// standard_chars.json；若为空则从 HanziData 按偏旁聚合兜底。
 func (db *NameDB) loadStandardChars() error {
-	path := filepath.Join(db.dataDir, "standard_chars.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-
-	var groups []StandardCharGroup
-	if err := json.Unmarshal(data, &groups); err != nil {
-		return err
+	groups := hanzi.GetNamerGroups()
+	if len(groups) == 0 {
+		// 兜底：由 HanziData（namer.json）按偏旁聚合
+		byRadical := make(map[string][]string)
+		hanzi.ForEachHanzi(func(h hanzi.Hanzi) {
+			if h.Radical != "" {
+				byRadical[h.Radical] = append(byRadical[h.Radical], h.Char)
+			}
+		})
+		for radical, chars := range byRadical {
+			groups = append(groups, hanzi.StandardCharGroup{
+				Radical: radical,
+				Chars:   chars,
+			})
+		}
 	}
 
 	db.mu.Lock()
@@ -350,11 +349,11 @@ func (db *NameDB) GetCharRadical(char string) string {
 }
 
 // GetCharGroups 获取所有偏旁分组
-func (db *NameDB) GetCharGroups() []StandardCharGroup {
+func (db *NameDB) GetCharGroups() []hanzi.StandardCharGroup {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 
-	result := make([]StandardCharGroup, len(db.charGroups))
+	result := make([]hanzi.StandardCharGroup, len(db.charGroups))
 	copy(result, db.charGroups)
 	return result
 }

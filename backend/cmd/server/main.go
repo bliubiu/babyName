@@ -291,7 +291,7 @@ func newHandlers(svc *appServices, dataDir string) *appHandlers {
 		feedback:  handlers.NewFeedbackHandler(svc.feedback),
 		stat:      handlers.NewNameStatHandler(),
 		huangli:   handlers.NewHuangliHandler(),
-		character: handlers.NewCharacterHandler(dataDir, svc.name.GetNameDB()),
+		character: handlers.NewCharacterHandler(svc.name.GetNameDB()),
 	}
 }
 
