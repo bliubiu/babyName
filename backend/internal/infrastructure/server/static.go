@@ -116,7 +116,6 @@ func getCacheRules() map[string]cacheRule {
 		"/favorites":  noCache,
 		"/history":    noCache,
 		"/result":     noCache,
-		"/stat":       noCache,
 		"/huangli":    noCache,
 	}
 }

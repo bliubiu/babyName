@@ -13,7 +13,6 @@ import (
 	"name/internal/domain/fate"
 	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/data"
-	"name/internal/infrastructure/database/memory"
 )
 
 // 本文件将此前的人工验证固化为自动化回归：
@@ -58,15 +57,13 @@ func setupFateNameService(t *testing.T) (*services.NameService, error) {
 			fate.SetCuratedNames(curated)
 		}
 
-		// 4. 装配服务（内存存储，避免与运行中的服务锁冲突）
+		// 4. 装配服务（fate 引擎，与 cmd/server 一致）
 		cache.Init()
-		store := memory.NewStore()
 		fateEngine := fate.NewEngine(&services.HanziDataProvider{}, services.NewBaziAnalyzerAdapter(), fate.DefaultRaters())
 		fateService = services.NewNameService(
 			services.WithBaziAnalyzer(&services.BaziAdapter{}),
 			services.WithHexagramFinder(&services.HexagramAdapter{}),
 			services.WithZiweiAnalyzer(&services.ZiweiAdapter{}),
-			services.WithEnhancedAnalyzer(services.NewEnhancedNameAnalyzerAdapter(absDir, services.NewCuratedPersisterAdapter(store))),
 			services.WithZodiacFinder(&services.ZodiacAdapter{}),
 			services.WithCache(cache.GetCache()),
 			services.WithFateService(services.NewFateNameService(fateEngine)),

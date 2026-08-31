@@ -1,6 +1,7 @@
 package fate
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -24,6 +25,12 @@ func TestMain(m *testing.M) {
 	dataDir := filepath.Join(packageDir(), "..", "..", "..", "data")
 	if err := classics.LoadFromJSON(dataDir); err != nil {
 		// 非关键：部分测试不依赖诗词数据
+	}
+	// 命名质量门禁字表已外置为 data/naming_quality.json，
+	// 候选池硬剔除与多数评分测试依赖该表，加载失败视为致命。
+	if err := LoadNamingQualityFromJSON(dataDir); err != nil {
+		fmt.Fprintf(os.Stderr, "加载命名质量门禁字表失败: %v\n", err)
+		os.Exit(1)
 	}
 
 	os.Exit(m.Run())

@@ -196,7 +196,8 @@ export interface CuratedName {
 }
 
 export interface NameStat {
+  name: string;
   count: number;
   rate: number;
-  province?: string;
+  rank: number;
 }

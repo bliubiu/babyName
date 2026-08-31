@@ -22,6 +22,8 @@ describe('useNameStore', () => {
         nameLength: 2,
         sourceClassic: '',
         avoidElderNames: '',
+        minFrequencyTier: 0,
+        maxFrequencyTier: 0,
       },
       generateResult: null,
       compareResult: null,

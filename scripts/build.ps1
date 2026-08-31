@@ -63,7 +63,7 @@ if ($Mode -eq "all" -or $Mode -eq "frontend") {
 
 if ($Mode -eq "all" -or $Mode -eq "backend") {
     # 编译后端
-    Write-Host "[2/4] 编译后端二进制..." -ForegroundColor Yellow
+    Write-Host "[2/5] 编译后端二进制..." -ForegroundColor Yellow
     Set-Location $BackendDir
     
     # 设置编译参数
@@ -94,8 +94,23 @@ if ($Mode -eq "all" -or $Mode -eq "backend") {
     Set-Location $RootDir
 }
 
+# 复制运行时数据目录（与二进制同级，main.go 从 cwd/data 加载）
+# 包含 namer.json（8105字）、name_frequency.json（重名率）、naming_quality.json（门禁字表）等
+if ($Mode -eq "all" -or $Mode -eq "backend") {
+    Write-Host "[3/5] 复制运行时数据目录..." -ForegroundColor Yellow
+    $DataDir = Join-Path $BackendDir "data"
+    $DistDataDir = Join-Path $DistDir "data"
+    if (Test-Path $DataDir) {
+        Remove-Item -Recurse -Force $DistDataDir -ErrorAction SilentlyContinue
+        Copy-Item -Recurse -Force $DataDir $DistDataDir
+        Write-Host "  [完成] 数据目录已复制到: $DistDataDir" -ForegroundColor Green
+    } else {
+        Write-Host "  [警告] 未找到数据目录: $DataDir" -ForegroundColor Red
+    }
+}
+
 # 生成启动脚本
-Write-Host "[3/4] 生成启动脚本..." -ForegroundColor Yellow
+Write-Host "[4/5] 生成启动脚本..." -ForegroundColor Yellow
 
 if ($Mode -eq "all") {
     $startScript = @"

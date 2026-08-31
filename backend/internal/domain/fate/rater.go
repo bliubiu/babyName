@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"name/internal/domain/classics"
+	"name/internal/domain/zodiac"
 )
 
 // Rater 名字评分接口
@@ -908,13 +909,12 @@ func isWuXingKe(a, b string) bool {
 	return false
 }
 
-func getZodiacWuXing(zodiac string) string {
-	m := map[string]string{
-		"鼠": "水", "牛": "土", "虎": "木", "兔": "木",
-		"龙": "土", "蛇": "火", "马": "火", "羊": "土",
-		"猴": "金", "鸡": "金", "狗": "土", "猪": "水",
+func getZodiacWuXing(zodiacName string) string {
+	z := zodiac.GetZodiacByName(zodiacName)
+	if z == nil {
+		return ""
 	}
-	return m[zodiac]
+	return z.Wuxing
 }
 
 // getToneFromPinyin 提取拼音声调（1/2/3/4），返回 0 表示无法识别

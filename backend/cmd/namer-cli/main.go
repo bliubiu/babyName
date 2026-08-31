@@ -31,7 +31,6 @@ import (
 	"name/internal/domain/hanzi"
 	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/data"
-	"name/internal/infrastructure/database/memory"
 	"name/internal/infrastructure/logger"
 )
 
@@ -197,19 +196,17 @@ func generate(req *services.GenerateRequest, dataDir string) (*services.Generate
 		fate.SetCuratedNames(curatedNames)
 	}
 
-	// 6. 装配服务（内存存储即可满足测试验证场景，避免与运行中的服务锁冲突）
+	// 6. 装配服务（fate 引擎，与 server 一致）
 	cache.Init()
-	store := memory.NewStore()
 
 	fateEngine := fate.NewEngine(&services.HanziDataProvider{}, services.NewBaziAnalyzerAdapter(), fate.DefaultRaters())
 	svc := services.NewNameService(
 		services.WithBaziAnalyzer(&services.BaziAdapter{}),
 		services.WithHexagramFinder(&services.HexagramAdapter{}),
 		services.WithZiweiAnalyzer(&services.ZiweiAdapter{}),
-		services.WithEnhancedAnalyzer(services.NewEnhancedNameAnalyzerAdapter(absDataDir, services.NewCuratedPersisterAdapter(store))),
 		services.WithZodiacFinder(&services.ZodiacAdapter{}),
 		services.WithCache(cache.GetCache()),
-		services.WithFateService(services.NewFateNameService(fateEngine)), // fate 引擎优先（与 server 一致）
+		services.WithFateService(services.NewFateNameService(fateEngine)), // fate 引擎（与 server 一致）
 	)
 
 	return svc.GenerateWithAnalysis(context.Background(), req)

@@ -5,6 +5,26 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.08.31.0]
+
+### 🐛 Bug Fixes 问题修复
+
+- 【ziwei 四柱】重写 `calculateFourPillars`：年柱改用 `LunarYear.GetSixtyCycle()`（正月初一分界），对齐 `yearDivide:'normal'`；月柱改用农历月 + 正月初一年干 + 五虎遁（原版误用节令分界的月柱），并正确支持闰月；日柱在晚子时（hour=23）进位一日
+- 【ziwei 命/身宫】修复第 3/6/7/8/9 用例命宫/身宫计算结果：因年/月柱输入错误级联导致的干支错误，现与 iztro 实测一致（如 case7 命宫 戊子、case8 命宫 甲辰）
+- 【ziwei 大限】对照 iztro `getHoroscope` 精确重写 `calculateDaXian`：顺逆行由**年支阴阳**与性别匹配判断（阳男/阴女→顺行，阴男/阳女→逆行）；宫名刻录改为逆行=顺时针（命宫→兄弟→夫妻…）、顺行=逆时针（命宫→父母→福德…）；大限天干 = 年干五虎遁正月干 + 宫位寅序索引；大限地支 = 宫位地支
+
+### 🧪 Tests 测试
+
+- 【ziwei】TDD 新增 `ziwei_test.go` 9 个锚点用例（四柱/命身宫/五行局/命主身主/四化/大限）+ `TestAnalyzeZiwei` + `TestNewFields`，全部通过
+- 【ziwei】新增 `ziwei_debug_test.go` 调试用例（`TestDebugRawPillars` 打印 tyme 库原始输出，用于校验命宫公式）
+- 【测试期望值校订】此前用例中的错误期望值经 iztro npm 库实测（`astro.bySolar` + normal/forward/default 配置）校订：庚年四化 禄/权互换（禄=太阳、权=武曲）；case3/6/7/8/9 命/身宫干支、case1/2/9 大限 Range/天干/地支；`TestNewFields` 改用 `[]rune` 长度判断（修复 UTF-8 多字节中文长度误判）
+
+### 📚 Docs 文档更新
+
+- 新增本版本变更日志
+
+---
+
 ## [2026.08.25.0]
 
 ### ✨ New Features 新增功能
@@ -98,5 +118,6 @@
 
 - 零新增第三方依赖（TOML 解析复用已有 `spf13/viper`）
 
+[2026.08.31.0]: https://github.com/bliubiao/name/releases/tag/2026.08.31.0
 [2026.08.25.0]: https://github.com/bliubiao/name/releases/tag/2026.08.25.0
 [2026.08.24.0]: https://github.com/bliubiao/name/releases/tag/2026.08.24.0

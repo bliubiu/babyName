@@ -20,7 +20,7 @@ import (
 func TestMain(m *testing.M) {
 	_ = logger.InitProduction()
 	gin.SetMode(gin.TestMode)
-	// 加载汉字数据（经典 Generate 路径使用统一引擎 GenerateUnified，依赖 HanziData）
+	// 加载汉字数据（测试依赖完整字库时提供基础数据）
 	dataDir := "../../../data/"
 	if err := hanzi.LoadNamerFromJSON(dataDir); err != nil {
 		// 非关键：仅在未加载数据时影响依赖完整字库的用例
@@ -45,18 +45,6 @@ func setupTestHandler() (*gin.Engine, *memory.Store) {
 	store := memory.NewStore()
 	r := gin.New()
 	return r, store
-}
-
-func newTestNameService() *services.NameService {
-	cacheInst := cache.GetCache()
-	return services.NewNameService(
-		services.WithBaziAnalyzer(&services.BaziAdapter{}),
-		services.WithHexagramFinder(&services.HexagramAdapter{}),
-		services.WithZiweiAnalyzer(&services.ZiweiAdapter{}),
-		services.WithEnhancedAnalyzer(services.NewEnhancedNameAnalyzerAdapter("")),
-		services.WithZodiacFinder(&services.ZodiacAdapter{}),
-		services.WithCache(cacheInst),
-	)
 }
 
 func newTestBaziService() *services.BaziService {
@@ -175,14 +163,11 @@ func TestNameStatHandler(t *testing.T) {
 		{name: "GetTopNames_Default", method: "GET", path: "/namestat", wantStatus: 200},
 		{name: "GetTopNames_WithLimit", method: "GET", path: "/namestat?limit=5", wantStatus: 200},
 		{name: "GetTopNames_InvalidLimit", method: "GET", path: "/namestat?limit=999", wantStatus: 200},
-		{name: "GetProvinceStats", method: "GET", path: "/namestat/王/province?province=北京", wantStatus: 200},
-		{name: "GetProvinceStats_DefaultProvince", method: "GET", path: "/namestat/王/province", wantStatus: 200},
 	}
 	runHandlerTests(t, tests, func(r *gin.Engine) {
 		h := NewNameStatHandler()
 		r.GET("/namestat/:name", h.GetNameStats)
 		r.GET("/namestat", h.GetTopNames)
-		r.GET("/namestat/:name/province", h.GetProvinceStats)
 	})
 }
 
@@ -207,7 +192,11 @@ func TestHuangliHandler(t *testing.T) {
 // --- NameHandler Tests ---
 
 func TestNameHandler(t *testing.T) {
-	svc := newTestNameService()
+	// 使用与 cmd/server 一致的 fate 引擎装配（唯一生成引擎）
+	svc, err := setupFateNameService(t)
+	if err != nil {
+		t.Fatalf("装配带 fate 引擎的 NameService 失败: %v", err)
+	}
 	tests := []handlerTestCase{
 		{name: "GetByID", method: "GET", path: "/names/123", wantStatus: 404},
 		{name: "Generate_InvalidBody", method: "POST", path: "/names/generate", body: `invalid json`, wantStatus: 400},

@@ -60,6 +60,7 @@ type FrequencyDB struct {
 	bigramMap  map[string]*BigramFrequency  // "AB" → 频率
 	charRank   []*CharFrequency            // 按频率降序（用于 TopN 查询）
 	bigramRank []*BigramFrequency          // 按频率降序
+	totalNames int                         // 语料库总人数（meta.total_names）
 	loaded     bool
 }
 
@@ -136,6 +137,7 @@ func LoadFrequencyDB(dataDir string) error {
 		bigramMap:  bigramMap,
 		charRank:   charRank,
 		bigramRank: bigramRank,
+		totalNames: charOutput.Meta.TotalNames,
 		loaded:     true,
 	}
 
@@ -197,6 +199,13 @@ func FrequencyDBStats() (charCount, bigramCount int) {
 	return len(freqDB.charMap), len(freqDB.bigramMap)
 }
 
+// GetTotalNames 返回频率语料库总人数（meta.total_names），未加载时返回 0
+func GetTotalNames() int {
+	freqDBMu.RLock()
+	defer freqDBMu.RUnlock()
+	return freqDB.totalNames
+}
+
 // GetTopChars 返回频率最高的 N 个字（Tier ≥ minTier）
 func GetTopChars(n int, minTier int) []*CharFrequency {
 	freqDBMu.RLock()
@@ -213,4 +222,18 @@ func GetTopChars(n int, minTier int) []*CharFrequency {
 		}
 	}
 	return result
+}
+
+// CharRanking 返回按频率降序的单字排行切片（只读，调用方不得修改元素）
+func CharRanking() []*CharFrequency {
+	freqDBMu.RLock()
+	defer freqDBMu.RUnlock()
+	return freqDB.charRank
+}
+
+// BigramRanking 返回按频率降序的双字组合排行切片（只读，调用方不得修改元素）
+func BigramRanking() []*BigramFrequency {
+	freqDBMu.RLock()
+	defer freqDBMu.RUnlock()
+	return freqDB.bigramRank
 }

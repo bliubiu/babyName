@@ -1,4 +1,4 @@
-import type { GenerateResponse, Hexagram, APIResponse, FavoriteData, GenerateRequest, StandardCharGroup, CuratedName } from '@/types';
+import type { GenerateResponse, Hexagram, APIResponse, FavoriteData, GenerateRequest, StandardCharGroup, CuratedName, NameStat } from '@/types';
 import type { HistoryResponse } from '@/types/api/history';
 import type { FavoritesResponse } from '@/types/api/favorites';
 
@@ -373,5 +373,26 @@ export async function getCuratedNames(gender?: string, style?: string): Promise<
 export async function getCharStyles(): Promise<string[]> {
   const response = await fetchWithRetry(`${API_BASE_URL}/v1/characters/styles`);
   const result = await handleResponse<APIResponse<string[]>>(response);
+  return result.data || [];
+}
+
+// --- 名字统计 API ---
+
+export async function getNameStats(name: string): Promise<NameStat | null> {
+  if (!name || name.trim() === '') {
+    throw new ValidationError('名字不能为空');
+  }
+  const response = await fetchWithRetry(`${API_BASE_URL}/v1/namestat/${encodeURIComponent(name)}`);
+  const result = await handleResponse<APIResponse<NameStat>>(response);
+  return result.data || null;
+}
+
+export async function getTopNames(limit: number = 20): Promise<NameStat[]> {
+  const safeLimit = safeParseInt(limit, 20);
+  if (safeLimit < 1 || safeLimit > 100) {
+    throw new ValidationError('查询数量必须在1-100之间');
+  }
+  const response = await fetchWithRetry(`${API_BASE_URL}/v1/namestat?limit=${safeLimit}`);
+  const result = await handleResponse<APIResponse<NameStat[]>>(response);
   return result.data || [];
 }

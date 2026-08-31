@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"name/internal/domain/classics"
+	"name/internal/domain/fate"
 	"name/internal/domain/hanzi"
 	"name/internal/domain/yijing"
 	"name/internal/domain/zodiac"
@@ -50,6 +51,11 @@ func Init(dataDir string) error {
 	// 4. 加载生肖数据
 	if err := zodiac.LoadFromJSON(dataDir); err != nil {
 		return fmt.Errorf("加载生肖数据失败: %w", err)
+	}
+
+	// 5. 加载命名质量门禁字表（nonNamingChars，候选池硬剔除）
+	if err := fate.LoadNamingQualityFromJSON(dataDir); err != nil {
+		return fmt.Errorf("加载命名质量门禁字表失败: %w", err)
 	}
 
 	return nil

@@ -85,7 +85,7 @@ var blessingCombos = map[string]bool{
 //   - 常见动词/口语组合：作为名字无意义甚至怪异
 var forbiddenCombos = map[string]bool{
 	// 亲属称谓
-	"父母": true, "爸妈": true, "爹娘": true, "爷奶": true, "爷爷奶奶": true,
+	"父母": true, "爸妈": true, "爹娘": true, "爷奶": true,
 	"姥姥": true, "姥爷": true, "外公": true, "外婆": true,
 	"兄弟": true, "姐妹": true, "哥哥": true, "姐姐": true,
 	"弟弟": true, "妹妹": true, "叔叔": true, "阿姨": true,

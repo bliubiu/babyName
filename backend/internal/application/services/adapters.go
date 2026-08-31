@@ -72,30 +72,8 @@ func (a *HexagramAdapter) MatchXiyongshen(hexagram *yijing.Hexagram, xiyongshen 
 // ZiweiAdapter 紫微斗数适配器
 type ZiweiAdapter struct{}
 
-func (a *ZiweiAdapter) Analyze(year, month, day, hour int) *ziwei.ZiweiAnalysis {
-	return ziwei.AnalyzeZiwei(year, month, day, hour)
-}
-
-// EnhancedNameAnalyzerAdapter 增强名字分析适配器
-type EnhancedNameAnalyzerAdapter struct {
-	generator *name.EnhancedNameGenerator
-}
-
-func NewEnhancedNameAnalyzerAdapter(dataDir string, persisters ...name.CuratedPersister) *EnhancedNameAnalyzerAdapter {
-	return &EnhancedNameAnalyzerAdapter{generator: name.NewEnhancedNameGenerator(dataDir, persisters...)}
-}
-
-func (a *EnhancedNameAnalyzerAdapter) GenerateWithAnalysis(opts name.GenerateOptions) ([]*name.NameAnalysis, error) {
-	return a.generator.GenerateNamesWithAnalysis(opts)
-}
-
-func (a *EnhancedNameAnalyzerAdapter) GenerateUnified(opts name.GenerateOptions) ([]name.Name, error) {
-	return a.generator.GenerateUnified(opts)
-}
-
-// GetNameDB 暴露 NameDB 给 API 层（用于自学习精选名浏览）
-func (a *EnhancedNameAnalyzerAdapter) GetNameDB() *name.NameDB {
-	return a.generator.GetNameDB()
+func (a *ZiweiAdapter) Analyze(year, month, day, hour int, gender string) *ziwei.ZiweiAnalysis {
+	return ziwei.AnalyzeZiwei(year, month, day, hour, gender)
 }
 
 // ============================================================
@@ -142,7 +120,7 @@ func (a *CuratedPersisterAdapter) IsCurated(name string) (bool, error) {
 type ZodiacAdapter struct{}
 
 func (a *ZodiacAdapter) FindByYear(year int) string {
-	return bazi.GetZodiac(year)
+	return zodiac.GetZodiacByYear(year).Name
 }
 
 // --- fate 包适配器 ---
@@ -353,7 +331,7 @@ func (a *BaziAnalyzerAdapter) Analyze(born time.Time, gender fate.Gender) (*fate
 		return nil, err
 	}
 
-	zodiac := bazi.GetZodiac(year)
+	zodiacName := zodiac.GetZodiacByYear(year).Name
 	fourPillars := baziGanzhiToArray(baziResult.Bazi)
 
 	// 使用 fate 层的平衡用神法计算完整喜用忌仇四神
@@ -379,7 +357,7 @@ func (a *BaziAnalyzerAdapter) Analyze(born time.Time, gender fate.Gender) (*fate
 	fateData := &fate.FateData{
 		BaziInfo: fate.BaziInfo{
 			FourPillars: fourPillars,
-			Zodiac:      zodiac,
+			Zodiac:      zodiacName,
 		},
 		WuXingXiji: fate.WuXingXiji{
 			XiYongShen:  xiYongShen,
@@ -443,7 +421,6 @@ func joinStrings(s []string, sep string) string {
 var _ bazi.BaziAnalyzer = (*BaziAdapter)(nil)
 var _ yijing.HexagramFinder = (*HexagramAdapter)(nil)
 var _ ziwei.ZiweiAnalyzer = (*ZiweiAdapter)(nil)
-var _ name.EnhancedNameAnalyzer = (*EnhancedNameAnalyzerAdapter)(nil)
 var _ zodiac.ZodiacFinder = (*ZodiacAdapter)(nil)
 
 // fate 层接口实现守卫

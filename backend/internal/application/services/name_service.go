@@ -24,10 +24,10 @@ type NameService struct {
 	baziAnalyzer     bazi.BaziAnalyzer
 	hexagramFinder   yijing.HexagramFinder
 	ziweiAnalyzer    ziwei.ZiweiAnalyzer
-	enhancedAnalyzer name.EnhancedNameAnalyzer
 	zodiacFinder     zodiac.ZodiacFinder
 	fateService      *FateNameService // fate 路径委托服务（可选）
 	cache            cache.Cache
+	nameDB           *name.NameDB // 候选名库管理器（API 层共享自学习精选名数据）
 }
 
 // NameServiceOption 名字服务选项
@@ -48,9 +48,9 @@ func WithZiweiAnalyzer(a ziwei.ZiweiAnalyzer) NameServiceOption {
 	return func(s *NameService) { s.ziweiAnalyzer = a }
 }
 
-// WithEnhancedAnalyzer 设置增强分析器
-func WithEnhancedAnalyzer(a name.EnhancedNameAnalyzer) NameServiceOption {
-	return func(s *NameService) { s.enhancedAnalyzer = a }
+// WithNameDB 设置候选名库管理器（用于 API 层共享自学习精选名数据）
+func WithNameDB(db *name.NameDB) NameServiceOption {
+	return func(s *NameService) { s.nameDB = db }
 }
 
 // WithFateService 设置 fate 名字服务（可选）
@@ -80,10 +80,7 @@ func NewNameService(opts ...NameServiceOption) *NameService {
 
 // GetNameDB 获取候选名库管理器（用于 API 层共享自学习精选名数据）
 func (s *NameService) GetNameDB() *name.NameDB {
-	if a, ok := s.enhancedAnalyzer.(*EnhancedNameAnalyzerAdapter); ok {
-		return a.GetNameDB()
-	}
-	return nil
+	return s.nameDB
 }
 
 // GenerateRequest 生成名字请求
@@ -179,77 +176,10 @@ func (s *NameService) Generate(ctx context.Context, req *GenerateRequest) (*Gene
 
 // GenerateWithAnalysis 生成带详细分析的名字
 func (s *NameService) GenerateWithAnalysis(ctx context.Context, req *GenerateRequest) (*GenerateWithAnalysisResponse, error) {
-	// 优先委托给 fate 名字服务
-	if s.fateService != nil {
-		return s.fateService.GenerateWithAnalysis(ctx, req)
+	if s.fateService == nil {
+		return nil, errors.NewError(errors.ErrCodeInternalError, "名字生成引擎未初始化")
 	}
-
-	// 1. 八字分析
-	baziAnalysis, _, _ := s.performBaziAnalysis(req) // 分析失败时返回空 BaziAnalysis，后续流程继续
-
-	nayin := baziAnalysis.Nayin
-	zodiacName := s.zodiacFinder.FindByYear(req.BirthYear)
-
-	// 2. 使用增强版名字生成器
-	nameAnalyses, err := s.enhancedAnalyzer.GenerateWithAnalysis(name.GenerateOptions{
-		Surname:            req.Surname,
-		Generation:         req.Generation,
-		Gender:             req.Gender,
-		Xiyongshen:         baziAnalysis.Xiyongshen,
-		Count:              50,
-		NameLength:         req.NameLength,
-		ExcludeRare:        req.ExcludeRare,
-		WuxingMatch:        req.WuxingMatch,
-		SourceClassic:      req.SourceClassic,
-		MinStrokes:         req.MinStrokes,
-		MaxStrokes:         req.MaxStrokes,
-		IncludePoetry:      req.IncludePoetry,
-		IncludeClassic:     req.IncludeClassic,
-		MeaningKeywords:    req.MeaningKeywords,
-		PinyinInitial:      req.PinyinInitial,
-		GenerationPosition: req.GenerationPosition,
-		NameType:           req.NameType,
-		Zodiac:             zodiacName,
-		Nayin:              nayin,
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	// 3. 计算平均笔画数
-	totalStrokes := 0
-	for _, na := range nameAnalyses {
-		totalStrokes += na.Strokes
-	}
-	avgStrokes := 10
-	if len(nameAnalyses) > 0 {
-		avgStrokes = totalStrokes / len(nameAnalyses)
-	}
-
-	// 4. 易经分析
-	hexagram := s.hexagramFinder.FindByStrokes(avgStrokes)
-
-	// 5. 紫微斗数分析
-	ziweiAnalysis := s.ziweiAnalyzer.Analyze(req.BirthYear, req.BirthMonth, req.BirthDay, req.BirthHour)
-
-	response := &GenerateWithAnalysisResponse{
-		Bazi:        *baziAnalysis,
-		Nayin:       nayin,
-		Zodiac:      zodiacName,
-		Hexagram:    hexagram,
-		Ziwei:       ziweiAnalysis,
-		Names:       nameAnalyses,
-		Suggestions: generateNameSuggestions(nameAnalyses),
-	}
-
-	logger.Info("Name generation with analysis completed",
-		zap.String("surname", req.Surname),
-		zap.String("gender", req.Gender),
-		zap.Int("name_count", len(nameAnalyses)),
-	)
-
-	return response, nil
+	return s.fateService.GenerateWithAnalysis(ctx, req)
 }
 
 // performBaziAnalysis 执行八字分析
@@ -283,64 +213,15 @@ func (s *NameService) performBaziAnalysis(req *GenerateRequest) (*bazi.BaziAnaly
 func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, baziAnalysis *bazi.BaziAnalysis) ([]name.Name, time.Duration, error) {
 	generateStart := time.Now()
 
-	nameLength := req.NameLength
-	if nameLength <= 0 {
-		nameLength = 2
-	} else if nameLength > 4 {
-		nameLength = 4
-	}
-
 	var names []name.Name
 	var err error
 
-	// fate 引擎优先（当 FateNameService 配置时）
+	// fate 引擎（唯一生成引擎；FateNameService 未配置时无法生成）
 	// 新引擎具备更完善的 Rater 评分链、避讳长辈、负面反馈等能力
-	if s.fateService != nil {
-		names, err = s.generateNamesViaFate(ctx, req, baziAnalysis)
+	if s.fateService == nil {
+		err = errors.NewError(errors.ErrCodeInternalError, "名字生成引擎未初始化")
 	} else {
-		// 旧引擎路径（仅当 fate 未配置时，保持向后兼容）
-		zodiacName := s.zodiacFinder.FindByYear(req.BirthYear)
-
-		genOpts := name.GenerateOptions{
-			Surname:            req.Surname,
-			Generation:         req.Generation,
-			Gender:             req.Gender,
-			Xiyongshen:         baziAnalysis.Xiyongshen,
-			Count:              50,
-			NameLength:         nameLength,
-			ExcludeRare:        req.ExcludeRare,
-			WuxingMatch:        req.WuxingMatch,
-			SourceClassic:      req.SourceClassic,
-			MinStrokes:         req.MinStrokes,
-			MaxStrokes:         req.MaxStrokes,
-			IncludePoetry:      req.IncludePoetry,
-			IncludeClassic:     req.IncludeClassic,
-			MeaningKeywords:    req.MeaningKeywords,
-			PinyinInitial:      req.PinyinInitial,
-			GenerationPosition: req.GenerationPosition,
-			NameType:           req.NameType,
-			Zodiac:             zodiacName,
-			Nayin:              baziAnalysis.Nayin,
-			AvoidElderNames:    req.AvoidElderNames,
-			DayMasterStrength:  baziAnalysis.DayMasterStrength,
-		}
-
-		logger.Info("Generate: generating names via classic engine",
-			zap.String("surname", req.Surname),
-			zap.String("gender", req.Gender),
-			zap.Int("name_length", nameLength),
-		)
-
-		if s.enhancedAnalyzer != nil {
-			names, err = s.enhancedAnalyzer.GenerateUnified(genOpts)
-			if err != nil {
-				logger.Warn("GenerateUnified failed",
-					zap.Error(err),
-				)
-			}
-		} else {
-			err = errors.NewError(errors.ErrCodeInternalError, "未配置名字生成引擎")
-		}
+		names, err = s.generateNamesViaFate(ctx, req, baziAnalysis)
 	}
 
 	generateDuration := time.Since(generateStart)
@@ -514,7 +395,7 @@ func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziA
 
 	go func() {
 		defer wg.Done()
-		z := s.ziweiAnalyzer.Analyze(req.BirthYear, req.BirthMonth, req.BirthDay, req.BirthHour)
+		z := s.ziweiAnalyzer.Analyze(req.BirthYear, req.BirthMonth, req.BirthDay, req.BirthHour, req.Gender)
 
 		ziweiMutex.Lock()
 		ziweiAnalysis = z

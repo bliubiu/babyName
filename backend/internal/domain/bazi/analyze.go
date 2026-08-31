@@ -729,15 +729,6 @@ func calculateXiyongshen(wuxing *WuxingResult, rishouWuxing string, dayMasterStr
 	}
 }
 
-func GetZodiac(year int) string {
-	zodiacs := []string{"鼠", "牛", "虎", "兔", "龙", "蛇", "马", "羊", "猴", "鸡", "狗", "猪"}
-	index := (year - 1900) % 12
-	if index < 0 {
-		index += 12
-	}
-	return zodiacs[index]
-}
-
 func GetShichen(hour int) string {
 	hourMap := []string{"子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"}
 	index := hour / 2

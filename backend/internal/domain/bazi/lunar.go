@@ -2,35 +2,39 @@ package bazi
 
 import (
 	"fmt"
-	"time"
 	"name/internal/domain/bazi/tyme"
+	"time"
 )
 
 type LunarCalendar struct {
-	Year    int    `json:"year"`
-	Month   int    `json:"month"`
-	Day     int    `json:"day"`
-	IsLeap  bool   `json:"isLeap"`
-	YearGan string `json:"yearGan"`
-	YearZhi string `json:"yearZhi"`
-	MonthGan string `json:"monthGan"`
-	MonthZhi string `json:"monthZhi"`
-	DayGan  string `json:"dayGan"`
-	DayZhi  string `json:"dayZhi"`
-	HourGan string `json:"hourGan"`
-	HourZhi string `json:"hourZhi"`
-	Nayin   string `json:"nayin"`
-	YearNayin string `json:"yearNayin"`
-	MonthNayin string `json:"monthNayin"`
-	DayNayin string `json:"dayNayin"`
+	Year   int  `json:"year"`
+	Month  int  `json:"month"`
+	Day    int  `json:"day"`
+	IsLeap bool `json:"isLeap"`
+	// LunarMonthNumber 农历月序号，闰月为负数（如闰八月=-8，平月为 1-12 正数）
+	LunarMonthNumber int `json:"lunarMonthNumber"`
+	// LunarDayNumber 农历日序号（初一=1，以此类推）
+	LunarDayNumber int    `json:"lunarDayNumber"`
+	YearGan        string `json:"yearGan"`
+	YearZhi        string `json:"yearZhi"`
+	MonthGan       string `json:"monthGan"`
+	MonthZhi       string `json:"monthZhi"`
+	DayGan         string `json:"dayGan"`
+	DayZhi         string `json:"dayZhi"`
+	HourGan        string `json:"hourGan"`
+	HourZhi        string `json:"hourZhi"`
+	Nayin          string `json:"nayin"`
+	YearNayin      string `json:"yearNayin"`
+	MonthNayin     string `json:"monthNayin"`
+	DayNayin       string `json:"dayNayin"`
 	// 农历显示字段 - 用于替代前端 chinese-lunar-calendar 库
 	LunarYearName  string `json:"lunarYearName"`  // 如"甲辰年"
 	LunarMonthName string `json:"lunarMonthName"` // 如"正月"
 	LunarDayName   string `json:"lunarDayName"`   // 如"初一"
-	DateStr        string `json:"dateStr"`         // 如"正月十五"
-	LunarDate      string `json:"lunarDate"`       // 如"十五"，仅日期部分
-	LunarMonth     string `json:"lunarMonth"`      // 如"正月"，仅月份部分
-	SolarTerm      string `json:"solarTerm"`       // 如"清明"
+	DateStr        string `json:"dateStr"`        // 如"正月十五"
+	LunarDate      string `json:"lunarDate"`      // 如"十五"，仅日期部分
+	LunarMonth     string `json:"lunarMonth"`     // 如"正月"，仅月份部分
+	SolarTerm      string `json:"solarTerm"`      // 如"清明"
 }
 
 func GetLunarCalendar(year, month, day, hour, minute int) *LunarCalendar {
@@ -42,22 +46,24 @@ func GetLunarCalendar(year, month, day, hour, minute int) *LunarCalendar {
 	sixtyCycleHour := lunarHour.GetSixtyCycleHour()
 
 	lc := &LunarCalendar{
-		Year:    year,
-		Month:   month,
-		Day:     day,
-		IsLeap:  lunarDay.GetLunarMonth().IsLeap(),
-		YearGan: sixtyCycleDay.GetYear().GetHeavenStem().GetName(),
-		YearZhi: sixtyCycleDay.GetYear().GetEarthBranch().GetName(),
-		MonthGan: sixtyCycleDay.GetMonth().GetHeavenStem().GetName(),
-		MonthZhi: sixtyCycleDay.GetMonth().GetEarthBranch().GetName(),
-		DayGan:  sixtyCycleDay.GetSixtyCycle().GetHeavenStem().GetName(),
-		DayZhi:  sixtyCycleDay.GetSixtyCycle().GetEarthBranch().GetName(),
-		HourGan: sixtyCycleHour.GetSixtyCycle().GetHeavenStem().GetName(),
-		HourZhi: sixtyCycleHour.GetSixtyCycle().GetEarthBranch().GetName(),
-		YearNayin: sixtyCycleDay.GetYear().GetSound().GetName(),
-		MonthNayin: sixtyCycleDay.GetMonth().GetSound().GetName(),
-		DayNayin: sixtyCycleDay.GetSixtyCycle().GetSound().GetName(),
-		Nayin: sixtyCycleDay.GetSixtyCycle().GetSound().GetName(),
+		Year:             year,
+		Month:            month,
+		Day:              day,
+		IsLeap:           lunarDay.GetLunarMonth().IsLeap(),
+		LunarMonthNumber: lunarDay.GetLunarMonth().GetMonthWithLeap(),
+		LunarDayNumber:   lunarDay.GetDay(),
+		YearGan:          sixtyCycleDay.GetYear().GetHeavenStem().GetName(),
+		YearZhi:          sixtyCycleDay.GetYear().GetEarthBranch().GetName(),
+		MonthGan:         sixtyCycleDay.GetMonth().GetHeavenStem().GetName(),
+		MonthZhi:         sixtyCycleDay.GetMonth().GetEarthBranch().GetName(),
+		DayGan:           sixtyCycleDay.GetSixtyCycle().GetHeavenStem().GetName(),
+		DayZhi:           sixtyCycleDay.GetSixtyCycle().GetEarthBranch().GetName(),
+		HourGan:          sixtyCycleHour.GetSixtyCycle().GetHeavenStem().GetName(),
+		HourZhi:          sixtyCycleHour.GetSixtyCycle().GetEarthBranch().GetName(),
+		YearNayin:        sixtyCycleDay.GetYear().GetSound().GetName(),
+		MonthNayin:       sixtyCycleDay.GetMonth().GetSound().GetName(),
+		DayNayin:         sixtyCycleDay.GetSixtyCycle().GetSound().GetName(),
+		Nayin:            sixtyCycleDay.GetSixtyCycle().GetSound().GetName(),
 		// 农历显示字段
 		LunarYearName:  sixtyCycleDay.GetYear().GetHeavenStem().GetName() + sixtyCycleDay.GetYear().GetEarthBranch().GetName() + "年",
 		LunarMonthName: lunarDay.GetLunarMonth().GetName(),
@@ -176,35 +182,35 @@ type HourYiJi struct {
 }
 
 type Huangli struct {
-	Date        string      `json:"date"`
-	Year        string      `json:"year"`
-	Month       string      `json:"month"`
-	Day         string      `json:"day"`
-	Yi          []string    `json:"yi"`
-	Ji          []string    `json:"ji"`
-	JiShen      []string    `json:"jiShen"`
-	XiongSha    []string    `json:"xiongSha"`
-	BaiCang     string      `json:"baiCang"`
-	PengZhu     string      `json:"pengZhu"`
-	Fu          string      `json:"fu"`
-	JieShen     string      `json:"jieShen"`
-	Chong       string      `json:"chong"`
-	Sha         string      `json:"sha"`
-	ZhangSong   string      `json:"zhangSong"`
-	YearWuxing  string      `json:"yearWuxing"`
-	MonthWuxing string      `json:"monthWuxing"`
-	DayWuxing   string      `json:"dayWuxing"`
-	LiuYao      string      `json:"liuYao"`
-	ZhiShen     string      `json:"zhiShen"`
-	TaiShen     string      `json:"taiShen"`
-	JianChu     string      `json:"jianChu"`
-	XingXiu     string      `json:"xingXiu"`
-	XiShen      string      `json:"xiShen"`
-	FuShen      string      `json:"fuShen"`
-	CaiShen     string      `json:"caiShen"`
-	YangGui     string      `json:"yangGui"`
-	YinGui      string      `json:"yinGui"`
-	Hours       []HourYiJi  `json:"hours"`
+	Date        string     `json:"date"`
+	Year        string     `json:"year"`
+	Month       string     `json:"month"`
+	Day         string     `json:"day"`
+	Yi          []string   `json:"yi"`
+	Ji          []string   `json:"ji"`
+	JiShen      []string   `json:"jiShen"`
+	XiongSha    []string   `json:"xiongSha"`
+	BaiCang     string     `json:"baiCang"`
+	PengZhu     string     `json:"pengZhu"`
+	Fu          string     `json:"fu"`
+	JieShen     string     `json:"jieShen"`
+	Chong       string     `json:"chong"`
+	Sha         string     `json:"sha"`
+	ZhangSong   string     `json:"zhangSong"`
+	YearWuxing  string     `json:"yearWuxing"`
+	MonthWuxing string     `json:"monthWuxing"`
+	DayWuxing   string     `json:"dayWuxing"`
+	LiuYao      string     `json:"liuYao"`
+	ZhiShen     string     `json:"zhiShen"`
+	TaiShen     string     `json:"taiShen"`
+	JianChu     string     `json:"jianChu"`
+	XingXiu     string     `json:"xingXiu"`
+	XiShen      string     `json:"xiShen"`
+	FuShen      string     `json:"fuShen"`
+	CaiShen     string     `json:"caiShen"`
+	YangGui     string     `json:"yangGui"`
+	YinGui      string     `json:"yinGui"`
+	Hours       []HourYiJi `json:"hours"`
 }
 
 var YiJiData = map[string]struct {
@@ -343,7 +349,7 @@ func GetHuangli(year, month, day int) *Huangli {
 	fu := GetFu(dayZhi)
 	jieShen := GetJieShen(dayZhi)
 	zhangSong := GetZhangSong(dayZhi)
-	
+
 	// 获取其他黄历数据
 	liuYao := GetLiuYao(dayGan, dayZhi)
 	zhiShen := GetZhiShen(dayZhi)
@@ -358,35 +364,35 @@ func GetHuangli(year, month, day int) *Huangli {
 
 	// 创建黄历对象
 	hl := &Huangli{
-		Date:       fmt.Sprintf("%d-%02d-%02d", year, month, day),
-		Year:       yearGan + yearZhi,
-		Month:      monthGan + monthZhi,
-		Day:        dayGan + dayZhi,
-		Yi:         dayYiJi.Yi,
-		Ji:         dayYiJi.Ji,
-		JiShen:     jiShen,
-		XiongSha:   xiongSha,
-		BaiCang:    baiCang,
-		PengZhu:    pengZhu,
-		Fu:         fu,
-		JieShen:    jieShen,
-		Chong:      "冲" + chongZhi,
-		Sha:        "煞" + shaZhi,
-		ZhangSong:  zhangSong,
-		YearWuxing: yearNayin,
+		Date:        fmt.Sprintf("%d-%02d-%02d", year, month, day),
+		Year:        yearGan + yearZhi,
+		Month:       monthGan + monthZhi,
+		Day:         dayGan + dayZhi,
+		Yi:          dayYiJi.Yi,
+		Ji:          dayYiJi.Ji,
+		JiShen:      jiShen,
+		XiongSha:    xiongSha,
+		BaiCang:     baiCang,
+		PengZhu:     pengZhu,
+		Fu:          fu,
+		JieShen:     jieShen,
+		Chong:       "冲" + chongZhi,
+		Sha:         "煞" + shaZhi,
+		ZhangSong:   zhangSong,
+		YearWuxing:  yearNayin,
 		MonthWuxing: monthNayin,
-		DayWuxing:  dayNayin,
-		LiuYao:     liuYao,
-		ZhiShen:    zhiShen,
-		TaiShen:    taiShen,
-		JianChu:    jianChu,
-		XingXiu:    xingXiu,
-		XiShen:     xiShen,
-		FuShen:     fuShen,
-		CaiShen:    caiShen,
-		YangGui:    yangGui,
-		YinGui:     yinGui,
-		Hours:      generateHourYiJi(dayGan, dayZhi),
+		DayWuxing:   dayNayin,
+		LiuYao:      liuYao,
+		ZhiShen:     zhiShen,
+		TaiShen:     taiShen,
+		JianChu:     jianChu,
+		XingXiu:     xingXiu,
+		XiShen:      xiShen,
+		FuShen:      fuShen,
+		CaiShen:     caiShen,
+		YangGui:     yangGui,
+		YinGui:      yinGui,
+		Hours:       generateHourYiJi(dayGan, dayZhi),
 	}
 
 	return hl
@@ -406,22 +412,34 @@ func generateHourYiJi(dayGan, dayZhi string) []HourYiJi {
 	tianShenOrder := []string{
 		"青龙", "明堂", "天刑", "朱雀", "金匮", "天德", "白虎", "玉堂", "天牢", "玄武", "司命", "勾陈",
 	}
-	
+
 	// 根据日支计算起始索引
 	startIndex := 0
 	switch dayZhi {
-	case "子": startIndex = 0
-	case "丑": startIndex = 2
-	case "寅": startIndex = 4
-	case "卯": startIndex = 6
-	case "辰": startIndex = 8
-	case "巳": startIndex = 10
-	case "午": startIndex = 0
-	case "未": startIndex = 2
-	case "申": startIndex = 4
-	case "酉": startIndex = 6
-	case "戌": startIndex = 8
-	case "亥": startIndex = 10
+	case "子":
+		startIndex = 0
+	case "丑":
+		startIndex = 2
+	case "寅":
+		startIndex = 4
+	case "卯":
+		startIndex = 6
+	case "辰":
+		startIndex = 8
+	case "巳":
+		startIndex = 10
+	case "午":
+		startIndex = 0
+	case "未":
+		startIndex = 2
+	case "申":
+		startIndex = 4
+	case "酉":
+		startIndex = 6
+	case "戌":
+		startIndex = 8
+	case "亥":
+		startIndex = 10
 	}
 
 	// 生成当天的天神顺序
@@ -448,7 +466,7 @@ func generateHourYiJi(dayGan, dayZhi string) []HourYiJi {
 	timeZhi := []string{"子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"}
 	yiItems := make([][]string, 12)
 	jiItems := make([][]string, 12)
-	
+
 	for i, tz := range timeZhi {
 		if yiJi, ok := YiJiData[tz]; ok {
 			yiItems[i] = yiJi.Yi
@@ -693,9 +711,9 @@ func GetYinGui(dayGan string) string {
 }
 
 type JieQi struct {
-	Name    string `json:"name"`
-	Date    string `json:"date"`
-	Time    int    `json:"time"`
+	Name string `json:"name"`
+	Date string `json:"date"`
+	Time int    `json:"time"`
 }
 
 // GetCurrentJieQi 使用 tyme4go 天文精度计算当前节气

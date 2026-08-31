@@ -18,6 +18,7 @@ import (
 	"name/internal/application/services"
 	"name/internal/domain/fate"
 	"name/internal/domain/hanzi"
+	"name/internal/domain/name"
 	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/data"
 	"name/internal/infrastructure/config"
@@ -222,8 +223,13 @@ func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *a
 	baziAdapter := &services.BaziAdapter{}
 	hexagramAdapter := &services.HexagramAdapter{}
 	ziweiAdapter := &services.ZiweiAdapter{}
-	enhancedAdapter := services.NewEnhancedNameAnalyzerAdapter(dataDir, services.NewCuratedPersisterAdapter(store))
 	zodiacAdapter := &services.ZodiacAdapter{}
+
+	// 候选名库管理器（精选名 + 自学习 + 标准字表，供 API 层与收藏自学习共享）
+	ndb, ndbErr := name.NewNameDB(dataDir, name.WithCuratedPersister(services.NewCuratedPersisterAdapter(store)))
+	if ndbErr != nil {
+		logger.Warn("构造候选名库失败，收藏自学习与候选名功能降级", logger.ErrField(ndbErr))
+	}
 
 	// 装配 fate 引擎（新一代引擎：完整 Rater 评分链、避讳长辈、负面反馈、更大候选池）
 	// 前置条件：loadCulturalData 已通过 data.Init 将标准字表同步到 hanzi.HanziData
@@ -239,7 +245,7 @@ func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *a
 		services.WithBaziAnalyzer(baziAdapter),
 		services.WithHexagramFinder(hexagramAdapter),
 		services.WithZiweiAnalyzer(ziweiAdapter),
-		services.WithEnhancedAnalyzer(enhancedAdapter),
+		services.WithNameDB(ndb),
 		services.WithZodiacFinder(zodiacAdapter),
 		services.WithCache(cacheInst),
 		services.WithFateService(fateSvc), // fate 引擎优先（新引擎更完善）
@@ -361,7 +367,6 @@ func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store
 
 		api.GET("/namestat/:name", h.stat.GetNameStats)
 		api.GET("/namestat", h.stat.GetTopNames)
-		api.GET("/namestat/:name/province", h.stat.GetProvinceStats)
 
 		api.GET("/huangli", h.huangli.GetHuangli)
 		api.GET("/lunar", h.huangli.GetLunarCalendar)

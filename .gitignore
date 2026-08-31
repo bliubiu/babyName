@@ -84,3 +84,12 @@ repos/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# 运行时内存缓存数据库（SQLite WAL 无后缀文件）与 CLI 输出产物
+backend/memory
+backend/memory-shm
+backend/memory-wal
+backend/cli_output.json
+
+# 项目数据源（不提交仓库，本地生成/维护）
+backend/data/
