@@ -352,32 +352,38 @@ func TestRateNameNonCuratedCap(t *testing.T) {
 //
 // 策展白名单（IsCuratedName）与诗词出典是「组合有文化含量」的两个硬证据。
 // 命中策展的组合即使四维天然高分也不封顶，保证优质名维持高分。
+//
+// 候选字选「晴朗」而非历史遗留的「祝董」：祝(zhu)/董(dong) 与姓氏「王」连读
+// 命中「亡/逐/冻」三个不吉谐音（谐音检测 Unicode 修复后生效），音韵天然仅 62，
+// 无法作为「四维天然高分」的样本验证豁免封顶；晴朗(qíng/lǎng) 无此谐音瑕疵，
+// 且两字皆火匹配喜用神（火），音韵 87 / 三才 95 / 生肖 80 / 五行 79 均天然高分，
+// 能正确验证「策展豁免 → 四维保持高分且总分不被封顶压制」。
 func TestRateNameCuratedExempt(t *testing.T) {
-	SetCuratedNames([]string{"祝董"})
+	SetCuratedNames([]string{"晴朗"})
 	defer SetCuratedNames(nil)
 	raters := DefaultRaters()
 
 	cand := &NameCandidate{
-		Char1:        "祝",
-		Char2:        "董",
-		Meaning1:     "祝颂",
-		Meaning2:     "董事",
+		Char1:        "晴",
+		Char2:        "朗",
+		Meaning1:     "晴空",
+		Meaning2:     "明朗",
 		WuXing1:      "火",
 		WuXing2:      "火",
-		Pinyin1:      "zhu4",
-		Pinyin2:      "dong3",
-		Stroke1:      9,
-		Stroke2:      12,
-		Radical1:     "礻",
-		Radical2:     "艹",
+		Pinyin1:      "qing2",
+		Pinyin2:      "lang3",
+		Stroke1:      12,
+		Stroke2:      10,
+		Radical1:     "日",
+		Radical2:     "月",
 		IsRegular:    true,
 		CommonLevel1: 1,
 		CommonLevel2: 1,
 		SurnamePinyin: "wang2",
 	}
 	sx := &FateData{
-		WuXingXiji: WuXingXiji{Xi: "火", Ji: "水"}, // 喜用神火：两字皆火 → 五行高分
-		BaziInfo:   BaziInfo{Zodiac: "马"},         // 马=火，与两字火相生
+		WuXingXiji: WuXingXiji{Xi: "火", Ji: "水"}, // 两字（晴/朗）皆火 = 喜用神 → 五行高分
+		BaziInfo:   BaziInfo{Zodiac: "马"},         // 马=火，与两字火同气相生
 	}
 
 	sc := RateName(cand, sx, raters)
