@@ -5,6 +5,25 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.09.01.0]
+
+### 🐛 Bug Fixes 问题修复
+
+- 【数据】从备份 `data20260827.zip` 重建 `backend/data/` 目录：按当前代码期望的 `data/` + `data/raw/` 分离结构分派，将生成原料（hanzi.json/gsc_pinyin.csv/standard_chars.json/kangxi-strokecount.csv/kx_full.xlsx/corpus/wuxing_export/清洗清单）物理隔离至 `data/raw/`，运行时数据（word/shici/诗经/楚辞/诗词经典等）置于 `data/` 根
+- 【数据】`namer.json` 经 `cmd/export_namer` 从 raw 原料重新生成，承载顶层 `charGroups`（29 个精选偏旁分组），使 8105 标准字数据与偏旁分组单一文件真源对齐当前 `hanzi` 域实现
+- 【数据】`naming_quality.json`（1094 字人工维护门禁表）不在备份、git 历史与磁盘中，无生成工具可还原，已重建为 131 字核心门禁字表（虚词/排行字/口语物名/数字量词/叹词/否定虚字等），覆盖测试断言，恢复门禁机制；`LoadNamingQualityFromJSON` 增加文件缺失降级（空表+警告，不阻断启动），文件存在但解析失败仍返回错误以暴露数据损坏
+
+### 🧪 Tests 测试
+
+- 恢复并验证：`TestIsNonNamingChar`、`TestWenHuaRaterGateCharPenalty`、`TestIsNonNamingCharEmpty`、`TestHardNegativeCharBlood`（fate 门禁）、`TestLoadNamerGroups`（hanzi charGroups）
+- 已知遗留：`TestRateNameCuratedExempt`（音韵维度=62 期望>75）由硬编码谐音表导致的既有评分问题，与数据恢复无关，本次不改动，单独记录待后续调查
+
+### 📚 Docs 文档更新
+
+- 更新本版本变更日志
+
+---
+
 ## [2026.08.31.0]
 
 ### 🐛 Bug Fixes 问题修复

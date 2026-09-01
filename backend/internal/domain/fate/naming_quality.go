@@ -43,10 +43,20 @@ var (
 )
 
 // LoadNamingQualityFromJSON 从 data 目录加载命名质量门禁字表
+//
+// 数据文件缺失时降级为空门禁表（仅警告、不阻断启动），避免缺失字表导致
+// 整个起名服务无法启动；文件存在但解析失败时仍返回错误以暴露数据损坏。
 func LoadNamingQualityFromJSON(dataDir string) error {
 	path := filepath.Join(dataDir, "naming_quality.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			nonNamingCharsMu.Lock()
+			nonNamingChars = make(map[string]bool)
+			nonNamingCharsMu.Unlock()
+			fmt.Fprintf(os.Stderr, "警告: 命名门禁字表 %s 不存在，已降级为空门禁表（不剔除门禁字）\n", path)
+			return nil
+		}
 		return fmt.Errorf("读取命名门禁字表失败: %w", err)
 	}
 	var chars []string
