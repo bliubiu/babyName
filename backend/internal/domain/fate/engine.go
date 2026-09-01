@@ -90,8 +90,8 @@ type sessionImpl struct {
 	raters []Rater
 
 	// 负面反馈
-	excludedChars   map[string]bool       // 排除的字符
-	excludedCombos  map[string]bool       // 排除的组合 "char1+char2"（排序后）
+	excludedChars  map[string]bool // 排除的字符
+	excludedCombos map[string]bool // 排除的组合 "char1+char2"（排序后）
 }
 
 func (s *sessionImpl) Start(ctx context.Context, input *Input) error {
@@ -489,34 +489,34 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 			}
 
 			candidate := &NameCandidate{
-				Char1:      a.ch.Char,
-				Pinyin1:    a.pinyin,
-				WuXing1:    a.ch.WuXing,
-				Stroke1:    a.stroke,
-				WuXing2:    "",
-				Stroke2:    0,
-				HasPoetry:  a.poetryFound,
-				PoetryFrom: a.poetryDesc,
-				IsRegular:  a.ch.IsRegular,
-				CommonLevel1: a.ch.CommonLevel,
-				NameFreqTier1: a.ch.NameFreqTier,
-				NamePenalty1: a.ch.NamePenalty,
-				IsCurated1: a.ch.IsCurated,
+				Char1:          a.ch.Char,
+				Pinyin1:        a.pinyin,
+				WuXing1:        a.ch.WuXing,
+				Stroke1:        a.stroke,
+				WuXing2:        "",
+				Stroke2:        0,
+				HasPoetry:      a.poetryFound,
+				PoetryFrom:     a.poetryDesc,
+				IsRegular:      a.ch.IsRegular,
+				CommonLevel1:   a.ch.CommonLevel,
+				NameFreqTier1:  a.ch.NameFreqTier,
+				NamePenalty1:   a.ch.NamePenalty,
+				IsCurated1:     a.ch.IsCurated,
 				PositiveScore1: a.ch.PositiveScore,
-				SurnamePinyin: surnamePinyin,
+				SurnamePinyin:  surnamePinyin,
 			}
 			ns := RateName(candidate, fateData, s.raters)
 			entry := ExcellentEntry{
-				Char1:      a.ch.Char,
-				Pinyin1:    a.pinyin,
-				Meaning1:   a.ch.Meaning,
-				Score:      ns.Total,
-				Grade:      ns.Grade,
-				WuXing1:    a.ch.WuXing,
-				Stroke1:    candidate.Stroke1,
-				HasPoetry:  a.poetryFound,
-				PoetryFrom: a.poetryDesc,
-				Items:      ns.Items,
+				Char1:         a.ch.Char,
+				Pinyin1:       a.pinyin,
+				Meaning1:      a.ch.Meaning,
+				Score:         ns.Total,
+				Grade:         ns.Grade,
+				WuXing1:       a.ch.WuXing,
+				Stroke1:       candidate.Stroke1,
+				HasPoetry:     a.poetryFound,
+				PoetryFrom:    a.poetryDesc,
+				Items:         ns.Items,
 				NameFreqTier1: a.ch.NameFreqTier,
 			}
 			table.TryPush(entry)
@@ -553,7 +553,14 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 			wg.Add(1)
 			go func(start, end, w int) {
 				defer wg.Done()
-				local := NewExcellentTable()
+				// localTable 容量自适应 topCount（避免无谓的 10000 容量浪费内存）：
+				// 取 topCount*2 留余量避免抖动，溢出时 TryPush 按堆顶最小分替换。
+				// topCount 在 NewSessionWithFilter 后由 input.Options.Count 决定（默认 50）。
+				cap := topCount * 2
+				if cap < 100 {
+					cap = 100
+				}
+				local := NewExcellentTableWithCap(cap)
 
 				for i := start; i < end; i++ {
 					if cancelled(ctx) {
@@ -631,28 +638,28 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 						}
 
 						candidate := &NameCandidate{
-							Char1:      a.ch.Char,
-							Char2:      b.ch.Char,
-							Pinyin1:    a.pinyin,
-							Pinyin2:    b.pinyin,
-							WuXing1:    a.ch.WuXing,
-							WuXing2:    b.ch.WuXing,
-							Stroke1:    a.stroke,
-							Stroke2:    b.stroke,
-							Meaning1:   a.ch.Meaning,
-							Meaning2:   b.ch.Meaning,
-							Radical1:   a.ch.Radical,
-							Radical2:   b.ch.Radical,
-							HasPoetry:  poetryFound,
-							PoetryFrom: poetryDesc,
-							IsRegular:  a.ch.IsRegular && b.ch.IsRegular,
-						CommonLevel1: a.ch.CommonLevel,
-						CommonLevel2: b.ch.CommonLevel,
-						NameFreqTier1: a.ch.NameFreqTier,
-						NameFreqTier2: b.ch.NameFreqTier,
-						GenderHint: bestGenderHint(a.ch.GenderHint, b.ch.GenderHint),
-							NamePenalty1: a.ch.NamePenalty,
-							NamePenalty2: b.ch.NamePenalty,
+							Char1:         a.ch.Char,
+							Char2:         b.ch.Char,
+							Pinyin1:       a.pinyin,
+							Pinyin2:       b.pinyin,
+							WuXing1:       a.ch.WuXing,
+							WuXing2:       b.ch.WuXing,
+							Stroke1:       a.stroke,
+							Stroke2:       b.stroke,
+							Meaning1:      a.ch.Meaning,
+							Meaning2:      b.ch.Meaning,
+							Radical1:      a.ch.Radical,
+							Radical2:      b.ch.Radical,
+							HasPoetry:     poetryFound,
+							PoetryFrom:    poetryDesc,
+							IsRegular:     a.ch.IsRegular && b.ch.IsRegular,
+							CommonLevel1:  a.ch.CommonLevel,
+							CommonLevel2:  b.ch.CommonLevel,
+							NameFreqTier1: a.ch.NameFreqTier,
+							NameFreqTier2: b.ch.NameFreqTier,
+							GenderHint:    bestGenderHint(a.ch.GenderHint, b.ch.GenderHint),
+							NamePenalty1:  a.ch.NamePenalty,
+							NamePenalty2:  b.ch.NamePenalty,
 							// 策展覆盖表标记：人工精选起名好字，供 WenHuaRater 文化加分（破荒谬字同分）
 							IsCurated1: a.ch.IsCurated,
 							IsCurated2: b.ch.IsCurated,
@@ -665,21 +672,21 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 
 						ns := RateName(candidate, fateData, s.raters)
 						entry := ExcellentEntry{
-							Char1:      candidate.Char1,
-							Char2:      candidate.Char2,
-							Pinyin1:    a.pinyin,
-							Pinyin2:    b.pinyin,
-							Meaning1:   a.ch.Meaning,
-							Meaning2:   b.ch.Meaning,
-							Score:      ns.Total,
-							Grade:      ns.Grade,
-							WuXing1:    candidate.WuXing1,
-							WuXing2:    candidate.WuXing2,
-							Stroke1:    candidate.Stroke1,
-							Stroke2:    candidate.Stroke2,
-							HasPoetry:  candidate.HasPoetry,
-							PoetryFrom: poetryDesc,
-							Items:      ns.Items,
+							Char1:         candidate.Char1,
+							Char2:         candidate.Char2,
+							Pinyin1:       a.pinyin,
+							Pinyin2:       b.pinyin,
+							Meaning1:      a.ch.Meaning,
+							Meaning2:      b.ch.Meaning,
+							Score:         ns.Total,
+							Grade:         ns.Grade,
+							WuXing1:       candidate.WuXing1,
+							WuXing2:       candidate.WuXing2,
+							Stroke1:       candidate.Stroke1,
+							Stroke2:       candidate.Stroke2,
+							HasPoetry:     candidate.HasPoetry,
+							PoetryFrom:    poetryDesc,
+							Items:         ns.Items,
 							NameFreqTier1: candidate.NameFreqTier1,
 							NameFreqTier2: candidate.NameFreqTier2,
 						}
@@ -747,12 +754,12 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 			FullName:  fullName,
 			// 拼音回填：ExcellentEntry 已携带预计算的候选字读音，
 			// 双名以空格组合，单名仅首字读音（TrimSpace 清理尾随空格）
-			Pinyin:    strings.TrimSpace(e.Pinyin1 + " " + e.Pinyin2),
+			Pinyin: strings.TrimSpace(e.Pinyin1 + " " + e.Pinyin2),
 			// 释义回填：候选字释义组合为名字寓意描述，
 			// 单名仅首字释义，双名以「；」连接；超长释义按 rune 截断防撑爆响应
-			Meaning:   combineCharMeanings(e.Meaning1, e.Meaning2),
-			Strokes:   totalStrokes,
-			WuXing:    e.WuXing1 + e.WuXing2,
+			Meaning: combineCharMeanings(e.Meaning1, e.Meaning2),
+			Strokes: totalStrokes,
+			WuXing:  e.WuXing1 + e.WuXing2,
 			// 诗词出处回填：从 ExcellentEntry 透传
 			PoetryFrom: e.PoetryFrom,
 			Score: NameScore{
@@ -777,16 +784,16 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 // BasicCharacterQuery 是 CharacterQuery 的可导出内存实现，
 // 外部适配器（如 HanziDataProvider）可通过类型断言读取过滤条件。
 type BasicCharacterQuery struct {
-	RegularFilter   bool
-	NameableFilter  bool
-	StrokeEQ        int     // 0 表示不限制
-	StrokeGTE       int     // 0 表示不限制
-	StrokeLTE       int     // 0 表示不限制
-	WuxingIn        []string
-	WuxingNotIn     []string
-	CharIn          []string
-	GenderHint      string
-	NamingCategory  string // 精选起名分类筛选（空字符串表示不限制）
+	RegularFilter  bool
+	NameableFilter bool
+	StrokeEQ       int // 0 表示不限制
+	StrokeGTE      int // 0 表示不限制
+	StrokeLTE      int // 0 表示不限制
+	WuxingIn       []string
+	WuxingNotIn    []string
+	CharIn         []string
+	GenderHint     string
+	NamingCategory string // 精选起名分类筛选（空字符串表示不限制）
 }
 
 func NewBasicCharacterQuery() *BasicCharacterQuery {
@@ -1021,6 +1028,8 @@ func ensureWuxingDiversity(entries []ExcellentEntry, topCount int) []ExcellentEn
 
 	result := make([]ExcellentEntry, 0, topCount)
 	seenWuxing := make(map[string]bool) // 已出现的五行组合
+	// 用于第二轮填充时快速判重，避免 O(N²) 嵌套循环
+	seenInResult := make(map[string]bool, topCount)
 
 	// 第一轮：每种五行组合取1个代表
 	for _, e := range entries {
@@ -1031,6 +1040,7 @@ func ensureWuxingDiversity(entries []ExcellentEntry, topCount int) []ExcellentEn
 		if !seenWuxing[wuxing] {
 			seenWuxing[wuxing] = true
 			result = append(result, e)
+			seenInResult[e.Char1+e.Char2] = true
 		}
 	}
 
@@ -1039,20 +1049,13 @@ func ensureWuxingDiversity(entries []ExcellentEntry, topCount int) []ExcellentEn
 		if len(result) >= topCount {
 			break
 		}
-		// 检查是否已在结果中（按 Char1+Char2 去重）
-		dup := false
-		for _, r := range result {
-			if r.Char1 == e.Char1 && r.Char2 == e.Char2 {
-				dup = true
-				break
-			}
+		key := e.Char1 + e.Char2
+		if seenInResult[key] {
+			continue
 		}
-		if !dup {
-			result = append(result, e)
-		}
+		seenInResult[key] = true
+		result = append(result, e)
 	}
 
 	return result
 }
-
-

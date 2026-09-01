@@ -1,5 +1,13 @@
 package fate
 
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+)
+
 // semantic_filter.go 负面语义过滤（分层策略）
 //
 // 解决的问题（verify_fate 验证暴露）：
@@ -125,10 +133,81 @@ func IsBlessingCombo(c1, c2 string) bool {
 }
 
 // IsBadCombo 判断两个字组合是否为禁忌组合（正反序均检测）
+//
+// 优先级：动态加载的清洗组合（forbiddenCombosExtra）→ 硬编码常量（forbiddenCombos）
+// 动态集为空时仅查硬编码（向后兼容，避免未加载数据时所有组合都通过）
 // 用于双名候选生成时剔除「父母」「蜂蜜」等荒谬组合
 func IsBadCombo(c1, c2 string) bool {
-	if forbiddenCombos[c1+c2] {
+	if c1 == "" || c2 == "" {
+		return false
+	}
+	forward := c1 + c2
+	reverse := c2 + c1
+	// 1. 优先查动态加载的 962 条清洗组合（data/forbidden_combos.json）
+		forbiddenCombosExtraMu.RLock()
+		if _, hit := forbiddenCombosExtra[forward]; hit {
+			forbiddenCombosExtraMu.RUnlock()
+			return true
+		}
+		if _, hit := forbiddenCombosExtra[reverse]; hit {
+			forbiddenCombosExtraMu.RUnlock()
+			return true
+		}
+		forbiddenCombosExtraMu.RUnlock()
+	// 2. 未命中再查硬编码常量（向后兼容 + 兜底）
+	if forbiddenCombos[forward] {
 		return true
 	}
-	return forbiddenCombos[c2+c1]
+	return forbiddenCombos[reverse]
+}
+
+// forbiddenCombosExtra 动态加载的禁忌组合（来自 data/forbidden_combos.json）
+// 启动时由 LoadForbiddenCombosFromJSON 注入；为 nil/空时仅使用硬编码 forbiddenCombos
+var (
+	forbiddenCombosExtraMu sync.RWMutex
+	forbiddenCombosExtra   = map[string]bool{}
+)
+
+// LoadForbiddenCombosFromJSON 从 data/forbidden_combos.json 加载禁忌组合
+//
+// 数据文件缺失时降级为空集合（仅警告、不阻断启动），避免缺失字表导致
+// 整个起名服务无法启动；文件存在但解析失败时仍返回错误以暴露数据损坏。
+//
+// 加载后会覆盖既有集合（幂等，可重复调用以热更新）。
+func LoadForbiddenCombosFromJSON(dataDir string) error {
+	path := filepath.Join(dataDir, "forbidden_combos.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			forbiddenCombosExtraMu.Lock()
+			forbiddenCombosExtra = make(map[string]bool)
+			forbiddenCombosExtraMu.Unlock()
+			fmt.Fprintf(os.Stderr, "警告: 禁忌组合表 %s 不存在，已降级为硬编码常量集合（不加载动态数据）\n", path)
+			return nil
+		}
+		return fmt.Errorf("读取禁忌组合表失败: %w", err)
+	}
+	var combos []string
+	if err := json.Unmarshal(raw, &combos); err != nil {
+		return fmt.Errorf("解析禁忌组合表失败: %w", err)
+	}
+
+	forbiddenCombosExtraMu.Lock()
+	defer forbiddenCombosExtraMu.Unlock()
+	forbiddenCombosExtra = make(map[string]bool, len(combos))
+	for _, c := range combos {
+		if c == "" {
+			continue
+		}
+		// 兼容正反序：双向都加（与 IsBadCombo 一致）
+		forbiddenCombosExtra[c] = true
+	}
+	return nil
+}
+
+// ForbiddenComboCount 返回动态禁忌组合数量（诊断/测试用）
+func ForbiddenComboCount() int {
+	forbiddenCombosExtraMu.RLock()
+	defer forbiddenCombosExtraMu.RUnlock()
+	return len(forbiddenCombosExtra)
 }

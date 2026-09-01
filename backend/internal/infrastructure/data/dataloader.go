@@ -54,12 +54,18 @@ func Init(dataDir string) error {
 	}
 
 	// 5. 加载命名质量门禁字表（nonNamingChars，候选池硬剔除）
-	if err := fate.LoadNamingQualityFromJSON(dataDir); err != nil {
-		return fmt.Errorf("加载命名质量门禁字表失败: %w", err)
-	}
+		if err := fate.LoadNamingQualityFromJSON(dataDir); err != nil {
+			return fmt.Errorf("加载命名质量门禁字表失败: %w", err)
+		}
 
-	return nil
-}
+		// 6. 加载禁忌双字组合表（962 条历史清洗成果，data/forbidden_combos.json）
+		//    与 forbiddenCombos 硬编码常量合并，参与 IsBadCombo 判定。
+		if err := fate.LoadForbiddenCombosFromJSON(dataDir); err != nil {
+			return fmt.Errorf("加载禁忌双字组合表失败: %w", err)
+		}
+
+		return nil
+	}
 
 // ReloadAll 热更新所有数据（重新加载并通知观察者）
 func ReloadAll(dataDir string) error {

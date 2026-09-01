@@ -79,12 +79,32 @@ type ExcellentTable struct {
 }
 
 // NewExcellentTable 创建容量为 10000 的 ExcellentTable
+//
+// 默认容量保留旧行为（用于未指定 topCount 的场景）；
+// 推荐调用方使用 NewExcellentTableWithCap(topCount*2) 显式传容量，
+// 节省 N² 枚举场景下的内存开销（避免每个 worker 持 10000 容量的堆）。
 func NewExcellentTable() *ExcellentTable {
 	return &ExcellentTable{
 		h:     make(excellentMinHeap, 0, excellentTableCapacity),
 		shown: make(map[string]bool),
 		seen:  make(map[string]bool),
 		cap:   excellentTableCapacity,
+	}
+}
+
+// NewExcellentTableWithCap 创建指定容量的 ExcellentTable
+//
+// 推荐传入 topCount*2 或更大值，避免在大量枚举后堆被频繁替换（每次替换是 O(log n)）。
+// capacity <= 0 时回退到默认容量 excellentTableCapacity。
+func NewExcellentTableWithCap(capacity int) *ExcellentTable {
+	if capacity <= 0 {
+		capacity = excellentTableCapacity
+	}
+	return &ExcellentTable{
+		h:     make(excellentMinHeap, 0, capacity),
+		shown: make(map[string]bool),
+		seen:  make(map[string]bool),
+		cap:   capacity,
 	}
 }
 

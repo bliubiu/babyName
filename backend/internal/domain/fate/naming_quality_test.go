@@ -2,6 +2,7 @@ package fate
 
 import (
 	"math"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -653,4 +654,68 @@ func TestWenHuaRaterCuratedBonus(t *testing.T) {
 	if !strings.Contains(mixRating.Detail, "策展起名好字") {
 		t.Errorf("双名含策展好字应获得策展加分，详情=%q", mixRating.Detail)
 	}
+}
+
+// TestLoadForbiddenCombosFromJSON 动态加载禁忌组合表（962 条）
+//
+// 仓库内 data/raw/清洗清单-*.txt 是历史清洗成果（962 条荒谬双字组合），
+// 已合并为 data/forbidden_combos.json，由 LoadForbiddenCombosFromJSON 加载，
+// 与 forbiddenCombos 硬编码常量合并参与 IsBadCombo 判定。
+func TestLoadForbiddenCombosFromJSON(t *testing.T) {
+	// 已由 TestMain 加载，验证集合非空
+	n := ForbiddenComboCount()
+	if n == 0 {
+		t.Skip("禁忌组合表未加载（data/forbidden_combos.json 缺失），跳过")
+	}
+	// 实测 962 条（两份清单去重后）
+	if n != 962 {
+		t.Errorf("ForbiddenComboCount() = %d, 期望 962", n)
+	}
+
+	// 抽查：注释中提到的「仲尼/若兮/七政/与砺」应全部命中
+	for _, c := range []string{"仲尼", "若兮", "七政", "与砺", "与砺", "与清", "以方", "以时", "以栋", "以潜", "以登", "以言"} {
+		if !IsBadCombo(runeStr(c, 0), runeStr(c, 1)) {
+			t.Errorf("IsBadCombo(%q) = false, 期望 true（应被 962 条清洗表拦截）", c)
+		}
+	}
+
+	// 反序也应命中
+	if !IsBadCombo("砺", "与") {
+		t.Error("IsBadCombo(砺, 与) 反序应命中")
+	}
+
+	// 对照组：优质好名绝不被误伤
+	for _, c := range [][2]string{{"浩", "然"}, {"子", "轩"}, {"明", "哲"}, {"俊", "杰"}, {"宇", "轩"}} {
+		if IsBadCombo(c[0], c[1]) {
+			t.Errorf("IsBadCombo(%q, %q) = true, 期望 false（优质组合被误伤）", c[0], c[1])
+		}
+	}
+}
+
+// TestForbiddenComboReload 重新加载（热更新）幂等性
+//
+// LoadForbiddenCombosFromJSON 是幂等的：重复调用应覆盖既有集合，
+// 不应泄漏旧数据或导致 ForbiddenComboCount 单调增长。
+func TestForbiddenComboReload(t *testing.T) {
+	n1 := ForbiddenComboCount()
+	if n1 == 0 {
+		t.Skip("禁忌组合表未加载，跳过")
+	}
+	// 二次加载（同一份文件）
+	dataDir := filepath.Join(packageDir(), "..", "..", "..", "data")
+	if err := LoadForbiddenCombosFromJSON(dataDir); err != nil {
+		t.Fatalf("二次加载失败: %v", err)
+	}
+	if ForbiddenComboCount() != n1 {
+		t.Errorf("幂等加载后数量变化：%d → %d", n1, ForbiddenComboCount())
+	}
+}
+
+// runeStr 返回 s 的第 idx 个 rune（仅用于测试）
+func runeStr(s string, idx int) string {
+	r := []rune(s)
+	if idx >= len(r) {
+		return ""
+	}
+	return string(r[idx])
 }

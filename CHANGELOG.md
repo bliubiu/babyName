@@ -5,6 +5,32 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.09.01.2]
+
+### 🐛 Bug Fixes 问题修复
+
+- 【fate 引擎】加载 962 条历史清洗组合到 `IsBadCombo`：新增 `LoadForbiddenCombosFromJSON` 加载 `data/forbidden_combos.json`（`scripts/build_forbidden_combos.py` 从 raw 重建），运行时与 `forbiddenCombos` 硬编码常量合并参与组合级剔除。**这是仓库内两份清洗清单（`data/raw/清洗清单-门禁虚字.txt` + `清洗清单-荒谬组合.txt`）首次被纳入生成流程**——之前 962 条成果沉睡在仓库里未被任何代码消费，是 Top10 混入"仲尼/若兮/七政/与砺"等荒谬组合的根因之一
+- 【fate 引擎】Homophone 同音误杀修复：`CheckBadHomophone(pinyin, selfChar...)` 改为精确匹配（仅当本字 == `BadHomophones.Word` 时命中），避免拼音 `si` 把"思/丝/斯"等常见好字误扣"含不吉谐音:死"；`rater.go` 调用处传入 `candidate.Char1/Char2`；旧"按拼音命中"的兼容模式（无 selfChar）保留供测试与其他场景
+- 【fate 引擎】`ExcellentTable` 容量自适应：新增 `NewExcellentTableWithCap(capacity)`，worker 端容量从默认 10000 降为 `topCount*2`（最小 100），节省 ~80% 内存；合并池仍用默认容量保证全局 TopN 不溢出
+- 【fate 引擎】`ensureWuxingDiversity` 去重改 map：第二轮填充时用 `seenInResult map[string]bool` 替代嵌套 for + 比对，从 O(N²) 降为 O(N)（poolSize=500~1000 时收益显著）
+
+### 📈 Improvements 性能/体验优化
+
+- 【数据层】`data/forbidden_combos.json` 与 `naming_quality.json` 同步走"raw → 脚本生成 → 运行时加载"模式（脚本 `scripts/build_forbidden_combos.py` 可重复执行）；启动时缺失文件降级为空集合+警告，不阻断服务
+
+### 🧪 Tests 测试
+
+- 【fate】新增 `naming_quality_test.go::TestLoadForbiddenCombosFromJSON` + `TestForbiddenComboReload`：验证动态禁忌组合加载数量（962）、注释示例（仲尼/若兮/七政/与砺）正序+反序命中、优质组合（浩然/子轩/明哲/俊杰/宇轩）不被误伤、热更新幂等
+- 【fate】新增 `phoneme_exempt_test.go`：4 个用例覆盖本字精确匹配语义（`TestCheckBadHomophoneSelfExempt`、`TestCheckAllBadHomophonesPairedArgs`）+ ExcellentTable 自适应容量（`TestNewExcellentTableWithCap`）+ 五行多样性去重 map（`TestEnsureWuxingDiversityMapDedup`）
+- 【回归】`go test ./... -count=1` 22 个包全部通过（application/handlers/services/validator、domain/bazi/fate/hanzi/name/namestat/yijing/ziwei/zodiac、infrastructure/cache/middleware）
+
+### 📚 Docs 文档更新
+
+- 新增 `docs/19-起名服务候选池到生成管线深度审查报告.md`（管线深度审查 + 修复方案 + 实施记录）
+- 更新本版本变更日志
+
+---
+
 ## [2026.09.01.1]
 
 ### ✨ New Features 新增功能

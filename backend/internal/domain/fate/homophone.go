@@ -4,12 +4,23 @@ import "strings"
 
 // BadHomophoneInfo 不吉谐音信息
 type BadHomophoneInfo struct {
-	Pinyin      string // 拼音（无声调）
-	Word        string // 对应的不吉汉字
-	Description string // 说明
+	// Pinyin 拼音（无声调）
+	Pinyin string
+	// Word 对应的不吉汉字
+	Word string
+	// Description 说明
+	Description string
 }
 
 // BadHomophones 不吉谐音列表
+//
+// 命中规则（严格）：
+//   1. pinyin 与本字拼音匹配（精确无声调比对）
+//   2. 本字 == Word（同名）时不扣分——拼音相同但本字不同时不视为不吉谐音
+//
+// 举例：拼音 si 的"死"命中；拼音 si 的"思/丝/斯/四/寺"不命中。
+// 之前版本（仅按拼音匹配）会把所有 si 拼音的好字（思/丝/斯）误扣"含不吉谐音:死"。
+//
 // 按拼音首字母分组，检测名字拼音时逐音节匹配
 // 扩展覆盖：常见贬义字、疾病、死亡、灾难、欺诈、偷盗等
 var BadHomophones = []BadHomophoneInfo{
@@ -469,15 +480,30 @@ func stripTone(pinyin string) string {
 	return b.String()
 }
 
-// CheckBadHomophone 检测单个拼音是否有不吉谐音
-// 返回 (是否命中, 命中描述)
-func CheckBadHomophone(pinyin string) (bool, string) {
+// CheckBadHomophone 检测单字是否属于不吉谐音词
+//
+// 自 P1 修复后改为精确匹配：仅当 selfChar == BadHomophones.Word 时才命中。
+// 之前按拼音匹配会误杀所有同音好字（思 si→死、秀 xiu→朽 等）。
+//
+// selfChar 为本字（必传）；空字符串视为未传，按拼音匹配（旧行为，向后兼容）。
+func CheckBadHomophone(pinyin string, selfChar ...string) (bool, string) {
 	clean := stripTone(pinyin)
 	if clean == "" {
 		return false, ""
 	}
 	for _, h := range BadHomophones {
 		if clean == h.Pinyin {
+			// 严格模式（selfChar 已传）：仅当本字 == 谐音词时命中
+			if len(selfChar) > 0 && selfChar[0] != "" {
+				for _, c := range selfChar {
+					if c == h.Word {
+						return true, "谐音「" + h.Word + "」" + h.Description
+					}
+				}
+				// 本字不是该拼音的谐音词，豁免
+				return false, ""
+			}
+			// 兼容模式（selfChar 未传）：仅按拼音匹配（旧行为，保留供测试/其他场景）
 			return true, "谐音「" + h.Word + "」" + h.Description
 		}
 	}
@@ -486,10 +512,22 @@ func CheckBadHomophone(pinyin string) (bool, string) {
 
 // CheckAllBadHomophones 检测名字全部拼音是否有不吉谐音
 // 返回 (是否命中, 描述列表)
-func CheckAllBadHomophones(pinyins ...string) (bool, []string) {
+//
+// 拼音与本字按顺序一一对应（如 (sp=pinyinSurname, sp_char=姓, p1=char1拼音, p1_char=char1)）。
+// 本字豁免：若拼音命中的不吉谐音词与本字相同（如"思"=="死"），跳过。
+func CheckAllBadHomophones(pinyinsChars ...string) (bool, []string) {
 	var details []string
-	for _, p := range pinyins {
-		if hit, desc := CheckBadHomophone(p); hit {
+	// 偶数参数：拼音 + 本字交替
+	for i := 0; i < len(pinyinsChars); i += 2 {
+		var pinyin string
+		var chars []string
+		if i+1 < len(pinyinsChars) {
+			pinyin = pinyinsChars[i]
+			chars = []string{pinyinsChars[i+1]}
+		} else {
+			pinyin = pinyinsChars[i]
+		}
+		if hit, desc := CheckBadHomophone(pinyin, chars...); hit {
 			details = append(details, desc)
 		}
 	}

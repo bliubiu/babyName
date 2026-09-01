@@ -86,7 +86,7 @@ func RateName(candidate *NameCandidate, fateData *FateData, raters []Rater) Name
 
 	// 限制总分在 0-100 范围内
 	total = clampScore(total)
-	
+
 	// 四舍五入保留一位小数
 	total = math.Round(total*10) / 10
 
@@ -141,7 +141,7 @@ func NewWuxingRaterWithWeight(w float64) *WuxingRater {
 	return &WuxingRater{weight: w}
 }
 
-func (r *WuxingRater) Name() string   { return "五行八字" }
+func (r *WuxingRater) Name() string    { return "五行八字" }
 func (r *WuxingRater) Weight() float64 { return r.weight }
 
 func (r *WuxingRater) Rate(candidate *NameCandidate, fateData *FateData) NameRating {
@@ -286,7 +286,7 @@ func NewWenHuaRaterWithWeight(w float64) *WenHuaRater {
 	return &WenHuaRater{weight: w}
 }
 
-func (r *WenHuaRater) Name() string   { return "文化印象" }
+func (r *WenHuaRater) Name() string    { return "文化印象" }
 func (r *WenHuaRater) Weight() float64 { return r.weight }
 
 func (r *WenHuaRater) Rate(candidate *NameCandidate, fateData *FateData) NameRating {
@@ -529,7 +529,7 @@ func NewYinYunRaterWithWeight(w float64) *YinYunRater {
 	return &YinYunRater{weight: w}
 }
 
-func (r *YinYunRater) Name() string   { return "音韵" }
+func (r *YinYunRater) Name() string    { return "音韵" }
 func (r *YinYunRater) Weight() float64 { return r.weight }
 
 func (r *YinYunRater) Rate(candidate *NameCandidate, fateData *FateData) NameRating {
@@ -585,8 +585,8 @@ func (r *YinYunRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 					details = append(details, "单字与姓氏韵母相同")
 				}
 			}
-			// 姓氏+单字连读谐音检测
-			if hit, descs := CheckAllBadHomophones(sp, p1); hit {
+			// 姓氏+单字连读谐音检测（本字豁免：传入本字避免同音好字被误判）
+			if hit, descs := CheckAllBadHomophones(sp, "", p1, candidate.Char1); hit {
 				score -= float64(len(descs)) * 10
 				details = append(details, "含不吉谐音: "+strings.Join(descs, "、"))
 			}
@@ -645,15 +645,17 @@ func (r *YinYunRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 
 	// ——— 谐音检测（包含姓氏拼音，确保检测跨字谐音如"杜子腾"→肚子疼） ———
 
-	// 1. 逐字检测不吉谐音
-	allPinyins := []string{p1}
+	// 1. 逐字检测不吉谐音（本字豁免：把每字的拼音与本字一一对应传入，
+	//    避免"思"拼音 si 与"死"谐音混淆等常见好字被误判）
+	pinyinCharPairs := []string{p1, candidate.Char1}
 	if candidate.SurnamePinyin != "" {
-		allPinyins = append([]string{candidate.SurnamePinyin}, allPinyins...)
+		// 姓氏本字从 input 取不到（未传），用空字符串占位（不会触发本字豁免）
+		pinyinCharPairs = append([]string{candidate.SurnamePinyin, ""}, pinyinCharPairs...)
 	}
 	if p2 != "" {
-		allPinyins = append(allPinyins, p2)
+		pinyinCharPairs = append(pinyinCharPairs, p2, candidate.Char2)
 	}
-	if hit, descs := CheckAllBadHomophones(allPinyins...); hit {
+	if hit, descs := CheckAllBadHomophones(pinyinCharPairs...); hit {
 		penalty := float64(len(descs)) * 10
 		score -= penalty
 		details = append(details, "含不吉谐音: "+strings.Join(descs, "、"))
@@ -688,7 +690,7 @@ func NewShengXiaoRaterWithWeight(w float64) *ShengXiaoRater {
 	return &ShengXiaoRater{weight: w}
 }
 
-func (r *ShengXiaoRater) Name() string   { return "生肖" }
+func (r *ShengXiaoRater) Name() string    { return "生肖" }
 func (r *ShengXiaoRater) Weight() float64 { return r.weight }
 
 func (r *ShengXiaoRater) Rate(candidate *NameCandidate, fateData *FateData) NameRating {
@@ -708,7 +710,7 @@ func (r *ShengXiaoRater) Rate(candidate *NameCandidate, fateData *FateData) Name
 	details = append(details, fmt.Sprintf("生肖%s，五行属%s", zodiac, zodiacWx))
 
 	for _, pair := range []struct {
-		char  string
+		char   string
 		wuxing string
 	}{{candidate.Char1, candidate.WuXing1}, {candidate.Char2, candidate.WuXing2}} {
 		if pair.char == "" || pair.wuxing == "" {
@@ -750,7 +752,7 @@ func NewSancaiRaterWithWeight(w float64) *SancaiRater {
 	return &SancaiRater{weight: w}
 }
 
-func (r *SancaiRater) Name() string   { return "三才" }
+func (r *SancaiRater) Name() string    { return "三才" }
 func (r *SancaiRater) Weight() float64 { return r.weight }
 
 func (r *SancaiRater) Rate(candidate *NameCandidate, fateData *FateData) NameRating {
@@ -989,7 +991,7 @@ func NewNoveltyRaterWithWeight(w float64) *NoveltyRater {
 	return &NoveltyRater{weight: w}
 }
 
-func (r *NoveltyRater) Name() string   { return "新颖度" }
+func (r *NoveltyRater) Name() string    { return "新颖度" }
 func (r *NoveltyRater) Weight() float64 { return r.weight }
 
 func (r *NoveltyRater) Rate(candidate *NameCandidate, fateData *FateData) NameRating {
@@ -1111,7 +1113,7 @@ func NewBigramRaterWithWeight(w float64) *BigramRater {
 	return &BigramRater{weight: w}
 }
 
-func (r *BigramRater) Name() string   { return "共现" }
+func (r *BigramRater) Name() string    { return "共现" }
 func (r *BigramRater) Weight() float64 { return r.weight }
 
 func (r *BigramRater) Rate(candidate *NameCandidate, fateData *FateData) NameRating {
@@ -1209,14 +1211,14 @@ func evaluateTonePattern(toneS, tone1, tone2 int) (float64, string) {
 // 同组声母（如 b/p 都是双唇音）连读时口型变化小，听感模糊；
 // 不同组声母（如 x/zh）连读时口型变化大，发音清晰。
 var shengMuGroups = map[string]int{
-	"b": 1, "p": 1, "m": 1,           // 双唇音
-	"f": 2,                             // 唇齿音
-	"d": 3, "t": 3, "n": 3, "l": 3,    // 舌尖中音
-	"g": 4, "k": 4, "h": 4,           // 舌根音
-	"j": 5, "q": 5, "x": 5,           // 舌面音
+	"b": 1, "p": 1, "m": 1, // 双唇音
+	"f": 2,                         // 唇齿音
+	"d": 3, "t": 3, "n": 3, "l": 3, // 舌尖中音
+	"g": 4, "k": 4, "h": 4, // 舌根音
+	"j": 5, "q": 5, "x": 5, // 舌面音
 	"zh": 6, "ch": 6, "sh": 6, "r": 6, // 翘舌音
-	"z": 7, "c": 7, "s": 7,           // 平舌音
-	"y": 8, "w": 8,                    // 零声母/半元音
+	"z": 7, "c": 7, "s": 7, // 平舌音
+	"y": 8, "w": 8, // 零声母/半元音
 }
 
 // shengMuSimilarity 声母相似度评分
@@ -1255,5 +1257,3 @@ func shengMuGroupName(group int) string {
 	}
 	return "未知"
 }
-
-
