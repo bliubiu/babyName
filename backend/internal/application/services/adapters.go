@@ -218,13 +218,27 @@ func hanziToCharacter(h hanzi.Hanzi) *fate.Character {
 	}
 	isNameable := h.Strokes <= 30 && isRegular
 
+	// 笔画口径统一：
+	//   - SimplifiedStroke / TraditionalStroke: namer 简体笔画（h.Strokes）
+	//   - KangxiStroke: 康熙字典笔画（h.KangxiStrokes，0 时降为简体）
+	//   - ScienceStroke: 简体笔画（科学笔画口径，与 Kangxi 区分）
+	//
+	// 此前四个字段均填 h.Strokes，导致"姓用康熙、名用科学"的口径混乱
+	// （参见 docs/19 报告 B3）。修复要点：
+	//   1. KangxiStroke 走真实康熙字典笔画（namer_loader 已合并 kangxi-strokecount.csv）
+	//   2. KangxiStroke == 0 时降级为简体（未收录兜底）
+	kangxiStroke := h.KangxiStrokes
+	if kangxiStroke == 0 {
+		kangxiStroke = h.Strokes
+	}
+
 	c := &fate.Character{
 		Char:              h.Char,
 		Pinyin:            []string{h.Pinyin},
 		WuXing:            h.Wuxing,
 		SimplifiedStroke:  h.Strokes,
 		TraditionalStroke: h.Strokes,
-		KangxiStroke:      h.Strokes,
+		KangxiStroke:      kangxiStroke,
 		ScienceStroke:     h.Strokes,
 		Radical:           h.Radical,
 		Meaning:           h.Meaning,

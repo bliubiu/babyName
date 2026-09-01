@@ -44,6 +44,24 @@ func EngineFactoryFunc(provider CharacterProvider, analyzer BaziAnalyzer) Engine
 	}
 }
 
+// charInfo 候选字预计算属性（用于 generateSingleName / generateDoubleName 共享）
+//
+// 字段含义：
+//   - ch:         候选字 Character
+//   - stroke:     笔画数（filter 口径，按 StrokeMode 决定）
+//   - pinyin:     第一拼音（无声调）
+//   - poetryFound: 是否关联到诗词
+//   - poetryDesc:  诗词出处描述
+//
+// 避免双重循环内重复调用 GetCharacterStroke / firstPinyin / 诗词检索。
+type charInfo struct {
+	ch          *Character
+	stroke      int
+	pinyin      string
+	poetryFound bool
+	poetryDesc  string
+}
+
 // --- engineImpl: Fate 接口默认实现 ---
 
 type engineImpl struct {
@@ -189,19 +207,13 @@ func (s *sessionImpl) ExcludedChars() []string {
 	return chars
 }
 
-// isCharExcluded 检查字符是否被排除（内部方法，不加锁，调用者需持有锁）
+// sessionImpl 上的闭包：调用方直接用 s.isCharExcluded / s.isComboExcluded
+// 不再加锁（session 生命周期内 excludedChars/excludedCombos 只读不变）
 func (s *sessionImpl) isCharExcluded(char string) bool {
-	if s.excludedChars == nil {
-		return false
-	}
 	return s.excludedChars[char]
 }
 
-// isComboExcluded 检查字符组合是否被排除（内部方法，不加锁）
 func (s *sessionImpl) isComboExcluded(c1, c2 string) bool {
-	if s.excludedCombos == nil {
-		return false
-	}
 	a, b := c1, c2
 	if a > b {
 		a, b = b, a
@@ -274,18 +286,8 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	}
 
 	// 5. 对每个字符进行过滤（含负面反馈排除的字符）
-	// 仅在读取 excludedChars/excludedCombos 时短暂加锁，复制快照后立即释放，
-	// 避免长时间持锁阻塞 State()/Result()/Stop()/ExcludeChar() 等方法。
-	s.mu.Lock()
-	excludedCharsSnapshot := make(map[string]bool, len(s.excludedChars))
-	for k, v := range s.excludedChars {
-		excludedCharsSnapshot[k] = v
-	}
-	excludedCombosSnapshot := make(map[string]bool, len(s.excludedCombos))
-	for k, v := range s.excludedCombos {
-		excludedCombosSnapshot[k] = v
-	}
-	s.mu.Unlock()
+	// excludedChars/excludedCombos 由 sessionImpl 字段持有，通过 s.isCharExcluded / s.isComboExcluded
+	// 方法直接查询，并发安全由 s.mu 守护（generate 与 ExcludeChar 互斥）。
 
 	// 避讳长辈：构建同形字与同音字排除集
 	// 规则：同形字=侵佔福分，同音字=气场冲撞（"压运"）
@@ -295,20 +297,12 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	// 普通格局需移除敏感字（龙/凤/乾/坤/圣/贤/天/帝/皇/神/仙/君）
 	allowSensitive := isExtremeStrongPattern(fateData)
 
-	isCharExcluded := func(char string) bool {
-		return excludedCharsSnapshot[char]
-	}
-	isComboExcluded := func(c1, c2 string) bool {
-		a, b := c1, c2
-		if a > b {
-			a, b = b, a
-		}
-		return excludedCombosSnapshot[a+"+"+b]
-	}
-
+	// 负面反馈排除通过 s.isCharExcluded / s.isComboExcluded 调用（直接读 session 字段，
+	// session 生命周期内 excludedChars/excludedCombos 仅在 ExcludeChar/ExcludeCombo 时变更），
+	// 但 generate() 与 Exclude* 并发安全通过 s.mu 守护。
 	validChars := make([]*Character, 0, len(allChars))
 	for _, c := range allChars {
-		if isCharExcluded(c.Char) {
+		if s.isCharExcluded(c.Char) {
 			continue
 		}
 		// 避讳长辈：排除同形字
@@ -419,15 +413,8 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		}
 	}
 
-	// 6. 预计算每个候选字的固定属性
-	// 避免双重循环内重复调用 GetCharacterStroke / firstPinyin / 诗词检索
-	type charInfo struct {
-		ch          *Character
-		stroke      int
-		pinyin      string
-		poetryFound bool
-		poetryDesc  string
-	}
+	// 6. 预计算每个候选字的固定属性（使用包级 charInfo 类型，避免双重循环内重复调用
+	// GetCharacterStroke / firstPinyin / 诗词检索）
 
 	infos := make([]charInfo, len(validChars))
 	for i, c := range validChars {
@@ -474,244 +461,10 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 
 	if nameLen == 1 {
 		// 单名：仅迭代第一个字（候选集小，串行足够快）
-		for i := range infos {
-			if cancelled(ctx) {
-				break
-			}
-			a := infos[i]
-			if !s.filter.CheckStrokePair(a.stroke, 0) {
-				continue
-			}
-			// 名字用字质量门禁：单名若为门禁字（虚词/排行字/口语物名等）直接剔除。
-			// 策展库无单名，故单名门禁不会误伤策展推荐。
-			if IsNonNamingChar(a.ch.Char) {
-				continue
-			}
-
-			candidate := &NameCandidate{
-				Char1:          a.ch.Char,
-				Pinyin1:        a.pinyin,
-				WuXing1:        a.ch.WuXing,
-				Stroke1:        a.stroke,
-				WuXing2:        "",
-				Stroke2:        0,
-				HasPoetry:      a.poetryFound,
-				PoetryFrom:     a.poetryDesc,
-				IsRegular:      a.ch.IsRegular,
-				CommonLevel1:   a.ch.CommonLevel,
-				NameFreqTier1:  a.ch.NameFreqTier,
-				NamePenalty1:   a.ch.NamePenalty,
-				IsCurated1:     a.ch.IsCurated,
-				PositiveScore1: a.ch.PositiveScore,
-				SurnamePinyin:  surnamePinyin,
-			}
-			ns := RateName(candidate, fateData, s.raters)
-			entry := ExcellentEntry{
-				Char1:         a.ch.Char,
-				Pinyin1:       a.pinyin,
-				Meaning1:      a.ch.Meaning,
-				Score:         ns.Total,
-				Grade:         ns.Grade,
-				WuXing1:       a.ch.WuXing,
-				Stroke1:       candidate.Stroke1,
-				HasPoetry:     a.poetryFound,
-				PoetryFrom:    a.poetryDesc,
-				Items:         ns.Items,
-				NameFreqTier1: a.ch.NameFreqTier,
-			}
-			table.TryPush(entry)
-			totalCount.Add(1)
-		}
-		table.Finalize()
+		s.generateSingleName(ctx, infos, table, &totalCount, fateData, surnamePinyin)
 	} else {
 		// 双名：迭代 Char1 × Char2（全量枚举，按外层 Char1 分片并行）
-		workers := runtime.NumCPU()
-		if workers < 1 {
-			workers = 1
-		}
-		if workers > len(infos) {
-			workers = len(infos)
-		}
-		if workers == 0 {
-			workers = 1
-		}
-
-		chunkSize := (len(infos) + workers - 1) / workers
-		localTables := make([]*ExcellentTable, workers)
-		var wg sync.WaitGroup
-
-		for w := 0; w < workers; w++ {
-			start := w * chunkSize
-			end := start + chunkSize
-			if end > len(infos) {
-				end = len(infos)
-			}
-			if start >= end {
-				continue
-			}
-
-			wg.Add(1)
-			go func(start, end, w int) {
-				defer wg.Done()
-				// localTable 容量自适应 topCount（避免无谓的 10000 容量浪费内存）：
-				// 取 topCount*2 留余量避免抖动，溢出时 TryPush 按堆顶最小分替换。
-				// topCount 在 NewSessionWithFilter 后由 input.Options.Count 决定（默认 50）。
-				cap := topCount * 2
-				if cap < 100 {
-					cap = 100
-				}
-				local := NewExcellentTableWithCap(cap)
-
-				for i := start; i < end; i++ {
-					if cancelled(ctx) {
-						return
-					}
-					a := infos[i]
-					if !s.filter.CheckStrokePair(a.stroke, 0) {
-						continue
-					}
-
-					for j := range infos {
-						if cancelled(ctx) {
-							return
-						}
-						b := infos[j]
-						if !s.filter.CheckStrokePair(a.stroke, b.stroke) {
-							continue
-						}
-
-						// 避免重复字（双名一般不用相同字）
-						if a.ch.Char == b.ch.Char {
-							continue
-						}
-
-						// 负面反馈：排除组合（使用快照，无需加锁）
-						if isComboExcluded(a.ch.Char, b.ch.Char) {
-							continue
-						}
-
-						// 负面语义：组合禁忌（亲属称谓/物名/动词等，「父母」「蜂蜜」类直接剔除）
-						if IsBadCombo(a.ch.Char, b.ch.Char) {
-							continue
-						}
-
-						// 历史人物字/号专名：剔除「仲尼」「尼仲」「孔明」等与历史人物撞车组合
-						// （GetBigramScore 会因《论语》"仲尼曰"等典籍共现给高分，需在此拦截）
-						if IsHistoricalFigureCombo(a.ch.Char, b.ch.Char) {
-							continue
-						}
-
-						// 名字用字质量门禁（纯语义）：若任一位置为门禁字
-						// （虚词/排行字/口语物名/数字量词等），组合即无命名价值，
-						// 直接剔除——不复依赖策展库豁免。
-						// 策展库已降级为纯出典参考：其本身是历史人物名采集
-						// （混入仲尼/若兮/七政/与砺 等 962 条垃圾），不可作为质量基准。
-						if IsNonNamingChar(a.ch.Char) || IsNonNamingChar(b.ch.Char) {
-							continue
-						}
-
-						// 数据层搭配黑名单：策展标注的 PairBlacklist（如 瑾-艳/妍-艳/嫣-艳）
-						if hasPairBlacklist(a.ch, b.ch.Char) || hasPairBlacklist(b.ch, a.ch.Char) {
-							continue
-						}
-
-						// 早停检查：表已满时，跳过组合潜力分明显不足的配对
-						// 潜力分 = charPotentialScore(a) + charPotentialScore(b)
-						// 低于当前表最小分时，即使满分各维度也难以入表
-						if local.IsFull() {
-							pa := charPotentialScore(a.ch.WuXing, a.ch.IsCurated, a.ch.PositiveScore, a.poetryFound, xiSet)
-							pb := charPotentialScore(b.ch.WuXing, b.ch.IsCurated, b.ch.PositiveScore, b.poetryFound, xiSet)
-							combined := pa + pb
-							minScore := local.MinScore()
-							// 潜力分上限约40，实际得分约60-90，保守阈值=最小分的60%
-							if float64(combined) < minScore*0.6 {
-								continue
-							}
-						}
-
-						poetryFound := a.poetryFound || b.poetryFound
-						poetryDesc := ""
-						if a.poetryFound {
-							poetryDesc = a.poetryDesc
-						} else if b.poetryFound {
-							poetryDesc = b.poetryDesc
-						}
-
-						candidate := &NameCandidate{
-							Char1:         a.ch.Char,
-							Char2:         b.ch.Char,
-							Pinyin1:       a.pinyin,
-							Pinyin2:       b.pinyin,
-							WuXing1:       a.ch.WuXing,
-							WuXing2:       b.ch.WuXing,
-							Stroke1:       a.stroke,
-							Stroke2:       b.stroke,
-							Meaning1:      a.ch.Meaning,
-							Meaning2:      b.ch.Meaning,
-							Radical1:      a.ch.Radical,
-							Radical2:      b.ch.Radical,
-							HasPoetry:     poetryFound,
-							PoetryFrom:    poetryDesc,
-							IsRegular:     a.ch.IsRegular && b.ch.IsRegular,
-							CommonLevel1:  a.ch.CommonLevel,
-							CommonLevel2:  b.ch.CommonLevel,
-							NameFreqTier1: a.ch.NameFreqTier,
-							NameFreqTier2: b.ch.NameFreqTier,
-							GenderHint:    bestGenderHint(a.ch.GenderHint, b.ch.GenderHint),
-							NamePenalty1:  a.ch.NamePenalty,
-							NamePenalty2:  b.ch.NamePenalty,
-							// 策展覆盖表标记：人工精选起名好字，供 WenHuaRater 文化加分（破荒谬字同分）
-							IsCurated1: a.ch.IsCurated,
-							IsCurated2: b.ch.IsCurated,
-							// 寓意评分：与 IsCurated 结合将策展加分收窄为「策展 ∩ positiveScore>=85」精选好字
-							PositiveScore1: a.ch.PositiveScore,
-							PositiveScore2: b.ch.PositiveScore,
-							// 姓氏拼音取自 input，用于音韵评分器检测跨字谐音
-							SurnamePinyin: surnamePinyin,
-						}
-
-						ns := RateName(candidate, fateData, s.raters)
-						entry := ExcellentEntry{
-							Char1:         candidate.Char1,
-							Char2:         candidate.Char2,
-							Pinyin1:       a.pinyin,
-							Pinyin2:       b.pinyin,
-							Meaning1:      a.ch.Meaning,
-							Meaning2:      b.ch.Meaning,
-							Score:         ns.Total,
-							Grade:         ns.Grade,
-							WuXing1:       candidate.WuXing1,
-							WuXing2:       candidate.WuXing2,
-							Stroke1:       candidate.Stroke1,
-							Stroke2:       candidate.Stroke2,
-							HasPoetry:     candidate.HasPoetry,
-							PoetryFrom:    poetryDesc,
-							Items:         ns.Items,
-							NameFreqTier1: candidate.NameFreqTier1,
-							NameFreqTier2: candidate.NameFreqTier2,
-						}
-						local.TryPush(entry)
-						totalCount.Add(1)
-					}
-				}
-				localTables[w] = local
-			}(start, end, w)
-		}
-
-		wg.Wait()
-
-		// 合并各分片的局部 Top-N 到主表（全局 Top-k 必落在某分片局部 Top-容量内）
-		table = NewExcellentTable()
-		for _, lt := range localTables {
-			if lt == nil {
-				continue
-			}
-			lt.Finalize()
-			for _, e := range lt.entries {
-				table.TryPush(e)
-			}
-		}
-		table.Finalize()
+		s.generateDoubleName(ctx, infos, &table, &totalCount, fateData, surnamePinyin, topCount, xiSet)
 	}
 
 	// 7. 构建 TopNames 输出（过滤禁止的国家机关单位名称）
@@ -744,9 +497,20 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		if l2 > 0 {
 			totalStrokes += l2
 		}
-		// 从 ExcellentEntry 中获取笔画（存储在排名的条目中）
-		// 注意：单名时 Stroke2 为 0，不累加
-		totalStrokes += e.Stroke1 + e.Stroke2
+		// 笔画口径统一为康熙字典笔画（KangxiStroke1/2），与姓氏走 l1+l2
+		// 同一口径（LookupSurnameStrokes 返回康熙笔画）。
+		// 修复前 e.Stroke1+Stroke2 走的是 filter.GetCharacterStroke（默认 ScienceStroke），
+		// 导致"姓用康熙、名用科学"的总笔画错误（docs/19 报告 B3）。
+		// KangxiStroke1/2 == 0 时降级为 Stroke1/2（未收录兜底）。
+		nameStroke1 := e.KangxiStroke1
+		if nameStroke1 == 0 {
+			nameStroke1 = e.Stroke1
+		}
+		nameStroke2 := e.KangxiStroke2
+		if nameStroke2 == 0 {
+			nameStroke2 = e.Stroke2
+		}
+		totalStrokes += nameStroke1 + nameStroke2
 		topNames = append(topNames, NameResult{
 			Rank:      rank,
 			Surname:   input.Surname,
@@ -1058,4 +822,284 @@ func ensureWuxingDiversity(entries []ExcellentEntry, topCount int) []ExcellentEn
 	}
 
 	return result
+}
+
+// generateSingleName 单名生成：串行迭代候选字
+//
+// 候选集较小（~1100），串行足够快，无需并发。
+// 关键差异（vs 双名）：
+//   - 单层循环（无 i×j 笛卡尔积）
+//   - IsNonNamingChar 兜底（单名字是名字的全部，门禁字必须剔除）
+//   - 无 IsBadCombo / IsHistoricalFigureCombo（单字无组合级过滤）
+//   - 无早停（候选集小，全枚举 + RateName 性能可接受）
+func (s *sessionImpl) generateSingleName(
+	ctx context.Context,
+	infos []charInfo,
+	table *ExcellentTable,
+	totalCount *atomic.Int64,
+	fateData *FateData,
+	surnamePinyin string,
+) {
+	for i := range infos {
+		if cancelled(ctx) {
+			break
+		}
+		a := infos[i]
+		if !s.filter.CheckStrokePair(a.stroke, 0) {
+			continue
+		}
+		// 名字用字质量门禁：单名若为门禁字（虚词/排行字/口语物名等）直接剔除。
+		// 策展库无单名，故单名门禁不会误伤策展推荐。
+		if IsNonNamingChar(a.ch.Char) {
+			continue
+		}
+
+		candidate := &NameCandidate{
+			Char1:          a.ch.Char,
+			Pinyin1:        a.pinyin,
+			WuXing1:        a.ch.WuXing,
+			Stroke1:        a.stroke,
+			WuXing2:        "",
+			Stroke2:        0,
+			HasPoetry:      a.poetryFound,
+			PoetryFrom:     a.poetryDesc,
+			IsRegular:      a.ch.IsRegular,
+			CommonLevel1:   a.ch.CommonLevel,
+			NameFreqTier1:  a.ch.NameFreqTier,
+			NamePenalty1:   a.ch.NamePenalty,
+			IsCurated1:     a.ch.IsCurated,
+			PositiveScore1: a.ch.PositiveScore,
+			SurnamePinyin:  surnamePinyin,
+		}
+		ns := RateName(candidate, fateData, s.raters)
+		entry := ExcellentEntry{
+			Char1:         a.ch.Char,
+			Pinyin1:       a.pinyin,
+			Meaning1:      a.ch.Meaning,
+			Score:         ns.Total,
+			Grade:         ns.Grade,
+			WuXing1:       a.ch.WuXing,
+			Stroke1:       candidate.Stroke1,
+			KangxiStroke1: a.ch.KangxiStroke,
+			HasPoetry:     a.poetryFound,
+			PoetryFrom:    a.poetryDesc,
+			Items:         ns.Items,
+			NameFreqTier1: a.ch.NameFreqTier,
+		}
+		table.TryPush(entry)
+		totalCount.Add(1)
+	}
+	table.Finalize()
+}
+
+// generateDoubleName 双名生成：i×j 笛卡尔积 + worker 并发
+//
+// 关键差异（vs 单名）：
+//   - 嵌套笛卡尔积 N²
+//   - 按 CPU 分片并发（外层 i 分片，内层 j 全量——worker 间无重叠）
+//   - 组合级过滤（IsBadCombo / IsHistoricalFigureCombo / PairBlacklist 等）
+//   - 早停：local.IsFull() 时按 (a, b) 组合潜力分与本地堆最小分比较
+//
+// localTable 容量自适应 topCount（避免无谓的 10000 容量浪费内存）。
+// 末尾合并各分片局部 Top-N 到主表 → 全局 TopN。
+func (s *sessionImpl) generateDoubleName(
+	ctx context.Context,
+	infos []charInfo,
+	table **ExcellentTable,
+	totalCount *atomic.Int64,
+	fateData *FateData,
+	surnamePinyin string,
+	topCount int,
+	xiSet map[string]bool,
+) {
+	workers := runtime.NumCPU()
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > len(infos) {
+		workers = len(infos)
+	}
+	if workers == 0 {
+		workers = 1
+	}
+
+	// localTable 容量自适应 topCount（避免无谓的 10000 容量浪费内存）：
+	// 取 topCount*2 留余量避免抖动，溢出时 TryPush 按堆顶最小分替换。
+	// topCount 在 NewSessionWithFilter 后由 input.Options.Count 决定（默认 50）。
+	localCap := topCount * 2
+	if localCap < 100 {
+		localCap = 100
+	}
+
+	chunkSize := (len(infos) + workers - 1) / workers
+	localTables := make([]*ExcellentTable, workers)
+	var wg sync.WaitGroup
+
+	for w := 0; w < workers; w++ {
+		start := w * chunkSize
+		end := start + chunkSize
+		if end > len(infos) {
+			end = len(infos)
+		}
+		if start >= end {
+			continue
+		}
+
+		wg.Add(1)
+		go func(start, end, w int) {
+			defer wg.Done()
+			local := NewExcellentTableWithCap(localCap)
+
+			for i := start; i < end; i++ {
+				if cancelled(ctx) {
+					return
+				}
+				a := infos[i]
+				if !s.filter.CheckStrokePair(a.stroke, 0) {
+					continue
+				}
+
+				for j := range infos {
+					if cancelled(ctx) {
+						return
+					}
+					b := infos[j]
+					if !s.filter.CheckStrokePair(a.stroke, b.stroke) {
+						continue
+					}
+
+					// 避免重复字（双名一般不用相同字）
+					if a.ch.Char == b.ch.Char {
+						continue
+					}
+
+					// 负面反馈：排除组合（sessionImpl 方法，调用时不加锁）
+					if s.isComboExcluded(a.ch.Char, b.ch.Char) {
+						continue
+					}
+
+					// 负面语义：组合禁忌（亲属称谓/物名/动词等，「父母」「蜂蜜」类直接剔除）
+					if IsBadCombo(a.ch.Char, b.ch.Char) {
+						continue
+					}
+
+					// 历史人物字/号专名：剔除「仲尼」「尼仲」「孔明」等与历史人物撞车组合
+					// （GetBigramScore 会因《论语》"仲尼曰"等典籍共现给高分，需在此拦截）
+					if IsHistoricalFigureCombo(a.ch.Char, b.ch.Char) {
+						continue
+					}
+
+					// 名字用字质量门禁（纯语义）：若任一位置为门禁字
+					// （虚词/排行字/口语物名/数字量词等），组合即无命名价值，
+					// 直接剔除——不复依赖策展库豁免。
+					// 策展库已降级为纯出典参考：其本身是历史人物名采集
+					// （混入仲尼/若兮/七政/与砺 等 962 条垃圾），不可作为质量基准。
+					if IsNonNamingChar(a.ch.Char) || IsNonNamingChar(b.ch.Char) {
+						continue
+					}
+
+					// 数据层搭配黑名单：策展标注的 PairBlacklist（如 瑾-艳/妍-艳/嫣-艳）
+					if hasPairBlacklist(a.ch, b.ch.Char) || hasPairBlacklist(b.ch, a.ch.Char) {
+						continue
+					}
+
+					// 早停检查：表已满时，跳过组合潜力分明显不足的配对
+					// 潜力分 = charPotentialScore(a) + charPotentialScore(b)
+					// 低于当前表最小分时，即使满分各维度也难以入表
+					if local.IsFull() {
+						pa := charPotentialScore(a.ch.WuXing, a.ch.IsCurated, a.ch.PositiveScore, a.poetryFound, xiSet)
+						pb := charPotentialScore(b.ch.WuXing, b.ch.IsCurated, b.ch.PositiveScore, b.poetryFound, xiSet)
+						combined := pa + pb
+						minScore := local.MinScore()
+						// 潜力分上限约40，实际得分约60-90，保守阈值=最小分的60%
+						if float64(combined) < minScore*0.6 {
+							continue
+						}
+					}
+
+					poetryFound := a.poetryFound || b.poetryFound
+					poetryDesc := ""
+					if a.poetryFound {
+						poetryDesc = a.poetryDesc
+					} else if b.poetryFound {
+						poetryDesc = b.poetryDesc
+					}
+
+					candidate := &NameCandidate{
+						Char1:         a.ch.Char,
+						Char2:         b.ch.Char,
+						Pinyin1:       a.pinyin,
+						Pinyin2:       b.pinyin,
+						WuXing1:       a.ch.WuXing,
+						WuXing2:       b.ch.WuXing,
+						Stroke1:       a.stroke,
+						Stroke2:       b.stroke,
+						Meaning1:      a.ch.Meaning,
+						Meaning2:      b.ch.Meaning,
+						Radical1:      a.ch.Radical,
+						Radical2:      b.ch.Radical,
+						HasPoetry:     poetryFound,
+						PoetryFrom:    poetryDesc,
+						IsRegular:     a.ch.IsRegular && b.ch.IsRegular,
+						CommonLevel1:  a.ch.CommonLevel,
+						CommonLevel2:  b.ch.CommonLevel,
+						NameFreqTier1: a.ch.NameFreqTier,
+						NameFreqTier2: b.ch.NameFreqTier,
+						GenderHint:    bestGenderHint(a.ch.GenderHint, b.ch.GenderHint),
+						NamePenalty1:  a.ch.NamePenalty,
+						NamePenalty2:  b.ch.NamePenalty,
+						// 策展覆盖表标记：人工精选起名好字，供 WenHuaRater 文化加分（破荒谬字同分）
+						IsCurated1: a.ch.IsCurated,
+						IsCurated2: b.ch.IsCurated,
+						// 寓意评分：与 IsCurated 结合将策展加分收窄为「策展 ∩ positiveScore>=85」精选好字
+						PositiveScore1: a.ch.PositiveScore,
+						PositiveScore2: b.ch.PositiveScore,
+						// 姓氏拼音取自 input，用于音韵评分器检测跨字谐音
+						SurnamePinyin: surnamePinyin,
+					}
+
+					ns := RateName(candidate, fateData, s.raters)
+					entry := ExcellentEntry{
+						Char1:         candidate.Char1,
+						Char2:         candidate.Char2,
+						Pinyin1:       a.pinyin,
+						Pinyin2:       b.pinyin,
+						Meaning1:      a.ch.Meaning,
+						Meaning2:      b.ch.Meaning,
+						Score:         ns.Total,
+						Grade:         ns.Grade,
+						WuXing1:       candidate.WuXing1,
+						WuXing2:       candidate.WuXing2,
+						Stroke1:       candidate.Stroke1,
+						Stroke2:       candidate.Stroke2,
+						KangxiStroke1: a.ch.KangxiStroke,
+						KangxiStroke2: b.ch.KangxiStroke,
+						HasPoetry:     candidate.HasPoetry,
+						PoetryFrom:    poetryDesc,
+						Items:         ns.Items,
+						NameFreqTier1: candidate.NameFreqTier1,
+						NameFreqTier2: candidate.NameFreqTier2,
+					}
+					local.TryPush(entry)
+					totalCount.Add(1)
+				}
+			}
+			localTables[w] = local
+		}(start, end, w)
+	}
+
+	wg.Wait()
+
+	// 合并各分片的局部 Top-N 到主表（全局 Top-k 必落在某分片局部 Top-容量内）
+	*table = NewExcellentTable()
+	for _, lt := range localTables {
+		if lt == nil {
+			continue
+		}
+		lt.Finalize()
+		for _, e := range lt.entries {
+			(*table).TryPush(e)
+		}
+	}
+	(*table).Finalize()
 }

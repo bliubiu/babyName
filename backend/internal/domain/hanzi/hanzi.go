@@ -31,13 +31,17 @@ func IsCommonChar(char string) bool {
 }
 
 type Hanzi struct {
-	Char     string
-	Pinyin   string
-	Strokes  int
-	Radical  string
-	Meaning  string
-	Wuxing   string
-	Gender   string
+	Char    string
+	Pinyin  string
+	Strokes int
+	// KangxiStrokes 康熙字典笔画（来自 data/raw/kangxi-strokecount.csv），
+	// 河图数理与易经卦象解读按传统易学使用康熙笔画。
+	// 0 表示未收录（兜底用 Strokes 简体笔画）。
+	KangxiStrokes int
+	Radical       string
+	Meaning       string
+	Wuxing        string
+	Gender        string
 
 	// 以下字段来自 chars.json 精选起名用字库
 	Tone           int      // 声调
@@ -126,9 +130,9 @@ func LoadWordData(dir string) error {
 // ApplyWuxingOverrides 为 HanziData 中所有汉字标注五行
 //
 // 优先级：
-//   1. CharacterWuxingOverride（字义法覆盖表）— 无条件应用
-//   2. 已有五行值 — 保留（人工校正值）
-//   3. 部首映射表计算 — 仅对空值兜底
+//  1. CharacterWuxingOverride（字义法覆盖表）— 无条件应用
+//  2. 已有五行值 — 保留（人工校正值）
+//  3. 部首映射表计算 — 仅对空值兜底
 //
 // 必须在 HanziData 填充完毕（JSON 加载后）调用
 func ApplyWuxingOverrides() {

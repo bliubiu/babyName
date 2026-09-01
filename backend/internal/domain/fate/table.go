@@ -25,11 +25,15 @@ type ExcellentEntry struct {
 	Grade     string             `json:"grade"`
 	WuXing1   string             `json:"wu_xing1"`
 	WuXing2   string             `json:"wu_xing2"`
-	Stroke1   int                `json:"stroke1,omitempty"`
-	Stroke2   int                `json:"stroke2,omitempty"`
-	HasPoetry bool               `json:"has_poetry"`
-	PoetryFrom string            `json:"poetry_from,omitempty"` // 诗词出处
-	Items     map[string]float64 `json:"items,omitempty"` // 各维度评分明细
+	Stroke1   int                `json:"stroke1,omitempty"` // 名字笔画（filter 口径，按 StrokeMode 决定）
+	Stroke2   int                `json:"stroke2,omitempty"` // 次字笔画（单名为空）
+	// KangxiStroke1/2 康熙字典笔画（统一用于总笔画回显，与姓氏口径一致）
+	// 0 表示未收录，输出回显时降级为 Stroke1/2。
+	KangxiStroke1 int `json:"kangxi_stroke1,omitempty"`
+	KangxiStroke2 int `json:"kangxi_stroke2,omitempty"`
+	HasPoetry     bool               `json:"has_poetry"`
+	PoetryFrom    string             `json:"poetry_from,omitempty"` // 诗词出处
+	Items         map[string]float64 `json:"items,omitempty"`      // 各维度评分明细
 
 	// 人名频率档位（1-5，0=未收录），供前端展示频率信息
 	NameFreqTier1 int `json:"name_freq_tier1,omitempty"`

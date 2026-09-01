@@ -25,20 +25,27 @@ type fileCache struct {
 var cache = &fileCache{data: make(map[string][]byte)}
 
 // Init 统一加载所有JSON数据文件
-// 按依赖顺序加载：namer → yijing → classic → zodiac
+// 按依赖顺序加载：kangxi → namer → yijing → classic → zodiac → 门禁 → 禁忌组合
 func Init(dataDir string) error {
-	// 1. 加载《通用规范汉字表》8105字数据（namer.json — 运行时唯一汉字数据源）
+	// 1. 加载康熙笔画表（kangxi-strokecount.csv — 河图数理与易经卦象的笔画口径）
+	// 必须在 namer.json 加载之前完成：namer_loader 会把康熙笔画注入 HanziData。
+	if err := hanzi.LoadKangxiStrokesFromCSV(dataDir); err != nil {
+		return fmt.Errorf("加载康熙笔画表失败: %w", err)
+	}
+
+	// 2. 加载《通用规范汉字表》8105字数据（namer.json — 运行时唯一汉字数据源）
 	//
 	// namer.json 为统一的起名用字数据，含五行校正、起名分类标注，
 	// 以及并入的精选偏旁分组（charGroups），覆盖全部 8105 标准字。
 	// 通过 namer_loader.go 同步到 HanziData，使所有依赖 HanziData 的代码自动受益。
+	// 末尾会合并康熙笔画到 NamerCharMap 与 HanziData。
 	// 历史遗留的 hanzi.json / standard_chars.json 已降级为 export_namer 的
 	// 离线生成原料，不再于运行时加载。
 	if err := hanzi.LoadNamerFromJSON(dataDir); err != nil {
 		return fmt.Errorf("加载 namer 数据失败: %w", err)
 	}
 
-	// 2. 加载易经数据
+	// 3. 加载易经数据
 	if err := yijing.LoadFromJSON(dataDir); err != nil {
 		return fmt.Errorf("加载易经数据失败: %w", err)
 	}

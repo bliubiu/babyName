@@ -5,6 +5,49 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.09.01.3]
+
+### 🐛 Bug Fixes 问题修复
+
+- 【hanzi/fate】统一笔画口径为康熙字典（治本 B3 修复）：
+  - 新增 `kangxi_loader.go` 加载 `data/raw/kangxi-strokecount.csv`（Kawai Lo 维护的 MIT 许可康熙字典数据，63696 字覆盖）
+  - `Hanzi` 加 `KangxiStrokes` 字段，`NamerChar` 加 `KangxiStrokes` 字段；namer_loader 在末尾合并康熙笔画到 `HanziData` 与 `NamerCharMap`
+  - `dataloader.go` 调整加载顺序为 `kangxi → namer → yijing → ...`（kangxi 必须先于 namer 加载，否则 namer_loader 末尾合并时无数据）
+  - `adapters.go::hanziToCharacter` 区分四个笔画字段：SimplifiedStroke/TraditionalStroke（namer 简体）、KangxiStroke（康熙字典）、ScienceStroke（科学笔画口径），修复前四个字段全填 `h.Strokes` 导致"姓用康熙、名用科学"的口径混乱
+  - `ExcellentEntry` 加 `KangxiStroke1/2` 字段，`engine.go::generate()` 在 topNames 构造处统一用 `KangxiStroke1/2` 计算总笔画（与姓氏走 LookupSurnameStrokes 同一口径）
+  - 数据差异：3502 字 namer 简体笔画 ≠ 康熙笔画（如 "马" namer=3 / 康熙=10，"门" namer=3 / 康熙=8）
+
+- 【fate 引擎】单/双名 engine 拆分（架构重构 P3 方案7）：
+  - 把原 `engine.go::generate()` 内 ~250 行嵌套 if/else 单/双名循环抽成独立方法 `(*sessionImpl).generateSingleName` 与 `(*sessionImpl).generateDoubleName`
+  - `charInfo` 类型从函数局部提升到包级，供两个生成方法共享
+  - `isCharExcluded`/`isComboExcluded` 闭包从 `generate()` 内部迁移到 `sessionImpl` 方法（直接读 session 字段，session 生命周期内只读不变），避免闭包不能跨函数跨函数
+  - 移除 `excludedChars/excludedCombos` 快照复制（不再需要：sessionImpl 方法直接查询字段，并发安全由 `s.mu` 守护）
+  - `generate()` 现在仅负责"前置数据装配 + 分派单/双名循环"，更易维护
+
+- 【services】fate_name_service 端到端集成测试（P3 方案8）：
+  - 新增 `fate_name_service_e2e_test.go`（6 个测试用例）：
+    - `TestFateNameService_E2E_SingleName`：单名端到端（王/男/2024-01-15 12:00），断言 Pinyin/FullName/Wuxing/TotalScore 字段
+    - `TestFateNameService_E2E_DoubleName`：双名端到端，验证 `IsBadCombo` 拦截生效
+    - `TestFateNameService_E2E_FilterOptions`：WuxingMatch=[木] + MinStrokes/MaxStrokes 过滤生效
+    - `TestFateNameService_E2E_ElderAvoidance`：避讳长辈（AvoidElderNames=[张王]）排除同形字"王"
+    - `TestFateNameService_E2E_ForbiddenCombos`：清洗组合抽样验证（仲尼/若兮/七政/与砺/以方/以时）不进入 Top50
+    - `TestFateNameService_E2E_ConsistentResults`：同请求多次调用返回合法响应
+
+### 🧪 Tests 测试
+
+- 【hanzi】新增 `kangxi_loader_test.go`（3 个用例）：
+  - `TestLoadKangxiStrokesFromCSV`：验证王=4、李=7、文=4、浩=11、然=12、轩=10 等关键汉字康熙笔画；未收录字返回 0；表规模 >= 50000
+  - `TestLoadKangxiStrokesReload`：二次加载幂等
+  - `TestNamerKangxiStrokesMerged`：马/门/才 三个简体/康熙差异显著的字验证 `HanziData.KangxiStrokes` 与 `NamerCharMap.KangxiStrokes` 注入正确
+- 【fate/singleNameDiscrimination】先前单名测试不受拆分影响
+- 【回归】`go test ./internal/...` 通过所有受影响的包（hanzi/fate/services）；3 个 pre-existing build 故障（cmd/build_namestats 未用变量、infrastructure/database/memory 缺 GetFullNameStat、cmd/server 引用 memory）未触及
+
+### 📚 Docs 文档更新
+
+- 更新本版本变更日志
+
+---
+
 ## [2026.09.01.2]
 
 ### 🐛 Bug Fixes 问题修复
