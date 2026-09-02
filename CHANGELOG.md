@@ -5,6 +5,39 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.09.02.0]
+
+### ✨ New Features 新增功能
+
+- 【确定性打分 UI】评分透明化：每维度展示"分数+依据文字"，前端可直接渲染"为什么是这个分"
+  - `NameScore` 新增 `Details map[string]string`，保留各 Rater `NameRating.Detail`（`rater.go:63`）
+  - `ExcellentEntry` / `NameResult` 端到端透传 Details（`table.go`、`engine.go` 三处组装点）
+  - `FateNameService` 映射全 8 维分数 + Details → `NameAnalysis`（补齐三才/共现/新颖度，原漏三才）
+  - 旧版 `name_service.go` 同步补全映射
+  - `NameAnalysis` 新增 `ScoreDetailItem[]`（维度名/分数/依据文字）供前端通用渲染
+  - 前端 `NameDetail.tsx`：评分分解展示全部 8 维（五行/音韵/字义/三才/生肖/新颖度/共现/频率）+ 依据文字
+  - 前端 `NameCard.tsx`：优先使用 `score_detail` 渲染评分条，自动包含新颖度/共现/频率
+
+- 【诗词出处可溯源】点击展开完整出处面板（作品·作者·朝代·篇目·原句·完整诗篇）
+  - `NameAnalysis` 新增 `PoetryAuthor/Dynasty/FullText` 字段
+  - `enrichPoetrySource` helper 复用 `classics.QueryNamePoetry`（`GlobalPoemIndex`，4 个 JSON 文件构建的结构化索引）反查 `PoemEntry`，结构化回填出处
+  - 前端 `NameDetail.tsx`：诗词典故区块可点击展开，显示完整出处（作品·作者·朝代·篇目·原句·完整诗篇，竖线分隔各句）
+  - 单测 `TestEnrichPoetrySource` 验证回填链路（`setupFateNameServiceE2E` 初始化数据索引）
+
+### 🧪 Tests 测试
+
+- 新增 `rater_detail_test.go::TestRateNameKeepsDetails`：验证 `RateName` 聚合后 `Details` 含各维依据文字
+- 新增 `engine_detail_test.go::TestGenerateKeepsScoreDetails`：端到端验证 engine 输出 `NameResult.Score.Details` 非空
+- 新增 `fate_name_service_e2e_test.go::TestFateNameService_E2E_ScoreDetails`：验证 `SancaiScore/BigramScore/NoveltyScore` 非零 + `ScoreDetail` 含 8 维依据
+- 新增 `fate_name_service_e2e_test.go::TestEnrichPoetrySource`：验证"窈窕"回填 `PoetryChapter=关雎`/`PoetrySentence=窈窕淑女...`/`PoetryFullText` 非空
+- 回归：`go test ./internal/domain/... ./internal/application/...` 全绿
+
+### 📚 Docs 文档更新
+
+- 更新本版本变更日志
+
+---
+
 ## [2026.09.01.3]
 
 ### 🐛 Bug Fixes 问题修复
