@@ -107,6 +107,10 @@ type sessionImpl struct {
 	// session 级别的 raters 副本，避免并发会话相互覆盖 engine.raters
 	raters []Rater
 
+	// bigramCache per-session 二字共现评分缓存（SessionBigramCache）
+	// 用于减少 generate() 阶段 N×N 双名笛卡尔积中的 50 万次 RLock。
+	bigramCache *SessionBigramCache
+
 	// 负面反馈
 	excludedChars  map[string]bool // 排除的字符
 	excludedCombos map[string]bool // 排除的组合 "char1+char2"（排序后）
@@ -125,6 +129,8 @@ func (s *sessionImpl) Start(ctx context.Context, input *Input) error {
 	// 复制 engine.raters 到 session 级别，避免并发会话相互覆盖
 	s.raters = make([]Rater, len(s.engine.raters))
 	copy(s.raters, s.engine.raters)
+	// 初始化 per-session 二字共现缓存（与 session 同生命周期）
+	s.bigramCache = newSessionBigramCache()
 	ctx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
 	s.done = make(chan struct{})
@@ -527,9 +533,10 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 			// 诗词出处回填：从 ExcellentEntry 透传
 			PoetryFrom: e.PoetryFrom,
 			Score: NameScore{
-				Total: e.Score,
-				Grade: e.Grade,
-				Items: e.Items,
+				Total:   e.Score,
+				Grade:   e.Grade,
+				Items:   e.Items,
+				Details: e.Details,
 			},
 		})
 	}
@@ -884,6 +891,7 @@ func (s *sessionImpl) generateSingleName(
 			HasPoetry:     a.poetryFound,
 			PoetryFrom:    a.poetryDesc,
 			Items:         ns.Items,
+			Details:       ns.Details,
 			NameFreqTier1: a.ch.NameFreqTier,
 		}
 		table.TryPush(entry)
@@ -1055,7 +1063,10 @@ func (s *sessionImpl) generateDoubleName(
 						PositiveScore1: a.ch.PositiveScore,
 						PositiveScore2: b.ch.PositiveScore,
 						// 姓氏拼音取自 input，用于音韵评分器检测跨字谐音
-						SurnamePinyin: surnamePinyin,
+						SurnamePinyin:  surnamePinyin,
+						// bigramCache per-session 缓存（避免 WenHuaRater/BigramRater
+						// 在 N² 笛卡尔积中重复 50 万次 GetBigramScore RLock）
+						bigramCache:     s.bigramCache,
 					}
 
 					ns := RateName(candidate, fateData, s.raters)
@@ -1077,6 +1088,7 @@ func (s *sessionImpl) generateDoubleName(
 						HasPoetry:     candidate.HasPoetry,
 						PoetryFrom:    poetryDesc,
 						Items:         ns.Items,
+						Details:       ns.Details,
 						NameFreqTier1: candidate.NameFreqTier1,
 						NameFreqTier2: candidate.NameFreqTier2,
 					}

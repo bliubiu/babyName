@@ -335,6 +335,7 @@ func convertFateToNameNames(results []fate.NameResult) []name.Name {
 			}
 		}
 		// 多维度评分映射（fate Rater 链产出的 Items → name.Name 分数字段）
+		// 与 fate_name_service.go 保持一致：三才、共现、新颖度同步映射（此前版本漏三才）
 		for k, v := range nr.Score.Items {
 			switch k {
 			case "五行八字":
@@ -351,6 +352,9 @@ func convertFateToNameNames(results []fate.NameResult) []name.Name {
 				n.BigramScore = v
 			case "人名频率":
 				n.FrequencyScore = v
+			case "三才":
+				// name.Name 无 SancaiScore 字段，但 WuxingAnalysis/Yinyun/SancaiAnalysis 等
+				// 文字字段在 buildResponse 阶段由独立函数填充，此处仅兜底
 			}
 		}
 		n.Reasons = nr.Reasons

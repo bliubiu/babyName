@@ -3,10 +3,12 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"name/internal/application/errors"
 	"name/internal/domain/bazi"
+	"name/internal/domain/classics"
 	"name/internal/domain/fate"
 	"name/internal/domain/hanzi"
 	"name/internal/domain/name"
@@ -118,12 +120,46 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 				na.BigramScore = v
 			case "人名频率":
 				na.FrequencyScore = v
+			case "三才":
+				na.SancaiScore = v
 			}
+		}
+		// 维度评分依据文字 → NameAnalysis 各 Analysis 字段（确定性评分 UI 的数据基础）
+		// 缺失的 Analysis 字段（WuxingAnalysis/YinyunAnalysis/MeaningDetail/SancaiAnalysis）
+		// 与对应分数联动，便于前端按既有字段名直接渲染。
+		for k, v := range nr.Score.Details {
+			switch k {
+			case "五行八字":
+				na.WuxingAnalysis = v
+			case "音韵":
+				na.YinyunAnalysis = v
+			case "文化印象":
+				na.MeaningDetail = v
+			case "三才":
+				na.SancaiAnalysis = v
+			}
+		}
+		// 按固定维度顺序输出 ScoreDetail（前端通用渲染：分数条 + 依据文字）
+		// 顺序与 DefaultRaters 权重降序一致，确保推荐名展示稳定
+		detailOrder := []string{"五行八字", "文化印象", "音韵", "新颖度", "生肖", "共现", "三才", "人名频率"}
+		for _, dim := range detailOrder {
+			score, ok := nr.Score.Items[dim]
+			if !ok {
+				continue
+			}
+			na.ScoreDetail = append(na.ScoreDetail, name.ScoreDetailItem{
+				Name:   dim,
+				Score:  score,
+				Detail: nr.Score.Details[dim],
+			})
 		}
 		// 诗词出处回填（engine 构建 NameResult 时未设 PoetryFrom，需单独传递）
 		if nr.PoetryFrom != "" {
 			na.PoetrySource = nr.PoetryFrom
 		}
+		// 出典完整结构化回填（作品·篇目·原句·作者·朝代·全诗），
+		// 供前端"可点击回链"展开完整出处面板
+		enrichPoetrySource(na, nr.GivenName)
 		names = append(names, na)
 	}
 
@@ -203,6 +239,56 @@ func incrementWuxing(w *bazi.WuxingResult, wuxing string) {
 	case "土":
 		w.Tu++
 	}
+}
+
+// enrichPoetrySource 按名字反查 classics.PoemIndex，结构化回填诗词出处
+//
+// 引擎的 NameResult.PoetryFrom 只含格式化的"「原句」"文本，无篇目/作者/朝代/全诗，
+// 无法支持前端的"可点击回链+内嵌原句"完整出处面板。
+// 本函数借助 classics.QueryNamePoetry 在 GlobalPoemIndex（shijing/chuci/shici/yuanqu
+// 四个 JSON 文件构建的结构化索引）反查 PoemEntry，补齐：
+//   - PoetrySource  ：典籍名（诗经/楚辞/唐诗等）
+//   - PoetryChapter ：篇目（如关雎）
+//   - PoetrySentence：含名字原字的原句
+//   - PoetryAuthor  ：作者（诗经多为佚名）
+//   - PoetryDynasty ：朝代（先秦/唐/宋等）
+//   - PoetryFullText：完整诗篇（前端可点击展开全诗）
+//
+// 查不到时（硬编码库命中但 JSON 未覆盖）：原 PoetrySource/Chapter 留空，
+// PoetrySentence 兜底为引擎原 PoetryFrom，确保至少展示原句文本。
+func enrichPoetrySource(na *name.NameAnalysis, givenName string) {
+	if na == nil || givenName == "" {
+		return
+	}
+	result := classics.QueryNamePoetry(givenName)
+	if result == nil || result.BestMatch == nil || result.BestMatch.Poem == nil {
+		// JSON 索引未覆盖：原 PoetrySource 留空，PoetrySentence 兜底引擎原句
+		if na.PoetrySentence == "" {
+			na.PoetrySentence = na.PoetrySource
+		}
+		return
+	}
+	poem := result.BestMatch.Poem
+	match := result.BestMatch
+
+	// 典籍名：取自 PoemEntry.Source（诗经/楚辞/唐诗/宋词等）
+	if poem.Source != "" {
+		na.PoetrySource = poem.Source
+	}
+	// 篇目：取自 PoemEntry.Title（如「关雎」）
+	if poem.Title != "" {
+		na.PoetryChapter = poem.Title
+	}
+	// 原句：优先 BestMatch.Quote（findQuoteWithChars 已筛含名字原字的最短句）
+	if match.Quote != "" {
+		na.PoetrySentence = match.Quote
+	} else if na.PoetrySentence == "" {
+		na.PoetrySentence = na.PoetrySource
+	}
+	na.PoetryAuthor = poem.Author
+	na.PoetryDynasty = poem.Dynasty
+	// 全诗：用竖线分隔 PoemEntry.Content 数组，便于前端段落分隔展示
+	na.PoetryFullText = strings.Join(poem.Content, "｜")
 }
 
 // resolveExtraChars 根据请求的诗词/经典来源解析额外候选字

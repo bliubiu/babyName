@@ -104,6 +104,12 @@ type NameCandidate struct {
 	NamePenalty2 int // 字2 起名扣分（0=无）
 
 	SurnamePinyin string // 姓氏拼音，用于音韵评分器检测跨字谐音
+
+	// bigramCache per-session 二字共现评分缓存（classics.SessionBigramCache）
+	// 由 generate() 在构造 NameCandidate 时注入，避免 rate 阶段 50 万次
+	// （WenHuaRater+BigramRater 双调用）全局 RLock。nil 表示走慢路径
+	// （未注入缓存的旧调用方仍可用 GetBigramScore 全局函数）。
+	bigramCache *SessionBigramCache
 }
 
 // WuXingXiji 五行喜忌
@@ -138,6 +144,9 @@ type NameScore struct {
 	Total float64            `json:"total"` // 总分（0-100）
 	Grade string             `json:"grade"` // 等级（上上/上吉/中吉/中平/中下/下下）
 	Items map[string]float64 `json:"items"` // 各维度得分明细
+	// Details 各维度评分依据文字（维度名 → 文字解释）
+	// 由 RateName 从各 Rater 的 NameRating.Detail 透传，供确定性评分 UI 展示
+	Details map[string]string `json:"details,omitempty"`
 }
 
 // NameResult 名字完整分析结果

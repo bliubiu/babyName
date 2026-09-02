@@ -26,6 +26,7 @@ import (
 	"go.uber.org/zap"
 
 	"name/internal/domain/fate"
+	"name/internal/domain/name"
 	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/data"
 )
@@ -370,6 +371,147 @@ func TestFateNameService_E2E_ConsistentResults(t *testing.T) {
 		if len(resp.Names) == 0 {
 			t.Errorf("第 %d 次返回空候选", i+1)
 		}
+	}
+}
+
+// TestFateNameService_E2E_ScoreDetails 确定性打分链路：完整维度分数 + 每维依据文字
+//
+// 验证 GenerateWithAnalysis 输出的 NameAnalysis：
+//   - 三才/共现/新颖度维度分数已映射（此前三才恒为 0，前端「天地人三才」条永远为空）
+//   - ScoreDetail 携带每维依据文字（前端评分分解可直接渲染「为什么是这个分」）
+func TestFateNameService_E2E_ScoreDetails(t *testing.T) {
+	svc := setupFateNameServiceE2E(t)
+	ctx := context.Background()
+
+	req := &GenerateRequest{
+		Surname:    "王",
+		Gender:     "male",
+		BirthYear:  2024,
+		BirthMonth: 1,
+		BirthDay:   15,
+		BirthHour:  12,
+		BirthMinute: 0,
+		NameLength: 2,
+	}
+
+	resp, err := svc.GenerateWithAnalysis(ctx, req)
+	if err != nil {
+		t.Fatalf("GenerateWithAnalysis 失败: %v", err)
+	}
+	if resp == nil || len(resp.Names) == 0 {
+		t.Fatal("应返回至少 1 个名字")
+	}
+
+	for i, n := range resp.Names {
+		if i >= 10 {
+			break
+		}
+		// 此前被遗漏映射的维度分数必须非零（三才此前恒 0）
+		if n.SancaiScore <= 0 {
+			t.Errorf("名字[%d] %s SancaiScore=%v，期望 >0（三才维度映射缺失）", i, n.FullName, n.SancaiScore)
+		}
+		// 每维依据文字透传（确定性评分核心）
+		if len(n.ScoreDetail) == 0 {
+			t.Errorf("名字[%d] %s 缺少评分依据明细（ScoreDetail 为空）", i, n.FullName)
+			continue
+		}
+		seen := map[string]bool{}
+		for _, d := range n.ScoreDetail {
+			if d.Name == "" || d.Detail == "" {
+				t.Errorf("名字[%d] 维度 %q 依据文字缺失", i, d.Name)
+			}
+			seen[d.Name] = true
+		}
+		for _, dim := range []string{"五行八字", "音韵", "文化印象", "三才", "生肖", "新颖度", "共现", "人名频率"} {
+			if !seen[dim] {
+				t.Errorf("名字[%d] %s 缺少维度 %q 的评分依据", i, n.FullName, dim)
+			}
+		}
+	}
+}
+
+// TestFateNameService_E2E_PoetryBackfill 出典回链：完整出处结构化回填
+//
+// 验证 GenerateWithAnalysis 对有诗词出典的名字，service 层通过 classics.PoemIndex
+// 反查 PoemEntry，回填到 NameAnalysis 的 PoetryChapter/PoetrySentence/PoetryAuthor/
+// PoetryDynasty/PoetryFullText（前端可点击展开完整出处面板）。
+func TestFateNameService_E2E_PoetryBackfill(t *testing.T) {
+	svc := setupFateNameServiceE2E(t)
+	ctx := context.Background()
+
+	// 诗经中含"窈"和"淑"——在名字中包含此二字时，应能反查到结构化出处
+	req := &GenerateRequest{
+		Surname:    "王",
+		Gender:     "female",
+		BirthYear:  2024,
+		BirthMonth: 1,
+		BirthDay:   15,
+		BirthHour:  12,
+		BirthMinute: 0,
+		NameLength: 2,
+	}
+
+	resp, err := svc.GenerateWithAnalysis(ctx, req)
+	if err != nil {
+		t.Fatalf("GenerateWithAnalysis 失败: %v", err)
+	}
+	if resp == nil || len(resp.Names) == 0 {
+		t.Fatal("应返回至少 1 个名字")
+	}
+
+	// 在结果中找到至少一个有完整回链数据（PoetryChapter/Sentence 非空）的名字
+	found := false
+	for i, n := range resp.Names {
+		if i >= 50 {
+			break
+		}
+		if n.PoetryChapter == "" || n.PoetrySentence == "" {
+			continue
+		}
+		found = true
+		// 来源（书名/典籍）应非空
+		if n.PoetrySource == "" {
+			t.Errorf("名字[%d] %s PoetrySource 为空（应有诗经/楚辞/唐诗等典籍名）", i, n.FullName)
+		}
+		// 作者/朝代/全诗应至少有一项（诗经多为佚名+先秦，唐诗会有作者）
+		if n.PoetryFullText == "" {
+			t.Errorf("名字[%d] %s PoetryFullText 为空（前端无法展示完整回链面板）", i, n.FullName)
+		}
+	}
+	if !found {
+		t.Fatal("50 个名字中无任何具有结构化出典（PoetryChapter/Sentence 非空），数据链路未通")
+	}
+}
+
+// TestEnrichPoetrySource 出典回链 helper：按名字反查结构化出处
+//
+// 验证对诗经/楚辞/唐诗中可查到的名字，helper 回填 PoetryChapter/PoetrySentence/
+// PoetryAuthor/PoetryDynasty/PoetryFullText；查不到时 PoetryChapter 留空但
+// PoetrySentence 至少保留引擎原 PoetryFrom（兜底展示原句）。
+func TestEnrichPoetrySource(t *testing.T) {
+	setupFateNameServiceE2E(t) // 初始化数据索引
+
+	// 「窈窕」出自《诗经·关雎》"窈窕淑女，君子好逑"——必命中 PoemIndex
+	na := &name.NameAnalysis{
+		GivenName:    "窈窕",
+		PoetrySource: "诗经", // 引擎已设
+	}
+	enrichPoetrySource(na, "窈窕")
+
+	if na.PoetrySource != "诗经" {
+		t.Errorf("PoetrySource 被覆盖，原值诗经 → %q", na.PoetrySource)
+	}
+	if !strings.Contains(na.PoetryChapter, "关雎") {
+		t.Errorf("期望 PoetryChapter 含「关雎」，实际 %q", na.PoetryChapter)
+	}
+	if !strings.Contains(na.PoetrySentence, "窈窕") {
+		t.Errorf("期望 PoetrySentence 含「窈窕」，实际 %q", na.PoetrySentence)
+	}
+	if na.PoetryFullText == "" {
+		t.Errorf("期望 PoetryFullText 非空（前端可点击展开全诗）")
+	}
+	if na.PoetryDynasty == "" {
+		t.Errorf("期望 PoetryDynasty 非空")
 	}
 }
 

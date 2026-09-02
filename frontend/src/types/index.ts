@@ -98,11 +98,15 @@ export interface Name extends NameBase {
   poetry_source?: string;
   poetry_chapter?: string;
   poetry_sentence?: string;
+  poetry_author?: string;       // 诗词作者
+  poetry_dynasty?: string;      // 诗词朝代
+  poetry_full_text?: string;    // 完整诗篇（竖线分隔各句）
   // 统一评分体系：8 维评分
   total_score?: number;      // 综合总分（0-100）
   wuxing_score?: number;     // 五行匹配分
   yinyun_score?: number;     // 音韵律动分
   meaning_score?: number;    // 字义内涵分
+  meaning_detail?: string;   // 字义内涵分析
   sancai_score?: number;     // 三才五格分
   zodiac_score?: number;     // 生肖适配分
   nayin_score?: number;      // 纳音评分
@@ -110,6 +114,12 @@ export interface Name extends NameBase {
   bigram_score?: number;     // 诗词共现评分
   frequency_score?: number;  // 人名频率评分（来自 Chinese-Names-Corpus 语料统计）
   sancai_analysis?: string;  // 三才分析描述
+  // 确定性评分：各维度分数 + 依据文字（后端 ScoreDetail 透传）
+  score_detail?: Array<{
+    name: string;
+    score: number;
+    detail: string;
+  }>;
 }
 
 export interface GenerateResponse {

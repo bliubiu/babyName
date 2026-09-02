@@ -34,6 +34,8 @@ type ExcellentEntry struct {
 	HasPoetry     bool               `json:"has_poetry"`
 	PoetryFrom    string             `json:"poetry_from,omitempty"` // 诗词出处
 	Items         map[string]float64 `json:"items,omitempty"`      // 各维度评分明细
+	// Details 各维度评分依据文字（维度名 → 文字解释），随流式 Top-N 透传给 NameResult
+	Details map[string]string `json:"details,omitempty"`
 
 	// 人名频率档位（1-5，0=未收录），供前端展示频率信息
 	NameFreqTier1 int `json:"name_freq_tier1,omitempty"`

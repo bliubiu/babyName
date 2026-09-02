@@ -56,11 +56,13 @@ type NameRating struct {
 // 必然低于策展好名；而优质非策展名凭五行匹配度（不封顶）拉开差距。
 func RateName(candidate *NameCandidate, fateData *FateData, raters []Rater) NameScore {
 	items := make(map[string]float64, len(raters))
+	details := make(map[string]string, len(raters))
 	var total float64
 
 	for _, r := range raters {
 		rating := r.Rate(candidate, fateData)
 		items[r.Name()] = rating.Score
+		details[r.Name()] = rating.Detail
 		total += rating.Score * r.Weight()
 	}
 
@@ -91,9 +93,10 @@ func RateName(candidate *NameCandidate, fateData *FateData, raters []Rater) Name
 	total = math.Round(total*10) / 10
 
 	return NameScore{
-		Total: total,
-		Grade: scoreToGrade(total),
-		Items: items,
+		Total:   total,
+		Grade:   scoreToGrade(total),
+		Items:   items,
+		Details: details,
 	}
 }
 
@@ -382,7 +385,17 @@ func (r *WenHuaRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 	// 方案B+：非策展组合的共现加成从 ×0.4 降权进一步收紧为 ×0（彻底归零），
 	// 配合 RateName 聚合层的「非策展双名四维封顶 75」共同压低荒谬组合总分。
 	if candidate.Char1 != "" && candidate.Char2 != "" && candidate.Char1 != candidate.Char2 {
-		if bgScore, bgSrc, found := classics.GetBigramScore(candidate.Char1, candidate.Char2); found {
+		// bigramCache 注入时优先走 cache，未注入时走慢路径（classics.GetBigramScore）
+		var bgScore int
+		var bgSrc string
+		var found bool
+		if candidate.bigramCache != nil {
+			res := candidate.bigramCache.GetOrCompute(candidate.Char1, candidate.Char2)
+			bgScore, bgSrc, found = res.Score, res.SourceDesc, res.Found
+		} else {
+			bgScore, bgSrc, found = classics.GetBigramScore(candidate.Char1, candidate.Char2)
+		}
+		if found {
 			lvlOK := candidate.CommonLevel1 >= 1 && candidate.CommonLevel1 <= 2 &&
 				candidate.CommonLevel2 >= 1 && candidate.CommonLevel2 <= 2
 			if IsCuratedName(candidate.Char1, candidate.Char2) &&
@@ -1121,8 +1134,16 @@ func (r *BigramRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 	var details []string
 
 	if candidate.Char1 != "" && candidate.Char2 != "" {
-		// 双名：查二字共现评分
-		score, sourceDesc, found := classics.GetBigramScore(candidate.Char1, candidate.Char2)
+		// 双名：查二字共现评分（bigramCache 注入时走缓存路径）
+		var score int
+		var sourceDesc string
+		var found bool
+		if candidate.bigramCache != nil {
+			res := candidate.bigramCache.GetOrCompute(candidate.Char1, candidate.Char2)
+			score, sourceDesc, found = res.Score, res.SourceDesc, res.Found
+		} else {
+			score, sourceDesc, found = classics.GetBigramScore(candidate.Char1, candidate.Char2)
+		}
 		if found {
 			dimension := baseScore + float64(score)*6.0 // 40 + 0~60 = 40~100
 			dimension = clampScore(dimension)

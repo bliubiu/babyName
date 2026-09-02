@@ -65,13 +65,31 @@ function NameCard({
   const fullName = name.full_name || `${name.surname}${name.given_name}`;
   const score = Math.min(100, name.total_score ?? name.score);
 
-  // 多维度评分配置
-  const dims = [
-    { key: 'wuxing', label: '五行', value: name.wuxing_score ?? 0, color: 'bg-amber-500' },
-    { key: 'yinyun', label: '音韵', value: name.yinyun_score ?? 0, color: 'bg-sky-500' },
-    { key: 'meaning', label: '字义', value: name.meaning_score ?? 0, color: 'bg-emerald-500' },
+  // 多维度评分配置：优先使用 score_detail，回退到旧字段
+  const dimsFromDetail = name.score_detail?.map(d => ({
+    key: d.name,
+    label: d.name,
+    value: d.score,
+    color: colorMap[d.name] || 'bg-gray-400',
+  })) || [];
+
+  const colorMap: Record<string, string> = {
+    '五行匹配': 'bg-amber-500',
+    '音韵律动': 'bg-sky-500',
+    '字义内涵': 'bg-emerald-500',
+    '天地人三才': 'bg-violet-400',
+    '生肖适配': 'bg-rose-400',
+    '新颖度': 'bg-pink-400',
+    '诗词共现': 'bg-cyan-400',
+    '人名频率': 'bg-indigo-400',
+  };
+
+  const dims = dimsFromDetail.length > 0 ? dimsFromDetail : [
+    { key: 'wuxing', label: '五行匹配', value: name.wuxing_score ?? 0, color: 'bg-amber-500' },
+    { key: 'yinyun', label: '音韵律动', value: name.yinyun_score ?? 0, color: 'bg-sky-500' },
+    { key: 'meaning', label: '字义内涵', value: name.meaning_score ?? 0, color: 'bg-emerald-500' },
     { key: 'sancai', label: '天地人三才', value: name.sancai_score ?? 0, color: 'bg-violet-400' },
-    { key: 'zodiac', label: '生肖', value: name.zodiac_score ?? 0, color: 'bg-rose-400' },
+    { key: 'zodiac', label: '生肖适配', value: name.zodiac_score ?? 0, color: 'bg-rose-400' },
     { key: 'frequency', label: '人名频率', value: name.frequency_score ?? 0, color: 'bg-indigo-400' },
   ];
   const hasDimScores = dims.some(d => d.value > 0);

@@ -45,6 +45,17 @@ type Name struct {
 	HexagramMeaning string `json:"hexagram_meaning"` // 卦象解读
 }
 
+// ScoreDetailItem 单维度评分明细（确定性评分数据载体）
+//
+// 引擎端各 Rater 的 NameRating{Score, Detail} 透传到服务层后，
+// 按"维度名/分数/依据文字"平铺为数组，使前端无需硬编码维度即可
+// 渲染评分分解与"为什么是这个分"的文字依据。
+type ScoreDetailItem struct {
+	Name   string  `json:"name"`            // 维度名（五行八字/音韵/文化印象/三才/生肖/新颖度/共现/人名频率）
+	Score  float64 `json:"score"`           // 该维度得分（0-100）
+	Detail string  `json:"detail"`          // 评分依据文字
+}
+
 // NameAnalysis 名字详细分析结果（GenerateWithAnalysis 响应结构）
 type NameAnalysis struct {
 	// 基础信息
@@ -107,6 +118,14 @@ type NameAnalysis struct {
 	PoetrySource   string `json:"poetry_source"`
 	PoetryChapter  string `json:"poetry_chapter"`
 	PoetrySentence string `json:"poetry_sentence"`
+
+	// 诗词完整出处（可点击回链面板的数据载体：作品·篇目·原句·作者·朝代·全诗）
+	PoetryAuthor   string `json:"poetry_author,omitempty"`
+	PoetryDynasty  string `json:"poetry_dynasty,omitempty"`
+	PoetryFullText string `json:"poetry_full_text,omitempty"`
+
+	// ScoreDetail 各维度评分明细（确定性评分 UI 的数据基础）
+	ScoreDetail []ScoreDetailItem `json:"score_detail"`
 
 	// 综合评分
 	TotalScore      float64  `json:"total_score"`
