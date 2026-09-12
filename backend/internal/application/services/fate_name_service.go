@@ -22,17 +22,54 @@ import (
 // 避免单个 NameService 承担过多职责（God Object 倾向）。
 type FateNameService struct {
 	engine fate.Fate
+	// baziAnalyzer 经典八字分析器（可选）：用于 GenerateWithAnalysis 无
+	// WuxingMatch 时按经典喜用神收窄候选池，与 NameService.Generate 对齐，
+	// 避免候取名五行与 API 响应 Bazi 的喜用神相矛盾。
+	baziAnalyzer bazi.BaziAnalyzer
+}
+
+// FateServiceOption fate 名字服务选项
+type FateServiceOption func(*FateNameService)
+
+// WithFateBaziAnalyzer 设置经典八字分析器（用于喜用神收窄候选池）
+func WithFateBaziAnalyzer(a bazi.BaziAnalyzer) FateServiceOption {
+	return func(s *FateNameService) { s.baziAnalyzer = a }
 }
 
 // NewFateNameService 创建 fate 名字服务
-func NewFateNameService(engine fate.Fate) *FateNameService {
-	return &FateNameService{engine: engine}
+func NewFateNameService(engine fate.Fate, opts ...FateServiceOption) *FateNameService {
+	s := &FateNameService{engine: engine}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+// classicXiyongShen 经典八字喜用神（无结果时返回 nil）
+func (s *FateNameService) classicXiyongShen(req *GenerateRequest) []string {
+	if s.baziAnalyzer == nil {
+		return nil
+	}
+	analysis, err := s.baziAnalyzer.Analyze(
+		req.BirthYear, req.BirthMonth, req.BirthDay,
+		req.BirthHour, req.BirthMinute,
+	)
+	if err != nil {
+		logger.Warn("GenerateWithAnalysis: 经典八字分析失败，跳过喜用神收窄",
+			zap.Error(err))
+		return nil
+	}
+	if len(analysis.Xiyongshen) == 0 {
+		return nil
+	}
+	return analysis.Xiyongshen
 }
 
 // buildFilterOption 根据请求构建 FilterOption
 // 优先使用请求的 WuxingMatch（用户显式指定五行）；
-// 否则按喜用神五行收紧候选池（缩小全量枚举规模，提升性能）。
-func (s *FateNameService) buildFilterOption(req *GenerateRequest) fate.Filter {
+// 否则按喜用神五行收紧候选池（缩小全量枚举规模，提升性能），
+// 与 NameService.Generate 行为一致（docs/19 Q5：双管线喜用神收窄不一致）。
+func (s *FateNameService) buildFilterOption(req *GenerateRequest, classicXiyongshen []string) fate.Filter {
 	fo := fate.NewFilterOption().
 		WithMinStroke(req.MinStrokes).
 		WithMaxStroke(req.MaxStrokes).
@@ -42,6 +79,8 @@ func (s *FateNameService) buildFilterOption(req *GenerateRequest) fate.Filter {
 	// 用户显式指定五行偏好时，直接以其收窄候选池（避免全量枚举 8105²）
 	if len(req.WuxingMatch) > 0 {
 		fo = fo.WithPreferredWuXing(req.WuxingMatch...)
+	} else if len(classicXiyongshen) > 0 {
+		fo = fo.WithPreferredWuXing(classicXiyongshen...)
 	}
 
 	// 人名频率过滤（来自 Chinese-Names-Corpus 语料统计）
@@ -57,7 +96,7 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 	born := time.Date(req.BirthYear, time.Month(req.BirthMonth), req.BirthDay, req.BirthHour, req.BirthMinute, 0, 0, time.UTC)
 
 	session := s.engine.NewSessionWithFilter(
-		s.buildFilterOption(req),
+		s.buildFilterOption(req, s.classicXiyongShen(req)),
 	)
 
 	input := &fate.Input{
