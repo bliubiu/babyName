@@ -454,6 +454,8 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 
 	// 生成名字候选 */
 	table := NewExcellentTable()
+	// totalCount 统计「完成 RateName 评分」的候选组合数（被过滤/早停跳过的组合不计数），
+	// 用于展示生成规模统计，语义为「已评分组合数」而非「总尝试组合数」（B11）。
 	var totalCount atomic.Int64
 
 	nameLen := input.Options.NameLength
@@ -1063,10 +1065,10 @@ func (s *sessionImpl) generateDoubleName(
 						PositiveScore1: a.ch.PositiveScore,
 						PositiveScore2: b.ch.PositiveScore,
 						// 姓氏拼音取自 input，用于音韵评分器检测跨字谐音
-						SurnamePinyin:  surnamePinyin,
+						SurnamePinyin: surnamePinyin,
 						// bigramCache per-session 缓存（避免 WenHuaRater/BigramRater
 						// 在 N² 笛卡尔积中重复 50 万次 GetBigramScore RLock）
-						bigramCache:     s.bigramCache,
+						bigramCache: s.bigramCache,
 					}
 
 					ns := RateName(candidate, fateData, s.raters)

@@ -29,6 +29,12 @@
 
 - 【legacy】移除无意义的 `/names/:id`（GetByID）路由、handler 与服务方法（Q11）：接口自始至终返回"暂不支持"且前端未调用，属死代码，一并修正 `rater.go` 注释"七维"→"八维"
 
+- 【fate】审查遗留小项收尾（docs/19 B7/B11/B12/P4）：
+  - B12：`BadHomophones` 中 `"fu2"` 数字后缀数据错误导致「妇」永不命中；改为 `"fu"`，并修复 `CheckBadHomophone` 同拼音多词条时首条不中即退出、漏检后续词条的缺陷
+  - B7：`BadPinyinCombos` 移除过宽误判项 `da dai`（打的，中性动词）、`huang se`（黄色，中性色彩），保留明确负面项 `se qing`
+  - B11：为 `totalCount` 补语义注释（统计"已评分组合数"，被过滤/早停跳过的组合不计数）
+  - P4：`RateName` 封顶重算不再每次线性扫描 raters 查权重，改为预计算 `rateWeightsByDim` 映射
+
 ### ✨ New Features 新增功能
 
 - 【namestats】`/namestats/*` 姓名单统计真正可用（Q8/Q9）：
@@ -40,6 +46,7 @@
 - 新增 `namestatistics/file_store_test.go`：8 个查询方法 + 数据缺失错误 + 懒加载幂等
 - 新增 `handlers_test.go::TestNameStatisticsHandler`（含 404/500 分支）
 - 新增 `fate_name_service_e2e_test.go`：断言 `GenerateWithAnalysis` 响应 `Hexagram`/`Ziwei` 非空
+- 新增 `phoneme_exempt_test.go::TestBadPinyinCombosNeutralWords`（B7）、`TestBadHomophoneFuWomen`（B12）
 - 回归：`go test ./...` 全绿
 
 ### 📚 Docs 文档更新

@@ -15,8 +15,8 @@ type BadHomophoneInfo struct {
 // BadHomophones 不吉谐音列表
 //
 // 命中规则（严格）：
-//   1. pinyin 与本字拼音匹配（精确无声调比对）
-//   2. 本字 == Word（同名）时不扣分——拼音相同但本字不同时不视为不吉谐音
+//  1. pinyin 与本字拼音匹配（精确无声调比对）
+//  2. 本字 == Word（同名）时不扣分——拼音相同但本字不同时不视为不吉谐音
 //
 // 举例：拼音 si 的"死"命中；拼音 si 的"思/丝/斯/四/寺"不命中。
 // 之前版本（仅按拼音匹配）会把所有 si 拼音的好字（思/丝/斯）误扣"含不吉谐音:死"。
@@ -75,7 +75,7 @@ var BadHomophones = []BadHomophoneInfo{
 	{Pinyin: "fen", Word: "愤", Description: "愤怒"},
 	{Pinyin: "feng", Word: "疯", Description: "疯狂"},
 	{Pinyin: "fu", Word: "腐", Description: "腐败"},
-	{Pinyin: "fu2", Word: "妇", Description: "妇女（贬义）"},
+	{Pinyin: "fu", Word: "妇", Description: "妇女（贬义）"},
 	// G
 	{Pinyin: "ga", Word: "尬", Description: "尴尬"},
 	{Pinyin: "gan", Word: "干", Description: "干涸"},
@@ -390,11 +390,9 @@ var BadPinyinCombos = []BadPinyinCombo{
 	{Combo: []string{"guo", "shi"}, Description: "过失"},
 	{Combo: []string{"wu", "zui"}, Description: "无罪"},
 	// 死亡相关
-	{Combo: []string{"da", "dai"}, Description: "死的谐音"},
 	{Combo: []string{"shi", "wang"}, Description: "死亡"},
 	{Combo: []string{"wan", "si"}, Description: "玩死"},
 	// 性相关
-	{Combo: []string{"huang", "se"}, Description: "黄色（情色）"},
 	{Combo: []string{"se", "qing"}, Description: "色情"},
 	{Combo: []string{"ji", "qing"}, Description: "激情（贬义）"},
 	// 鬼怪
@@ -500,8 +498,9 @@ func CheckBadHomophone(pinyin string, selfChar ...string) (bool, string) {
 						return true, "谐音「" + h.Word + "」" + h.Description
 					}
 				}
-				// 本字不是该拼音的谐音词，豁免
-				return false, ""
+				// 本字不是该条目的谐音词：继续比对同拼音的其他词条
+				// （如 fu 同时有「腐」「妇」，仅任一匹配才命中，避免误杀同音好字）
+				continue
 			}
 			// 兼容模式（selfChar 未传）：仅按拼音匹配（旧行为，保留供测试/其他场景）
 			return true, "谐音「" + h.Word + "」" + h.Description

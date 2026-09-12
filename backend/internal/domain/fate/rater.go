@@ -57,13 +57,14 @@ type NameRating struct {
 func RateName(candidate *NameCandidate, fateData *FateData, raters []Rater) NameScore {
 	items := make(map[string]float64, len(raters))
 	details := make(map[string]string, len(raters))
+	weights := rateWeightsByDim(raters)
 	var total float64
 
 	for _, r := range raters {
 		rating := r.Rate(candidate, fateData)
 		items[r.Name()] = rating.Score
 		details[r.Name()] = rating.Detail
-		total += rating.Score * r.Weight()
+		total += rating.Score * weights[r.Name()]
 	}
 
 	// 方案B+：非策展双名（单名无策展概念，不封顶）
@@ -80,7 +81,7 @@ func RateName(candidate *NameCandidate, fateData *FateData, raters []Rater) Name
 		capped := []string{"文化印象", "音韵", "生肖", "三才"}
 		for _, dim := range capped {
 			if items[dim] > 75 {
-				total -= (items[dim] - 75) * raterWeight(raters, dim)
+				total -= (items[dim] - 75) * weights[dim]
 				items[dim] = 75
 			}
 		}
@@ -100,14 +101,16 @@ func RateName(candidate *NameCandidate, fateData *FateData, raters []Rater) Name
 	}
 }
 
-// raterWeight 根据维度名查权重（配合封顶重算总分）
-func raterWeight(raters []Rater, dim string) float64 {
+// rateWeightsByDim 预计算维度名 → 权重映射
+//
+// 目的：RateName 在百万级候选分评场景下被高频调用，封顶重算若每次线性扫描
+// raters（P4），会放大为 O(N·dim)。预计算一次 map，查询降为 O(1)。
+func rateWeightsByDim(raters []Rater) map[string]float64 {
+	m := make(map[string]float64, len(raters))
 	for _, r := range raters {
-		if r.Name() == dim {
-			return r.Weight()
-		}
+		m[r.Name()] = r.Weight()
 	}
-	return 0
+	return m
 }
 
 // scoreToGrade 将分数转换为等级

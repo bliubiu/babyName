@@ -74,10 +74,10 @@ func TestNewExcellentTableWithCap(t *testing.T) {
 	// 推入 cap+2 条，分数递增 → 应只保留分数最高的 cap 条
 	for i := 0; i < cap+2; i++ {
 		tbl.TryPush(ExcellentEntry{
-			Char1:  "你",
-			Char2:  string(rune('a' + i)),
-			Score:  float64(i),
-			Grade:  "中",
+			Char1:   "你",
+			Char2:   string(rune('a' + i)),
+			Score:   float64(i),
+			Grade:   "中",
 			WuXing1: "水",
 			WuXing2: "木",
 		})
@@ -102,6 +102,42 @@ func TestNewExcellentTableWithCap(t *testing.T) {
 	if tbl3.cap != excellentTableCapacity {
 		t.Errorf("NewExcellentTableWithCap(-100).cap = %d, 期望 %d (default)",
 			tbl3.cap, excellentTableCapacity)
+	}
+}
+
+// TestBadPinyinCombosNeutralWords B7：中性拼音组合不再误判
+func TestBadPinyinCombosNeutralWords(t *testing.T) {
+	for _, c := range BadPinyinCombos {
+		if c.Combo[0] == "da" && c.Combo[1] == "dai" {
+			t.Error("da dai 是中性动词词组，不应再列入 BadPinyinCombos（B7）")
+		}
+		if c.Combo[0] == "huang" && c.Combo[1] == "se" {
+			t.Error("huang se 日常是中性色彩词，不应再列入 BadPinyinCombos（B7）")
+		}
+	}
+	found := false
+	for _, c := range BadPinyinCombos {
+		if c.Combo[0] == "se" && c.Combo[1] == "qing" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("se qing（色情）是明确负面词组，应保留在 BadPinyinCombos 中")
+	}
+}
+
+// TestBadHomophoneFuWomen B12：fu2 历史数据错误（数字后缀）修复后本字「妇」应命中
+func TestBadHomophoneFuWomen(t *testing.T) {
+	if hit, _ := CheckBadHomophone("fu", "妇"); !hit {
+		t.Error("拼音 fu + 本字「妇」应命中不吉谐音，实际未命中（fu2 数据错误导致永不匹配）")
+	}
+	if hit, _ := CheckBadHomophone("fu", "福"); hit {
+		t.Error("拼音 fu + 本字「福」不应命中（福≠妇，精确匹配语义），实际命中")
+	}
+	// 带声调数字的候选拼音同样应命中（stripTone 后归一到减调形式）
+	if hit, _ := CheckBadHomophone("fu4", "妇"); !hit {
+		t.Error("拼音 fu4 + 本字「妇」应命中（stripTone 归一到 fu），实际未命中")
 	}
 }
 
