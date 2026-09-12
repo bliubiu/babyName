@@ -5,6 +5,49 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.09.12.0]
+
+### 🐛 Bug Fixes 问题修复
+
+- 【database】恢复 `database.Store` 编译破坏（Q1/Q2/Q6/Q10，见 docs/19）：
+  - `sqlite.Store` / `memory.Store` 补齐 `NameStatStore` 全部 8 个方法，但统一返回显式错误 `errNameStatsUnavailable`（"姓名统计数据未接入持久化存储"），消除静默返回 nil 的假象
+  - 移除 `filter_integration_test.go` 中"避开 pre-existing 故障"的注释，改为真实接口守卫与结果断言
+
+- 【SQLite 汉字过滤下沉】（Q3/Q4，见 docs/19）：
+  - `SearchHanziByBasicParams` 重命名为 `SearchHanziByFilter`，对齐 `services.SQLiteCharStore` 接口
+  - 重写 `queryViaSQL`：修复 genderHint 误按拼音比较（原为 `h.Pinyin != pat.genderHint`）、`wuxingNotIn`/`namingCategory` 漏过滤、多值 `wuxingIn` 只取首值、regular 排除表外保守判定字等问题
+  - SQL 端只下推单选五行/笔画区间/具体字集合，其余（regular/nameable/多值五行/genderHint/namingCategory）在 Go 端以内存 `hanzi.HanziData` 为权威源二次过滤，保证字段完整一致
+  - 新增 SQL 与 Go 结果一致性集成测试（genderHint/wuxingNotIn/namingCategory 断言结果集完全一致）
+
+- 【classics】`loadShiCiAsync` 每次调用都 `close(shiciReady)`，重复 `data.Init`（测试并发）触发 `close of closed channel` panic；改用 `sync.Once` 保护（`classic_loader.go`）
+
+- 【services】双管线喜用神不一致（Q5，见 docs/19）：
+  - `GenerateWithAnalysis` 无 `WuxingMatch` 时按经典喜用神收窄候选池（注入 `WithFateBaziAnalyzer`），与 `Generate` 行为对齐，避免候取名五行与 API 响应 Bazi 喜用神矛盾
+
+- 【services】`GenerateWithAnalysis` 响应补齐卦象与紫薇（Q5）：
+  - 注入 `WithFateHexagramFinder` / `WithFateZiweiAnalyzer`，按生成名字平均笔画计算姓名卦象、按出生时间紫薇排盘，与 `Generate` 响应一致（此前 `hexagram`/`ziwei` 恒为空）
+
+- 【legacy】移除无意义的 `/names/:id`（GetByID）路由、handler 与服务方法（Q11）：接口自始至终返回"暂不支持"且前端未调用，属死代码，一并修正 `rater.go` 注释"七维"→"八维"
+
+### ✨ New Features 新增功能
+
+- 【namestats】`/namestats/*` 姓名单统计真正可用（Q8/Q9）：
+  - 新增 `FileNameStatStore`（`namestatistics/file_store.go`）：从 `data/*_stats.json`（`build_namestats` 从 Chinese-Names-Corpus 生成的静态统计）懒加载查询，取代"未接入"错误
+  - `cmd/server` 装配切换为 JSON 数据源，8 个端点全部按真实数据返回
+
+### 🧪 Tests 测试
+
+- 新增 `namestatistics/file_store_test.go`：8 个查询方法 + 数据缺失错误 + 懒加载幂等
+- 新增 `handlers_test.go::TestNameStatisticsHandler`（含 404/500 分支）
+- 新增 `fate_name_service_e2e_test.go`：断言 `GenerateWithAnalysis` 响应 `Hexagram`/`Ziwei` 非空
+- 回归：`go test ./...` 全绿
+
+### 📚 Docs 文档更新
+
+- 更新本版本变更日志；新增 `docs/21-系统审查与修复记录.md` 记录 Q1-Q11 全量整改状态
+
+---
+
 ## [2026.09.02.0]
 
 ### ✨ New Features 新增功能
