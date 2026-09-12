@@ -15,10 +15,16 @@ type BigramEntry struct {
 // bigramIndex 二字共现索引
 // key: "char1+char2"（排序后拼接），value: BigramEntry
 var (
-	bigramIdx   map[string]*BigramEntry
-	bigramMu    sync.RWMutex
-	bigramOnce  sync.Once
+	bigramIdx  map[string]*BigramEntry
+	bigramMu   sync.RWMutex
+	bigramOnce sync.Once
 )
+
+// SessionBigramCache per-session 二字共现评分缓存的全局别名
+//
+// 实际定义在 fate 包（避免 fate → classics → fate 循环依赖），
+// 此处仅 re-export 类型供 classics 包内部使用。
+// 调用方应优先使用 fate.SessionBigramCache。
 
 // groupKey 二字共现的分组键（source + sentence）
 type groupKey struct {

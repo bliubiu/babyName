@@ -19,9 +19,10 @@ import (
 	"name/internal/domain/fate"
 	"name/internal/domain/hanzi"
 	"name/internal/domain/name"
+	"name/internal/domain/namestatistics"
 	"name/internal/infrastructure/cache"
-	"name/internal/infrastructure/data"
 	"name/internal/infrastructure/config"
+	"name/internal/infrastructure/data"
 	"name/internal/infrastructure/database"
 	"name/internal/infrastructure/database/memory"
 	"name/internal/infrastructure/database/sqlite"
@@ -209,14 +210,15 @@ func initStore(dbPath, dataDir string) database.Store {
 // --- 服务装配 ---
 
 type appServices struct {
-	name     *services.NameService
-	bazi     *services.BaziService
-	yijing   *services.YijingService
-	zodiac   *services.ZodiacService
-	history  *services.HistoryService
-	favorite *services.FavoriteService
-	report   *services.ReportService
-	feedback *services.FeedbackService
+	name      *services.NameService
+	bazi      *services.BaziService
+	yijing    *services.YijingService
+	zodiac    *services.ZodiacService
+	history   *services.HistoryService
+	favorite  *services.FavoriteService
+	report    *services.ReportService
+	feedback  *services.FeedbackService
+	namestats namestatistics.NameStatisticsService
 }
 
 func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *appServices {
@@ -238,8 +240,16 @@ func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *a
 		fate.SetCuratedNames(curatedNames)
 		logger.Info("已注入策展好名到 fate 引擎", logger.Int("count", len(curatedNames)))
 	}
-	fateEngine := fate.NewEngine(&services.HanziDataProvider{}, services.NewBaziAnalyzerAdapter(), fate.DefaultRaters())
-	fateSvc := services.NewFateNameService(fateEngine)
+	// SQLite 下沉（P3 方案6 装配）：构造 HanziDataProvider 引用，
+	// 若底层 store 支持 SQL 过滤则注入到 provider，fate 引擎沿用同一 provider。
+	// 失败/不支持时降级到 Go 端全表过滤（向后兼容）。
+	hanziProvider := &services.HanziDataProvider{}
+	if store != nil && services.HasSQLiteCharStore(store) {
+		hanziProvider.SetSQLFilter(services.NewSQLiteHanziFilter(services.AsSQLiteCharStore(store)))
+		logger.Info("SQLite 汉字过滤已启用", logger.String("store", "sqlite"))
+	}
+	fateEngine := fate.NewEngine(hanziProvider, services.NewBaziAnalyzerAdapter(), fate.DefaultRaters())
+	fateSvc := services.NewFateNameService(fateEngine, services.WithFateBaziAnalyzer(baziAdapter))
 
 	nameSvc := services.NewNameService(
 		services.WithBaziAnalyzer(baziAdapter),
@@ -257,15 +267,19 @@ func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *a
 		favSvc.SetNameDB(ndb)
 	}
 
+	// 姓名统计服务
+	namestatsSvc := namestatistics.NewNameStatisticsService(store)
+
 	return &appServices{
-		name:     nameSvc,
-		bazi:     services.NewBaziService(cacheInst),
-		report:   services.NewReportService(),
-		yijing:   services.NewYijingService(store, cacheInst),
-		zodiac:   services.NewZodiacService(store),
-		history:  services.NewHistoryService(store),
-		favorite: favSvc,
-		feedback: services.NewFeedbackService(store, store),
+		name:      nameSvc,
+		bazi:      services.NewBaziService(cacheInst),
+		report:    services.NewReportService(),
+		yijing:    services.NewYijingService(store, cacheInst),
+		zodiac:    services.NewZodiacService(store),
+		history:   services.NewHistoryService(store),
+		favorite:  favSvc,
+		feedback:  services.NewFeedbackService(store, store),
+		namestats: namestatsSvc,
 	}
 }
 
@@ -283,6 +297,7 @@ type appHandlers struct {
 	stat      *handlers.NameStatHandler
 	huangli   *handlers.HuangliHandler
 	character *handlers.CharacterHandler
+	namestats *handlers.NameStatisticsHandler
 }
 
 func newHandlers(svc *appServices, dataDir string) *appHandlers {
@@ -298,6 +313,7 @@ func newHandlers(svc *appServices, dataDir string) *appHandlers {
 		stat:      handlers.NewNameStatHandler(),
 		huangli:   handlers.NewHuangliHandler(),
 		character: handlers.NewCharacterHandler(svc.name.GetNameDB()),
+		namestats: handlers.NewNameStatisticsHandler(svc.namestats),
 	}
 }
 
@@ -367,6 +383,16 @@ func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store
 
 		api.GET("/namestat/:name", h.stat.GetNameStats)
 		api.GET("/namestat", h.stat.GetTopNames)
+
+		// 姓名统计（基于 Chinese-Names-Corpus）
+		api.GET("/namestats/surnames", h.namestats.GetSurnameStats)
+		api.GET("/namestats/surnames/:surname", h.namestats.GetSurnameStat)
+		api.GET("/namestats/surnames/:surname/given-names", h.namestats.GetGivenNameStats)
+		api.GET("/namestats/surnames/:surname/full-names", h.namestats.GetFullNameStats)
+		api.GET("/namestats/full-names/:full_name", h.namestats.GetFullNameStat)
+		api.GET("/namestats/names/:name/gender", h.namestats.GetNameGenderStats)
+		api.GET("/namestats/top", h.namestats.GetTopFullNames)
+		api.GET("/namestats/total", h.namestats.GetTotalNameCount)
 
 		api.GET("/huangli", h.huangli.GetHuangli)
 		api.GET("/lunar", h.huangli.GetLunarCalendar)
