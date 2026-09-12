@@ -21,13 +21,13 @@ import (
 
 // NameService 名字服务
 type NameService struct {
-	baziAnalyzer     bazi.BaziAnalyzer
-	hexagramFinder   yijing.HexagramFinder
-	ziweiAnalyzer    ziwei.ZiweiAnalyzer
-	zodiacFinder     zodiac.ZodiacFinder
-	fateService      *FateNameService // fate 路径委托服务（可选）
-	cache            cache.Cache
-	nameDB           *name.NameDB // 候选名库管理器（API 层共享自学习精选名数据）
+	baziAnalyzer   bazi.BaziAnalyzer
+	hexagramFinder yijing.HexagramFinder
+	ziweiAnalyzer  ziwei.ZiweiAnalyzer
+	zodiacFinder   zodiac.ZodiacFinder
+	fateService    *FateNameService // fate 路径委托服务（可选）
+	cache          cache.Cache
+	nameDB         *name.NameDB // 候选名库管理器（API 层共享自学习精选名数据）
 }
 
 // NameServiceOption 名字服务选项
@@ -85,28 +85,28 @@ func (s *NameService) GetNameDB() *name.NameDB {
 
 // GenerateRequest 生成名字请求
 type GenerateRequest struct {
-	Surname        string   `json:"surname" binding:"required"`
-	Generation     string   `json:"generation"`
-	GenerationPosition string `json:"generation_position"`
-	Gender         string   `json:"gender" binding:"required"`
-	BirthYear      int      `json:"birth_year" binding:"required"`
-	BirthMonth     int      `json:"birth_month" binding:"required"`
-	BirthDay       int      `json:"birth_day" binding:"required"`
-	BirthHour      int      `json:"birth_hour" binding:"required"`
-	BirthMinute    int      `json:"birth_minute"`
-	BirthLocation  string   `json:"birth_location"`
-	BirthType      string   `json:"birth_type"`
-	NameType       string   `json:"name_type"`
-	Preferences    []string `json:"preferences"`
-	NameLength     int      `json:"name_length"`
-	ExcludeRare    bool     `json:"exclude_rare"`
-	WuxingMatch    []string `json:"wuxing_match"`
-	SourceClassic  string   `json:"source_classic"`
+	Surname            string   `json:"surname" binding:"required"`
+	Generation         string   `json:"generation"`
+	GenerationPosition string   `json:"generation_position"`
+	Gender             string   `json:"gender" binding:"required"`
+	BirthYear          int      `json:"birth_year" binding:"required"`
+	BirthMonth         int      `json:"birth_month" binding:"required"`
+	BirthDay           int      `json:"birth_day" binding:"required"`
+	BirthHour          int      `json:"birth_hour" binding:"required"`
+	BirthMinute        int      `json:"birth_minute"`
+	BirthLocation      string   `json:"birth_location"`
+	BirthType          string   `json:"birth_type"`
+	NameType           string   `json:"name_type"`
+	Preferences        []string `json:"preferences"`
+	NameLength         int      `json:"name_length"`
+	ExcludeRare        bool     `json:"exclude_rare"`
+	WuxingMatch        []string `json:"wuxing_match"`
+	SourceClassic      string   `json:"source_classic"`
 	// 新增筛选条件
-	MinStrokes     int      `json:"min_strokes"`
-	MaxStrokes     int      `json:"max_strokes"`
-	IncludePoetry  bool     `json:"include_poetry"`
-	IncludeClassic bool     `json:"include_classic"`
+	MinStrokes      int      `json:"min_strokes"`
+	MaxStrokes      int      `json:"max_strokes"`
+	IncludePoetry   bool     `json:"include_poetry"`
+	IncludeClassic  bool     `json:"include_classic"`
 	MeaningKeywords []string `json:"meaning_keywords"`
 	PinyinInitial   string   `json:"pinyin_initial"`
 
@@ -121,31 +121,31 @@ type GenerateRequest struct {
 
 // GenerateResponse 生成名字响应
 type GenerateResponse struct {
-	Bazi           bazi.BaziAnalysis       `json:"bazi"`
-	Nayin          string                  `json:"nayin"`
-	Zodiac         string                  `json:"zodiac"`
-	Hexagram       *yijing.Hexagram        `json:"hexagram"`
-	HexagramMatch  *yijing.HexagramMatch   `json:"hexagram_match,omitempty"`
-	Ziwei          *ziwei.ZiweiAnalysis    `json:"ziwei,omitempty"`
-	Names          []name.Name             `json:"names"`
+	Bazi          bazi.BaziAnalysis     `json:"bazi"`
+	Nayin         string                `json:"nayin"`
+	Zodiac        string                `json:"zodiac"`
+	Hexagram      *yijing.Hexagram      `json:"hexagram"`
+	HexagramMatch *yijing.HexagramMatch `json:"hexagram_match,omitempty"`
+	Ziwei         *ziwei.ZiweiAnalysis  `json:"ziwei,omitempty"`
+	Names         []name.Name           `json:"names"`
 }
 
 // GenerateWithAnalysisResponse 带详细分析的名字生成响应
 type GenerateWithAnalysisResponse struct {
-	Bazi           bazi.BaziAnalysis       `json:"bazi"`
-	Nayin          string                  `json:"nayin"`
-	Zodiac         string                  `json:"zodiac"`
-	Hexagram       *yijing.Hexagram        `json:"hexagram"`
-	Ziwei          *ziwei.ZiweiAnalysis    `json:"ziwei,omitempty"`
-	Names          []*name.NameAnalysis    `json:"names"`
-	Suggestions    []string                `json:"suggestions"`
+	Bazi        bazi.BaziAnalysis    `json:"bazi"`
+	Nayin       string               `json:"nayin"`
+	Zodiac      string               `json:"zodiac"`
+	Hexagram    *yijing.Hexagram     `json:"hexagram"`
+	Ziwei       *ziwei.ZiweiAnalysis `json:"ziwei,omitempty"`
+	Names       []*name.NameAnalysis `json:"names"`
+	Suggestions []string             `json:"suggestions"`
 }
 
 // Generate 生成名字
 func (s *NameService) Generate(ctx context.Context, req *GenerateRequest) (*GenerateResponse, error) {
 	start := time.Now()
 
-		// 1. 八字分析
+	// 1. 八字分析
 	baziAnalysis, baziDuration, baziErr := s.performBaziAnalysis(req)
 	analysisFailed := baziAnalysis == nil || len(baziAnalysis.Xiyongshen) == 0
 	if analysisFailed {
@@ -155,7 +155,7 @@ func (s *NameService) Generate(ctx context.Context, req *GenerateRequest) (*Gene
 		)
 	}
 
-		// 2. 生成名字
+	// 2. 生成名字
 	names, generateDuration, err := s.generateNames(ctx, req, baziAnalysis)
 	if err != nil {
 		return nil, err
@@ -489,9 +489,4 @@ func generateNameSuggestions(analyses []*name.NameAnalysis) []string {
 	}
 
 	return suggestions
-}
-
-// GetByID 根据ID获取名字
-func (s *NameService) GetByID(ctx context.Context, id int64) (*name.Name, error) {
-	return nil, errors.NewError(errors.ErrCodeNotFound, "暂不支持按ID查询名字，请使用生成接口")
 }

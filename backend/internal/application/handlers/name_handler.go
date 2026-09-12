@@ -1,15 +1,14 @@
 package handlers
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 	"name/internal/application/response"
 	"name/internal/application/services"
 	"name/internal/application/validator"
 	"name/internal/infrastructure/logger"
-	"go.uber.org/zap"
 )
 
 type NameHandler struct {
@@ -80,25 +79,6 @@ func (h *NameHandler) Generate(c *gin.Context) {
 	}
 
 	response.SuccessJSON(c, result)
-}
-
-func (h *NameHandler) GetByID(c *gin.Context) {
-	idStr := c.Param("id")
-	var id int64
-	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
-		logger.Warn("NameHandler.GetByID: invalid id", zap.String("id", idStr))
-		response.ErrorJSON(c, 400, "无效的ID")
-		return
-	}
-
-	name, err := h.service.GetByID(c.Request.Context(), id)
-	if err != nil {
-		logger.Error("NameHandler.GetByID: failed", zap.Int64("id", id), zap.Error(err))
-		response.ErrorJSON(c, 404, "名字不存在")
-		return
-	}
-
-	response.SuccessJSON(c, name)
 }
 
 // GenerateWithAnalysis 生成带详细分析的名字

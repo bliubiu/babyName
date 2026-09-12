@@ -249,7 +249,11 @@ func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *a
 		logger.Info("SQLite 汉字过滤已启用", logger.String("store", "sqlite"))
 	}
 	fateEngine := fate.NewEngine(hanziProvider, services.NewBaziAnalyzerAdapter(), fate.DefaultRaters())
-	fateSvc := services.NewFateNameService(fateEngine, services.WithFateBaziAnalyzer(baziAdapter))
+	fateSvc := services.NewFateNameService(fateEngine,
+		services.WithFateBaziAnalyzer(baziAdapter),
+		services.WithFateHexagramFinder(hexagramAdapter),
+		services.WithFateZiweiAnalyzer(ziweiAdapter),
+	)
 
 	nameSvc := services.NewNameService(
 		services.WithBaziAnalyzer(baziAdapter),
@@ -267,8 +271,10 @@ func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *a
 		favSvc.SetNameDB(ndb)
 	}
 
-	// 姓名统计服务
-	namestatsSvc := namestatistics.NewNameStatisticsService(store)
+	// 姓名统计服务（数据源：data 目录 JSON，由 build_namestats 从语料生成）
+	namestatsSvc := namestatistics.NewNameStatisticsService(
+		namestatistics.NewFileNameStatStore(dataDir),
+	)
 
 	return &appServices{
 		name:      nameSvc,
@@ -352,7 +358,6 @@ func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store
 	{
 		api.POST("/names/generate", h.name.Generate)
 		api.POST("/names/generate/analysis", h.name.GenerateWithAnalysis)
-		api.GET("/names/:id", h.name.GetByID)
 
 		api.POST("/bazi/analyze", h.bazi.Analyze)
 

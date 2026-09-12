@@ -33,7 +33,7 @@ import (
 
 var (
 	fateServiceE2EOnce    sync.Once
-	fateServiceE2E       *FateNameService
+	fateServiceE2E        *FateNameService
 	fateServiceE2EInitErr error
 )
 
@@ -69,7 +69,10 @@ func setupFateNameServiceE2E(t *testing.T) *FateNameService {
 		// 4. 装配 fate 引擎 + FateNameService
 		cache.Init()
 		fateEngine := fate.NewEngine(&HanziDataProvider{}, NewBaziAnalyzerAdapter(), fate.DefaultRaters())
-		fateServiceE2E = NewFateNameService(fateEngine)
+		fateServiceE2E = NewFateNameService(fateEngine,
+			WithFateHexagramFinder(&HexagramAdapter{}),
+			WithFateZiweiAnalyzer(&ZiweiAdapter{}),
+		)
 	})
 	if fateServiceE2EInitErr != nil {
 		t.Fatalf("装配 FateNameService 失败: %v", fateServiceE2EInitErr)
@@ -110,14 +113,14 @@ func TestFateNameService_E2E_SingleName(t *testing.T) {
 	ctx := context.Background()
 
 	req := &GenerateRequest{
-		Surname:    "王",
-		Gender:     "male",
-		BirthYear:  2024,
-		BirthMonth: 1,
-		BirthDay:   15,
-		BirthHour:  12,
+		Surname:     "王",
+		Gender:      "male",
+		BirthYear:   2024,
+		BirthMonth:  1,
+		BirthDay:    15,
+		BirthHour:   12,
 		BirthMinute: 0,
-		NameLength: 1,
+		NameLength:  1,
 	}
 
 	resp, err := svc.GenerateWithAnalysis(ctx, req)
@@ -176,6 +179,13 @@ func TestFateNameService_E2E_SingleName(t *testing.T) {
 	if resp.Zodiac == "" {
 		t.Error("Zodiac（生肖）未填充")
 	}
+	// 补齐的卦象与紫微（Q5：GenerateWithAnalysis 与 Generate 响应一致，不得为空）
+	if resp.Hexagram == nil || resp.Hexagram.Name == "" {
+		t.Error("Hexagram（姓名卦象）未填充（Q5 补齐项）")
+	}
+	if resp.Ziwei == nil {
+		t.Error("Ziwei（紫微排盘）未填充（Q5 补齐项）")
+	}
 }
 
 // TestFateNameService_E2E_DoubleName 端到端：双名生成
@@ -184,14 +194,14 @@ func TestFateNameService_E2E_DoubleName(t *testing.T) {
 	ctx := context.Background()
 
 	req := &GenerateRequest{
-		Surname:    "李",
-		Gender:     "female",
-		BirthYear:  2020,
-		BirthMonth: 8,
-		BirthDay:   8,
-		BirthHour:  10,
+		Surname:     "李",
+		Gender:      "female",
+		BirthYear:   2020,
+		BirthMonth:  8,
+		BirthDay:    8,
+		BirthHour:   10,
 		BirthMinute: 0,
-		NameLength: 2,
+		NameLength:  2,
 	}
 
 	resp, err := svc.GenerateWithAnalysis(ctx, req)
@@ -273,14 +283,14 @@ func TestFateNameService_E2E_ElderAvoidance(t *testing.T) {
 	ctx := context.Background()
 
 	req := &GenerateRequest{
-		Surname:        "李",
-		Gender:         "male",
-		BirthYear:      2024,
-		BirthMonth:     3,
-		BirthDay:       15,
-		BirthHour:      14,
-		BirthMinute:    0,
-		NameLength:     2,
+		Surname:         "李",
+		Gender:          "male",
+		BirthYear:       2024,
+		BirthMonth:      3,
+		BirthDay:        15,
+		BirthHour:       14,
+		BirthMinute:     0,
+		NameLength:      2,
 		AvoidElderNames: []string{"张王"}, // 长辈含"王"
 	}
 
@@ -312,14 +322,14 @@ func TestFateNameService_E2E_ForbiddenCombos(t *testing.T) {
 	ctx := context.Background()
 
 	req := &GenerateRequest{
-		Surname:    "王",
-		Gender:     "male",
-		BirthYear:  2024,
-		BirthMonth: 5,
-		BirthDay:   20,
-		BirthHour:  10,
+		Surname:     "王",
+		Gender:      "male",
+		BirthYear:   2024,
+		BirthMonth:  5,
+		BirthDay:    20,
+		BirthHour:   10,
 		BirthMinute: 0,
-		NameLength: 2,
+		NameLength:  2,
 	}
 
 	resp, err := svc.GenerateWithAnalysis(ctx, req)
@@ -350,14 +360,14 @@ func TestFateNameService_E2E_ConsistentResults(t *testing.T) {
 	ctx := context.Background()
 
 	req := &GenerateRequest{
-		Surname:    "刘",
-		Gender:     "male",
-		BirthYear:  2024,
-		BirthMonth: 1,
-		BirthDay:   1,
-		BirthHour:  0,
+		Surname:     "刘",
+		Gender:      "male",
+		BirthYear:   2024,
+		BirthMonth:  1,
+		BirthDay:    1,
+		BirthHour:   0,
 		BirthMinute: 0,
-		NameLength: 2,
+		NameLength:  2,
 	}
 
 	for i := 0; i < 3; i++ {
@@ -384,14 +394,14 @@ func TestFateNameService_E2E_ScoreDetails(t *testing.T) {
 	ctx := context.Background()
 
 	req := &GenerateRequest{
-		Surname:    "王",
-		Gender:     "male",
-		BirthYear:  2024,
-		BirthMonth: 1,
-		BirthDay:   15,
-		BirthHour:  12,
+		Surname:     "王",
+		Gender:      "male",
+		BirthYear:   2024,
+		BirthMonth:  1,
+		BirthDay:    15,
+		BirthHour:   12,
 		BirthMinute: 0,
-		NameLength: 2,
+		NameLength:  2,
 	}
 
 	resp, err := svc.GenerateWithAnalysis(ctx, req)
@@ -441,14 +451,14 @@ func TestFateNameService_E2E_PoetryBackfill(t *testing.T) {
 
 	// 诗经中含"窈"和"淑"——在名字中包含此二字时，应能反查到结构化出处
 	req := &GenerateRequest{
-		Surname:    "王",
-		Gender:     "female",
-		BirthYear:  2024,
-		BirthMonth: 1,
-		BirthDay:   15,
-		BirthHour:  12,
+		Surname:     "王",
+		Gender:      "female",
+		BirthYear:   2024,
+		BirthMonth:  1,
+		BirthDay:    15,
+		BirthHour:   12,
 		BirthMinute: 0,
-		NameLength: 2,
+		NameLength:  2,
 	}
 
 	resp, err := svc.GenerateWithAnalysis(ctx, req)

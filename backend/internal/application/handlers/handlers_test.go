@@ -7,12 +7,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"name/internal/application/services"
 	"name/internal/domain/hanzi"
+	"name/internal/domain/namestatistics"
 	"name/internal/infrastructure/cache"
+	"name/internal/infrastructure/database"
 	"name/internal/infrastructure/database/memory"
 	"name/internal/infrastructure/logger"
 )
@@ -198,7 +201,6 @@ func TestNameHandler(t *testing.T) {
 		t.Fatalf("装配带 fate 引擎的 NameService 失败: %v", err)
 	}
 	tests := []handlerTestCase{
-		{name: "GetByID", method: "GET", path: "/names/123", wantStatus: 404},
 		{name: "Generate_InvalidBody", method: "POST", path: "/names/generate", body: `invalid json`, wantStatus: 400},
 		{name: "Generate_EmptySurname", method: "POST", path: "/names/generate", body: `{"surname":"","gender":"male","birth_year":2024,"birth_month":1,"birth_day":15,"birth_hour":12}`, wantStatus: 400},
 		{name: "Generate_InvalidGender", method: "POST", path: "/names/generate", body: `{"surname":"王","gender":"","birth_year":2024,"birth_month":1,"birth_day":15,"birth_hour":12}`, wantStatus: 400},
@@ -209,7 +211,6 @@ func TestNameHandler(t *testing.T) {
 	}
 	runHandlerTests(t, tests, func(r *gin.Engine) {
 		h := NewNameHandler(svc)
-		r.GET("/names/:id", h.GetByID)
 		r.POST("/names/generate", h.Generate)
 		r.POST("/names/generate/analysis", h.GenerateWithAnalysis)
 	})
@@ -373,5 +374,82 @@ func TestReportHandler(t *testing.T) {
 		h := NewReportHandler(services.NewReportService())
 		r.POST("/report/pdf", h.GeneratePDF)
 		r.POST("/report/html", h.GenerateHTML)
+	})
+}
+
+// --- NameStatisticsHandler Tests ---
+//
+// 使用临时目录的 JSON 统计文件验证 /namestats/* 端点（等价 cmd/server 装配）。
+
+// writeNameStatTestData 在临时目录写入最小统计 JSON
+func writeNameStatTestData(t *testing.T, dir string) {
+	t.Helper()
+	write := func(name string, v any) {
+		t.Helper()
+		raw, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("序列化 %s 失败: %v", name, err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), raw, 0644); err != nil {
+			t.Fatalf("写入 %s 失败: %v", name, err)
+		}
+	}
+	write("surname_stats.json", []database.SurnameStat{
+		{Surname: "王", Count: 3, Rank: 1},
+	})
+	write("given_name_stats.json", []database.GivenNameStat{})
+	write("full_name_stats.json", []database.FullNameStat{})
+	write("name_gender_stats.json", []database.NameGenderStat{})
+	write("name_frequency.json", struct {
+		Meta struct {
+			TotalNames int `json:"total_names"`
+		} `json:"meta"`
+	}{Meta: struct {
+		TotalNames int `json:"total_names"`
+	}{TotalNames: 1200000}})
+}
+
+// newNameStatisticsHandler 构造带 JSON 数据源的 NameStatisticsHandler
+func newNameStatisticsHandler(t *testing.T, dir string) *NameStatisticsHandler {
+	t.Helper()
+	writeNameStatTestData(t, dir)
+	store := namestatistics.NewFileNameStatStore(dir)
+	return NewNameStatisticsHandler(namestatistics.NewNameStatisticsService(store))
+}
+
+func TestNameStatisticsHandler(t *testing.T) {
+	dir := t.TempDir()
+	h := newNameStatisticsHandler(t, dir)
+	tests := []handlerTestCase{
+		{name: "GetSurnameStats", method: "GET", path: "/namestats/surnames", wantStatus: 200},
+		{name: "GetSurnameStat", method: "GET", path: "/namestats/surnames/王", wantStatus: 200},
+		{name: "GetSurnameStat_Missing", method: "GET", path: "/namestats/surnames/赵", wantStatus: 404},
+		{name: "GetGivenNameStats", method: "GET", path: "/namestats/surnames/王/given-names", wantStatus: 200},
+		{name: "GetFullNameStats", method: "GET", path: "/namestats/surnames/王/full-names", wantStatus: 200},
+		{name: "GetTopFullNames", method: "GET", path: "/namestats/top", wantStatus: 200},
+		{name: "GetTotalNameCount", method: "GET", path: "/namestats/total", wantStatus: 200},
+		{name: "GetNameGenderStats_Missing", method: "GET", path: "/namestats/names/伟/gender", wantStatus: 404},
+	}
+	runHandlerTests(t, tests, func(r *gin.Engine) {
+		r.GET("/namestats/surnames", h.GetSurnameStats)
+		r.GET("/namestats/surnames/:surname", h.GetSurnameStat)
+		r.GET("/namestats/surnames/:surname/given-names", h.GetGivenNameStats)
+		r.GET("/namestats/surnames/:surname/full-names", h.GetFullNameStats)
+		r.GET("/namestats/full-names/:full_name", h.GetFullNameStat)
+		r.GET("/namestats/names/:name/gender", h.GetNameGenderStats)
+		r.GET("/namestats/top", h.GetTopFullNames)
+		r.GET("/namestats/total", h.GetTotalNameCount)
+	})
+}
+
+// TestNameStatisticsHandler_DataMissing 数据文件缺失时接口返回 500 / 404
+func TestNameStatisticsHandler_DataMissing(t *testing.T) {
+	store := namestatistics.NewFileNameStatStore(t.TempDir())
+	h := NewNameStatisticsHandler(namestatistics.NewNameStatisticsService(store))
+	tests := []handlerTestCase{
+		{name: "GetTotalNameCount", method: "GET", path: "/namestats/total", wantStatus: 500},
+	}
+	runHandlerTests(t, tests, func(r *gin.Engine) {
+		r.GET("/namestats/total", h.GetTotalNameCount)
 	})
 }

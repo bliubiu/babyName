@@ -12,6 +12,8 @@ import (
 	"name/internal/domain/fate"
 	"name/internal/domain/hanzi"
 	"name/internal/domain/name"
+	"name/internal/domain/yijing"
+	"name/internal/domain/ziwei"
 	"name/internal/infrastructure/logger"
 
 	"go.uber.org/zap"
@@ -26,6 +28,10 @@ type FateNameService struct {
 	// WuxingMatch 时按经典喜用神收窄候选池，与 NameService.Generate 对齐，
 	// 避免候取名五行与 API 响应 Bazi 的喜用神相矛盾。
 	baziAnalyzer bazi.BaziAnalyzer
+	// hexagramFinder 易经卦象查找器（可选）：生成后按平均笔画计算姓名卦象
+	hexagramFinder yijing.HexagramFinder
+	// ziweiAnalyzer 紫微斗数分析器（可选）：按出生时间排盘
+	ziweiAnalyzer ziwei.ZiweiAnalyzer
 }
 
 // FateServiceOption fate 名字服务选项
@@ -34,6 +40,16 @@ type FateServiceOption func(*FateNameService)
 // WithFateBaziAnalyzer 设置经典八字分析器（用于喜用神收窄候选池）
 func WithFateBaziAnalyzer(a bazi.BaziAnalyzer) FateServiceOption {
 	return func(s *FateNameService) { s.baziAnalyzer = a }
+}
+
+// WithFateHexagramFinder 设置易经卦象查找器（用于补齐响应卦象）
+func WithFateHexagramFinder(f yijing.HexagramFinder) FateServiceOption {
+	return func(s *FateNameService) { s.hexagramFinder = f }
+}
+
+// WithFateZiweiAnalyzer 设置紫微斗数分析器（用于补齐响应紫微排盘）
+func WithFateZiweiAnalyzer(a ziwei.ZiweiAnalyzer) FateServiceOption {
+	return func(s *FateNameService) { s.ziweiAnalyzer = a }
 }
 
 // NewFateNameService 创建 fate 名字服务
@@ -256,12 +272,40 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 		response.Zodiac = output.FateData.BaziInfo.Zodiac
 	}
 
+	// 补齐易经卦象与紫微斗数（与 NameService.Generate 响应一致，避免
+	// GenerateWithAnalysis 响应中 Hexagram/Ziwei 永远为空，docs/19 Q5）
+	response.Hexagram = s.hexagramForNames(names)
+	response.Ziwei = s.ziweiForRequest(req)
+
 	logger.Info("GenerateWithAnalysis: completed via fate engine",
 		zap.String("surname", req.Surname),
 		zap.Int("name_count", len(names)),
 	)
 
 	return response, nil
+}
+
+// hexagramForNames 按生成名字的平均笔画查找姓名卦象（无查找器或无名字时返回 nil）
+func (s *FateNameService) hexagramForNames(names []*name.NameAnalysis) *yijing.Hexagram {
+	if s.hexagramFinder == nil || len(names) == 0 {
+		return nil
+	}
+	total := 0
+	for _, na := range names {
+		total += na.Strokes
+	}
+	return s.hexagramFinder.FindByStrokes(total / len(names))
+}
+
+// ziweiForRequest 按出生时间进行紫微排盘（无分析器时返回 nil）
+func (s *FateNameService) ziweiForRequest(req *GenerateRequest) *ziwei.ZiweiAnalysis {
+	if s.ziweiAnalyzer == nil {
+		return nil
+	}
+	return s.ziweiAnalyzer.Analyze(
+		req.BirthYear, req.BirthMonth, req.BirthDay,
+		req.BirthHour, req.Gender,
+	)
 }
 
 // incrementWuxing 按五行名称递增 WuxingResult 对应字段

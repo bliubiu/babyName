@@ -250,7 +250,7 @@ func (r *WuxingRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 	return NameRating{Score: score, Detail: detail}
 }
 
-// DefaultRaters 返回默认的七维评分器列表
+// DefaultRaters 返回默认的八维评分器列表
 //
 // 移除了 WuGeRater（熊崎五格数理），新增 SancaiRater（天地人三才）+ NoveltyRater（新颖度）
 // + FrequencyRater（人名频率），权重重新分配：

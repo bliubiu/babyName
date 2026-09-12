@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"name/internal/domain/bazi"
-	"name/internal/domain/name"
 	"name/internal/domain/yijing"
 	"name/internal/domain/zodiac"
 	"name/internal/infrastructure/database"
@@ -17,7 +16,6 @@ import (
 type NameServiceInterface interface {
 	Generate(ctx context.Context, req *GenerateRequest) (*GenerateResponse, error)
 	GenerateWithAnalysis(ctx context.Context, req *GenerateRequest) (*GenerateWithAnalysisResponse, error)
-	GetByID(ctx context.Context, id int64) (*name.Name, error)
 }
 
 // BaziServiceInterface 八字服务接口
