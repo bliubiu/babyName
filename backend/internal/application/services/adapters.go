@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -15,8 +16,8 @@ import (
 )
 
 var (
-	namingSyncMu          sync.Mutex
-	namingIndexSynced     bool
+	namingSyncMu      sync.Mutex
+	namingIndexSynced bool
 )
 
 // SyncNamingIndexFromHanzi 将 HanziData 中的起名分类同步到 fate 层命名索引
@@ -123,10 +124,29 @@ func (a *ZodiacAdapter) FindByYear(year int) string {
 	return zodiac.GetZodiacByYear(year).Name
 }
 
-// --- fate 包适配器 ---
+// --> fate 包适配器
 
 // HanziDataProvider 基于 hanzi.HanziData 的 CharacterProvider 实现
-type HanziDataProvider struct{}
+//
+// FindCharacters 默认走 Go 端全表过滤；如配置了 WithSQLiteFilter，则优先走
+// SQL 查询（docs/19 报告 P3 方案6 落地）。SQLite 不可用时降级回 Go 过滤。
+type HanziDataProvider struct {
+	// sqlFilter 可选：注入后 FindCharacters 走 SQL（与 in-memory 路径并存）
+	sqlFilter SQLHanziFilter
+}
+
+// SQLHanziFilter SQL 下推过滤接口（避免直接依赖 sqlite 包造成循环）
+//
+// 实现方在 application/services 层负责 sqlite.store 与本接口的桥接；
+// 典型实现是 sqliteCharacterProvider（见本文件末尾）。
+//
+// 返回结果为 []database.Hanzi（只承载粗筛维度），FindCharacters 收到候选后
+// 以内存 hanzi.HanziData 回查补全完整属性。
+type SQLHanziFilter interface {
+	// SearchHanziByFilter 按过滤条件返回 SQL 查询结果
+	SearchHanziByFilter(wuxing string, minStrokes, maxStrokes int,
+		hasPositive, isRegular bool, chars []string, limit int) []database.Hanzi
+}
 
 func (p *HanziDataProvider) GetCharacter(char string) (*fate.Character, error) {
 	h, ok := hanzi.HanziData[char]
@@ -137,10 +157,31 @@ func (p *HanziDataProvider) GetCharacter(char string) (*fate.Character, error) {
 }
 
 func (p *HanziDataProvider) FindCharacters(query fate.CharacterQuery) ([]*fate.Character, error) {
-	var result []*fate.Character
-	// 如果 query 是 basicCharacterQuery，提取过滤条件
 	pattern := extractFilterPattern(query)
 
+	// SQLite 下沉（P3 方案6 落地）：sqlFilter 注入时优先走 SQL + 索引召回，
+	// 失败/未注入时降级回 Go 端全表过滤（向后兼容）。
+	if p.sqlFilter != nil {
+		hanzis, err := p.queryViaSQL(pattern)
+		if err == nil {
+			// 最终字符数据以内存 HanziData 全量为权威源：
+			// SQL 表仅承载粗筛维度（char/pinyin/wuxing/strokes/usage_level/positive_score），
+			// Radical/Meaning/Gender 等完整属性回查内存补全，避免 SQL 路径劣化评分质量。
+			result := make([]*fate.Character, 0, len(hanzis))
+			for i := range hanzis {
+				full, ok := hanzi.HanziData[hanzis[i].Char]
+				if !ok {
+					continue
+				}
+				result = append(result, hanziToCharacter(full))
+			}
+			return result, nil
+		}
+		// SQL 失败 → 降级 Go 过滤（不阻断服务）
+	}
+
+	var result []*fate.Character
+	// 如果 query 是 basicCharacterQuery，提取过滤条件
 	for _, h := range hanzi.HanziData {
 		c := hanziToCharacter(h)
 
@@ -298,16 +339,16 @@ func extractFilterPattern(query fate.CharacterQuery) filterPattern {
 
 // filterPattern 简单过滤模式（与 basicCharacterQuery 字段映射）
 type filterPattern struct {
-	regularFilter   bool
-	nameableFilter  bool
-	strokeEQ        int
-	strokeGTE       int
-	strokeLTE       int
-	wuxingIn        []string
-	wuxingNotIn     []string
-	charIn          []string
-	genderHint      string
-	namingCategory  string // 精选起名分类
+	regularFilter  bool
+	nameableFilter bool
+	strokeEQ       int
+	strokeGTE      int
+	strokeLTE      int
+	wuxingIn       []string
+	wuxingNotIn    []string
+	charIn         []string
+	genderHint     string
+	namingCategory string // 精选起名分类
 }
 
 // getStroke 获取单字笔画
@@ -440,3 +481,165 @@ var _ zodiac.ZodiacFinder = (*ZodiacAdapter)(nil)
 // fate 层接口实现守卫
 var _ fate.CharacterProvider = (*HanziDataProvider)(nil)
 var _ fate.BaziAnalyzer = (*BaziAnalyzerAdapter)(nil)
+
+// SetSQLFilter 注入 SQLite 过滤后端（可选启用 SQLite 下沉）
+//
+// 装配方式：
+//
+//	provider := &HanziDataProvider{}
+//	provider.SetSQLFilter(sqliteAdapter)
+//	// sqliteAdapter 实现 SQLHanziFilter 接口，桥接 sqlite.Store
+//
+// 不注入则走默认 Go 端全表过滤（向后兼容）。
+func (p *HanziDataProvider) SetSQLFilter(f SQLHanziFilter) {
+	p.sqlFilter = f
+}
+
+// queryViaSQL 通过 SQL 后端查询汉字（SQLite 下沉入口）
+//
+// SQL 端只下推可精确表达的等值/区间条件（单值五行、笔画范围、字表，命中索引，
+// 作为候选召回）。SQL 表仅承载粗筛维度，genderHint / namingCategory / wuxingNotIn /
+// 多值 wuxingIn / regular（含表外字保守判定）/ nameable / strokeEQ 等条件由本函数
+// 回查内存 hanzi.HanziData 全量数据，按与 FindCharacters 一致的语义二次过滤，
+// 保证与纯 Go 路径结果一致。SQL 失败时返回非 nil error，由调用方降级到 Go 端全表过滤。
+func (p *HanziDataProvider) queryViaSQL(pat filterPattern) ([]database.Hanzi, error) {
+	if p.sqlFilter == nil {
+		return nil, fmt.Errorf("sqlFilter 未注入")
+	}
+
+	// 多值 wuxingIn 时 SQL 端仅支持单值等值匹配，不下推，交由下方 Go 端二次过滤。
+	wuxing := ""
+	if len(pat.wuxingIn) == 1 {
+		wuxing = pat.wuxingIn[0]
+	}
+	hanzis := p.sqlFilter.SearchHanziByFilter(
+		wuxing, pat.strokeGTE, pat.strokeLTE,
+		false, false, pat.charIn, 10000,
+	)
+	if len(hanzis) == 0 {
+		return hanzis, nil
+	}
+
+	// Go 端二次过滤：与 FindCharacters 的 pattern 匹配逐项一致
+	filtered := hanzis[:0]
+	for i := range hanzis {
+		h := &hanzis[i]
+		// 字段以内存全量数据为准（SQL 表无 gender/categories/radical 等列）
+		full, ok := hanzi.HanziData[h.Char]
+		if !ok {
+			continue
+		}
+		c := hanziToCharacter(full)
+
+		if pat.regularFilter && !c.IsRegular {
+			continue
+		}
+		if pat.nameableFilter && !c.IsNameable {
+			continue
+		}
+		if pat.strokeEQ > 0 && c.ScienceStroke != pat.strokeEQ {
+			continue
+		}
+		if pat.strokeGTE > 0 && c.ScienceStroke < pat.strokeGTE {
+			continue
+		}
+		if pat.strokeLTE > 0 && c.ScienceStroke > pat.strokeLTE {
+			continue
+		}
+		if len(pat.wuxingIn) > 0 && !inSlice(c.WuXing, pat.wuxingIn) {
+			continue
+		}
+		if len(pat.wuxingNotIn) > 0 && inSlice(c.WuXing, pat.wuxingNotIn) {
+			continue
+		}
+		if len(pat.charIn) > 0 && !inSlice(c.Char, pat.charIn) {
+			continue
+		}
+		if pat.genderHint != "" && c.GenderHint != pat.genderHint && c.GenderHint != "neutral" {
+			continue
+		}
+		if pat.namingCategory != "" && !inSlice(pat.namingCategory, c.NamingCategory) {
+			continue
+		}
+		filtered = append(filtered, *h)
+	}
+	return filtered, nil
+}
+
+// SQLiteCharStore 最小接口（避免在 services 包 import sqlite 包造成循环依赖）
+//
+// sqlite.Store 已实现 SearchHanziByFilter(HanziFilter) []*database.Hanzi，
+// 但参数类型 HanziFilter 在 sqlite 包内部定义。本接口用更宽松的签名
+// 桥接，使 services 包只需 database.Hanzi 数据 + 基础过滤条件。
+type SQLiteCharStore interface {
+	SearchHanziByFilter(wuxing string, minStrokes, maxStrokes int,
+		hasPositive, isRegular bool, chars []string, limit int) []*database.Hanzi
+}
+
+// sqliteHanziFilterAdapter 桥接实现：把 SQLHanziFilter 调用转给 sqlite.Store
+//
+// 为什么不直接 import sqlite 包：services 包已被 application/handlers 引用，
+// 而 cmd/server 同时引用 services + sqlite，加 import 会让 services 反向依赖
+// infrastructure/database/sqlite，破坏分层。
+// 解法：services 定义接口 SQLiteCharStore（够用即可），由调用方注入实现。
+type sqliteHanziFilterAdapter struct {
+	store SQLiteCharStore
+}
+
+// NewSQLiteHanziFilter 创建基于 sqlite.Store 的过滤适配器
+//
+// 装配示例（cmd/server/main.go）：
+//
+//	filter := services.NewSQLiteHanziFilter(store)
+//	provider := &services.HanziDataProvider{}
+//	provider.SetSQLFilter(filter)
+//
+// 运行时：FindCharacters 优先走 SQL + 索引，失败降级到 Go 端全表过滤。
+func NewSQLiteHanziFilter(store SQLiteCharStore) SQLHanziFilter {
+	return &sqliteHanziFilterAdapter{store: store}
+}
+
+func (a *sqliteHanziFilterAdapter) SearchHanziByFilter(
+	wuxing string, minStrokes, maxStrokes int,
+	hasPositive, isRegular bool, chars []string, limit int,
+) []database.Hanzi {
+	if a.store == nil {
+		return nil
+	}
+	// 调底层 store 拿到 []*database.Hanzi，转 []database.Hanzi 返回
+	raw := a.store.SearchHanziByFilter(
+		wuxing, minStrokes, maxStrokes,
+		hasPositive, isRegular, chars, limit,
+	)
+	result := make([]database.Hanzi, 0, len(raw))
+	for i := range raw {
+		result = append(result, *raw[i])
+	}
+	return result
+}
+
+// 接口守卫：sqliteHanziFilterAdapter 必须实现 SQLHanziFilter
+var _ SQLHanziFilter = (*sqliteHanziFilterAdapter)(nil)
+
+// HasSQLiteCharStore 报告任意 store 是否实现了 SQLiteCharStore 接口（用于类型断言）
+//
+// 调用方在装配时不必关心 store 具体类型，通过此 helper 自动识别：
+//
+//	if services.HasSQLiteCharStore(store) {
+//	    filter := services.NewSQLiteHanziFilter(store.(services.SQLiteCharStore))
+//	    provider.SetSQLFilter(filter)
+//	}
+func HasSQLiteCharStore(store database.Store) bool {
+	_, ok := store.(SQLiteCharStore)
+	return ok
+}
+
+// AsSQLiteCharStore 桥接 database.Store 到 SQLiteCharStore（仅在 HasSQLiteCharStore 返回 true 时安全）
+//
+// 返回值供 NewSQLiteHanziFilter 消费。type assertion 失败时返回 nil。
+func AsSQLiteCharStore(store database.Store) SQLiteCharStore {
+	if s, ok := store.(SQLiteCharStore); ok {
+		return s
+	}
+	return nil
+}

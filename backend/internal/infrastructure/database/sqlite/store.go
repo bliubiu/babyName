@@ -3,6 +3,7 @@ package sqlite
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,12 +11,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	_ "modernc.org/sqlite"
 	"name/internal/domain/hanzi"
 	"name/internal/domain/yijing"
 	"name/internal/domain/zodiac"
 	"name/internal/infrastructure/database"
 	"name/internal/infrastructure/logger"
-	_ "modernc.org/sqlite"
 )
 
 type Store struct {
@@ -1059,4 +1060,115 @@ func mustMarshalJSON(v interface{}) string {
 		return "[]"
 	}
 	return string(data)
+}
+
+// SearchHanziByFilter 按基础过滤参数查询 hanzi_data（services.SQLiteCharStore 接口实现）
+//
+// services 包不能 import sqlite 包（分层约束），故用此最简基础参数签名
+// 让 *Store 同时实现 services.SQLiteCharStore 接口。组装时通过
+// services.NewSQLiteHanziFilter(store) 桥接：
+//
+//	if s, ok := store.(services.SQLiteCharStore); ok {
+//	    provider.SetSQLFilter(services.NewSQLiteHanziFilter(s))
+//	}
+//
+// 实现内联 SQL 查询（避免依赖 HanziFilter 类型）：动态构建 WHERE 子句，
+// 命中 idx_hanzi_data_wuxing / idx_hanzi_data_strokes 索引。
+func (s *Store) SearchHanziByFilter(
+	wuxing string, minStrokes, maxStrokes int,
+	hasPositive, isRegular bool, chars []string, limit int,
+) []*database.Hanzi {
+	var conditions []string
+	var args []any
+
+	if wuxing != "" {
+		conditions = append(conditions, "wuxing = ?")
+		args = append(args, wuxing)
+	}
+	if minStrokes > 0 {
+		conditions = append(conditions, "strokes >= ?")
+		args = append(args, minStrokes)
+	}
+	if maxStrokes > 0 {
+		conditions = append(conditions, "strokes <= ?")
+		args = append(args, maxStrokes)
+	}
+	if hasPositive {
+		conditions = append(conditions, "positive_score > 0")
+	}
+	if isRegular {
+		conditions = append(conditions, "usage_level IN (1, 2)")
+	}
+	if len(chars) > 0 {
+		placeholders := make([]string, len(chars))
+		for i, c := range chars {
+			placeholders[i] = "?"
+			args = append(args, c)
+		}
+		conditions = append(conditions, "char IN ("+strings.Join(placeholders, ",")+")")
+	}
+
+	if limit <= 0 {
+		limit = 10000
+	}
+
+	query := "SELECT char, pinyin, wuxing, strokes, usage_level, positive_score FROM hanzi_data"
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	query += " ORDER BY char LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		logger.Error("SearchHanziByFilter 查询失败", logger.ErrField(err))
+		return nil
+	}
+	defer rows.Close()
+
+	var result []*database.Hanzi
+	for rows.Next() {
+		var h database.Hanzi
+		if err := rows.Scan(&h.Char, &h.Pinyin, &h.Wuxing, &h.Strokes,
+			&h.UsageLevel, &h.PositiveScore); err != nil {
+			logger.Error("SearchHanziByFilter scan 失败", logger.ErrField(err))
+			continue
+		}
+		result = append(result, &h)
+	}
+	return result
+}
+
+// --- NameStatStore 占位实现 ---
+//
+// 背景：数据库.Store 接口组合了 NameStatStore（8 方法）。姓名统计数据
+// （姓氏/名/全名排行、姓名性别统计）由 data 目录 JSON 文件承载
+// （surname_stats.json 等，见 cmd/build_namestats），SQLite 无对应表。
+// 占位方法返回明确的"不支持"错误（而非静默空数据），让 /namestats/* 接口
+// 在接线真正实现前诚实报错，便于调用方降级。
+var errNameStatsUnavailable = errors.New("姓名统计数据未接入 SQLite 持久化，当前数据源为 data 目录 JSON 文件")
+
+func (s *Store) GetSurnameStats(limit int) ([]database.SurnameStat, error) {
+	return nil, errNameStatsUnavailable
+}
+func (s *Store) GetSurnameStat(surname string) (*database.SurnameStat, error) {
+	return nil, errNameStatsUnavailable
+}
+func (s *Store) GetGivenNameStats(surname string, limit int) ([]database.GivenNameStat, error) {
+	return nil, errNameStatsUnavailable
+}
+func (s *Store) GetFullNameStats(surname string, limit int) ([]database.FullNameStat, error) {
+	return nil, errNameStatsUnavailable
+}
+func (s *Store) GetFullNameStat(fullName string) (*database.FullNameStat, error) {
+	return nil, errNameStatsUnavailable
+}
+func (s *Store) GetNameGenderStats(name string) (*database.NameGenderStat, error) {
+	return nil, errNameStatsUnavailable
+}
+func (s *Store) GetTopFullNames(limit int) ([]database.FullNameStat, error) {
+	return nil, errNameStatsUnavailable
+}
+func (s *Store) GetTotalNameCount() (int, error) {
+	return 0, errNameStatsUnavailable
 }

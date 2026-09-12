@@ -84,6 +84,64 @@ type CuratedNameEntry struct {
 	Source  string  `json:"source,omitempty"`
 }
 
+// NameStatStore 姓名统计存储接口
+type NameStatStore interface {
+	GetSurnameStats(limit int) ([]SurnameStat, error)
+	GetSurnameStat(surname string) (*SurnameStat, error)
+	GetGivenNameStats(surname string, limit int) ([]GivenNameStat, error)
+	GetFullNameStats(surname string, limit int) ([]FullNameStat, error)
+	GetFullNameStat(fullName string) (*FullNameStat, error)
+	GetNameGenderStats(name string) (*NameGenderStat, error)
+	GetTopFullNames(limit int) ([]FullNameStat, error)
+	GetTotalNameCount() (int, error)
+}
+
+// SurnameStat 姓氏统计
+type SurnameStat struct {
+	Surname      string  `json:"surname"`
+	Count        int     `json:"count"`
+	Ratio        float64 `json:"ratio"`
+	Rank         int     `json:"rank"`
+	MaleRatio    float64 `json:"male_ratio"`
+	FemaleRatio  float64 `json:"female_ratio"`
+}
+
+// GivenNameStat 名字部分统计（按姓氏分组）
+type GivenNameStat struct {
+	Surname      string  `json:"surname"`
+	GivenName    string  `json:"given_name"`
+	Count        int     `json:"count"`
+	Rank         int     `json:"rank"`
+	MaleCount    int     `json:"male_count"`
+	FemaleCount  int     `json:"female_count"`
+	UnknownCount int     `json:"unknown_count"`
+}
+
+// FullNameStat 全名统计
+type FullNameStat struct {
+	FullName     string  `json:"full_name"`
+	Surname      string  `json:"surname"`
+	GivenName    string  `json:"given_name"`
+	Count        int     `json:"count"`
+	MaleCount    int     `json:"male_count"`
+	FemaleCount  int     `json:"female_count"`
+	UnknownCount int     `json:"unknown_count"`
+	Rank         int     `json:"rank"`
+	MaleRatio    float64 `json:"male_ratio,omitempty"`
+	FemaleRatio  float64 `json:"female_ratio,omitempty"`
+}
+
+// NameGenderStat 名字性别统计
+type NameGenderStat struct {
+	Name         string  `json:"name"`
+	MaleCount    int     `json:"male_count"`
+	FemaleCount  int     `json:"female_count"`
+	UnknownCount int     `json:"unknown_count"`
+	TotalCount   int     `json:"total_count"`
+	MaleRatio    float64 `json:"male_ratio"`
+	FemaleRatio  float64 `json:"female_ratio"`
+}
+
 // Store 定义完整存储接口（向后兼容，组合所有子接口）
 type Store interface {
 	HistoryStore
@@ -93,6 +151,7 @@ type Store interface {
 	YijingStore
 	ZodiacStore
 	CuratedStore
+	NameStatStore
 }
 
 // HistoryRecord 历史记录结构
@@ -126,6 +185,12 @@ type Hanzi struct {
 	Pinyin  string `json:"pinyin"`
 	Wuxing  string `json:"wuxing"`
 	Strokes int    `json:"strokes"`
+
+	// SQLite 下沉扩展（2026.09.01.4）：通用过滤需要的字段
+	// UsageLevel 常用等级（1-5），与 namer.json 同源
+	UsageLevel int `json:"usage_level,omitempty"`
+	// PositiveScore 寓意评分（0-100），与 namer.json 同源
+	PositiveScore int `json:"positive_score,omitempty"`
 }
 
 // NameRequest 名字生成请求记录

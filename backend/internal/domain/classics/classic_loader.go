@@ -6,11 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"unicode"
 
+	"go.uber.org/zap"
 	"name/internal/domain/hanzi"
 	"name/internal/infrastructure/logger"
-	"go.uber.org/zap"
 )
 
 // ============================================================
@@ -47,14 +48,14 @@ type guWenChapter struct {
 
 // GuWenEntry 古文观止适配器（实现 poemEntry）
 type GuWenEntry struct {
-	Title    string
-	Content  []string
-	Source   string
+	Title   string
+	Content []string
+	Source  string
 }
 
 func (e GuWenEntry) GetTitle() string     { return e.Title }
-func (e GuWenEntry) GetContent() []string  { return e.Content }
-func (e GuWenEntry) GetSource() string     { return e.Source }
+func (e GuWenEntry) GetContent() []string { return e.Content }
+func (e GuWenEntry) GetSource() string    { return e.Source }
 
 // ShiCiEntry 诗词 JSON 条目（shici.json 格式）
 type ShiCiEntry struct {
@@ -68,7 +69,7 @@ type ShiCiEntry struct {
 }
 
 func (e ShiCiEntry) GetTitle() string     { return e.Title }
-func (e ShiCiEntry) GetContent() []string  { return e.Paragraphs }
+func (e ShiCiEntry) GetContent() []string { return e.Paragraphs }
 func (e ShiCiEntry) GetSource() string {
 	if e.Source != "" {
 		return e.Source
@@ -81,14 +82,14 @@ func (e ShiCiEntry) GetSource() string {
 // 适用于：lunyu, mengzi, daxue, zhongyong, sanzijing, qianziwen,
 // dizigui, youxueqionglin, zengguangxianwen, shenglvqimeng 等
 type ClassicSection struct {
-	Title    string
-	Content  []string
-	Source   string
+	Title   string
+	Content []string
+	Source  string
 }
 
 func (s ClassicSection) GetTitle() string     { return s.Title }
-func (s ClassicSection) GetContent() []string  { return s.Content }
-func (s ClassicSection) GetSource() string     { return s.Source }
+func (s ClassicSection) GetContent() []string { return s.Content }
+func (s ClassicSection) GetSource() string    { return s.Source }
 
 // ============================================================
 // poemEntry 通用诗歌条目接口
@@ -106,12 +107,15 @@ func (e ShiJingEntry) GetContent() []string { return e.Content }
 func (e ShiJingEntry) GetSource() string    { return "诗经" }
 
 // ChuCiEntry 实现 poemEntry
-func (e ChuCiEntry) GetTitle() string   { return e.Title }
+func (e ChuCiEntry) GetTitle() string     { return e.Title }
 func (e ChuCiEntry) GetContent() []string { return e.Content }
 func (e ChuCiEntry) GetSource() string    { return "楚辞" }
 
 // shiciReady 通道，shici.json 加载完成后关闭
 var shiciReady = make(chan struct{})
+
+// loadShiCiOnce 保证 shici 异步加载只启动一次（多次 assembly/测试不会重复 close 通道）
+var loadShiCiOnce sync.Once
 
 // ensureShiCiLoaded 确保唐诗宋词数据已加载完成
 // 适用于异步加载场景：shici.json（6.7MB）后台加载，业务入口处同步等待
@@ -121,17 +125,17 @@ func ensureShiCiLoaded() {
 
 // loadShiCiAsync 在后台协程中加载 shici.json，不阻塞启动
 func loadShiCiAsync(dataDir string) {
-	go func() {
-		if err := loadShiCiFromJSON(dataDir); err != nil {
-			logger.Error("唐诗宋词后台加载失败", zap.Error(err))
-		}
-		close(shiciReady)
-	}()
+	loadShiCiOnce.Do(func() {
+		go func() {
+			if err := loadShiCiFromJSON(dataDir); err != nil {
+				logger.Error("唐诗宋词后台加载失败", zap.Error(err))
+			}
+			close(shiciReady)
+		}()
 
-	logger.Info("唐诗宋词数据已提交后台加载（6.7MB），不阻塞启动")
+		logger.Info("唐诗宋词数据已提交后台加载（6.7MB），不阻塞启动")
+	})
 }
-
-
 
 // ============================================================
 // 加载函数——每个经典文件一个

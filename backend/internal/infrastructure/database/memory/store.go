@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"errors"
 	"sort"
 	"strings"
 	"sync"
@@ -14,16 +15,16 @@ import (
 )
 
 type Store struct {
-	mu              sync.RWMutex
-	History         map[string]*database.HistoryRecord
-	Favorites       map[string]*database.FavoriteRecord
-	FavoritesByName map[string]*database.FavoriteRecord // 以"surname:givenName"为键的索引
-	Curated         map[string]*database.CuratedNameEntry
-	Hexagrams       []yijing.Hexagram
+	mu                sync.RWMutex
+	History           map[string]*database.HistoryRecord
+	Favorites         map[string]*database.FavoriteRecord
+	FavoritesByName   map[string]*database.FavoriteRecord // 以"surname:givenName"为键的索引
+	Curated           map[string]*database.CuratedNameEntry
+	Hexagrams         []yijing.Hexagram
 	HexagramsByNumber map[int]*yijing.Hexagram // 以编号为键的索引
-	Zodiacs         []zodiac.Zodiac
-	ZodiacsByName   map[string]*zodiac.Zodiac // 以名称为键的索引
-	currentHistoryID int64
+	Zodiacs           []zodiac.Zodiac
+	ZodiacsByName     map[string]*zodiac.Zodiac // 以名称为键的索引
+	currentHistoryID  int64
 }
 
 // 确保Store实现了database.Store接口
@@ -32,27 +33,27 @@ var _ database.Store = (*Store)(nil)
 func NewStore() *Store {
 	hexagrams := yijing.GetAllHexagrams()
 	zodiacs := zodiac.GetAllZodiacs()
-	
+
 	// 构建索引
 	hexagramsByNumber := make(map[int]*yijing.Hexagram)
 	for i := range hexagrams {
 		hexagramsByNumber[hexagrams[i].Number] = &hexagrams[i]
 	}
-	
+
 	zodiacsByName := make(map[string]*zodiac.Zodiac)
 	for i := range zodiacs {
 		zodiacsByName[zodiacs[i].Name] = &zodiacs[i]
 	}
-	
+
 	store := &Store{
-		History:          make(map[string]*database.HistoryRecord),
-		Favorites:        make(map[string]*database.FavoriteRecord),
-		FavoritesByName:  make(map[string]*database.FavoriteRecord),
-		Curated:          make(map[string]*database.CuratedNameEntry),
-		Hexagrams:        hexagrams,
+		History:           make(map[string]*database.HistoryRecord),
+		Favorites:         make(map[string]*database.FavoriteRecord),
+		FavoritesByName:   make(map[string]*database.FavoriteRecord),
+		Curated:           make(map[string]*database.CuratedNameEntry),
+		Hexagrams:         hexagrams,
 		HexagramsByNumber: hexagramsByNumber,
-		Zodiacs:          zodiacs,
-		ZodiacsByName:    zodiacsByName,
+		Zodiacs:           zodiacs,
+		ZodiacsByName:     zodiacsByName,
 	}
 	return store
 }
@@ -472,4 +473,42 @@ func paginate(total, page, limit int) (start, end int) {
 		end = total
 	}
 	return
+}
+
+// --- NameStatStore 占位实现 ---
+
+// errNameStatsUnavailable 姓名统计数据不保存在内存模式（无持久化），
+// 返回显式错误而非静默空数据，避免调用方误以为"查询无结果"。
+var errNameStatsUnavailable = errors.New("姓名统计数据未接入内存持久化，当前数据源为 data 目录 JSON 文件")
+
+func (s *Store) GetSurnameStats(limit int) ([]database.SurnameStat, error) {
+	return nil, errNameStatsUnavailable
+}
+
+func (s *Store) GetSurnameStat(surname string) (*database.SurnameStat, error) {
+	return nil, errNameStatsUnavailable
+}
+
+func (s *Store) GetGivenNameStats(surname string, limit int) ([]database.GivenNameStat, error) {
+	return nil, errNameStatsUnavailable
+}
+
+func (s *Store) GetFullNameStats(surname string, limit int) ([]database.FullNameStat, error) {
+	return nil, errNameStatsUnavailable
+}
+
+func (s *Store) GetFullNameStat(fullName string) (*database.FullNameStat, error) {
+	return nil, errNameStatsUnavailable
+}
+
+func (s *Store) GetNameGenderStats(name string) (*database.NameGenderStat, error) {
+	return nil, errNameStatsUnavailable
+}
+
+func (s *Store) GetTopFullNames(limit int) ([]database.FullNameStat, error) {
+	return nil, errNameStatsUnavailable
+}
+
+func (s *Store) GetTotalNameCount() (int, error) {
+	return 0, errNameStatsUnavailable
 }
