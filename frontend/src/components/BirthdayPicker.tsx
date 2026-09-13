@@ -4,6 +4,7 @@ import { useState } from 'react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { zhCN } from 'date-fns/locale';
+import { getShichenBoundaryWarning, getShichenName } from '@/lib/shichen';
 
 interface BirthdayPickerProps {
   onConfirm: (data: {
@@ -71,13 +72,27 @@ export function BirthdayPicker({ onConfirm, initialDisplay = '请选择出生时
                 {selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月{selectedDate.getDate()}日 {selectedDate.getHours()}时{selectedDate.getMinutes()}分
               </div>
 
+              <div className="mb-2 text-center text-sm text-ink-light">
+                时辰：<span className="text-crimson font-medium">{getShichenName(selectedDate.getHours())}时</span>
+                <span className="ml-2">（排盘按时辰起算，请尽量选准分钟）</span>
+              </div>
+
+              {(() => {
+                const warning = getShichenBoundaryWarning(selectedDate.getHours(), selectedDate.getMinutes());
+                return warning ? (
+                  <div className="mb-4 p-2.5 bg-amber-50/80 border border-amber-300/40 rounded-lg text-amber-800 text-xs leading-relaxed">
+                    {warning}
+                  </div>
+                ) : null;
+              })()}
+
               <div className="mb-6">
                 <DatePicker
                   selected={selectedDate}
                   onChange={(date: Date | null) => setSelectedDate(date || new Date())}
                   showTimeSelect
                   timeFormat="HH:mm"
-                  timeIntervals={15}
+                  timeIntervals={1}
                   dateFormat="yyyy-MM-dd HH:mm"
                   className="input-field"
                   locale={zhCN}
