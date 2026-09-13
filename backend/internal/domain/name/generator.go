@@ -7,42 +7,45 @@ import (
 
 // Name 名字结构
 type Name struct {
-	ID              int64     `json:"id"`
-	Surname         string    `json:"surname"`
-	Generation      string    `json:"generation"`
-	GivenName       string    `json:"given_name"`
-	FullName        string    `json:"full_name"`
-	Pinyin          string    `json:"pinyin"`
-	Meaning         string    `json:"meaning"`
-	Wuxing          string    `json:"wuxing"`
-	Nayin           string    `json:"nayin"`
-	Strokes         int       `json:"strokes"`
-	Gender          string    `json:"gender"`
-	BaZiScore       int       `json:"bazi_score"`
-	Huangli         string    `json:"huangli"`
-	Xiang           string    `json:"xiang"`
-	PoetrySource    string    `json:"poetry_source"`
-	PoetryChapter   string    `json:"poetry_chapter"`
-	PoetrySentence  string    `json:"poetry_sentence"`
-	WuxingAnalysis  string    `json:"wuxing_analysis"`
-	BaziScoreDetail string    `json:"bazi_score_detail"`
-	Yinyun          string    `json:"yinyun"`
-	Reasons         []string  `json:"reasons"`
+	ID              int64    `json:"id"`
+	Surname         string   `json:"surname"`
+	Generation      string   `json:"generation"`
+	GivenName       string   `json:"given_name"`
+	FullName        string   `json:"full_name"`
+	Pinyin          string   `json:"pinyin"`
+	Meaning         string   `json:"meaning"`
+	Wuxing          string   `json:"wuxing"`
+	Nayin           string   `json:"nayin"`
+	Strokes         int      `json:"strokes"`
+	Gender          string   `json:"gender"`
+	BaZiScore       int      `json:"bazi_score"`
+	Huangli         string   `json:"huangli"`
+	Xiang           string   `json:"xiang"`
+	PoetrySource    string   `json:"poetry_source"`
+	PoetryChapter   string   `json:"poetry_chapter"`
+	PoetrySentence  string   `json:"poetry_sentence"`
+	PoetryAuthor    string   `json:"poetry_author,omitempty"`
+	PoetryDynasty   string   `json:"poetry_dynasty,omitempty"`
+	PoetryFullText  string   `json:"poetry_full_text,omitempty"`
+	WuxingAnalysis  string   `json:"wuxing_analysis"`
+	BaziScoreDetail string   `json:"bazi_score_detail"`
+	Yinyun          string   `json:"yinyun"`
+	Reasons         []string `json:"reasons"`
 
 	// 统一评分体系（多维度综合评分）
-	TotalScore    float64 `json:"total_score"`    // 综合评分（0-100）
-	WuxingScore   float64 `json:"wuxing_score"`   // 五行评分
-	YinyunScore   float64 `json:"yinyun_score"`   // 音韵评分
-	MeaningScore  float64 `json:"meaning_score"`  // 字义评分
-	SancaiScore   float64 `json:"sancai_score"`   // 天地人三才评分
-	ZodiacScore   float64 `json:"zodiac_score"`   // 生肖评分
-	NayinScore    float64 `json:"nayin_score"`    // 纳音评分
-	NoveltyScore  float64 `json:"novelty_score"`  // 新颖度评分
-	BigramScore   float64 `json:"bigram_score"`   // 诗词共现评分
-	FrequencyScore float64 `json:"frequency_score"` // 人名频率评分（来自 Chinese-Names-Corpus 语料统计）
-	SancaiAnalysis string  `json:"sancai_analysis"` // 三才分析详情
-	Hexagram       string  `json:"hexagram"`          // 卦象名称
-	HexagramMeaning string `json:"hexagram_meaning"` // 卦象解读
+	TotalScore      float64 `json:"total_score"`      // 综合评分（0-100）
+	WuxingScore     float64 `json:"wuxing_score"`     // 五行评分
+	YinyunScore     float64 `json:"yinyun_score"`     // 音韵评分
+	MeaningScore    float64 `json:"meaning_score"`    // 字义评分
+	SancaiScore     float64 `json:"sancai_score"`     // 天地人三才评分
+	ZodiacScore     float64 `json:"zodiac_score"`     // 生肖评分
+	NayinScore      float64 `json:"nayin_score"`      // 纳音评分
+	NoveltyScore    float64 `json:"novelty_score"`    // 新颖度评分
+	BigramScore     float64 `json:"bigram_score"`     // 诗词共现评分
+	FrequencyScore  float64 `json:"frequency_score"`  // 人名频率评分（来自 Chinese-Names-Corpus 语料统计）
+	SancaiAnalysis  string  `json:"sancai_analysis"`  // 三才分析详情
+	Hexagram        string  `json:"hexagram"`         // 卦象名称
+	HexagramMeaning string  `json:"hexagram_meaning"` // 卦象解读
 }
 
 // ScoreDetailItem 单维度评分明细（确定性评分数据载体）
@@ -51,20 +54,20 @@ type Name struct {
 // 按"维度名/分数/依据文字"平铺为数组，使前端无需硬编码维度即可
 // 渲染评分分解与"为什么是这个分"的文字依据。
 type ScoreDetailItem struct {
-	Name   string  `json:"name"`            // 维度名（五行八字/音韵/文化印象/三才/生肖/新颖度/共现/人名频率）
-	Score  float64 `json:"score"`           // 该维度得分（0-100）
-	Detail string  `json:"detail"`          // 评分依据文字
+	Name   string  `json:"name"`   // 维度名（五行八字/音韵/文化印象/三才/生肖/新颖度/共现/人名频率）
+	Score  float64 `json:"score"`  // 该维度得分（0-100）
+	Detail string  `json:"detail"` // 评分依据文字
 }
 
 // NameAnalysis 名字详细分析结果（GenerateWithAnalysis 响应结构）
 type NameAnalysis struct {
 	// 基础信息
-	Surname        string `json:"surname"`
-	GivenName      string `json:"given_name"`
-	FullName       string `json:"full_name"`
-	Pinyin         string `json:"pinyin"`
-	Strokes        int    `json:"strokes"`
-	Gender         string `json:"gender"`
+	Surname   string `json:"surname"`
+	GivenName string `json:"given_name"`
+	FullName  string `json:"full_name"`
+	Pinyin    string `json:"pinyin"`
+	Strokes   int    `json:"strokes"`
+	Gender    string `json:"gender"`
 
 	// 五行分析
 	Wuxing         string  `json:"wuxing"`
@@ -72,17 +75,17 @@ type NameAnalysis struct {
 	WuxingScore    float64 `json:"wuxing_score"`
 
 	// 八字分析
-	BaziScore      int      `json:"bazi_score"`
-	BaziAnalysis   string   `json:"bazi_analysis"`
-	Xiyongshen     []string `json:"xiyongshen"`
+	BaziScore    int      `json:"bazi_score"`
+	BaziAnalysis string   `json:"bazi_analysis"`
+	Xiyongshen   []string `json:"xiyongshen"`
 
 	// 音韵分析
 	YinyunScore    float64 `json:"yinyun_score"`
 	YinyunAnalysis string  `json:"yinyun_analysis"`
 
 	// 字义分析
-	MeaningScore   float64 `json:"meaning_score"`
-	MeaningDetail  string  `json:"meaning_detail"`
+	MeaningScore  float64 `json:"meaning_score"`
+	MeaningDetail string  `json:"meaning_detail"`
 
 	// 易经分析
 	Hexagram        string `json:"hexagram"`
@@ -134,12 +137,12 @@ type NameAnalysis struct {
 
 // NameChar 汉字字符
 type NameChar struct {
-	Char      string
-	Pinyin    string
-	Meaning   string
-	Wuxing    string
-	Strokes   int
-	Gender    string
+	Char    string
+	Pinyin  string
+	Meaning string
+	Wuxing  string
+	Strokes int
+	Gender  string
 }
 
 // GenerateOptions 名字生成选项

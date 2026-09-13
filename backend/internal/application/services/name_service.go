@@ -308,12 +308,14 @@ func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateReq
 		return nil, errors.NewError(errors.ErrCodeBadRequest, "无法生成符合条件的名字，请调整筛选条件")
 	}
 
-	return convertFateToNameNames(output.TopNames), nil
+	return convertFateToNameNames(output.TopNames, req.Gender), nil
 }
 
 // convertFateToNameNames 将 fate 引擎的 NameResult 转换为旧 name.Name 结构
 // 保留 fate 的多维度评分（Items 映射到各分数字段），以便 buildResponse 和前端能正常渲染
-func convertFateToNameNames(results []fate.NameResult) []name.Name {
+// gender 为请求方性别（fate.NameResult 无该字段），并同步做诗词出处结构化回填
+// （enrichPoetryForName，与 GenerateWithAnalysis 路径对齐）。
+func convertFateToNameNames(results []fate.NameResult, gender string) []name.Name {
 	names := make([]name.Name, len(results))
 	for i, nr := range results {
 		n := name.Name{
@@ -322,18 +324,21 @@ func convertFateToNameNames(results []fate.NameResult) []name.Name {
 			GivenName:  nr.GivenName,
 			FullName:   nr.FullName,
 			Pinyin:     nr.Pinyin,
+			Gender:     gender,
 			Meaning:    nr.Meaning,
 			Wuxing:     nr.WuXing,
 			Strokes:    nr.Strokes,
 			TotalScore: nr.Score.Total,
 		}
-		// 诗词出处映射
+		// 诗词出处映射（临时预填引擎原句，enrichPoetryForName 命中索引时覆盖为典籍名）
 		if nr.PoetryFrom != "" {
 			n.PoetrySource = nr.PoetryFrom
 			if n.Meaning == "" {
 				n.Meaning = "出自" + nr.PoetryFrom
 			}
 		}
+		// 出典完整结构化回填（作品·篇目·原句·作者·朝代·全诗），与 analysis 路径一致
+		enrichPoetryForName(&n, nr.GivenName)
 		// 多维度评分映射（fate Rater 链产出的 Items → name.Name 分数字段）
 		// 与 fate_name_service.go 保持一致：三才、共现、新颖度同步映射（此前版本漏三才）
 		for k, v := range nr.Score.Items {

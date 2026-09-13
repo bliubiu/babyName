@@ -155,6 +155,7 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 			FullName:   nr.FullName,
 			Pinyin:     nr.Pinyin,
 			Strokes:    nr.Strokes,
+			Gender:     req.Gender,
 			Wuxing:     nr.WuXing,
 			TotalScore: nr.Score.Total,
 		}
@@ -324,6 +325,45 @@ func incrementWuxing(w *bazi.WuxingResult, wuxing string) {
 	}
 }
 
+// poetryBackfill 诗词出处结构化回填内容（典籍名/篇目/原句/作者/朝代/全诗）
+// 由 resolvePoetry 依据 givenName 反查 classics.PoemIndex 生成，
+// enrichPoetrySource（NameAnalysis）与 enrichPoetryForName（Name）共用。
+type poetryBackfill struct {
+	Source   string
+	Chapter  string
+	Sentence string
+	Author   string
+	Dynasty  string
+	FullText string
+}
+
+// resolvePoetry 按名字反查 classics.PoemIndex 的结构化出处；查不到时返回 ok=false。
+// 命中时 Source/Chapter 仅在原数据非空时填充（保留调用方预填的引擎原句兜底语义）。
+func resolvePoetry(givenName string) (poetryBackfill, bool) {
+	result := classics.QueryNamePoetry(givenName)
+	if result == nil || result.BestMatch == nil || result.BestMatch.Poem == nil {
+		return poetryBackfill{}, false
+	}
+	poem := result.BestMatch.Poem
+	match := result.BestMatch
+
+	b := poetryBackfill{
+		Author:   poem.Author,
+		Dynasty:  poem.Dynasty,
+		FullText: strings.Join(poem.Content, "｜"),
+	}
+	if poem.Source != "" {
+		b.Source = poem.Source
+	}
+	if poem.Title != "" {
+		b.Chapter = poem.Title
+	}
+	if match.Quote != "" {
+		b.Sentence = match.Quote
+	}
+	return b, true
+}
+
 // enrichPoetrySource 按名字反查 classics.PoemIndex，结构化回填诗词出处
 //
 // 引擎的 NameResult.PoetryFrom 只含格式化的"「原句」"文本，无篇目/作者/朝代/全诗，
@@ -343,35 +383,59 @@ func enrichPoetrySource(na *name.NameAnalysis, givenName string) {
 	if na == nil || givenName == "" {
 		return
 	}
-	result := classics.QueryNamePoetry(givenName)
-	if result == nil || result.BestMatch == nil || result.BestMatch.Poem == nil {
+	b, ok := resolvePoetry(givenName)
+	if !ok {
 		// JSON 索引未覆盖：原 PoetrySource 留空，PoetrySentence 兜底引擎原句
 		if na.PoetrySentence == "" {
 			na.PoetrySentence = na.PoetrySource
 		}
 		return
 	}
-	poem := result.BestMatch.Poem
-	match := result.BestMatch
-
-	// 典籍名：取自 PoemEntry.Source（诗经/楚辞/唐诗/宋词等）
-	if poem.Source != "" {
-		na.PoetrySource = poem.Source
+	if b.Source != "" {
+		na.PoetrySource = b.Source
 	}
-	// 篇目：取自 PoemEntry.Title（如「关雎」）
-	if poem.Title != "" {
-		na.PoetryChapter = poem.Title
+	if b.Chapter != "" {
+		na.PoetryChapter = b.Chapter
 	}
-	// 原句：优先 BestMatch.Quote（findQuoteWithChars 已筛含名字原字的最短句）
-	if match.Quote != "" {
-		na.PoetrySentence = match.Quote
+	if b.Sentence != "" {
+		na.PoetrySentence = b.Sentence
 	} else if na.PoetrySentence == "" {
 		na.PoetrySentence = na.PoetrySource
 	}
-	na.PoetryAuthor = poem.Author
-	na.PoetryDynasty = poem.Dynasty
-	// 全诗：用竖线分隔 PoemEntry.Content 数组，便于前端段落分隔展示
-	na.PoetryFullText = strings.Join(poem.Content, "｜")
+	na.PoetryAuthor = b.Author
+	na.PoetryDynasty = b.Dynasty
+	na.PoetryFullText = b.FullText
+}
+
+// enrichPoetryForName 与 enrichPoetrySource 同语义，作用于 Generate 路径的 name.Name：
+// 旧路径此前只把引擎格式化原句「…」塞入 PoetrySource，前端渲染成《「…」》格式错误；
+// 复用结构化回填后 PoetrySource 恒为典籍名，原句走 PoetrySentence。
+func enrichPoetryForName(n *name.Name, givenName string) {
+	if n == nil || givenName == "" {
+		return
+	}
+	b, ok := resolvePoetry(givenName)
+	if !ok {
+		// JSON 索引未覆盖：原 PoetrySource 留空，PoetrySentence 兜底引擎原句
+		if n.PoetrySentence == "" {
+			n.PoetrySentence = n.PoetrySource
+		}
+		return
+	}
+	if b.Source != "" {
+		n.PoetrySource = b.Source
+	}
+	if b.Chapter != "" {
+		n.PoetryChapter = b.Chapter
+	}
+	if b.Sentence != "" {
+		n.PoetrySentence = b.Sentence
+	} else if n.PoetrySentence == "" {
+		n.PoetrySentence = n.PoetrySource
+	}
+	n.PoetryAuthor = b.Author
+	n.PoetryDynasty = b.Dynasty
+	n.PoetryFullText = b.FullText
 }
 
 // resolveExtraChars 根据请求的诗词/经典来源解析额外候选字
