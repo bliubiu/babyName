@@ -28,7 +28,7 @@ type arrayWork struct {
 	Dynasty    string   `json:"dynasty"`
 	Type       string   `json:"type"`
 	Chapter    string   `json:"chapter"`
-	Section   string   `json:"section"`
+	Section    string   `json:"section"`
 	Content    []string `json:"content"`
 	Paragraphs []string `json:"paragraphs"`
 	Source     string   `json:"source"`
@@ -118,19 +118,19 @@ type bookObject struct {
 
 type bookChapter struct {
 	Title      string   `json:"title"`
-	Chapter   string   `json:"chapter"`
-	Author    string   `json:"author"`
-	Source    string   `json:"source"`
+	Chapter    string   `json:"chapter"`
+	Author     string   `json:"author"`
+	Source     string   `json:"source"`
 	Paragraphs []string `json:"paragraphs"`
 }
 
 // baijiaxing 百家姓特殊结构
 type baijiaxing struct {
-	Title   string       `json:"title"`
-	Author  string       `json:"author"`
-	Dynasty string       `json:"dynasty"`
-	Book    string       `json:"book"`
-	Tags    []string     `json:"tags"`
+	Title   string          `json:"title"`
+	Author  string          `json:"author"`
+	Dynasty string          `json:"dynasty"`
+	Book    string          `json:"book"`
+	Tags    []string        `json:"tags"`
 	Origin  []surnameOrigin `json:"origin"`
 }
 
@@ -152,29 +152,29 @@ type qianziwen struct {
 
 // 需要导入的 JSON 文件列表及其分类
 var classicsFileCategory = map[string]string{
-	"shijing.json":           "诗经",
-	"shici.json":             "诗词",
-	"chuci.json":             "楚辞",
-	"yuanqu.json":            "元曲",
-	"yuefu.json":             "乐府",
-	"cifu.json":              "辞赋",
-	"yijing.json":            "易经",
-	"lunyu.json":             "四书",
-	"mengzi.json":            "四书",
-	"daxue.json":             "四书",
-	"zhongyong.json":         "四书",
-	"sanzijing-new.json":     "蒙学",
+	"shijing.json":               "诗经",
+	"shici.json":                 "诗词",
+	"chuci.json":                 "楚辞",
+	"yuanqu.json":                "元曲",
+	"yuefu.json":                 "乐府",
+	"cifu.json":                  "辞赋",
+	"yijing.json":                "易经",
+	"lunyu.json":                 "四书",
+	"mengzi.json":                "四书",
+	"daxue.json":                 "四书",
+	"zhongyong.json":             "四书",
+	"sanzijing-new.json":         "蒙学",
 	"sanzijing-traditional.json": "蒙学",
-	"baijiaxing.json":        "蒙学",
-	"qianziwen.json":         "蒙学",
-	"qianjiashi.json":        "蒙学",
-	"dizigui.json":           "蒙学",
-	"shenglvqimeng.json":     "蒙学",
-	"youxueqionglin.json":    "蒙学",
-	"zengguangxianwen.json":  "蒙学",
-	"guwenguanzhi.json":      "蒙学",
-	"zhuzijiaxun.json":       "蒙学",
-	"wenzimengqiu.json":      "蒙学",
+	"baijiaxing.json":            "蒙学",
+	"qianziwen.json":             "蒙学",
+	"qianjiashi.json":            "蒙学",
+	"dizigui.json":               "蒙学",
+	"shenglvqimeng.json":         "蒙学",
+	"youxueqionglin.json":        "蒙学",
+	"zengguangxianwen.json":      "蒙学",
+	"guwenguanzhi.json":          "蒙学",
+	"zhuzijiaxun.json":           "蒙学",
+	"wenzimengqiu.json":          "蒙学",
 }
 
 // 排除的文件
@@ -187,15 +187,30 @@ var excludedClassicsFiles = map[string]bool{
 }
 
 // seedClassicsData 将 JSON 文件中的经典数据导入 SQLite
+// 通过 data_meta 中的 classics_version 与 data 目录对拍：版本变化时强制重建，避免 JSON 热更新后双源漂移。
 func (s *Store) seedClassicsData(dataDir string) error {
-	// 检查是否已有数据
+	version := classicsDataVersion(dataDir)
+
+	stored := ""
+	_ = s.db.QueryRow(`SELECT value FROM data_meta WHERE key = 'classics_version'`).Scan(&stored)
+
 	var count int
 	if err := s.db.QueryRow("SELECT COUNT(*) FROM classics_books").Scan(&count); err != nil {
 		return fmt.Errorf("检查经典数据失败: %w", err)
 	}
-	if count > 0 {
-		logger.Info("经典数据已存在，跳过导入")
+
+	if count > 0 && stored == version {
+		logger.Info("经典数据版本一致，跳过导入", logger.String("version", version))
 		return nil
+	}
+
+	if count > 0 {
+		logger.Info("经典数据版本变化，强制重建",
+			logger.String("old", stored),
+			logger.String("new", version))
+		if err := s.clearClassicsTables(); err != nil {
+			return fmt.Errorf("清理旧经典数据失败: %w", err)
+		}
 	}
 
 	entries, err := os.ReadDir(dataDir)
@@ -203,6 +218,7 @@ func (s *Store) seedClassicsData(dataDir string) error {
 		return fmt.Errorf("读取数据目录失败: %w", err)
 	}
 
+	imported := 0
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
@@ -212,7 +228,6 @@ func (s *Store) seedClassicsData(dataDir string) error {
 		}
 		category, ok := classicsFileCategory[entry.Name()]
 		if !ok {
-			logger.Warn("未分类的 JSON 文件，跳过导入", logger.String("file", entry.Name()))
 			continue
 		}
 
@@ -223,10 +238,82 @@ func (s *Store) seedClassicsData(dataDir string) error {
 				logger.ErrField(err))
 			continue
 		}
-		logger.Info("经典数据导入成功", logger.String("file", entry.Name()))
+		imported++
 	}
 
+	if err := s.saveMeta("classics_version", version); err != nil {
+		return fmt.Errorf("保存经典数据版本失败: %w", err)
+	}
+	logger.Info("经典数据导入完成",
+		logger.Int("files", imported),
+		logger.String("version", version))
 	return nil
+}
+
+// classicsDataVersion 根据经典 JSON 文件名+大小生成版本指纹
+func classicsDataVersion(dataDir string) string {
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		return "dir-error"
+	}
+	h := new(strings.Builder)
+	var total int64
+	n := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		if excludedClassicsFiles[e.Name()] {
+			continue
+		}
+		if _, ok := classicsFileCategory[e.Name()]; !ok {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		fmt.Fprintf(h, "%s:%d;", e.Name(), info.Size())
+		total += info.Size()
+		n++
+	}
+	return fmt.Sprintf("n=%d;size=%d;%s", n, total, h.String())
+}
+
+// clearClassicsTables 清空经典三表（重建用）
+func (s *Store) clearClassicsTables() error {
+	tx, err := s.writeDB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, q := range []string{
+		`DELETE FROM classics_paragraphs`,
+		`DELETE FROM classics_sections`,
+		`DELETE FROM classics_books`,
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// saveMeta 写入 data_meta
+func (s *Store) saveMeta(key, value string) error {
+	_, err := s.writeDB.Exec(
+		`INSERT INTO data_meta (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
+		key, value,
+	)
+	return err
+}
+
+// GetClassicsDataVersion 读取当前经典数据版本指纹
+func (s *Store) GetClassicsDataVersion() string {
+	var v string
+	_ = s.db.QueryRow(`SELECT value FROM data_meta WHERE key = 'classics_version'`).Scan(&v)
+	return v
 }
 
 // importClassicsFile 导入单个 JSON 文件

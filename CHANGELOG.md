@@ -5,6 +5,30 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.09.13.3]
+
+### 🐛 Bug Fixes 问题修复
+
+- 【bazi】喜用神与五行力量升级为 **藏干加权 + 月令权重**（P2）：
+  - 新增 `DizhiHiddenStems`（12 地支本气/中气/余气权重）
+  - `CalculateWeightedWuxing`：天干 1.0 + 藏干权重；整柱月令 ×1.5
+  - 日主强弱计入印绶与月支同气；喜用神按身旺克泄/身弱生扶并补最缺五行
+  - 展示用 `Wuxing` 由加权分四舍五入，API 字段兼容
+- 【bazi】`AnalyzeBazi` 不再硬编码 `GetHexagramByStrokes(10)` 占位卦；姓名卦在起名服务层按笔画计算
+- 【sqlite】经典数据 `seedClassicsData` 通过 `data_meta.classics_version` 对拍 JSON 目录指纹，版本变化强制重建三表，消除 JSON 热更新后双源静默漂移
+
+### ✨ New Features 新增功能
+
+- 【tools】新增 `cmd/check_json`：校验 64 卦结构/象辞≠卦辞/爻数、namer、经典 JSON 可解析、962 条禁忌组合，可作 CI 步骤（`go run ./cmd/check_json -data ./data`）
+
+### 🧪 Tests 测试
+
+- 新增 `bazi/wuxing_weighted_test.go`：藏干覆盖、月令放大、身旺/身衰喜用神方向、无硬编码卦
+- `go test ./internal/domain/bazi ./internal/infrastructure/database/sqlite` 全绿
+- `go run ./cmd/check_json` 通过
+
+---
+
 ## [2026.09.13.2]
 
 ### 🐛 Bug Fixes 问题修复

@@ -154,6 +154,13 @@ func createTables(db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_name_feedback_request ON name_feedback(request_id)`,
 
+		// 经典数据版本元信息（JSON 热更新对拍）
+		`CREATE TABLE IF NOT EXISTS data_meta (
+			key        TEXT PRIMARY KEY,
+			value      TEXT NOT NULL,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+
 		// 经典数据表（诗词、易经、蒙学等）
 		`CREATE TABLE IF NOT EXISTS classics_books (
 			id         INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -243,18 +243,25 @@ func AnalyzeBazi(year, month, day, hour, minute int) (*BaziAnalysis, error) {
 		return nil, err
 	}
 
-	ganzhi := bazi.YearGanzhi + bazi.MonthGanzhi + bazi.DayGanzhi + bazi.HourGanzhi
-	wuxing := calculateWuxing(ganzhi)
+	// 加权五行：藏干 + 月令
+	weighted := CalculateWeightedWuxing(bazi)
+	wuxing := weighted.ToCounts()
 	dayGanzhi := bazi.DayGanzhi
 	dayTiangan := string([]rune(dayGanzhi)[0])
 	rishouWuxing := WuxingMap[dayTiangan]
-	dayMasterStrength := calculateDayMasterStrength(wuxing, rishouWuxing)
 
-	xiyongshen := calculateXiyongshen(wuxing, rishouWuxing, dayMasterStrength)
-	iyongshen := calculateYiyongshen(wuxing, rishouWuxing)
-	// 调候/季节按月支（节气月）判定，不依赖公历月
+	monthBranch := ""
+	if mb := []rune(bazi.MonthGanzhi); len(mb) >= 2 {
+		monthBranch = string(mb[1])
+	}
+
+	dayMasterStrength := calculateDayMasterStrengthWeighted(weighted, rishouWuxing, monthBranch)
+	// 调候/季节按月支（节气月）判定
 	tiaohouShen := calculateTiaohouShenByBranch(bazi.MonthGanzhi)
 	season := seasonFromMonthBranch(bazi.MonthGanzhi)
+
+	xiyongshen := calculateXiyongshenWeighted(weighted, rishouWuxing, dayMasterStrength, tiaohouShen)
+	iyongshen := calculateYiyongshenFromWeighted(weighted, rishouWuxing)
 
 	// 年命纳音：取 tyme 已校正立春后的年柱干支
 	nayin := NayinMap[bazi.YearGanzhi]
@@ -266,14 +273,9 @@ func AnalyzeBazi(year, month, day, hour, minute int) (*BaziAnalysis, error) {
 
 	wuxingStrength := CalculateWuxingStrength(wuxing)
 
-	// 姓名卦暂无输入时用固定笔画占位；正式起名服务按名字笔画另算
-	hexagram := yijing.GetHexagramByStrokes(10)
-	hexagramWuxing := ""
+	// 姓名卦需具体名字笔画，在起名服务层计算；此处不硬编码占位卦
 	bestHexagram := ""
-	if hexagram != nil {
-		bestHexagram = hexagram.Name
-		hexagramWuxing = yijing.AnalyzeHexagramWuxing(hexagram)
-	}
+	hexagramWuxing := ""
 
 	baziPattern := calculateBaziPattern(dayMasterStrength, rishouWuxing, season)
 	yongshenScore := calculateYongshenScore(xiyongshen, iyongshen, wuxing)
