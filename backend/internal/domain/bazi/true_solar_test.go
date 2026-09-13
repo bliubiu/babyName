@@ -13,6 +13,22 @@ func TestLookupLongitude_Cities(t *testing.T) {
 	if lon, ok := LookupLongitude("成都市"); !ok || lon < 103 {
 		t.Errorf("前缀匹配成都市失败: %v %v", lon, ok)
 	}
+	// 包含匹配：省前缀
+	if _, ok := LookupLongitude("内蒙古呼和浩特"); !ok {
+		t.Error("包含匹配呼和浩特失败")
+	}
+	if _, ok := LookupLongitude("广东省深圳市"); !ok {
+		t.Error("包含匹配深圳失败")
+	}
+	// 扩展城市
+	for _, city := range []string{"大连", "三亚", "喀什", "延安", "桂林", "高雄"} {
+		if _, ok := LookupLongitude(city); !ok {
+			t.Errorf("扩展城市 %s 未收录", city)
+		}
+	}
+	if len(CityLongitudes) < 80 {
+		t.Errorf("经度库仅 %d 城，期望 ≥80", len(CityLongitudes))
+	}
 }
 
 func TestCorrectTrueSolarTime_Beijing(t *testing.T) {
