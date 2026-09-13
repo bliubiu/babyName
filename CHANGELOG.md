@@ -5,6 +5,29 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.09.13.1]
+
+### 🐛 Bug Fixes 问题修复
+
+- 【bazi】时辰/纳音/季节口径修正（P1）：
+  - `GetShichen` 原 `hour/2` 在 23 时误判为「亥」→ 改为与 tyme 一致的 `(hour+1)/2`，23 时正确为「子」
+  - 年命纳音改为取 **tyme 立春校正后的年柱干支**（`NayinMap[YearGanzhi]`），不再用 `year-4` 公历年近似
+  - `season` / 调候用神改按 **月支（节气月）** 判定，避免公历月在节气换月日附近出错
+  - 删除死代码：`SolarTermOffset`、`getYearGanzhi`/`getMonthGanzhi`/`getDayGanzhi`/`getHourGanzhi`、`getNayinFromTyme`/`getYearSixtyCycle`、旧版 `getSeason`
+
+- 【frontend】新增 `validateBirthTime`（1900–2100 年 + 月/日/时/分范围），提交前校验出生时间
+
+### 🧪 Tests 测试
+
+- 新增 `bazi/analyze_p1_test.go`：时辰边界与 tyme 对拍、立春换年四柱、纳音随年柱、季节随月支、晚子时
+- 前端 `validateBirthTime` 单测 5 组（含边界 1900/2100、0:00/23:59）
+
+### 📚 Docs 文档更新
+
+- 记录本版本 P1 修复
+
+---
+
 ## [2026.09.13.0]
 
 ### 🐛 Bug Fixes 问题修复

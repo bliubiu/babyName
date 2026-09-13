@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateSurname } from './validation';
+import { validateBirthTime, validateSurname } from './validation';
 
 describe('validateSurname', () => {
   it('应返回错误信息 - 空字符串', () => {
@@ -42,3 +42,55 @@ describe('validateSurname', () => {
     expect(validateSurname('爱新觉罗')).toBeUndefined();
   });
 });
+
+describe('validateBirthTime', () => {
+  const base = {
+    birthYear: 2024,
+    birthMonth: 1,
+    birthDay: 15,
+    birthHour: 12,
+    birthMinute: 30,
+  };
+
+  it('合法时间应通过', () => {
+    expect(validateBirthTime(base)).toBeUndefined();
+  });
+
+  it('缺字段应报错', () => {
+    expect(validateBirthTime({ birthYear: 2024 })).toBe('请完整填写出生时间');
+  });
+
+  it('年份越界', () => {
+    expect(validateBirthTime({ ...base, birthYear: 1800 })).toContain('1900');
+    expect(validateBirthTime({ ...base, birthYear: 2200 })).toContain('2100');
+  });
+
+  it('月份/日期/时分越界', () => {
+    expect(validateBirthTime({ ...base, birthMonth: 13 })).toBe('出生月份无效');
+    expect(validateBirthTime({ ...base, birthDay: 32 })).toBe('出生日期无效');
+    expect(validateBirthTime({ ...base, birthHour: 24 })).toContain('0–23');
+    expect(validateBirthTime({ ...base, birthMinute: 60 })).toContain('0–59');
+  });
+
+  it('边界值应通过', () => {
+    expect(
+      validateBirthTime({
+        birthYear: 1900,
+        birthMonth: 1,
+        birthDay: 1,
+        birthHour: 0,
+        birthMinute: 0,
+      })
+    ).toBeUndefined();
+    expect(
+      validateBirthTime({
+        birthYear: 2100,
+        birthMonth: 12,
+        birthDay: 31,
+        birthHour: 23,
+        birthMinute: 59,
+      })
+    ).toBeUndefined();
+  });
+});
+

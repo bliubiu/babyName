@@ -6,7 +6,7 @@ import { useNameStore } from '@/lib/store';
 import { generateNames, saveHistory } from '@/lib/api';
 import { useMutation } from '@tanstack/react-query';
 import { useToast } from '@/components/Toast';
-import { validateSurname } from '@/lib/validation';
+import { validateBirthTime, validateSurname } from '@/lib/validation';
 
 const NameForm = lazy(() => import('@/components/NameForm').then(module => ({
   default: module.NameForm
@@ -65,6 +65,18 @@ export default function HomeContent() {
       setErrors({ surname: surnameError });
       setTouched({ surname: true });
       showToast(surnameError, 'error');
+      return;
+    }
+
+    const birthError = validateBirthTime({
+      birthYear: formData.birthYear,
+      birthMonth: formData.birthMonth,
+      birthDay: formData.birthDay,
+      birthHour: formData.birthHour,
+      birthMinute: formData.birthMinute,
+    });
+    if (birthError) {
+      showToast(birthError, 'error');
       return;
     }
 
