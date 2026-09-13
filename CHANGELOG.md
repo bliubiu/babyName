@@ -5,6 +5,52 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.09.13.2]
+
+### 🐛 Bug Fixes 问题修复
+
+- 【services】`/names/generate` 旧路径经典来源注入失效（前端 result 页直接受影响）：
+  - 前端 result 页走 `POST /api/v1/names/generate`（`NameService.Generate` → `generateNamesViaFate`），
+    该路径构造 `fate.GenerateOptions` 时只传了 `SourceClassic` 字段，但引擎只消费
+    `Options.ExtraChars`（`engine.go generate` 阶段合入候选池），不读 `SourceClassic`
+  - 结果：前端选择《论语》《孟子》《孟子》《三字经》等经典来源完全失效，Top 榜仍被
+    诗经/楚辞字靠出典加分霸榜
+  - 修复：`generateNamesViaFate` 补 `ExtraChars: s.fateService.resolveExtraChars(req)`，
+    与 `/generate/analysis` 路径对齐；经典来源字真正注入候选池（"加字不缩池"策略）
+
+- 【fate 评分层】经典来源无偏好，用户选择被淹没：
+  - 即便 ExtraChars 注入了论语字，评分层所有经典来源一视同仁，诗经字因出典权重高
+    （`calculateMatchScore` 诗经 +15、楚辞 +12）仍天然霸榜
+  - 新增「经典来源偏好加分」：`WenHuaRater` 新增 `sourceSet` 字段，命中所选来源
+    提取字集的字每字 +5 分（details 输出「来自【论语】选字（+5分）」）
+  - 分值低于策展好字（+8）与单字出典（+8），属于"引导"而非"背书"；未指定来源时
+    sourceSet 为空，循环零开销，不影响现有 `DefaultRaters` 行为
+
+- 【fate 会话层】经典来源偏好需 per-request 装配：
+  - `engine.raters` 构造期固定（`DefaultRaters`），而 `SourceClassic` 是 per-request 参数
+  - 修复：`sessionImpl.Start` 阶段按 `input.Options.SourceClassic`（支持中文与拼音别名，
+    `classics.sourceAlias` 归一化）替换会话级文化印象 Rater 为带来源字集版本
+
+### 🧪 Tests 测试
+
+- 新增 `rater_source_bonus_test.go`：`WenHuaRater` 来源偏好加分单测（2 用例）
+  - `TestWenHuaRaterSourceBonus`：验证来源字集构建、命中加分（+5）、details 输出格式、未命中不加分
+  - `TestWenHuaRaterSourceBonusDoubleHit`：双字均命中来源字集时按字累计加分
+- 新增 `engine_source_rater_test.go`：`session.Start` 级 Rater 装配验证（中文来源 + 拼音别名 + 默认无来源 3 场景）
+- 新增 `name_source_inject_integration_test.go`：`/names/generate` 旧路径注入回归（2 用例）
+  - `TestGenerateNamesViaFate_SourceClassicInjected`：选《论语》时命中率从 50%→82%（+32pp），注入+评分加持生效
+  - `TestResolveExtraCharsSourceClassic`：`resolveExtraChars` 对论语来源返回候选字，未指定来源时为空
+- 回归：`go test ./... -count=1` 全部通过
+
+### 📈 Improvements 性能/体验优化
+
+- 端到端实测（`sourcecheck` 验证脚本，`data/lunyu.json` 全文 1341 字）：
+  - 基线（`source_classic` 空）：50 名命中论语集 = 25（50%）
+  - 选中《论语》：50 名命中论语集 = 41（82%）
+  - 命中差 +16 个名字（+32pp），经典来源功能真正可用
+
+---
+
 ## [2026.09.13.1]
 
 ### 🐛 Bug Fixes 问题修复
@@ -358,6 +404,7 @@
 
 - 零新增第三方依赖（TOML 解析复用已有 `spf13/viper`）
 
+[2026.09.13.2]: https://github.com/bliubiao/name/releases/tag/2026.09.13.2
 [2026.08.31.0]: https://github.com/bliubiao/name/releases/tag/2026.08.31.0
 [2026.08.25.0]: https://github.com/bliubiao/name/releases/tag/2026.08.25.0
 [2026.08.24.0]: https://github.com/bliubiao/name/releases/tag/2026.08.24.0
