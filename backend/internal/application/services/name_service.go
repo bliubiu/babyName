@@ -85,23 +85,25 @@ func (s *NameService) GetNameDB() *name.NameDB {
 
 // GenerateRequest 生成名字请求
 type GenerateRequest struct {
-	Surname            string   `json:"surname" binding:"required"`
-	Generation         string   `json:"generation"`
-	GenerationPosition string   `json:"generation_position"`
-	Gender             string   `json:"gender" binding:"required"`
-	BirthYear          int      `json:"birth_year" binding:"required"`
-	BirthMonth         int      `json:"birth_month" binding:"required"`
-	BirthDay           int      `json:"birth_day" binding:"required"`
-	BirthHour          int      `json:"birth_hour" binding:"required"`
-	BirthMinute        int      `json:"birth_minute"`
-	BirthLocation      string   `json:"birth_location"`
-	BirthType          string   `json:"birth_type"`
-	NameType           string   `json:"name_type"`
-	Preferences        []string `json:"preferences"`
-	NameLength         int      `json:"name_length"`
-	ExcludeRare        bool     `json:"exclude_rare"`
-	WuxingMatch        []string `json:"wuxing_match"`
-	SourceClassic      string   `json:"source_classic"`
+	Surname            string `json:"surname" binding:"required"`
+	Generation         string `json:"generation"`
+	GenerationPosition string `json:"generation_position"`
+	Gender             string `json:"gender" binding:"required"`
+	BirthYear          int    `json:"birth_year" binding:"required"`
+	BirthMonth         int    `json:"birth_month" binding:"required"`
+	BirthDay           int    `json:"birth_day" binding:"required"`
+	BirthHour          int    `json:"birth_hour" binding:"required"`
+	BirthMinute        int    `json:"birth_minute"`
+	BirthLocation      string `json:"birth_location"`
+	// BirthLongitude 显式出生地经度（度，东经为正）；>0 时优先于地点查表
+	BirthLongitude float64  `json:"birth_longitude"`
+	BirthType      string   `json:"birth_type"`
+	NameType       string   `json:"name_type"`
+	Preferences    []string `json:"preferences"`
+	NameLength     int      `json:"name_length"`
+	ExcludeRare    bool     `json:"exclude_rare"`
+	WuxingMatch    []string `json:"wuxing_match"`
+	SourceClassic  string   `json:"source_classic"`
 	// 新增筛选条件
 	MinStrokes      int      `json:"min_strokes"`
 	MaxStrokes      int      `json:"max_strokes"`
@@ -182,18 +184,25 @@ func (s *NameService) GenerateWithAnalysis(ctx context.Context, req *GenerateReq
 	return s.fateService.GenerateWithAnalysis(ctx, req)
 }
 
-// performBaziAnalysis 执行八字分析
+// performBaziAnalysis 执行八字分析（自动应用真太阳时校正）
 // 返回分析结果和耗时；分析失败时返回空 BaziAnalysis 并附带 error，
 // 调用者应记录日志后继续（graceful degradation），不阻断生成流程。
 func (s *NameService) performBaziAnalysis(req *GenerateRequest) (*bazi.BaziAnalysis, time.Duration, error) {
 	baziStart := time.Now()
-	baziAnalysis, err := s.baziAnalyzer.Analyze(
-		req.BirthYear,
-		req.BirthMonth,
-		req.BirthDay,
-		req.BirthHour,
-		req.BirthMinute,
-	)
+
+	y, mo, d, h, mi := req.BirthYear, req.BirthMonth, req.BirthDay, req.BirthHour, max(0, req.BirthMinute)
+	// 真太阳时：按出生地经度校正；未收录地点则使用钟表时间
+	y, mo, d, h, mi, solarInfo := bazi.ApplyTrueSolar(y, mo, d, h, mi, req.BirthLocation, req.BirthLongitude)
+	if solarInfo != nil && solarInfo.Enabled {
+		logger.Info("真太阳时校正",
+			zap.String("original", solarInfo.Original),
+			zap.String("corrected", solarInfo.Corrected),
+			zap.Float64("longitude", solarInfo.Longitude),
+			zap.Bool("cross_shichen", solarInfo.CrossShichen),
+		)
+	}
+
+	baziAnalysis, err := s.baziAnalyzer.Analyze(y, mo, d, h, mi)
 	baziDuration := time.Since(baziStart)
 
 	if err != nil {
@@ -378,16 +387,26 @@ func convertFateToNameNames(results []fate.NameResult, gender string) []name.Nam
 }
 
 // calculateHexagramAndZiweiParallel 并行计算易经卦象和紫微斗数
+// 姓名卦采用梅花易数：姓笔画→上卦，名笔画→下卦（取首个候选名）
 func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziAnalysis *bazi.BaziAnalysis, req *GenerateRequest) (*yijing.Hexagram, *yijing.HexagramMatch, *ziwei.ZiweiAnalysis, time.Duration) {
 	start := time.Now()
 
-	totalStrokes := 0
-	for _, n := range names {
-		totalStrokes += n.Strokes
+	// 姓氏笔画（康熙优先）
+	surnameStrokes := 0
+	if l1, l2, err := (&HanziDataProvider{}).GetSurnameStrokes(req.Surname); err == nil {
+		surnameStrokes = l1 + l2
 	}
-	avgStrokes := 10
+	if surnameStrokes == 0 {
+		surnameStrokes = len([]rune(req.Surname)) // 极端兜底
+	}
+
+	// 名笔画：取首个候选的名部分笔画（全名笔画 - 姓笔画）
+	givenStrokes := 0
 	if len(names) > 0 {
-		avgStrokes = totalStrokes / len(names)
+		givenStrokes = names[0].Strokes - surnameStrokes
+	}
+	if givenStrokes <= 0 {
+		givenStrokes = 10
 	}
 
 	var hexagram *yijing.Hexagram
@@ -402,7 +421,7 @@ func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziA
 
 	go func() {
 		defer wg.Done()
-		h := s.hexagramFinder.FindByStrokes(avgStrokes)
+		h := s.hexagramFinder.FindByMeihuaName(surnameStrokes, givenStrokes)
 		m := s.hexagramFinder.MatchXiyongshen(h, baziAnalysis.Xiyongshen)
 
 		hexagramMutex.Lock()
@@ -434,6 +453,8 @@ func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziA
 	}
 	logger.Info("Parallel calculation completed",
 		zap.String("hexagram", hexagramName),
+		zap.Int("surname_strokes", surnameStrokes),
+		zap.Int("given_strokes", givenStrokes),
 		zap.String("ziwei_ming_gong", ziweiGongwei),
 		zap.Duration("duration", duration),
 	)

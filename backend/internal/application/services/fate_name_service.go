@@ -62,14 +62,14 @@ func NewFateNameService(engine fate.Fate, opts ...FateServiceOption) *FateNameSe
 }
 
 // classicXiyongShen 经典八字喜用神（无结果时返回 nil）
+// 自动应用真太阳时校正
 func (s *FateNameService) classicXiyongShen(req *GenerateRequest) []string {
 	if s.baziAnalyzer == nil {
 		return nil
 	}
-	analysis, err := s.baziAnalyzer.Analyze(
-		req.BirthYear, req.BirthMonth, req.BirthDay,
-		req.BirthHour, req.BirthMinute,
-	)
+	y, mo, d, h, mi := req.BirthYear, req.BirthMonth, req.BirthDay, req.BirthHour, max(0, req.BirthMinute)
+	y, mo, d, h, mi, _ = bazi.ApplyTrueSolar(y, mo, d, h, mi, req.BirthLocation, req.BirthLongitude)
+	analysis, err := s.baziAnalyzer.Analyze(y, mo, d, h, mi)
 	if err != nil {
 		logger.Warn("GenerateWithAnalysis: 经典八字分析失败，跳过喜用神收窄",
 			zap.Error(err))
@@ -109,7 +109,10 @@ func (s *FateNameService) buildFilterOption(req *GenerateRequest, classicXiyongs
 
 // GenerateWithAnalysis 使用 fate 引擎生成带详细分析的名字
 func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *GenerateRequest) (*GenerateWithAnalysisResponse, error) {
-	born := time.Date(req.BirthYear, time.Month(req.BirthMonth), req.BirthDay, req.BirthHour, req.BirthMinute, 0, 0, time.UTC)
+	// 真太阳时校正后的出生时刻
+	sy, sm, sd, sh, smin := req.BirthYear, req.BirthMonth, req.BirthDay, req.BirthHour, max(0, req.BirthMinute)
+	sy, sm, sd, sh, smin, _ = bazi.ApplyTrueSolar(sy, sm, sd, sh, smin, req.BirthLocation, req.BirthLongitude)
+	born := time.Date(sy, time.Month(sm), sd, sh, smin, 0, 0, time.UTC)
 
 	session := s.engine.NewSessionWithFilter(
 		s.buildFilterOption(req, s.classicXiyongShen(req)),
@@ -273,9 +276,8 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 		response.Zodiac = output.FateData.BaziInfo.Zodiac
 	}
 
-	// 补齐易经卦象与紫微斗数（与 NameService.Generate 响应一致，避免
-	// GenerateWithAnalysis 响应中 Hexagram/Ziwei 永远为空，docs/19 Q5）
-	response.Hexagram = s.hexagramForNames(names)
+	// 补齐易经卦象与紫微斗数（梅花易数：姓上卦、名下卦）
+	response.Hexagram = s.hexagramForNames(names, req)
 	response.Ziwei = s.ziweiForRequest(req)
 
 	logger.Info("GenerateWithAnalysis: completed via fate engine",
@@ -286,16 +288,23 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 	return response, nil
 }
 
-// hexagramForNames 按生成名字的平均笔画查找姓名卦象（无查找器或无名字时返回 nil）
-func (s *FateNameService) hexagramForNames(names []*name.NameAnalysis) *yijing.Hexagram {
+// hexagramForNames 梅花易数姓名卦：姓笔画→上卦，名笔画→下卦
+func (s *FateNameService) hexagramForNames(names []*name.NameAnalysis, req *GenerateRequest) *yijing.Hexagram {
 	if s.hexagramFinder == nil || len(names) == 0 {
 		return nil
 	}
-	total := 0
-	for _, na := range names {
-		total += na.Strokes
+	surnameStrokes := 0
+	if l1, l2, err := (&HanziDataProvider{}).GetSurnameStrokes(req.Surname); err == nil {
+		surnameStrokes = l1 + l2
 	}
-	return s.hexagramFinder.FindByStrokes(total / len(names))
+	if surnameStrokes == 0 {
+		surnameStrokes = len([]rune(req.Surname))
+	}
+	givenStrokes := names[0].Strokes - surnameStrokes
+	if givenStrokes <= 0 {
+		givenStrokes = 10
+	}
+	return s.hexagramFinder.FindByMeihuaName(surnameStrokes, givenStrokes)
 }
 
 // ziweiForRequest 按出生时间进行紫微排盘（无分析器时返回 nil）

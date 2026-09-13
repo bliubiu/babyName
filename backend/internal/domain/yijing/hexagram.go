@@ -6,8 +6,8 @@ import (
 )
 
 type YaoResult struct {
-	Yao    int    `json:"yao"`
-	Name   string `json:"name"`
+	Yao     int    `json:"yao"`
+	Name    string `json:"name"`
 	YaoName string `json:"yao_name"`
 	Meaning string `json:"meaning"`
 }
@@ -21,16 +21,16 @@ var YaoMap = map[int]YaoResult{
 
 // Hexagram represents an I Ching hexagram
 type Hexagram struct {
-	ID             int    `json:"id"`
-	Name           string `json:"name"`
-	Number         int    `json:"number"`
-	Symbol         string `json:"symbol"`
-	UpperTrigram   int    `json:"upper_trigram"`   // 上卦 (1-8)
-	LowerTrigram   int    `json:"lower_trigram"`   // 下卦 (1-8)
-	GuaCi          string `json:"gua_ci"`          // 卦辞
-	XiangCi        string `json:"xiang_ci"`       // 象辞
-	YaoCi          []string `json:"yao_ci"`        // 爻辞
-	Interpretation string `json:"interpretation"` // 解读
+	ID             int      `json:"id"`
+	Name           string   `json:"name"`
+	Number         int      `json:"number"`
+	Symbol         string   `json:"symbol"`
+	UpperTrigram   int      `json:"upper_trigram"`  // 上卦 (1-8)
+	LowerTrigram   int      `json:"lower_trigram"`  // 下卦 (1-8)
+	GuaCi          string   `json:"gua_ci"`         // 卦辞
+	XiangCi        string   `json:"xiang_ci"`       // 象辞
+	YaoCi          []string `json:"yao_ci"`         // 爻辞
+	Interpretation string   `json:"interpretation"` // 解读
 }
 
 // TrigramMap 八卦对应表
@@ -151,6 +151,56 @@ func GetHexagramByStrokes(strokes int) *Hexagram {
 
 	number := (upperTrigram-1)*8 + lowerTrigram
 	return GetHexagramByNumber(number)
+}
+
+// TrigramFromStrokes 笔画数 → 八卦序号（1-8）；余数 0 取 8
+func TrigramFromStrokes(strokes int) int {
+	if strokes <= 0 {
+		return 1
+	}
+	r := strokes % 8
+	if r == 0 {
+		return 8
+	}
+	return r
+}
+
+// FindHexagramByTrigrams 按上下卦先天八卦序号查找 64 卦
+func FindHexagramByTrigrams(upper, lower int) *Hexagram {
+	for i := range HexagramList {
+		if HexagramList[i].UpperTrigram == upper && HexagramList[i].LowerTrigram == lower {
+			return &HexagramList[i]
+		}
+	}
+	return nil
+}
+
+// meihuaGuaNames 先天八卦顺序 64 卦名：索引 (upper-1)*8+(lower-1)
+// 行=上卦，列=下卦；顺序：乾兑离震巽坎艮坤
+var meihuaGuaNames = [64]string{
+	"乾", "履", "同人", "无妄", "姤", "讼", "遁", "否",
+	"夬", "兑", "革", "随", "大过", "困", "咸", "萃",
+	"大有", "睽", "离", "噬嗑", "鼎", "未济", "旅", "晋",
+	"大壮", "归妹", "丰", "震", "恒", "解", "小过", "豫",
+	"小畜", "中孚", "家人", "益", "巽", "涣", "渐", "观",
+	"需", "节", "既济", "屯", "井", "坎", "蹇", "比",
+	"大畜", "损", "贲", "颐", "蛊", "蒙", "艮", "剥",
+	"泰", "临", "明夷", "复", "升", "师", "谦", "坤",
+}
+
+// GetHexagramByMeihuaName 梅花易数姓名卦：姓笔画→上卦，名笔画→下卦
+// 使用先天八卦标准 64 卦名表，避免库内 Upper/Lower 字段错位
+func GetHexagramByMeihuaName(surnameStrokes, givenStrokes int) *Hexagram {
+	upper := TrigramFromStrokes(surnameStrokes)
+	lower := TrigramFromStrokes(givenStrokes)
+	name := meihuaGuaNames[(upper-1)*8+(lower-1)]
+	if h := GetHexagramByName(name); h != nil {
+		return h
+	}
+	if h := FindHexagramByTrigrams(upper, lower); h != nil {
+		return h
+	}
+	return GetHexagramByNumber((upper-1)*8 + lower)
 }
 
 // GetHexagramByName 根据卦名获取卦象
@@ -307,11 +357,11 @@ func AnalyzeHexagramWuxing(hexagram *Hexagram) string {
 }
 
 type DayanResult struct {
-	Hexagram      *Hexagram
-	OriginalHex   *Hexagram
-	YaoLines      []int   `json:"yao_lines"`
-	DayanNumbers  []int   `json:"dayan_numbers"`
-	ChangeYao     int     `json:"change_yao"`
+	Hexagram       *Hexagram
+	OriginalHex    *Hexagram
+	YaoLines       []int  `json:"yao_lines"`
+	DayanNumbers   []int  `json:"dayan_numbers"`
+	ChangeYao      int    `json:"change_yao"`
 	Interpretation string `json:"interpretation"`
 }
 
@@ -368,23 +418,23 @@ func GetYaoName(yao int) string {
 }
 
 type HexagramInterpretation struct {
-	Overall     string   `json:"overall"`
-	Career      string   `json:"career"`
-	Love        string   `json:"love"`
-	Health      string   `json:"health"`
-	Fortune     string   `json:"fortune"`
-	Auspicious  string   `json:"auspicious"`
+	Overall      string `json:"overall"`
+	Career       string `json:"career"`
+	Love         string `json:"love"`
+	Health       string `json:"health"`
+	Fortune      string `json:"fortune"`
+	Auspicious   string `json:"auspicious"`
 	Inauspicious string `json:"inauspicious"`
 }
 
 func InterpretHexagram(hexagram *Hexagram, xiyongshen []string) *HexagramInterpretation {
 	interp := &HexagramInterpretation{
-		Overall:    hexagram.Interpretation,
-		Career:     "事业平稳发展，需把握时机",
-		Love:       "感情需要耐心经营",
-		Health:     "注意调理身体，保持平衡",
-		Fortune:    "财运平稳，不宜冒险",
-		Auspicious: "祭祀、祈福、嫁娶",
+		Overall:      hexagram.Interpretation,
+		Career:       "事业平稳发展，需把握时机",
+		Love:         "感情需要耐心经营",
+		Health:       "注意调理身体，保持平衡",
+		Fortune:      "财运平稳，不宜冒险",
+		Auspicious:   "祭祀、祈福、嫁娶",
 		Inauspicious: "动土、破土",
 	}
 
@@ -440,9 +490,9 @@ func CastHexagramByTime(year, month, day, hour int) *DayanResult {
 	}
 
 	return &DayanResult{
-		Hexagram:      hexagram,
-		YaoLines:      yaoLines,
-		ChangeYao:     changeYao,
+		Hexagram:       hexagram,
+		YaoLines:       yaoLines,
+		ChangeYao:      changeYao,
 		Interpretation: interpretation,
 	}
 }
@@ -515,11 +565,11 @@ func CastHexagramByDayan() *DayanResult {
 	}
 
 	return &DayanResult{
-		Hexagram:      hexagram,
-		OriginalHex:   originalHex,
-		YaoLines:      yaoLines,
-		DayanNumbers:  dayanNumbers,
-		ChangeYao:     changeYao,
+		Hexagram:       hexagram,
+		OriginalHex:    originalHex,
+		YaoLines:       yaoLines,
+		DayanNumbers:   dayanNumbers,
+		ChangeYao:      changeYao,
 		Interpretation: interpretation,
 	}
 }

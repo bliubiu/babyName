@@ -58,6 +58,10 @@ func (a *HexagramAdapter) FindByStrokes(strokes int) *yijing.Hexagram {
 	return yijing.GetHexagramByStrokes(strokes)
 }
 
+func (a *HexagramAdapter) FindByMeihuaName(surnameStrokes, givenStrokes int) *yijing.Hexagram {
+	return yijing.GetHexagramByMeihuaName(surnameStrokes, givenStrokes)
+}
+
 func (a *HexagramAdapter) FindByNumber(id int) *yijing.Hexagram {
 	return yijing.GetHexagramByNumber(id)
 }

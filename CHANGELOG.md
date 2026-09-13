@@ -5,6 +5,31 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.09.13.4]
+
+### ✨ New Features 新增功能
+
+- 【bazi】真太阳时校正：
+  - `CityLongitudes` 常见城市经度表 + 前缀匹配；支持请求显式 `birth_longitude`
+  - 经度差 4 分/度 + 均时差近似；`ApplyTrueSolar` 返回校正结果与跨时辰/跨日标记
+  - `NameService`/`FateNameService` 排盘前自动校正，未收录地点回退钟表时间
+- 【yijing】梅花易数姓名卦：**姓笔画→上卦，名笔画→下卦**
+  - `GetHexagramByMeihuaName` + 先天八卦 64 卦名标准对照表（规避库内 Upper/Lower 错位）
+  - `HexagramFinder` 新增 `FindByMeihuaName`；Generate / GenerateWithAnalysis 均已切换
+- 【fate】喜用神交叉对拍回归：`xiyong_crosscheck_test.go` 7 组命例，经典加权喜用与 fate 平衡用神方向一致率 ≥60%
+
+### 🧪 Tests 测试
+
+- `true_solar_test.go`：城市查表、北京/乌鲁木齐校正、显式经度、均时差边界
+- `meihua_test.go`：卦名对照、0/8 画、全笔画组合非空
+- `go test bazi/yijing/fate/services` 全绿
+
+### 📋 缺陷 1–14 核对
+
+审查缺陷已闭环；遗留见 docs 与本版说明（64 卦 Upper/Lower 个别错位、四柱纳音未全量暴露等）
+
+---
+
 ## [2026.09.13.3]
 
 ### 🐛 Bug Fixes 问题修复
