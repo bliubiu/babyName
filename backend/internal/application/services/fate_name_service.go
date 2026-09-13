@@ -254,6 +254,11 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 				DayGanzhi:   fourPillars[2],
 				HourGanzhi:  fourPillars[3],
 			}
+			// 四柱纳音
+			baziAnalysis.FourNayin = bazi.BuildFourPillarNayin(&baziAnalysis.Bazi)
+			if baziAnalysis.FourNayin != nil {
+				baziAnalysis.Nayin = baziAnalysis.FourNayin.Year.Nayin
+			}
 			// 统计五行分布：天干+地支各算一个，共 8 个五行
 			for _, pillar := range fourPillars {
 				runes := []rune(pillar)

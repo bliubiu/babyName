@@ -86,11 +86,37 @@ export default function BaziAnalysis({ bazi, nayin, zodiac }: BaziAnalysisProps)
               <p className="text-base md:text-lg text-gold font-medium">{bazi.xiyongshen.join('、')}</p>
             </div>
             <div className="flex-1 min-w-[140px] p-3 bg-warm-white/60 rounded-xl">
-              <p className="text-xs text-jade mb-1">纳音</p>
-              <p className="text-sm text-ink">{nayin}</p>
+              <p className="text-xs text-jade mb-1">年命纳音</p>
+              <p className="text-sm text-ink">{nayin || bazi.nayin || '—'}</p>
               <p className="text-xs text-jade mt-1">生肖：{zodiac}</p>
             </div>
           </div>
+
+          {/* 四柱纳音 */}
+          {bazi.four_nayin && (
+            <div className="p-3 bg-warm-white/50 rounded-xl">
+              <p className="text-xs text-jade mb-2">四柱纳音</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {(
+                  [
+                    ['年柱', bazi.four_nayin.year],
+                    ['月柱', bazi.four_nayin.month],
+                    ['日柱', bazi.four_nayin.day],
+                    ['时柱', bazi.four_nayin.hour],
+                  ] as const
+                ).map(([label, item]) => (
+                  <div key={label} className="text-center p-2 bg-paper/40 rounded-lg">
+                    <p className="text-xs text-jade">{label}</p>
+                    <p className="text-sm text-ink font-medium">{item.ganzhi}</p>
+                    <p className="text-xs text-ink-light mt-0.5">{item.nayin || '—'}</p>
+                    {item.nayin_wuxing && (
+                      <p className="text-[10px] text-jade">（{item.nayin_wuxing}）</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

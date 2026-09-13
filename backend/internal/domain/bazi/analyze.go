@@ -175,15 +175,50 @@ type WuxingResult struct {
 	Tu   int `json:"tu"`
 }
 
+// NayinInfo 单柱纳音
+type NayinInfo struct {
+	Ganzhi string `json:"ganzhi"`
+	Nayin  string `json:"nayin"`
+	Wuxing string `json:"nayin_wuxing"`
+}
+
+// FourPillarNayin 四柱纳音
+type FourPillarNayin struct {
+	Year  NayinInfo `json:"year"`
+	Month NayinInfo `json:"month"`
+	Day   NayinInfo `json:"day"`
+	Hour  NayinInfo `json:"hour"`
+}
+
+// BuildFourPillarNayin 由四柱干支构建纳音结构
+func BuildFourPillarNayin(b *Bazi) *FourPillarNayin {
+	if b == nil {
+		return nil
+	}
+	one := func(gz string) NayinInfo {
+		n := NayinMap[gz]
+		return NayinInfo{Ganzhi: gz, Nayin: n, Wuxing: NayinWuxingMap[n]}
+	}
+	return &FourPillarNayin{
+		Year:  one(b.YearGanzhi),
+		Month: one(b.MonthGanzhi),
+		Day:   one(b.DayGanzhi),
+		Hour:  one(b.HourGanzhi),
+	}
+}
+
 type BaziAnalysis struct {
-	Bazi                Bazi                  `json:"bazi"`
-	Wuxing              WuxingResult          `json:"wuxing"`
-	Xiyongshen          []string              `json:"xiyongshen"`
-	Yiyongshen          []string              `json:"yiyongshen"`
-	TiaohouShen         []string              `json:"tiaohou_shen"`
-	Rishou              string                `json:"rishou"`
-	RishouWuxing        string                `json:"rishou_wuxing"`
-	Nayin               string                `json:"nayin"`
+	Bazi         Bazi         `json:"bazi"`
+	Wuxing       WuxingResult `json:"wuxing"`
+	Xiyongshen   []string     `json:"xiyongshen"`
+	Yiyongshen   []string     `json:"yiyongshen"`
+	TiaohouShen  []string     `json:"tiaohou_shen"`
+	Rishou       string       `json:"rishou"`
+	RishouWuxing string       `json:"rishou_wuxing"`
+	// Nayin 年命纳音（兼容字段，等于 FourNayin.Year.Nayin）
+	Nayin string `json:"nayin"`
+	// FourNayin 四柱纳音（年/月/日/时）
+	FourNayin           *FourPillarNayin      `json:"four_nayin,omitempty"`
 	DayMaster           string                `json:"day_master"`
 	DayMasterStrength   string                `json:"day_master_strength"`
 	SolarTerm           string                `json:"solar_term"`
@@ -263,8 +298,12 @@ func AnalyzeBazi(year, month, day, hour, minute int) (*BaziAnalysis, error) {
 	xiyongshen := calculateXiyongshenWeighted(weighted, rishouWuxing, dayMasterStrength, tiaohouShen)
 	iyongshen := calculateYiyongshenFromWeighted(weighted, rishouWuxing)
 
-	// 年命纳音：取 tyme 已校正立春后的年柱干支
-	nayin := NayinMap[bazi.YearGanzhi]
+	// 年命纳音 + 四柱纳音（tyme 已校正立春后的干支）
+	fourNayin := BuildFourPillarNayin(bazi)
+	nayin := ""
+	if fourNayin != nil {
+		nayin = fourNayin.Year.Nayin
+	}
 
 	solarTerm, isLeapMonth, err := GetSolarTermFromTyme(year, month, day, hour, minute)
 	if err != nil {
@@ -297,6 +336,7 @@ func AnalyzeBazi(year, month, day, hour, minute int) (*BaziAnalysis, error) {
 		Rishou:              dayTiangan,
 		RishouWuxing:        rishouWuxing,
 		Nayin:               nayin,
+		FourNayin:           fourNayin,
 		DayMaster:           rishouWuxing,
 		DayMasterStrength:   dayMasterStrength,
 		SolarTerm:           solarTerm,

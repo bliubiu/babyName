@@ -7,6 +7,8 @@ export interface GenerateRequest {
   birth_hour: number;
   birth_minute?: number;
   birth_location?: string;
+  /** 显式出生地经度（东经为正）；>0 时优先于地点查表 */
+  birth_longitude?: number;
   generation?: string;
   generation_position?: 'middle' | 'end';
   name_type?: 'double' | 'single';
@@ -49,6 +51,19 @@ export interface WuxingResult {
   tu: number;
 }
 
+export interface NayinInfo {
+  ganzhi: string;
+  nayin: string;
+  nayin_wuxing: string;
+}
+
+export interface FourPillarNayin {
+  year: NayinInfo;
+  month: NayinInfo;
+  day: NayinInfo;
+  hour: NayinInfo;
+}
+
 export interface BaziAnalysis {
   bazi: Bazi;
   wuxing: WuxingResult;
@@ -56,6 +71,8 @@ export interface BaziAnalysis {
   rishou: string;
   rishou_wuxing: string;
   nayin: string;
+  /** 四柱纳音（年/月/日/时），兼容旧响应可能缺失 */
+  four_nayin?: FourPillarNayin;
   day_master: string;
 }
 

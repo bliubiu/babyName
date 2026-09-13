@@ -452,7 +452,14 @@ func (a *BaziAnalyzerAdapter) Analyze(born time.Time, gender fate.Gender) (*fate
 		}
 	}
 
-	fateData.BaziInfo.NaYin[0] = baziResult.Nayin
+	// 四柱纳音
+	if four := baziResult.FourNayin; four != nil {
+		fateData.BaziInfo.NaYin = [4]string{
+			four.Year.Nayin, four.Month.Nayin, four.Day.Nayin, four.Hour.Nayin,
+		}
+	} else {
+		fateData.BaziInfo.NaYin[0] = baziResult.Nayin
+	}
 
 	return fateData, nil
 }
