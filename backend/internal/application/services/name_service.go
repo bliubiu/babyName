@@ -278,6 +278,14 @@ func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateReq
 
 	session := s.fateService.engine.NewSessionWithFilter(fo.Build())
 
+	// 经典来源/诗词字注入候选池（与 /generate/analysis 路径对齐）：
+	// 引擎只消费 Options.ExtraChars 而不读 SourceClassic，旧路径此前漏传导致
+	// 前端选择《论语》等经典来源完全失效。复用 FateNameService.resolveExtraChars。
+	var extraChars []*fate.Character
+	if s.fateService != nil {
+		extraChars = s.fateService.resolveExtraChars(req)
+	}
+
 	input := &fate.Input{
 		Surname:    req.Surname,
 		Gender:     fate.Gender(req.Gender),
@@ -292,6 +300,7 @@ func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateReq
 			IncludeClassic:  req.IncludeClassic,
 			MeaningKeywords: req.MeaningKeywords,
 			PinyinInitial:   req.PinyinInitial,
+			ExtraChars:      extraChars,
 		},
 		AvoidElderNames: req.AvoidElderNames,
 	}

@@ -129,6 +129,19 @@ func (s *sessionImpl) Start(ctx context.Context, input *Input) error {
 	// 复制 engine.raters 到 session 级别，避免并发会话相互覆盖
 	s.raters = make([]Rater, len(s.engine.raters))
 	copy(s.raters, s.engine.raters)
+
+	// 经典来源偏好（per-request 装配）：
+	// engine.raters 构造期固定（一次性 DefaultRaters），而经典来源是请求级参数。
+	// 此处把文化印象（WenHuaRater）替换为带来源字集的版本，与 resolveExtraChars
+	// 的候选池注入联动，实现"选论语则结果偏论语"。未指定时保持默认，无来源加分。
+	if src := input.Options.SourceClassic; src != "" {
+		for i, r := range s.raters {
+			if wr, ok := r.(*WenHuaRater); ok {
+				s.raters[i] = NewWenHuaRaterWithSource(wr.weight, src)
+				break
+			}
+		}
+	}
 	// 初始化 per-session 二字共现缓存（与 session 同生命周期）
 	s.bigramCache = newSessionBigramCache()
 	ctx, cancel := context.WithCancel(ctx)

@@ -282,6 +282,13 @@ func DefaultRaters() []Rater {
 // 考察常用度、字义丰富度、笔画匀称度
 type WenHuaRater struct {
 	weight float64
+
+	// 经典来源偏好加分
+	// sourceName  用户选择的经典来源名（论语/诗经…，用于 details 展示）
+	// sourceSet   所选来源的提取字集（nil 表示未指定来源，不做来源加分）
+	// 由 session.Start 按 per-request 的 Options.SourceClassic 装配（见 engine.go）。
+	sourceName string
+	sourceSet  map[string]bool
 }
 
 func NewWenHuaRater() *WenHuaRater {
@@ -290,6 +297,23 @@ func NewWenHuaRater() *WenHuaRater {
 
 func NewWenHuaRaterWithWeight(w float64) *WenHuaRater {
 	return &WenHuaRater{weight: w}
+}
+
+// NewWenHuaRaterWithSource 创建带经典来源偏好的文化印象评分器。
+// source 支持中文（论语/诗经…）与拼音（lunyu/shijing…）别名（classics.sourceAlias 归一化）。
+// Rate 时命中所选来源提取字集的汉字每字 +5 分，引导结果偏向所选经典。
+func NewWenHuaRaterWithSource(w float64, source string) *WenHuaRater {
+	r := &WenHuaRater{weight: w, sourceName: source}
+	chars := classics.GetPoetryCharList(source)
+	if len(chars) > 0 {
+		r.sourceSet = make(map[string]bool, len(chars))
+		for _, pc := range chars {
+			if pc.Char != "" {
+				r.sourceSet[pc.Char] = true
+			}
+		}
+	}
+	return r
 }
 
 func (r *WenHuaRater) Name() string    { return "文化印象" }
@@ -372,6 +396,21 @@ func (r *WenHuaRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 			if desc := checkSemanticPoetry(candidate.Char2); desc != "" {
 				score += 5
 				details = append(details, desc)
+			}
+		}
+	}
+
+	// ——— 经典来源偏好加分 ———
+	// 用户显式选择经典来源（Options.SourceClassic：论语/诗经…）时，命中所选来源
+	// 提取字集的字每字 +5 分，引导结果偏向所选经典。这是"引导"而非"背书"：
+	// 分值低于策展好字（+8）与单字出典（+8），仅凭加分不足以让劣质来源字霸榜。
+	// 未指定来源时 sourceSet 为空，循环零开销（DefaultRaters 默认构造不受影响）。
+	// 与 resolveExtraChars 的候选池注入联动：注入让论语字"进得去"，加分让它们"排得上"。
+	if len(r.sourceSet) > 0 {
+		for _, ch := range []string{candidate.Char1, candidate.Char2} {
+			if ch != "" && r.sourceSet[ch] {
+				score += 5
+				details = append(details, fmt.Sprintf("「%s」来自【%s】选字（+5分）", ch, r.sourceName))
 			}
 		}
 	}
