@@ -359,39 +359,21 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		}
 	}
 
-	// 6. 策展白名单收窄（治本：荒谬字防漏）
+	// 6. 全放行《通用规范汉字表》字源
 	//
-	// 背景：namer.json 8105 字中含大量生僻/物名/化学/贬义等荒谬字
-	// （拤/䏝/囵/饹/嚄/姮/婊/蚂/蛞/羟/苯/仫/滃…），它们的 PositiveScore（寓意评分）为空，
-	// 却仍能靠音韵/生肖/五行/新颖度等维度拿到 80+ 高分进入推荐榜；
-	// 而原 1094 字人工门禁表数据已丢失（重建仅 131 字），无法靠穷举拦截这类字。
-	// 实证：CLI 复测中荒谬字（拤/䏝/囵/饹/阇/睄/啰/竑/尥 等）全部 PositiveScore 为空，
-	// 而优质字（远90/瑞90/宝90/旻88 等）均在名内。故以「人工寓意评分 >=85」作为
-	// 唯一推荐字源门槛（纳入口径：共 563 字，全为人工评过分的好字），荒谬字天然排除。
-	// 注意点：
-	//   - 仅当候选池为真实生产规模（>=80）时才收窄，避免破坏基于小字桩的测试（如
-	//     TestExtraCharsInjectIntoPool 仅 8 字，其注入字由 ExtraChars 豁免逻辑而非收窄保证）。
-	//   - 收窄后的白名单池只要非空即采用（荒谬字入池不可接受，候选稍少可接受），
-	//     不使用喜用神五行收窄的 <80 阈值作降级标准——单五行偏好下白名单好字可能仅 55 个
-	//     （如 -wuxing_match 水 时水行>=85 仅 55 字），沿用 80 阈值会回退到含荒谬字的全量。
-	//   - 外部注入的 ExtraChars（诗词/经典来源字）豁免收窄：用户显式指定，
-	//     不受白名单门槛约束，避免误伤（见 TestExtraCharsInjectIntoPool）。
-	if len(validChars) >= 80 {
-		curatedPool := make([]*Character, 0, len(validChars))
-		extraSet := make(map[string]bool, len(input.Options.ExtraChars))
-		for _, ec := range input.Options.ExtraChars {
-			extraSet[ec.Char] = true
-		}
-		for _, c := range validChars {
-			if c.PositiveScore >= 85 || extraSet[c.Char] {
-				curatedPool = append(curatedPool, c)
-			}
-		}
-		// 非空即采用（荒谬字入池不可接受；候选稍少可接受）
-		if len(curatedPool) > 0 {
-			validChars = curatedPool
-		}
-	}
+	// 历史：曾用「人工寓意评分>=85」作为唯一推荐字源门槛，把候选池收窄到
+	// 200-360 字，导致多次生成名字高度近似。且 namer.json 8105 字中仅 563 字
+	// 被人工评分（93% 无评分），门槛信号极度稀缺；再叠加五行收窄后往往只剩
+	// 几十字可组合。
+	//
+	// 现改为「全放行」：filter 各层（性别/笔画/禁用字/负面语义/生僻字/门禁表）
+	// 是唯一字源防线，荒谬字由以下多层防线兜底，不再用评分门槛一刀切：
+	//   - 字级：IsHardNegativeChar / IsNegative / CheckCharacter 已剔除硬负面与门禁字
+	//   - 组合级：策展感知质量门禁（IsNonNamingCombo）、禁忌组合（IsBadCombo）
+	//   - 评分级：WenHuaRater 仅对「策展∩评分>=90」加分，PositiveScore 空无文化分；
+	//     非策展双名四维封顶 75，荒谬组合天然低分掉榜
+	// 入选检查由 engine_curated_pool_test.go 改为在真实数据规模上断言推荐榜无荒谬字。
+	//
 
 	// 7. 喜用神五行收窄候选池（性能优化 + 方案B：含生助五行）
 	//

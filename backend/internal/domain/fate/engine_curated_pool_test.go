@@ -8,15 +8,18 @@ import (
 	"time"
 )
 
-// TestCuratedPoolExcludesAbsurdChars 验证策展白名单收窄：
-// 足够大的候选池（>=80，避开降级保护）中，荒谬字（PositiveScore 为空）被剔除，
-// 而人工评分好字（PositiveScore>=85）保留。
+// TestCuratedPoolExcludesAbsurdChars 验证全放行后荒谬字仍不进入推荐榜：
+// 荒谬字（拤/饹/婊/蚂/蛞）PositiveScore 为空，虽与好字一同入池参与组合，
+// 但靠以下防线被压制在榜单之外：
+//   - WenHuaRater 仅对「策展∩评分>=90」加分，荒谬字无文化分
+//   - 非策展双名四维封顶 75，荒谬组合天然低分
+//   - 组合级质量门禁（IsNonNamingCombo / IsBadCombo）
 //
-// 背景：荒谬字（拤/饹/婊/蚂/蛞 等）在 namer.json 中 PositiveScore 为空，
-// 却仍能靠音韵/生肖/五行等维度拿 80+ 高分。白名单收窄以 PositiveScore>=85
-// 作为唯一推荐字源门槛，荒谬字天然排除（详见 engine.go 第 6 步注释）。
+// 背景：曾用「人工评分>=85」白名单一刀切充当唯一字源门槛（仅 563 字被评分，
+// 候选池被压到 200-360 字导致名字高度近似）。现依产品决策全放行《通用规范
+// 汉字表》字源，荒谬字防御下沉到评分与组合门禁（详见 engine.go 第 6 步注释）。
 func TestCuratedPoolExcludesAbsurdChars(t *testing.T) {
-	provider := newCuratedPoolProvider(0) // 荒谬字不注入 ExtraChars
+	provider := newCuratedPoolProvider(0)
 	engine := NewEngine(provider, &stubAnalyzer{}, DefaultRaters())
 
 	session := engine.NewSession()
@@ -37,18 +40,18 @@ func TestCuratedPoolExcludesAbsurdChars(t *testing.T) {
 		t.Fatal("应至少生成一个候选")
 	}
 
-	// 荒谬字：仅允许出现零次（被白名单收窄剔除）
+	// 荒谬字：不得进入推荐榜（被评分/门禁防线压制）
 	for _, absurd := range curatedPoolAbsurdChars {
 		for _, nr := range output.TopNames {
 			if strings.Contains(nr.GivenName, absurd) {
-				t.Errorf("荒谬字「%s」出现于推荐名「%s」，应被策展白名单收窄剔除", absurd, nr.GivenName)
+				t.Errorf("荒谬字「%s」进入推荐名「%s」，评分/门禁防线未将其压制", absurd, nr.GivenName)
 				break
 			}
 		}
 	}
 }
 
-// TestCuratedPoolKeepsGoodChars 验证好字（PositiveScore>=85）在推荐结果中保留
+// TestCuratedPoolKeepsGoodChars 验证好字（PositiveScore 高分字）在推荐结果中保留
 func TestCuratedPoolKeepsGoodChars(t *testing.T) {
 	provider := newCuratedPoolProvider(0)
 	engine := NewEngine(provider, &stubAnalyzer{}, DefaultRaters())
@@ -71,7 +74,7 @@ func TestCuratedPoolKeepsGoodChars(t *testing.T) {
 		t.Fatal("应至少生成一个候选")
 	}
 
-	// 至少一个好字应出现在结果中（白名单未误删全部好字）
+	// 至少一个好字应出现在结果中（全放行未稀释好字上榜）
 	found := false
 	for _, nr := range output.TopNames {
 		for _, good := range curatedPoolGoodChars {
@@ -85,71 +88,20 @@ func TestCuratedPoolKeepsGoodChars(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("推荐结果中未出现任何策展好字，白名单收窄可能过度")
-	}
-}
-
-// TestCuratedPoolExtraCharsExempt 验证注入 ExtraChars 的荒谬字（入池门槛低）仍可保留，
-// 不因白名单收窄被误杀——用户显式指定的字永远入池。
-func TestCuratedPoolExtraCharsExempt(t *testing.T) {
-	provider := newCuratedPoolProvider(1) // 成果 1 个荒谬字作为 ExtraChars 注入
-	engine := NewEngine(provider, &stubAnalyzer{}, DefaultRaters())
-
-	injected := &Character{
-		Char:             "拤",
-		Pinyin:           []string{"qiá"},
-		WuXing:           "金",
-		SimplifiedStroke: 9,
-		IsRegular:        true,
-		IsNameable:       true,
-		CommonLevel:      2,
-		PositiveScore:    0, // 荒谬字：无寓意评分
-	}
-
-	session := engine.NewSession()
-	err := session.Start(context.Background(), &Input{
-		Surname: "王",
-		Gender:  GenderMale,
-		Born:    time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC),
-		Options: GenerateOptions{
-			NameLength: 2,
-			Count:      100,
-			ExtraChars: []*Character{injected},
-		},
-	})
-	if err != nil {
-		t.Fatalf("会话启动失败: %v", err)
-	}
-	if err := session.Wait(); err != nil {
-		t.Fatalf("生成失败: %v", err)
-	}
-	output := session.Result()
-	if len(output.TopNames) == 0 {
-		t.Fatal("应至少生成一个候选")
-	}
-
-	// 注人的「拤」应出现在候选中（ExtraChars 豁免白名单收窄）
-	found := false
-	for _, nr := range output.TopNames {
-		if strings.Contains(nr.GivenName, "拤") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("注入的 ExtraChars 字「拤」未出现在任何候选名中，白名单收窄误杀了显式注入字")
+		t.Fatal("推荐结果中未出现任何策展好字，全放行后好字未能上榜")
 	}
 }
 
 // curatedPoolGoodChars / curatedPoolAbsurdChars 供上面的测试引用
 var (
-	curatedPoolGoodChars = []string{"泽", "清", "涵", "澄", "渊", "明", "瑞", "浩"}
+	curatedPoolGoodChars   = []string{"泽", "清", "涵", "澄", "渊", "明", "瑞", "浩"}
 	curatedPoolAbsurdChars = []string{"拤", "饹", "婊", "蚂", "蛞"}
 )
 
-// newCuratedPoolProvider 构造一个候选池>=80 的字桩（避开白名单/喜用神收窄的降级保护），
-// 含人工评分好字（>=85）与荒谬字（PositiveScore=0），用于验证白名单收窄语义。
-// 参数 extraAsAbsurd：>0 时内部不注入荒谬字（由测试另行注入 ExtraChars），否则池内直接含荒谬字。
+// newCuratedPoolProvider 构造一个候选池>=80 的字桩（避开喜用神收窄的降级保护），
+// 含人工评分好字（PositiveScore=90）与荒谬字（PositiveScore=0），
+// 用于验证全放行后荒谬字被评分/门禁防线压制在推荐榜外。
+// 参数 extraAsAbsurd 兼容历史调用：>0 时「拤」由测试另行注入 ExtraChars（池内不放）。
 func newCuratedPoolProvider(extraAsAbsurd int) *stubProvider {
 	var chars []*Character
 

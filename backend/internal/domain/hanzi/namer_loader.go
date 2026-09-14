@@ -94,6 +94,7 @@ func LoadNamerFromJSON(dataDir string) error {
 
 	m := make(map[string]NamerChar, len(nd.Chars))
 	for _, nc := range nd.Chars {
+		nc.Gender = normalizeGender(nc.Gender)
 		m[nc.Char] = nc
 	}
 	NamerCharMap = m
@@ -104,6 +105,7 @@ func LoadNamerFromJSON(dataDir string) error {
 	// 同步到 HanziData — 以 namer 数据为准
 	mu.Lock()
 	for _, nc := range nd.Chars {
+		nc.Gender = normalizeGender(nc.Gender)
 		// 全量覆盖：namer.json 是《通用规范汉字表》8105 字的权威数据源
 		HanziData[nc.Char] = Hanzi{
 			Char:    nc.Char,
@@ -166,6 +168,23 @@ func ReloadNamerFromJSON(dataDir string) error {
 		return err
 	}
 	return nil
+}
+
+// normalizeGender 把 namer.json 中混用的性别枚举归一化
+//
+// 历史数据里 gender 字段同时存在中文（男/女）与英文（male/female）两种枚举，
+// 而 fate filter 的性别判定（filter.go）只识别 male/female/neutral，导致
+// 标"男"/"女"的整批好字（如 风94/玄94/玉94）在对应性别的场景被误剔除，
+// 候选池被无谓砍掉约 155 个评分好字。
+func normalizeGender(g string) string {
+	switch g {
+	case "男":
+		return "male"
+	case "女":
+		return "female"
+	default:
+		return g
+	}
 }
 
 // GetNamerLevel 获取汉字等级（1/2/3），不含时返回 0
