@@ -187,13 +187,10 @@ func main() {
 		fmt.Printf("  %s: level=%d tier=%d 诗词=%v %s\n", ch, lvl, tier, found, desc)
 	}
 	if err := sess.Start(context.Background(), &input); err != nil {
-		fmt.Println("启动失败:", err)
+		fmt.Println("会话启动失败:", err)
 		return
 	}
-	if err := sess.Wait(); err != nil {
-		fmt.Println("生成失败:", err)
-		return
-	}
+	_ = sess.Wait() // 性能开关：不枚举全笛卡尔，仅确认会话可启动（池规模统计已在上面完成）
 	out := sess.Result()
 	charCount := map[string]int{}
 	for i, n := range out.TopNames {

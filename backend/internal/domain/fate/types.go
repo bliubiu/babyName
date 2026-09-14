@@ -116,6 +116,12 @@ type NameCandidate struct {
 	MeaningProfile1 *meaningProfile
 	MeaningProfile2 *meaningProfile
 
+	// skipDetail 为真时各 Rater 跳过「评分依据」文案的构造（穷举热路径专用）。
+	//
+	// 该字段由 RateNameScore 在调用期间置真、由 RateName 置假，调用方无需手工维护；
+	// 仅影响 NameRating.Detail 文案，不改变任何维度的分值（详见 detail_sink.go）。
+	skipDetail bool
+
 	// bigramCache per-session 二字共现评分缓存（classics.SessionBigramCache）
 	// 由 generate() 在构造 NameCandidate 时注入，避免 rate 阶段 50 万次
 	// （WenHuaRater+BigramRater 双调用）全局 RLock。nil 表示走慢路径

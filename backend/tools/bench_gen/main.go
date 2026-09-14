@@ -13,8 +13,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"runtime/pprof"
 	"runtime"
+	"runtime/pprof"
 	"time"
 
 	"name/internal/application/services"

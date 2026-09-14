@@ -23,11 +23,36 @@
 
 ## [2026.09.14] 当日总览
 
-起名生成性能专项：修复全量枚举长时间无结果的问题，版本 `2026.09.14.0`。
+起名生成性能专项：修复全量枚举长时间无结果的问题，版本 `2026.09.14.0` → `.1`。
 
 | 版本 | 要点 |
 |------|------|
 | `.0` | 谐音词表预编译索引、字义重叠画像化、早停前置、经典字集排序确定性 |
+| `.1` | 评分与解释分离（惰性 Detail）、局部表去 seen、同分排序确定化 |
+
+---
+
+## [2026.09.14.1]
+
+### 📈 Improvements 性能/体验优化
+
+- 【fate】起名生成热路径「评分与解释分离」（累计 **单组合 21.5μs → 4.2μs，5.1×**；**分配 156 → 14 次，-91%**；16 核单姓氏完整生成 **2.85s → 0.73s**）：
+  - 【惰性 Detail】新增 `detailSink`（`detail_sink.go`）作为评分依据文案的统一出口：`SkipDetail` 为真时 `add/addf` 退化为空操作，且 `addf` **在调用 `fmt.Sprintf` 之前**即返回，从根上消除格式化分配。`rater.go` 7 个 Rater 的 72 处 `details = append(...)` 与 7 处 `strings.Join(details,"；")` 收尾统一改走 sink；`checkSemanticPoetry`/`checkSingleNameBigram`/`evaluateTonePattern`/`shengMuSimilarity` 增加 `wantDesc` 参数（跳过热路径无谓的文案格式化，分值不变）。
+  - 【总分与明细分离】新增 `RateNameScore`：只算综合总分与等级，不构造 `Items/Details` 两个 map 与任何文案；`RateName` 保持「始终返回完整明细」的契约（内部临时关闭 `SkipDetail`）。两者共用 `nonCuratedCapApplies` 封顶判据与取整逻辑，由 `TestRateNameScoreMatchesRateName` 断言总分逐位一致（另以全量候选对校验和验证：新旧实现 `sum=613676.2000` 完全相同）。
+  - 【入榜后回算】枚举阶段只写总分，`ExcellentEntry` 新增内部字段 `idx1/idx2` 记录候选字下标；`fillEntryDetails` 仅对进入推荐榜的条目（≤ topCount×10）回算完整明细，代价约为枚举量级的千分之一。
+  - 【局部表去 seen】新增 `NewExcellentTableUnique`：worker 局部表不做 `Char1+Char2` 去重（每个条目省下「两个汉字拼接成字符串 + map 写入」的分配）。相应在候选池阶段新增 `dedupCharsByName` 按汉字去重，保证 `(i,j)` 组合在「名字」层面唯一（历史上由 seen map 兜底，语义等价）。
+  - 【辅助优化】`shengMuGroupName` 的分组名 map 提升为包级常量（原实现每次调用重建 map）；`rateWeightsByDim` 的每调用一次 map 分配改为按需 `weightOf` 线性查（仅封顶分支调用）。
+- 【fate】同分排序确定化：`ExcellentTable.Finalize` 由 `sort.Slice` 改为 `sort.SliceStable`。原实现同分条目的先后由元素字节内容（含 `Items/Details` 等 map 指针）决定，使「枚举期是否构造明细」这类与排序无关的实现细节能影响 Top-N 边界入选（同分挤在 `poolSize` 截断处时尤甚），同一请求给出不同榜单。稳定排序后同分次序只由「得分比较 + 推入次序」决定，对载荷不敏感、可复现。
+
+### 🐛 Bug Fixes 问题修复
+
+- 【fate】修复测试字桩 `newCuratedPoolProvider` 与自身防线说明不自洽：该文件注释声明防线为「WenHuaRater 仅对『策展 ∩ 评分≥90』加分 + 非策展双名四维封顶」，但桩里好字从未置 `IsCurated`，导致好字与荒谬字**得分完全相同**，`TestCuratedPoolExcludesAbsurdChars` 只能靠同分排序的偶然次序通过（任何改动条目载荷的实现优化都会让它翻车）。现好字置 `IsCurated: true`，使 `premiumChar` 封顶豁免机制真正生效。
+- 【fate】修复 `TestCuratedPoolKeepsGoodChars` 的判定基准：原用固定的 8 字抽样（泽/清/涵/澄/渊/明/瑞/浩）判断「好字是否上榜」，而字桩使用合成拼音（`p1`/`p2`…），音韵分随拼音序号变化，固定子集可能恰好不落在榜首。现改为对**全量好字集**判定，并新增「推荐榜不得混入非好字组合」的更强断言。
+
+### 📚 Docs 文档更新
+
+- 新增 `internal/domain/fate/detail_sink.go`（评分依据文案懒加载说明）。
+- 新增 `internal/domain/fate/rate_score_parity_test.go`：热路径总分与全量明细总分一致性护栏。
 
 ---
 

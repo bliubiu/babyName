@@ -416,6 +416,18 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		}
 	}
 
+	// 7.1 候选池按汉字去重
+	//
+	// 重复汉字会让 (i, j) 组合在「名字」层面重复——同一 Char1+Char2 被枚举多次。
+	// 历史上由 ExcellentTable 的 seen map 兜底去重（首次写入获胜）；而枚举期的
+	// worker 局部表为省下每次 push 的字符串拼接已改为不去重（NewExcellentTableUnique），
+	// 因此必须在池层保证组合语义唯一。保留首次出现，与历史上「seen 首次写入获胜」
+	// 的结果完全一致（同字不同下标构造出的候选字段相同、得分相同）。
+	//
+	// 生产数据中候选池本身按字唯一，此处为外部注入（ExtraChars）与上游数据异常的兜底；
+	// 顺带避免对重复字做无谓的重复枚举。
+	validChars = dedupCharsByName(validChars)
+
 	// 6. 预计算每个候选字的固定属性（使用包级 charInfo 类型，避免双重循环内重复调用
 	// GetCharacterStroke / firstPinyin / 诗词检索）
 
@@ -485,6 +497,15 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	if poolSize > topCount {
 		topEntries = ensureWuxingDiversity(topEntries, topCount)
 	}
+
+	// 6.1 惰性明细回算（评分与解释分离）
+	//
+	// 枚举阶段只算总分（RateNameScore），不构造各维度的 Items/Details 与
+	// 解释文案；此处只对真正进入推荐榜的条目（≤ poolSize 条，约千分之一量级）
+	// 用 RateName 回算一次完整明细，填回条目供下游透传。
+	// 回算用独立候选（skipDetail=false），不影响枚举期的复用候选。
+	s.fillEntryDetails(topEntries, infos, fateData, surnamePinyin)
+
 	topNames := make([]NameResult, 0, len(topEntries))
 	rank := 0
 	for _, e := range topEntries {
@@ -719,6 +740,26 @@ func firstPinyinForSurname(surname string, provider CharacterProvider) string {
 	return char.Pinyin[0]
 }
 
+// dedupCharsByName 按汉字去重候选池，保留首次出现。
+//
+// 保证 (i, j) 枚举出来的组合在「名字」层面唯一，使 worker 局部表可以
+// 安全地不做 seen 去重（见 generateDoubleName 中的 NewExcellentTableUnique）。
+func dedupCharsByName(chars []*Character) []*Character {
+	if len(chars) < 2 {
+		return chars
+	}
+	seen := make(map[string]struct{}, len(chars))
+	out := make([]*Character, 0, len(chars))
+	for _, c := range chars {
+		if _, dup := seen[c.Char]; dup {
+			continue
+		}
+		seen[c.Char] = struct{}{}
+		out = append(out, c)
+	}
+	return out
+}
+
 // bestGenderHint 取两个字的性别暗示的"更明确的"那个
 func bestGenderHint(a, b string) string {
 	if a == b {
@@ -831,6 +872,116 @@ func ensureWuxingDiversity(entries []ExcellentEntry, topCount int) []ExcellentEn
 	return result
 }
 
+// singleNameCandidate 组装单名的 NameCandidate
+//
+// 字段与历史上两处内联构造逐一对齐（单名不注入 Meaning1/Radical/GenderHint/
+// bigramCache，以免无意改变 WenHuaRater 的「字义明确 +4」等分支结果）。
+// 抽成函数是为了让「枚举期评分」与「入榜后回算明细」走同一条构造路径。
+func singleNameCandidate(a charInfo, surnamePinyin string) *NameCandidate {
+	return &NameCandidate{
+		Char1:          a.ch.Char,
+		Pinyin1:        a.pinyin,
+		WuXing1:        a.ch.WuXing,
+		Stroke1:        a.stroke,
+		HasPoetry:      a.poetryFound,
+		PoetryFrom:     a.poetryDesc,
+		IsRegular:      a.ch.IsRegular,
+		CommonLevel1:   a.ch.CommonLevel,
+		NameFreqTier1:  a.ch.NameFreqTier,
+		NamePenalty1:   a.ch.NamePenalty,
+		IsCurated1:     a.ch.IsCurated,
+		PositiveScore1: a.ch.PositiveScore,
+		SurnamePinyin:  surnamePinyin,
+		// 释义画像：单名无名2，仅注入字1画像（NoveltyRater 单名分支不比较重叠）
+		MeaningProfile1: a.meaningProfile,
+	}
+}
+
+// doubleNameCandidate 组装双名的 NameCandidate
+//
+// poetryFound/poetryDesc 由调用方按「甲字||乙字任一有出典」预先合并后传入
+// （与引擎内层循环的既有语义一致）。
+func doubleNameCandidate(
+	a, b charInfo, poetryFound bool, poetryDesc, surnamePinyin string, bigramCache *SessionBigramCache,
+) *NameCandidate {
+	return &NameCandidate{
+		Char1:         a.ch.Char,
+		Char2:         b.ch.Char,
+		Pinyin1:       a.pinyin,
+		Pinyin2:       b.pinyin,
+		WuXing1:       a.ch.WuXing,
+		WuXing2:       b.ch.WuXing,
+		Stroke1:       a.stroke,
+		Stroke2:       b.stroke,
+		Meaning1:      a.ch.Meaning,
+		Meaning2:      b.ch.Meaning,
+		Radical1:      a.ch.Radical,
+		Radical2:      b.ch.Radical,
+		HasPoetry:     poetryFound,
+		PoetryFrom:    poetryDesc,
+		IsRegular:     a.ch.IsRegular && b.ch.IsRegular,
+		CommonLevel1:  a.ch.CommonLevel,
+		CommonLevel2:  b.ch.CommonLevel,
+		NameFreqTier1: a.ch.NameFreqTier,
+		NameFreqTier2: b.ch.NameFreqTier,
+		GenderHint:    bestGenderHint(a.ch.GenderHint, b.ch.GenderHint),
+		NamePenalty1:  a.ch.NamePenalty,
+		NamePenalty2:  b.ch.NamePenalty,
+		// 策展覆盖表标记：人工精选起名好字，供 WenHuaRater 文化加分（破荒谬字同分）
+		IsCurated1: a.ch.IsCurated,
+		IsCurated2: b.ch.IsCurated,
+		// 寓意评分：与 IsCurated 结合将策展加分收窄为「策展 ∩ positiveScore>=85」精选好字
+		PositiveScore1: a.ch.PositiveScore,
+		PositiveScore2: b.ch.PositiveScore,
+		// 姓氏拼音取自 input，用于音韵评分器检测跨字谐音
+		SurnamePinyin: surnamePinyin,
+		// 释义画像：按候选字预计算，消除 N² 次释义字符串扫描
+		MeaningProfile1: a.meaningProfile,
+		MeaningProfile2: b.meaningProfile,
+		// bigramCache per-session 缓存（避免 WenHuaRater/BigramRater
+		// 在 N² 笛卡尔积中重复 50 万次 GetBigramScore RLock）
+		bigramCache: bigramCache,
+	}
+}
+
+// fillEntryDetails 为进入推荐榜的条目回算各维度得分与依据文案
+//
+// 评分与解释分离：枚举阶段只算总分（RateNameScore），Items/Details 留空；
+// 本函数按条目携带的候选字下标（idx1/idx2）从 infos 还原 NameCandidate，
+// 再调用完整 RateName 回算一次明细，填回条目供服务层透传。
+//
+// 代价可忽略：条目数 ≤ topCount*10（约 500~1000），相对 N² 枚举量级约千分之一。
+// 回算结果的总分与枚举期一致（两条路径共用封顶判据与取整逻辑，
+// 由 TestRateNameScoreMatchesRateName 断言保证）。
+func (s *sessionImpl) fillEntryDetails(
+	entries []ExcellentEntry, infos []charInfo, fateData *FateData, surnamePinyin string,
+) {
+	for k := range entries {
+		e := &entries[k]
+		if e.idx1 < 0 || e.idx1 >= len(infos) {
+			continue
+		}
+		a := infos[e.idx1]
+		var cand *NameCandidate
+		if e.idx2 >= 0 && e.idx2 < len(infos) {
+			b := infos[e.idx2]
+			poetryFound := a.poetryFound || b.poetryFound
+			poetryDesc := ""
+			if a.poetryFound {
+				poetryDesc = a.poetryDesc
+			} else if b.poetryFound {
+				poetryDesc = b.poetryDesc
+			}
+			cand = doubleNameCandidate(a, b, poetryFound, poetryDesc, surnamePinyin, s.bigramCache)
+		} else {
+			cand = singleNameCandidate(a, surnamePinyin)
+		}
+		ns := RateName(cand, fateData, s.raters)
+		e.Items = ns.Items
+		e.Details = ns.Details
+	}
+}
+
 // generateSingleName 单名生成：串行迭代候选字
 //
 // 候选集较小（~1100），串行足够快，无需并发。
@@ -861,40 +1012,23 @@ func (s *sessionImpl) generateSingleName(
 			continue
 		}
 
-		candidate := &NameCandidate{
-			Char1:          a.ch.Char,
-			Pinyin1:        a.pinyin,
-			WuXing1:        a.ch.WuXing,
-			Stroke1:        a.stroke,
-			WuXing2:        "",
-			Stroke2:        0,
-			HasPoetry:      a.poetryFound,
-			PoetryFrom:     a.poetryDesc,
-			IsRegular:      a.ch.IsRegular,
-			CommonLevel1:   a.ch.CommonLevel,
-			NameFreqTier1:  a.ch.NameFreqTier,
-			NamePenalty1:   a.ch.NamePenalty,
-			IsCurated1:     a.ch.IsCurated,
-			PositiveScore1: a.ch.PositiveScore,
-			SurnamePinyin:  surnamePinyin,
-			// 释义画像：单名无名2，仅注入字1画像（NoveltyRater 单名分支不比较重叠）
-			MeaningProfile1: a.meaningProfile,
-		}
-		ns := RateName(candidate, fateData, s.raters)
+		// 枚举期只算总分：不构造 Items/Details 与各维度解释文案
+		// （评分与解释分离，入榜后再按 idx1 回算完整明细）。
+		total := RateNameScore(singleNameCandidate(a, surnamePinyin), fateData, s.raters)
 		entry := ExcellentEntry{
 			Char1:         a.ch.Char,
 			Pinyin1:       a.pinyin,
 			Meaning1:      a.ch.Meaning,
-			Score:         ns.Total,
-			Grade:         ns.Grade,
+			Score:         total,
+			Grade:         scoreToGrade(total),
 			WuXing1:       a.ch.WuXing,
-			Stroke1:       candidate.Stroke1,
+			Stroke1:       a.stroke,
 			KangxiStroke1: a.ch.KangxiStroke,
 			HasPoetry:     a.poetryFound,
 			PoetryFrom:    a.poetryDesc,
-			Items:         ns.Items,
-			Details:       ns.Details,
 			NameFreqTier1: a.ch.NameFreqTier,
+			idx1:          i,
+			idx2:          -1,
 		}
 		table.TryPush(entry)
 		totalCount.Add(1)
@@ -958,7 +1092,9 @@ func (s *sessionImpl) generateDoubleName(
 		wg.Add(1)
 		go func(start, end, w int) {
 			defer wg.Done()
-			local := NewExcellentTableWithCap(localCap)
+			// worker 局部表：本分片的 (i, j) 组合天然唯一，无需 seen 去重
+			// （省下每个条目一次「两个汉字拼接成字符串 + map 写入」的分配）。
+			local := NewExcellentTableUnique(localCap)
 
 			// 潜力分预计算：内层循环每轮都要用，改为按字预算成数组。
 			// 原实现每次组合都重算 a、b 两个字的潜力分，其中 a 的部分与内层
@@ -1045,67 +1181,30 @@ func (s *sessionImpl) generateDoubleName(
 						poetryDesc = b.poetryDesc
 					}
 
-					candidate := &NameCandidate{
+					// 枚举期只算总分：不构造 Items/Details 与各维度解释文案
+					// （评分与解释分离，入榜后再按 idx1/idx2 回算完整明细）。
+					total := RateNameScore(doubleNameCandidate(a, b, poetryFound, poetryDesc, surnamePinyin, s.bigramCache), fateData, s.raters)
+					entry := ExcellentEntry{
 						Char1:         a.ch.Char,
 						Char2:         b.ch.Char,
 						Pinyin1:       a.pinyin,
 						Pinyin2:       b.pinyin,
+						Meaning1:      a.ch.Meaning,
+						Meaning2:      b.ch.Meaning,
+						Score:         total,
+						Grade:         scoreToGrade(total),
 						WuXing1:       a.ch.WuXing,
 						WuXing2:       b.ch.WuXing,
 						Stroke1:       a.stroke,
 						Stroke2:       b.stroke,
-						Meaning1:      a.ch.Meaning,
-						Meaning2:      b.ch.Meaning,
-						Radical1:      a.ch.Radical,
-						Radical2:      b.ch.Radical,
-						HasPoetry:     poetryFound,
-						PoetryFrom:    poetryDesc,
-						IsRegular:     a.ch.IsRegular && b.ch.IsRegular,
-						CommonLevel1:  a.ch.CommonLevel,
-						CommonLevel2:  b.ch.CommonLevel,
-						NameFreqTier1: a.ch.NameFreqTier,
-						NameFreqTier2: b.ch.NameFreqTier,
-						GenderHint:    bestGenderHint(a.ch.GenderHint, b.ch.GenderHint),
-						NamePenalty1:  a.ch.NamePenalty,
-						NamePenalty2:  b.ch.NamePenalty,
-						// 策展覆盖表标记：人工精选起名好字，供 WenHuaRater 文化加分（破荒谬字同分）
-						IsCurated1: a.ch.IsCurated,
-						IsCurated2: b.ch.IsCurated,
-						// 寓意评分：与 IsCurated 结合将策展加分收窄为「策展 ∩ positiveScore>=85」精选好字
-						PositiveScore1: a.ch.PositiveScore,
-						PositiveScore2: b.ch.PositiveScore,
-						// 姓氏拼音取自 input，用于音韵评分器检测跨字谐音
-						SurnamePinyin: surnamePinyin,
-						// 释义画像：按候选字预计算，消除 N² 次释义字符串扫描
-						MeaningProfile1: a.meaningProfile,
-						MeaningProfile2: b.meaningProfile,
-						// bigramCache per-session 缓存（避免 WenHuaRater/BigramRater
-						// 在 N² 笛卡尔积中重复 50 万次 GetBigramScore RLock）
-						bigramCache: s.bigramCache,
-					}
-
-					ns := RateName(candidate, fateData, s.raters)
-					entry := ExcellentEntry{
-						Char1:         candidate.Char1,
-						Char2:         candidate.Char2,
-						Pinyin1:       a.pinyin,
-						Pinyin2:       b.pinyin,
-						Meaning1:      a.ch.Meaning,
-						Meaning2:      b.ch.Meaning,
-						Score:         ns.Total,
-						Grade:         ns.Grade,
-						WuXing1:       candidate.WuXing1,
-						WuXing2:       candidate.WuXing2,
-						Stroke1:       candidate.Stroke1,
-						Stroke2:       candidate.Stroke2,
 						KangxiStroke1: a.ch.KangxiStroke,
 						KangxiStroke2: b.ch.KangxiStroke,
-						HasPoetry:     candidate.HasPoetry,
+						HasPoetry:     poetryFound,
 						PoetryFrom:    poetryDesc,
-						Items:         ns.Items,
-						Details:       ns.Details,
-						NameFreqTier1: candidate.NameFreqTier1,
-						NameFreqTier2: candidate.NameFreqTier2,
+						NameFreqTier1: a.ch.NameFreqTier,
+						NameFreqTier2: b.ch.NameFreqTier,
+						idx1:          i,
+						idx2:          j,
 					}
 					local.TryPush(entry)
 					totalCount.Add(1)

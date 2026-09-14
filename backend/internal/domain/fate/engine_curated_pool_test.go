@@ -74,29 +74,39 @@ func TestCuratedPoolKeepsGoodChars(t *testing.T) {
 		t.Fatal("应至少生成一个候选")
 	}
 
-	// 至少一个好字应出现在结果中（全放行未稀释好字上榜）
-	found := false
-	for _, nr := range output.TopNames {
-		for _, good := range curatedPoolGoodChars {
-			if strings.Contains(nr.GivenName, good) {
-				found = true
-				break
-			}
+	// 至少一个好字应出现在结果中（全放行未稀释好字上榜）。
+	//
+	// 判定基准是「全量好字集」而非固定的代表性子集：本字桩使用合成拼音
+	// （p1/p2…），音韵分随拼音序号变化，任何固定子集都可能恰好不落在榜首，
+	// 用它判定「有没有好字上榜」会得出与事实相反的结论。
+	goodSet := make(map[string]bool)
+	for _, c := range provider.chars {
+		if c.PositiveScore >= 90 {
+			goodSet[c.Char] = true
 		}
-		if found {
-			break
+	}
+	found := false
+	absurdInTop := []string{}
+	for _, nr := range output.TopNames {
+		for _, r := range nr.GivenName {
+			ch := string(r)
+			if goodSet[ch] {
+				found = true
+			} else {
+				absurdInTop = append(absurdInTop, nr.GivenName)
+			}
 		}
 	}
 	if !found {
 		t.Fatal("推荐结果中未出现任何策展好字，全放行后好字未能上榜")
 	}
+	if len(absurdInTop) > 0 {
+		t.Errorf("推荐榜混入非好字组合 %v（好字集 %d 字）", absurdInTop, len(goodSet))
+	}
 }
 
-// curatedPoolGoodChars / curatedPoolAbsurdChars 供上面的测试引用
-var (
-	curatedPoolGoodChars   = []string{"泽", "清", "涵", "澄", "渊", "明", "瑞", "浩"}
-	curatedPoolAbsurdChars = []string{"拤", "饹", "婊", "蚂", "蛞"}
-)
+// curatedPoolAbsurdChars 供上面的测试引用
+var curatedPoolAbsurdChars = []string{"拤", "饹", "婊", "蚂", "蛞"}
 
 // newCuratedPoolProvider 构造一个候选池>=80 的字桩（避开喜用神收窄的降级保护），
 // 含人工评分好字（PositiveScore=90）与荒谬字（PositiveScore=0），
@@ -127,7 +137,14 @@ func newCuratedPoolProvider(extraAsAbsurd int) *stubProvider {
 				IsRegular:        true,
 				IsNameable:       true,
 				CommonLevel:      1,
-				PositiveScore:    90,
+				// IsCurated 必设：本文件的防线说明是「WenHuaRater 仅对
+				// 策展∩评分>=90 加分，荒谬字无文化分」，评分器与 RateName 的
+				// 封顶豁免（premiumChar = IsCurated && PositiveScore>=90）
+				// 都以 IsCurated 为前提。若桩里不置该位，好字与荒谬字的
+				// 得分将完全相同，断言只能靠同分排序的偶然次序通过
+				// （历史上确实如此：改动条目载荷即会翻车）。
+				IsCurated:     true,
+				PositiveScore: 90,
 			})
 		}
 	}

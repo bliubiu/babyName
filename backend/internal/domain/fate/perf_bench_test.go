@@ -160,6 +160,35 @@ func BenchmarkRateNameNoProfile(b *testing.B) {
 	}
 }
 
+// BenchmarkRateNameScore 热路径：只算总分（评分与解释分离）
+func BenchmarkRateNameScore(b *testing.B) {
+	raters := DefaultRaters()
+	fd := benchFateData()
+	cand := benchCandidate()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		benchSinkF = RateNameScore(cand, fd, raters)
+	}
+}
+
+// BenchmarkCombinationFast 热路径完整成本：预检链 + 只算总分 + 入无去重局部表
+func BenchmarkCombinationFast(b *testing.B) {
+	raters := DefaultRaters()
+	fd := benchFateData()
+	table := NewExcellentTableUnique(100)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cand := benchCandidate()
+		total := RateNameScore(cand, fd, raters)
+		table.TryPush(ExcellentEntry{
+			Char1: cand.Char1, Char2: cand.Char2,
+			Score: total, Grade: scoreToGrade(total),
+		})
+	}
+}
+
 // BenchmarkCombinationFull 一个组合的完整成本（预检链 + 评分 + 入表）
 func BenchmarkCombinationFull(b *testing.B) {
 	raters := DefaultRaters()
