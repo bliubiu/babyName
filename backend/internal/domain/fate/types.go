@@ -105,6 +105,17 @@ type NameCandidate struct {
 
 	SurnamePinyin string // 姓氏拼音，用于音韵评分器检测跨字谐音
 
+	// MeaningProfile1/MeaningProfile2 释义字符画像（由 engine 按候选字预计算注入）
+	//
+	// 字义重叠（NoveltyRater）在双名 N² 枚举中被调用 N² 次，而释义仅 N 种，
+	// 且是《说文》类长文本（实测中位 230 字、最长 290 字）。原实现每次都对两段
+	// 释义做 O(|a|·|b|) 的 ContainsRune 扫描（最坏约 7 万次比较），实测占单次
+	// 评分 RateName 的 15%。注入预计算画像后重叠计数降为 O(|A|+|B|) 归并。
+	//
+	// nil 表示调用方未注入（测试/诊断工具），评分器回落到按释义字符串取缓存的路径。
+	MeaningProfile1 *meaningProfile
+	MeaningProfile2 *meaningProfile
+
 	// bigramCache per-session 二字共现评分缓存（classics.SessionBigramCache）
 	// 由 generate() 在构造 NameCandidate 时注入，避免 rate 阶段 50 万次
 	// （WenHuaRater+BigramRater 双调用）全局 RLock。nil 表示走慢路径

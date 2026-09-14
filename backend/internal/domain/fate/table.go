@@ -206,6 +206,22 @@ func (t *ExcellentTable) IsFull() bool {
 	return len(t.h) >= t.cap
 }
 
+// earlyStopCutoff 返回早停阈值（= 堆顶最小分 × 0.6）；表未满时返回 0 表示不早停。
+//
+// 无锁：仅供「单 goroutine 独占」的 worker 局部表在 N² 内层循环中调用。
+// 每次调用若走 RLock 会带来两次原子操作；内层循环量级为 N²（数千万次），
+// 因此这里直接读堆顶。全局表（并发 TryPush）请改用 IsFull + MinScore。
+//
+// 语义与「IsFull() 后用 MinScore()*0.6 判阈值」完全一致：
+//   - 未满 → 返回 0，调用方以 cutoff > 0 判不早停
+//   - 已满 → 返回堆顶分×0.6（堆顶分为 0 时同样退化为不早停，与原逻辑一致）
+func (t *ExcellentTable) earlyStopCutoff() float64 {
+	if len(t.h) < t.cap || len(t.h) == 0 {
+		return 0
+	}
+	return t.h[0].Score * 0.6
+}
+
 // Explore 随机采样 N 个名字，支持过滤和去重
 // filter 为 nil 表示不过滤
 func (t *ExcellentTable) Explore(count int, filter func(ExcellentEntry) bool) []ExcellentEntry {

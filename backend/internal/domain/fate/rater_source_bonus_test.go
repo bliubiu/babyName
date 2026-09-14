@@ -30,12 +30,18 @@ func TestWenHuaRaterSourceBonus(t *testing.T) {
 		t.Fatal("《论语》提取字集为空，测试前提不成立")
 	}
 
-	// 命中样本：论语字集中的第一个字
+	// 命中样本：论语字集中第一个「可用作名字」的字。
+	//
+	// 必须排除质量门禁字（IsNonNamingChar）：WenHuaRater 对门禁字有
+	// -12 分/字的硬惩罚，若首个字恰好命中门禁表（如 回/比），
+	// 来源加分 +5 会被惩罚吞掉，测试断言的前提不成立而误报失败。
+	// 历史：本测试曾因字集顺序随机（classics.mapToSortedSlice 未真正排序）
+	// 约 2/10 概率取到门禁字而间歇性失败。
 	var hitChar string
 	set := make(map[string]bool, len(sourceChars))
 	for _, pc := range sourceChars {
 		set[pc.Char] = true
-		if pc.Char != "" && hitChar == "" {
+		if hitChar == "" && pc.Char != "" && !IsNonNamingChar(pc.Char) {
 			hitChar = pc.Char
 		}
 	}
@@ -43,11 +49,12 @@ func TestWenHuaRaterSourceBonus(t *testing.T) {
 		t.Fatal("《论语》提取字集中无可用汉字")
 	}
 
-	// 对照样本：候选列表里前两个不在论语字集的字（须选两个，避免对照字本身命中来源集）
+	// 对照样本：候选列表里前两个不在论语字集、且不是门禁字的字
+	// （须选两个，避免对照字本身命中来源集；排除门禁字以避开 -12 惩罚干扰）
 	nonSource := []string{"芊", "淼", "赫", "虹", "璐", "邈", "翀", "玦", "玵", "祎"}
 	var missChar, altChar string
 	for _, c := range nonSource {
-		if set[c] {
+		if set[c] || IsNonNamingChar(c) {
 			continue
 		}
 		if missChar == "" {
@@ -114,13 +121,13 @@ func TestWenHuaRaterSourceBonusDoubleHit(t *testing.T) {
 	chars := make([]string, 0, len(sourceChars))
 	for _, pc := range sourceChars {
 		set[pc.Char] = true
-		chars = append(chars, pc.Char)
+		// 排除质量门禁字：门禁有 -12 分/字硬惩罚，会淹没 +5 的来源加分
+		if pc.Char != "" && !IsNonNamingChar(pc.Char) {
+			chars = append(chars, pc.Char)
+		}
 	}
 	var a, b string
 	for _, c := range chars {
-		if c == "" {
-			continue
-		}
 		if a == "" {
 			a = c
 			continue
@@ -139,10 +146,10 @@ func TestWenHuaRaterSourceBonusDoubleHit(t *testing.T) {
 	single := rater.Rate(&NameCandidate{
 		Char1: a, Char2: b, HasPoetry: true, CommonLevel1: 1, CommonLevel2: 1,
 	}, nil)
-	// 对照：仅一字命中（另一字为非论语字）
+	// 对照：仅一字命中（另一字为非论语字，且非门禁字）
 	var miss string
 	for _, c := range []string{"芊", "淼", "赫", "虹", "璐", "邈", "翀", "玦", "玵", "祎"} {
-		if set[c] {
+		if set[c] || IsNonNamingChar(c) {
 			continue
 		}
 		miss = c

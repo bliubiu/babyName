@@ -445,6 +445,12 @@ func stripTone(pinyin string) string {
 	if pinyin == "" {
 		return ""
 	}
+	// 快路径：纯小写 ASCII 字母 + 可选结尾数字声调。
+	// 生产数据（hanzi.json/namer.json）绝大多数拼音形如 "zhang" / "ming2"，
+	// 走快路径可零分配返回；否则回落下面的 Builder 慢路径处理声调符号。
+	if stripped, ok := stripToneASCII(pinyin); ok {
+		return stripped
+	}
 	runes := []rune(pinyin)
 	// 1. 数字后缀（wang2 → wang）
 	last := runes[len(runes)-1]
@@ -478,6 +484,30 @@ func stripTone(pinyin string) string {
 	return b.String()
 }
 
+// stripToneASCII 纯 ASCII 拼音的零分配去声调。
+//
+// 仅当整串为小写字母（允许末尾一位 1-4 数字声调）时返回 ok=true，
+// 此时结果是原串的子串（不分配内存）；含声调符号 / U+0261 / 其他字符时
+// 返回 ok=false，由 stripTone 的慢路径处理。
+func stripToneASCII(pinyin string) (string, bool) {
+	n := len(pinyin)
+	if n == 0 {
+		return "", false
+	}
+	for i := 0; i < n; i++ {
+		c := pinyin[i]
+		if c >= 'a' && c <= 'z' {
+			continue
+		}
+		// 仅允许末尾一位数字声调
+		if c >= '1' && c <= '4' && i == n-1 {
+			return pinyin[:n-1], true
+		}
+		return "", false
+	}
+	return pinyin, true
+}
+
 // CheckBadHomophone 检测单字是否属于不吉谐音词
 //
 // 自 P1 修复后改为精确匹配：仅当 selfChar == BadHomophones.Word 时才命中。
@@ -489,21 +519,25 @@ func CheckBadHomophone(pinyin string, selfChar ...string) (bool, string) {
 	if clean == "" {
 		return false, ""
 	}
-	for _, h := range BadHomophones {
-		if clean == h.Pinyin {
-			// 严格模式（selfChar 已传）：仅当本字 == 谐音词时命中
-			if len(selfChar) > 0 && selfChar[0] != "" {
-				for _, c := range selfChar {
-					if c == h.Word {
-						return true, "谐音「" + h.Word + "」" + h.Description
-					}
-				}
-				// 本字不是该条目的谐音词：继续比对同拼音的其他词条
-				// （如 fu 同时有「腐」「妇」，仅任一匹配才命中，避免误杀同音好字）
-				continue
-			}
-			// 兼容模式（selfChar 未传）：仅按拼音匹配（旧行为，保留供测试/其他场景）
+	// 预编译索引：O(1) 命中同拼音条目（原实现每次线性扫描约 300 条词表）。
+	// 下标切片保持词表原顺序，因此「返回哪一条」与线性扫描完全一致。
+	idxs := homophoneByPinyin[clean]
+	if len(idxs) == 0 {
+		return false, ""
+	}
+	strict := len(selfChar) > 0 && selfChar[0] != ""
+	for _, idx := range idxs {
+		h := BadHomophones[idx]
+		if !strict {
+			// 兼容模式（selfChar 未传或为空）：仅按拼音匹配（旧行为）
 			return true, "谐音「" + h.Word + "」" + h.Description
+		}
+		// 严格模式：仅当本字 == 谐音词时命中；否则继续比对同拼音的其他词条
+		// （如 fu 同时有「腐」「妇」，仅任一匹配才命中，避免误杀同音好字）
+		for _, c := range selfChar {
+			if c == h.Word {
+				return true, "谐音「" + h.Word + "」" + h.Description
+			}
 		}
 	}
 	return false, ""
@@ -535,28 +569,84 @@ func CheckAllBadHomophones(pinyinsChars ...string) (bool, []string) {
 
 // CheckBadPinyinCombo 检测名字拼音连读是否产生不良词汇
 // surname 姓氏拼音，givenNames 名字拼音列表
+//
+// 优化说明：原实现对 BadPinyinCombos（约 110 条）每次调用各做一次
+// strings.Join 重新拼接，再各做一次 strings.Contains —— 单次调用产生
+// 110 次字符串分配；在双名 N² 枚举中实测占单次评分 RateName 的 33%。
+// 现改为「预编译索引 + 滑窗查表」：拼接串在 init 阶段构建一次，
+// 运行时按词长在拼接文本上滑窗做 map 查表，无分配且与线性扫描语义等价。
 func CheckBadPinyinCombo(surnamePinyin string, givenPinyins ...string) (bool, string) {
 	// 构建完整拼音序列（姓氏 + 名字各字）
-	var allPinyins []string
+	var sb strings.Builder
+	sb.Grow(len(surnamePinyin) + 8*len(givenPinyins))
 	if surnamePinyin != "" {
-		allPinyins = append(allPinyins, stripTone(surnamePinyin))
+		sb.WriteString(stripTone(surnamePinyin))
 	}
 	for _, p := range givenPinyins {
-		allPinyins = append(allPinyins, stripTone(p))
+		sb.WriteString(stripTone(p))
 	}
-	if len(allPinyins) == 0 {
+	joined := sb.String()
+	if joined == "" {
 		return false, ""
 	}
 
-	// 滑动窗口检查所有组合
-	joined := strings.Join(allPinyins, "")
-
-	for _, combo := range BadPinyinCombos {
-		comboStr := strings.Join(combo.Combo, "")
-		if strings.Contains(joined, comboStr) {
-			return true, "拼音连读「" + comboStr + "」" + combo.Description
+	// 滑窗匹配：取词表中「最靠前」的命中项，与原线性扫描的返回顺序一致
+	best := -1
+	for i := 0; i < len(joined); i++ {
+		for _, l := range pinyinComboLens {
+			end := i + l
+			if end > len(joined) {
+				continue
+			}
+			if idx, ok := pinyinComboIndex[joined[i:end]]; ok && (best < 0 || idx < best) {
+				best = idx
+			}
 		}
 	}
+	if best < 0 {
+		return false, ""
+	}
+	comboStr := strings.Join(BadPinyinCombos[best].Combo, "")
+	return true, "拼音连读「" + comboStr + "」" + BadPinyinCombos[best].Description
+}
 
-	return false, ""
+// ——— 热路径预编译索引 ———
+//
+// CheckBadPinyinCombo / CheckBadHomophone 在双名候选生成（N² 笛卡尔积）中
+// 每个组合各调用一次，是评分链路最大的热点。两个词表都是包级只读常量，
+// 因此在 init 阶段构建一次索引，把每次调用从 O(词表规模) 降到 O(文本长度)。
+//
+// 若未来需要热更新词表，必须调用 rebuildHomophoneIndex 同步重建索引，
+// 否则索引与词表不一致。
+var (
+	homophoneByPinyin map[string][]int // 拼音 → BadHomophones 下标（保持词表顺序）
+	pinyinComboIndex  map[string]int   // 拼接串 → BadPinyinCombos 下标（保留首次出现）
+	pinyinComboLens   []int            // 拼接串长度去重集合（滑窗用）
+)
+
+func init() {
+	rebuildHomophoneIndex()
+}
+
+// rebuildHomophoneIndex 依据当前词表重建索引（词表热更新后必须调用）
+func rebuildHomophoneIndex() {
+	homophoneByPinyin = make(map[string][]int, len(BadHomophones))
+	for i := range BadHomophones {
+		p := BadHomophones[i].Pinyin
+		homophoneByPinyin[p] = append(homophoneByPinyin[p], i)
+	}
+
+	pinyinComboIndex = make(map[string]int, len(BadPinyinCombos))
+	lenSet := make(map[int]bool)
+	for i := range BadPinyinCombos {
+		s := strings.Join(BadPinyinCombos[i].Combo, "")
+		if _, dup := pinyinComboIndex[s]; !dup {
+			// 保留首次出现：线性扫描遇到重复拼接串时命中的也是第一条
+			pinyinComboIndex[s] = i
+		}
+		if !lenSet[len(s)] {
+			lenSet[len(s)] = true
+			pinyinComboLens = append(pinyinComboLens, len(s))
+		}
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"unicode"
@@ -435,11 +436,22 @@ func extractUniqueChars(text string) []string {
 }
 
 // mapToSortedSlice 将 map 转换为排序后的 PoetryChar 切片
+// mapToSortedSlice 把「字 → 属性」映射展开为按汉字码点升序的切片。
+//
+// 修复说明：本函数历史上虽然名为 sorted，实现却是直接遍历 map，
+// 而 Go 的 map 迭代顺序在每次进程启动时随机 → 各经典提取字集的顺序
+// 在进程间不稳定。这会向下游传播不确定性：
+//   - 候选池注入顺序（resolveExtraChars → Options.ExtraChars）随进程变化；
+//   - 依赖「字集首个字」的测试与诊断结果随机漂移
+//     （曾导致 TestWenHuaRaterSourceBonus 约 2/10 概率失败）。
+//
+// 现按 Char 码点升序排序，保证加载结果确定。
 func mapToSortedSlice(seen map[string]*PoetryChar) []PoetryChar {
 	result := make([]PoetryChar, 0, len(seen))
 	for _, pc := range seen {
 		result = append(result, *pc)
 	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Char < result[j].Char })
 	return result
 }
 

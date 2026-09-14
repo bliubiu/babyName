@@ -47,19 +47,21 @@ func EngineFactoryFunc(provider CharacterProvider, analyzer BaziAnalyzer) Engine
 // charInfo 候选字预计算属性（用于 generateSingleName / generateDoubleName 共享）
 //
 // 字段含义：
-//   - ch:         候选字 Character
-//   - stroke:     笔画数（filter 口径，按 StrokeMode 决定）
-//   - pinyin:     第一拼音（无声调）
-//   - poetryFound: 是否关联到诗词
-//   - poetryDesc:  诗词出处描述
+//   - ch:            候选字 Character
+//   - stroke:        笔画数（filter 口径，按 StrokeMode 决定）
+//   - pinyin:        第一拼音（无声调）
+//   - poetryFound:   是否关联到诗词
+//   - poetryDesc:    诗词出处描述
+//   - meaningProfile: 释义字符画像（供 NoveltyRater 的字义重叠 O(|A|+|B|) 归并）
 //
-// 避免双重循环内重复调用 GetCharacterStroke / firstPinyin / 诗词检索。
+// 避免双重循环内重复调用 GetCharacterStroke / firstPinyin / 诗词检索 / 释义解析。
 type charInfo struct {
-	ch          *Character
-	stroke      int
-	pinyin      string
-	poetryFound bool
-	poetryDesc  string
+	ch             *Character
+	stroke         int
+	pinyin         string
+	poetryFound    bool
+	poetryDesc     string
+	meaningProfile *meaningProfile
 }
 
 // --- engineImpl: Fate 接口默认实现 ---
@@ -421,11 +423,12 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	for i, c := range validChars {
 		found, desc, _ := classics.FindPoetryByChars(c.Char)
 		infos[i] = charInfo{
-			ch:          c,
-			stroke:      s.filter.GetCharacterStroke(c),
-			pinyin:      firstPinyin(c.Pinyin),
-			poetryFound: found,
-			poetryDesc:  desc,
+			ch:             c,
+			stroke:         s.filter.GetCharacterStroke(c),
+			pinyin:         firstPinyin(c.Pinyin),
+			poetryFound:    found,
+			poetryDesc:     desc,
+			meaningProfile: meaningProfileOf(c.Meaning),
 		}
 	}
 
@@ -874,6 +877,8 @@ func (s *sessionImpl) generateSingleName(
 			IsCurated1:     a.ch.IsCurated,
 			PositiveScore1: a.ch.PositiveScore,
 			SurnamePinyin:  surnamePinyin,
+			// 释义画像：单名无名2，仅注入字1画像（NoveltyRater 单名分支不比较重叠）
+			MeaningProfile1: a.meaningProfile,
 		}
 		ns := RateName(candidate, fateData, s.raters)
 		entry := ExcellentEntry{
@@ -955,6 +960,16 @@ func (s *sessionImpl) generateDoubleName(
 			defer wg.Done()
 			local := NewExcellentTableWithCap(localCap)
 
+			// 潜力分预计算：内层循环每轮都要用，改为按字预算成数组。
+			// 原实现每次组合都重算 a、b 两个字的潜力分，其中 a 的部分与内层
+			// 下标 j 无关，属于纯重复计算（N² 次里算了 N³ 量级的一半）。
+			potential := make([]int, len(infos))
+			for k := range infos {
+				potential[k] = charPotentialScore(
+					infos[k].ch.WuXing, infos[k].ch.IsCurated,
+					infos[k].ch.PositiveScore, infos[k].poetryFound, xiSet)
+			}
+
 			for i := start; i < end; i++ {
 				if cancelled(ctx) {
 					return
@@ -963,12 +978,26 @@ func (s *sessionImpl) generateDoubleName(
 				if !s.filter.CheckStrokePair(a.stroke, 0) {
 					continue
 				}
+				pa := potential[i]
 
 				for j := range infos {
 					if cancelled(ctx) {
 						return
 					}
 					b := infos[j]
+
+					// 早停前置：表已满时，潜力分明显不足的组合不可能最终入榜，
+					// 直接跳过后续「组合级门禁 + 八维评分」，避免为注定淘汰的组合
+					// 反复做字符串判重与谐音检索。
+					//
+					// 语义等价：原顺序为「门禁 → 早停 → 评分」，被早停跳过的组合
+					// 本就不会产生任何结果，互换不改变实际被评分的组合集合，
+					// 也不改变 totalCount（它只统计完成 RateName 的组合）。
+					if cutoff := local.earlyStopCutoff(); cutoff > 0 &&
+						float64(pa+potential[j]) < cutoff {
+						continue
+					}
+
 					if !s.filter.CheckStrokePair(a.stroke, b.stroke) {
 						continue
 					}
@@ -1006,20 +1035,6 @@ func (s *sessionImpl) generateDoubleName(
 					// 数据层搭配黑名单：策展标注的 PairBlacklist（如 瑾-艳/妍-艳/嫣-艳）
 					if hasPairBlacklist(a.ch, b.ch.Char) || hasPairBlacklist(b.ch, a.ch.Char) {
 						continue
-					}
-
-					// 早停检查：表已满时，跳过组合潜力分明显不足的配对
-					// 潜力分 = charPotentialScore(a) + charPotentialScore(b)
-					// 低于当前表最小分时，即使满分各维度也难以入表
-					if local.IsFull() {
-						pa := charPotentialScore(a.ch.WuXing, a.ch.IsCurated, a.ch.PositiveScore, a.poetryFound, xiSet)
-						pb := charPotentialScore(b.ch.WuXing, b.ch.IsCurated, b.ch.PositiveScore, b.poetryFound, xiSet)
-						combined := pa + pb
-						minScore := local.MinScore()
-						// 潜力分上限约40，实际得分约60-90，保守阈值=最小分的60%
-						if float64(combined) < minScore*0.6 {
-							continue
-						}
 					}
 
 					poetryFound := a.poetryFound || b.poetryFound
@@ -1061,6 +1076,9 @@ func (s *sessionImpl) generateDoubleName(
 						PositiveScore2: b.ch.PositiveScore,
 						// 姓氏拼音取自 input，用于音韵评分器检测跨字谐音
 						SurnamePinyin: surnamePinyin,
+						// 释义画像：按候选字预计算，消除 N² 次释义字符串扫描
+						MeaningProfile1: a.meaningProfile,
+						MeaningProfile2: b.meaningProfile,
 						// bigramCache per-session 缓存（避免 WenHuaRater/BigramRater
 						// 在 N² 笛卡尔积中重复 50 万次 GetBigramScore RLock）
 						bigramCache: s.bigramCache,
