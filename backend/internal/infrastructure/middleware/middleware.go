@@ -20,7 +20,7 @@ func ZapLogger() gin.HandlerFunc {
 		c.Next()
 
 		cost := time.Since(start)
-		
+
 		fields := []logger.Field{
 			logger.String("method", c.Request.Method),
 			logger.String("path", path),
@@ -231,7 +231,7 @@ type IPRateLimiter struct {
 	defaultLimiter *RateLimiter // 超过 IP 上限时复用的全局限流器
 	capacity       float64
 	rate           float64
-	maxIPs         int           // 最大 IP 记录数，防止内存耗尽
+	maxIPs         int // 最大 IP 记录数，防止内存耗尽
 	cleanupInt     time.Duration
 	stopCh         chan struct{}
 }
@@ -361,28 +361,41 @@ func IPRateLimit(capacity, rate float64) gin.HandlerFunc {
 }
 
 // RequestTimeout 请求超时中间件
-// 超过指定时间未完成的请求会被取消并返回 503
-// 注意：HTTP Server 层的 WriteTimeout 已提供基准保护，
-// 此中间件提供更细粒度的每个请求超时控制，并确保 c.Request.Context() 携带 deadline
+//
+// 语义：把带 deadline 的 context 挂到请求上，让下游（尤其是起名引擎的 N² 枚举分片，
+// 其内层循环会检查 ctx.Done）在超时后尽早退出；并在「处理链已返回、且一个字都没写出」
+// 时补一个 503。
+//
+// ⚠ 为什么**不能**在 goroutine 里跑 c.Next()（这是历史实现的缺陷）：
+// 一旦超时分支直接返回，gin 的 handleHTTPRequest 就会结束本次处理、把 *gin.Context
+// 放回 sync.Pool，而此时那个 goroutine 仍在执行 c.Next()——它会继续改写**同一个**
+// Context（c.index / c.Keys / c.Errors / c.Writer），并与从池里取到该对象的**下一个请求**
+// 并发读写。后果不是「优雅超时」，而是两个请求的响应被交替写进同一个连接。
+// gin 的 Context 明确不支持并发使用，因此这里不 fork goroutine：
+// 超时通过 ctx 传播给业务代码，而不是强行中断 handler。
+//
+// 残留限制：完全不理会 ctx 的 handler 仍会阻塞到 HTTP Server 的 WriteTimeout
+// （见 cmd/server/main.go 的 Server 配置）。这是 gin 上下文体用池模型的固有约束，
+// 无法在不破坏 Context 复用安全的前提下从中间件强制中断它。
 func RequestTimeout(timeout time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if timeout <= 0 {
+			c.Next()
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 		defer cancel()
 
 		// 替换请求上下文为带超时的上下文
 		c.Request = c.Request.WithContext(ctx)
 
-		// 等待完成或超时
-		done := make(chan struct{})
-		go func() {
-			c.Next()
-			close(done)
-		}()
+		// 串行执行后续处理链（不 fork goroutine，见上面的说明）
+		c.Next()
 
-		select {
-		case <-done:
-			// 正常完成
-		case <-ctx.Done():
+		// 处理链已返回。若因 deadline 到期而提前退出、且没有任何响应写出，
+		// 补一个 503——此时仍处于 gin 的串行流程内，写响应是安全的。
+		if ctx.Err() == context.DeadlineExceeded && !c.Writer.Written() {
 			logger.Warn("Request timeout",
 				logger.String("method", c.Request.Method),
 				logger.String("path", c.Request.URL.Path),
@@ -396,5 +409,3 @@ func RequestTimeout(timeout time.Duration) gin.HandlerFunc {
 		}
 	}
 }
-
-

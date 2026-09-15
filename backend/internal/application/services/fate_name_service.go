@@ -143,6 +143,12 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 	if err := session.Wait(); err != nil {
 		return nil, fmt.Errorf("名字生成失败: %w", err)
 	}
+	// 超时/被取消时，引擎各分片会在 ctx.Done 后提前退出，得到的是**被截断的**榜单。
+	// 绝不能当正常结果返回——否则客户端拿到「200 + 不完整名单」却毫不知情，
+	// 也不会重试。这里显式转成错误，由 handler 映射为 503。
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("名字生成被中止: %w", err)
+	}
 
 	output := session.Result()
 	if output == nil {

@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	stderrors "errors"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -10,6 +12,19 @@ import (
 	"name/internal/application/validator"
 	"name/internal/infrastructure/logger"
 )
+
+// writeGenerateError 生成失败时的统一错误响应
+//
+// 超时必须与普通失败区分开：超时是可重试的（503），服务异常不是（500）。
+// 历史上两者都返回 500，前端无法给出正确提示。
+func writeGenerateError(c *gin.Context, err error, scope string) {
+	logger.Error(scope+": failed", zap.Error(err))
+	if stderrors.Is(err, context.DeadlineExceeded) {
+		response.ErrorJSON(c, 503, "请求超时，请稍后重试")
+		return
+	}
+	response.ErrorJSON(c, 500, "生成名字失败，请稍后重试")
+}
 
 type NameHandler struct {
 	service services.NameServiceInterface
@@ -73,8 +88,7 @@ func (h *NameHandler) Generate(c *gin.Context) {
 	)
 	result, err := h.service.Generate(c.Request.Context(), req)
 	if err != nil {
-		logger.Error("Generate: failed", zap.Error(err))
-		response.ErrorJSON(c, 500, "生成名字失败，请稍后重试")
+		writeGenerateError(c, err, "Generate")
 		return
 	}
 
@@ -94,8 +108,7 @@ func (h *NameHandler) GenerateWithAnalysis(c *gin.Context) {
 	)
 	result, err := h.service.GenerateWithAnalysis(c.Request.Context(), req)
 	if err != nil {
-		logger.Error("GenerateWithAnalysis: failed", zap.Error(err))
-		response.ErrorJSON(c, 500, "生成名字失败，请稍后重试")
+		writeGenerateError(c, err, "GenerateWithAnalysis")
 		return
 	}
 

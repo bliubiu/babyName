@@ -15,12 +15,14 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"go.uber.org/zap"
@@ -528,4 +530,36 @@ func TestEnrichPoetrySource(t *testing.T) {
 // logger 初始化（防止调用过程中 zap.Default 未初始化导致 panic）
 func init() {
 	_ = zap.NewNop() // 触发 zap 包加载（首次调用 Logger 需要）
+}
+
+// TestGenerateWithAnalysisDeadlineExceeded 超时/取消时不得返回被截断的榜单
+//
+// 回归：引擎各分片在 ctx.Done 后会提前退出，此时 session.Wait() 仍可能正常返回，
+// 若服务层不检查 ctx.Err()，客户端会拿到「200 + 不完整名单」却毫不知情（也不会重试），
+// handler 也无法映射成 503。本用例用「一进入就已过期的 deadline」触发该路径。
+func TestGenerateWithAnalysisDeadlineExceeded(t *testing.T) {
+	svc := setupFateNameServiceE2E(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+	time.Sleep(2 * time.Millisecond) // 确保 deadline 已过期
+
+	req := &GenerateRequest{
+		Surname:     "张",
+		Gender:      "male",
+		BirthYear:   2024,
+		BirthMonth:  5,
+		BirthDay:    20,
+		BirthHour:   10,
+		BirthMinute: 0,
+		NameLength:  2,
+	}
+
+	_, err := svc.GenerateWithAnalysis(ctx, req)
+	if err == nil {
+		t.Fatal("ctx 已过期却返回了成功结果——客户端会拿到被截断的榜单")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("错误 = %v，期望可被 errors.Is(err, context.DeadlineExceeded) 判定（handler 据此返回 503）", err)
+	}
 }

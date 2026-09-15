@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -18,6 +19,7 @@ import (
 	"name/internal/infrastructure/database"
 	"name/internal/infrastructure/database/memory"
 	"name/internal/infrastructure/logger"
+	"name/internal/infrastructure/pdf"
 )
 
 func TestMain(m *testing.M) {
@@ -375,6 +377,39 @@ func TestReportHandler(t *testing.T) {
 		r.POST("/report/pdf", h.GeneratePDF)
 		r.POST("/report/html", h.GenerateHTML)
 	})
+}
+
+// TestReportHandlerGeneratePDF 有效请求应返回真正的 PDF 字节流
+//
+// 本机无中文字体时跳过：PDF 渲染必须有可嵌入的中文字体，缺失时服务端返回 500
+// 并给出明确错误，而不是输出一份正文空白的"报告"（这一行为由 services 层保证）。
+func TestReportHandlerGeneratePDF(t *testing.T) {
+	if _, err := pdf.FindSystemCJKFont(); err != nil {
+		t.Skipf("本机无可用中文字体，跳过：%v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	h := NewReportHandler(services.NewReportService())
+	r.POST("/report/pdf", h.GeneratePDF)
+
+	body := `{"data":{"surname":"张","gender":"male","birth_date":"2024年5月20日",` +
+		`"names":[{"full_name":"张珀熙","pinyin":"zhāng pò xī","wuxing":"水金","score":92.4,` +
+		`"meaning":"温润有光"}]}}`
+	w := performRequest(r, "POST", "/report/pdf", []byte(body))
+
+	if w.Code != 200 {
+		t.Fatalf("状态码 = %d，期望 200（响应体 %s）", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.Contains(ct, "application/pdf") {
+		t.Errorf("Content-Type = %q，期望 application/pdf", ct)
+	}
+	if !bytes.HasPrefix(w.Body.Bytes(), []byte("%PDF-")) {
+		t.Errorf("响应体不是 PDF（前 8 字节 %q）", w.Body.Bytes()[:min(8, w.Body.Len())])
+	}
+	if len(w.Body.Bytes()) < 10*1024 {
+		t.Errorf("PDF 仅 %d 字节，疑似未内嵌字体", w.Body.Len())
+	}
 }
 
 // --- NameStatisticsHandler Tests ---

@@ -320,6 +320,11 @@ func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateReq
 	if err := session.Wait(); err != nil {
 		return nil, fmt.Errorf("名字生成失败: %w", err)
 	}
+	// 同 FateNameService：ctx 到期/取消后引擎返回的是被截断的榜单，
+	// 必须转成错误交给 handler 映射为 503，而不是当作正常结果返回。
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("名字生成被中止: %w", err)
+	}
 
 	output := session.Result()
 	if output == nil || len(output.TopNames) == 0 {

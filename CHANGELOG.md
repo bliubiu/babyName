@@ -41,6 +41,45 @@
 | `.0` | 新增 `tools/e2e_check` 与 `tools/gate_audit`；论证质量门禁表不可移除 |
 | `.1` | 门禁表扩容 131→2990 字并纳入版本管理；修复荒谬字霸榜根因（封顶豁免判据） |
 | `.2` | 新增遗留问题清单（`docs/24`）；清理调试遗留 scratch；更正过期注释 |
+| `.3` | 修复超时中间件上下文复用竞争与超时语义闭环；`/report/pdf` 改为真实 PDF |
+
+---
+
+## [2026.09.15.3]
+
+### 🐛 Bug Fixes 问题修复
+
+- 【middleware】**修复 `RequestTimeout` 与 gin 上下文复用的竞争（`docs/24` P1-1）**：原实现在 goroutine 里跑 `c.Next()`，超时分支直接返回，而 gin 会立刻把 `*gin.Context` 放回 `sync.Pool`——那个 goroutine 仍在写同一个 `c.Writer`/`c.index`，并与复用该对象的下一个请求并发读写。后果不是「优雅超时」，而是**两个请求的响应被交替写入同一连接**。现改为串行执行 `c.Next()`（gin 的 Context 不支持并发使用，想在中间件里强行中断 handler 就无法绕过这一点），并在处理链返回后、若 `ctx.Err()==DeadlineExceeded` 且未写出任何响应时补 503。代码注释同时写明残留限制：完全不理会 ctx 的 handler 仍受 `http.Server` 的 `WriteTimeout` 兜底。
+- 【services】★**修复「超时时返回被截断的 200」**：引擎各分片在 `ctx.Done` 后提前退出、`session.Wait()` 仍正常返回，而 `FateNameService` / `NameService` 此前不检查 `ctx.Err()`——实测给一个已过期的 deadline，`GenerateWithAnalysis` 会**返回成功结果**，客户端拿到「200 + 不完整名单」且不会重试。现服务层显式透出 ctx 错误。
+- 【handlers】超时与普通失败分开映射：`errors.Is(err, context.DeadlineExceeded)` → **503**「请求超时，请稍后重试」，其余仍为 500。此前一律 500，前端无法区分「可重试」与「服务异常」。
+
+### ✨ New Features 新增功能
+
+- 【pdf】★ 新增 `internal/infrastructure/pdf` —— **不依赖第三方库**的 PDF 生成器，重点解决中文渲染：
+  - `ttf.go`：TrueType 解析（表目录、`cmap` format 4/12、`loca`/`glyf`/`hmtx`、复合字形依赖），支持 `.ttf` 与 `.ttc`（取集合第 0 个字体），明确拒绝 `.otf`/CFF。
+  - `subset.go`：字形**按需子集化**（重编号 + 复合子号重写 + sfnt 表校验和），样例报告 53 KB 而源字体 9.7 MB。
+  - `document.go`：PDF 1.7 对象/页面/内容流与排版 API（浮动光标、自动折行分页、页脚回调、填充矩形、分隔线）。字体用 **Type0 + CIDFontType2 + Identity-H**（CID 即子集内新字形号，`/CIDToGIDMap /Identity`），并写 ToUnicode CMap 保证文本可复制可检索。
+  - `font.go`：系统字体发现——`NAMER_PDF_FONT` → 平台常见路径，每个候选都**真实解析并校验含「中」字字形**（只查"能否解析"会选中只有拉丁字形的字体）。
+  - 缺字降级：先尝试去变音符号（`ā→a`，复用已有依赖 `golang.org/x/text/unicode/norm`），仍无字形才用 `?` 占位并记录 `MissingRunes()`。
+- 【tools】新增 `tools/pdf_preview`：生成样例起名报告 PDF，走与线上一致的链路，便于核对排版与中文渲染。
+
+### 📈 Improvements 性能/体验优化
+
+- 【services】**`/report/pdf` 由硬编码占位实现改为真实报告**（`docs/24` P1-3、`docs/25`）：报告改为「解析请求 → 统一报表模型 → 分别渲染 PDF/HTML」，两种格式字段口径一致（此前各自解析一遍请求体）；PDF 含标题/生成时间、基本信息、八字与五行、推荐名字表格（序号/姓名/拼音/五行/评分 + 寓意折行）与「第 X / Y 页」页脚；HTML 复用同一模型渲染并保留转义。空数据或非对象输入产出「未提供有效报告数据」的可读报告而非 500；**找不到中文字体时返回 500 + 排查指引，不再输出正文空白的"报告"**。
+
+### 📚 Docs 文档更新
+
+- 新增 `docs/25-报告PDF生成实现说明.md`：实现结构、子集化方案、字体发现与降级、验证方式（含 **`pdftotext` 默认按 Latin-1 输出、必须加 `-enc UTF-8`** 这一排查陷阱）、测试矩阵，以及 ★ 踩坑记录：子集 `loca` 错位一个字形会让 PDF「能打开、字像汉字但全是别的字」（实测「张氏宝宝起名报告」渲染成「德气容容辰告拼周」）。
+- `docs/24-遗留问题清单.md`：P1-1 / P1-3 标记为已修复并补修复方案与护栏说明。
+- `docs/05-部署使用手册.md`：后端配置新增「中文字体（PDF 报告必需）」小节，说明查找顺序、`NAMER_PDF_FONT` 与容器镜像需装中文字体。
+
+### 🧪 Tests 测试
+
+- 新增 `internal/infrastructure/pdf/pdf_test.go`（11 个用例）：字体解析 / 拒绝 CFF / 复合字形依赖 / **逐字形字节比对（loca 错位回归）** / loca 单调性 / ToUnicode 覆盖 / 端到端结构与分页 / 缺字兜底 / 折行与测量 / 字体缺失报错。
+- 新增 `internal/application/services/report_service_test.go`（6 个用例）：真实数据进入文档（断言占位文案消失 + 数据出现在 ToUnicode CMap）/ 空数据 / ctx 取消 / PDF 与 HTML 同模型 / XSS 转义 / 模型解析容错。
+- 新增 `internal/infrastructure/middleware/request_timeout_test.go`（7 个用例）与 `TestGenerateWithAnalysisDeadlineExceeded`；已在旧实现上验证前两项会失败。
+- `handlers_test.go` 新增 `TestReportHandlerGeneratePDF`（无中文字体环境自动跳过）。
+- `go test ./...` 全部通过。
 
 ---
 
