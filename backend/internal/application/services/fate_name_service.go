@@ -399,10 +399,15 @@ func enrichPoetrySource(na *name.NameAnalysis, givenName string) {
 	}
 	b, ok := resolvePoetry(givenName)
 	if !ok {
-		// JSON 索引未覆盖：原 PoetrySource 留空，PoetrySentence 兜底引擎原句
+		// JSON 索引未覆盖：出处名留空，引擎原句挪到 PoetrySentence 兜底展示。
+		//
+		// 必须显式清空 PoetrySource：调用方会先用引擎格式化原句（「…」）预填它，
+		// 若只做「移动到 PoetrySentence」而不清空，前端会把原句渲染成
+		// 《「睿而爲愚者也」》——出处位置出现带引号的句子。
 		if na.PoetrySentence == "" {
 			na.PoetrySentence = na.PoetrySource
 		}
+		na.PoetrySource = ""
 		return
 	}
 	if b.Source != "" {
@@ -430,10 +435,13 @@ func enrichPoetryForName(n *name.Name, givenName string) {
 	}
 	b, ok := resolvePoetry(givenName)
 	if !ok {
-		// JSON 索引未覆盖：原 PoetrySource 留空，PoetrySentence 兜底引擎原句
+		// JSON 索引未覆盖：出处名留空，引擎原句挪到 PoetrySentence 兜底展示。
+		// 同 enrichPoetrySource：必须显式清空 PoetrySource，否则调用方预填的
+		// 「原句」会被前端当成典籍名渲染成《「…」》。
 		if n.PoetrySentence == "" {
 			n.PoetrySentence = n.PoetrySource
 		}
+		n.PoetrySource = ""
 		return
 	}
 	if b.Source != "" {

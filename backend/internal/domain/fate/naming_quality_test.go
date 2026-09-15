@@ -135,8 +135,9 @@ func TestHistoricalFigureComboExpansion(t *testing.T) {
 
 // newCleanCandidate 构造一个不触发诗词/共现等额外加减分的干净候选
 // （单名，空字义；HasPoetry 置 true 跳过 checkSemanticPoetry 诗词分支，
-//  聚焦统计型门禁段的语义/生僻字惩罚逻辑；单名共现分支
-//  checkSingleNameBigram 仍会执行，其 classics 数据由 TestMain 加载）。
+//
+//	聚焦统计型门禁段的语义/生僻字惩罚逻辑；单名共现分支
+//	checkSingleNameBigram 仍会执行，其 classics 数据由 TestMain 加载）。
 func newCleanCandidate(char string, lvl int) *NameCandidate {
 	return &NameCandidate{
 		Char1:        char,
@@ -307,26 +308,26 @@ func TestRateNameNonCuratedCap(t *testing.T) {
 	// 生肖：两字与生肖五行相生 → 94+；文化：常用+字义+笔画 → 70+。
 	// 五行：刻意给出高分 85（命理维度不封顶，用于验证总分上限 = 85×0.3+75×0.7 = 78）。
 	cand := &NameCandidate{
-		Char1:        "祝",
-		Char2:        "董",
-		Meaning1:     "祝颂",
-		Meaning2:     "董事",
-		WuXing1:      "火",
-		WuXing2:      "火",
-		Pinyin1:      "zhu4",
-		Pinyin2:      "dong3",
-		Stroke1:      9,
-		Stroke2:      12,
-		Radical1:     "礻",
-		Radical2:     "艹",
-		IsRegular:    true,
-		CommonLevel1: 1,
-		CommonLevel2: 1,
+		Char1:         "祝",
+		Char2:         "董",
+		Meaning1:      "祝颂",
+		Meaning2:      "董事",
+		WuXing1:       "火",
+		WuXing2:       "火",
+		Pinyin1:       "zhu4",
+		Pinyin2:       "dong3",
+		Stroke1:       9,
+		Stroke2:       12,
+		Radical1:      "礻",
+		Radical2:      "艹",
+		IsRegular:     true,
+		CommonLevel1:  1,
+		CommonLevel2:  1,
 		SurnamePinyin: "wang2",
 	}
 	sx := &FateData{
 		WuXingXiji: WuXingXiji{Xi: "火", Ji: "水"}, // 喜用神火：两字（祝/董）皆火 → 高分
-		BaziInfo:   BaziInfo{Zodiac: "马"},         // 马=火，与两字火相生
+		BaziInfo:   BaziInfo{Zodiac: "马"},        // 马=火，与两字火相生
 	}
 
 	sc := RateName(cand, sx, raters)
@@ -365,26 +366,26 @@ func TestRateNameCuratedExempt(t *testing.T) {
 	raters := DefaultRaters()
 
 	cand := &NameCandidate{
-		Char1:        "晴",
-		Char2:        "朗",
-		Meaning1:     "晴空",
-		Meaning2:     "明朗",
-		WuXing1:      "火",
-		WuXing2:      "火",
-		Pinyin1:      "qing2",
-		Pinyin2:      "lang3",
-		Stroke1:      12,
-		Stroke2:      10,
-		Radical1:     "日",
-		Radical2:     "月",
-		IsRegular:    true,
-		CommonLevel1: 1,
-		CommonLevel2: 1,
+		Char1:         "晴",
+		Char2:         "朗",
+		Meaning1:      "晴空",
+		Meaning2:      "明朗",
+		WuXing1:       "火",
+		WuXing2:       "火",
+		Pinyin1:       "qing2",
+		Pinyin2:       "lang3",
+		Stroke1:       12,
+		Stroke2:       10,
+		Radical1:      "日",
+		Radical2:      "月",
+		IsRegular:     true,
+		CommonLevel1:  1,
+		CommonLevel2:  1,
 		SurnamePinyin: "wang2",
 	}
 	sx := &FateData{
 		WuXingXiji: WuXingXiji{Xi: "火", Ji: "水"}, // 两字（晴/朗）皆火 = 喜用神 → 五行高分
-		BaziInfo:   BaziInfo{Zodiac: "马"},         // 马=火，与两字火同气相生
+		BaziInfo:   BaziInfo{Zodiac: "马"},        // 马=火，与两字火同气相生
 	}
 
 	sc := RateName(cand, sx, raters)
@@ -414,23 +415,23 @@ func TestRateNamePoetryNotExempt(t *testing.T) {
 	raters := DefaultRaters()
 
 	cand := &NameCandidate{
-		Char1:        "浩",
-		Char2:        "然",
-		Meaning1:     "浩大",
-		Meaning2:     "自然",
-		WuXing1:      "水",
-		WuXing2:      "火",
-		Pinyin1:      "hao4",
-		Pinyin2:      "ran2",
-		Stroke1:      10,
-		Stroke2:      12,
-		Radical1:     "氵",
-		Radical2:     "灬",
-		IsRegular:    true,
-		CommonLevel1: 1,
-		CommonLevel2: 1,
-		PoetryFrom:   "《孟子·公孙丑》",
-		HasPoetry:    true,
+		Char1:         "浩",
+		Char2:         "然",
+		Meaning1:      "浩大",
+		Meaning2:      "自然",
+		WuXing1:       "水",
+		WuXing2:       "火",
+		Pinyin1:       "hao4",
+		Pinyin2:       "ran2",
+		Stroke1:       10,
+		Stroke2:       12,
+		Radical1:      "氵",
+		Radical2:      "灬",
+		IsRegular:     true,
+		CommonLevel1:  1,
+		CommonLevel2:  1,
+		PoetryFrom:    "《孟子·公孙丑》",
+		HasPoetry:     true,
 		SurnamePinyin: "lai2",
 	}
 	sx := &FateData{
@@ -599,15 +600,15 @@ func TestWenHuaRaterCuratedBonus(t *testing.T) {
 
 	mkCand := func(isCurated bool, positiveScore int) *NameCandidate {
 		return &NameCandidate{
-			Char1:        "贪", // 单名（荒谬字，但用于非策展对照/策展对照差异仅来自 IsCurated1）
-			Char2:        "",
-			Meaning1:     "",
-			Meaning2:     "",
-			IsRegular:    true,
-			HasPoetry:    true, // 跳过 checkSemanticPoetry 数据依赖
-			CommonLevel1: 1,
-			CommonLevel2: 0,
-			IsCurated1:   isCurated,
+			Char1:          "贪", // 单名（荒谬字，但用于非策展对照/策展对照差异仅来自 IsCurated1）
+			Char2:          "",
+			Meaning1:       "",
+			Meaning2:       "",
+			IsRegular:      true,
+			HasPoetry:      true, // 跳过 checkSemanticPoetry 数据依赖
+			CommonLevel1:   1,
+			CommonLevel2:   0,
+			IsCurated1:     isCurated,
 			PositiveScore1: positiveScore,
 		}
 	}
@@ -641,12 +642,12 @@ func TestWenHuaRaterCuratedBonus(t *testing.T) {
 	mix := &NameCandidate{
 		Char1: "毅", Char2: "贪", // 毅=策展好字（在表+正分91），贪=荒谬字（不在表）
 		Meaning1: "", Meaning2: "",
-		IsRegular:    true,
-		HasPoetry:    true,
-		CommonLevel1: 1,
-		CommonLevel2: 1,
-		IsCurated1:   true,
-		IsCurated2:   false,
+		IsRegular:      true,
+		HasPoetry:      true,
+		CommonLevel1:   1,
+		CommonLevel2:   1,
+		IsCurated1:     true,
+		IsCurated2:     false,
 		PositiveScore1: 91,
 		PositiveScore2: 0,
 	}
@@ -718,4 +719,101 @@ func runeStr(s string, idx int) string {
 		return ""
 	}
 	return string(r[idx])
+}
+
+// TestNonCuratedCapRequiresNamingEvidence 精选好字豁免封顶的前置条件
+//
+// 回归：原实现只要**任意一个字**是「策展 ∩ positiveScore>=90」就整组豁免四维封顶。
+// 而 positiveScore 只覆盖少量汉字，未覆盖的字（含大量生僻专名字）在评分体系里得不到
+// 任何负反馈、与优质字完全同分，于是「精选好字 + 任意字」直接屠榜——实测双名 Top10
+// 有 10/10 是该形态（张沚明/张鲛慧/张唣明/张慧僰/张恃泽/张蚂泽/张浩荥/张噬鹏/张蚂宏/张蚂清）。
+//
+// 现要求：豁免封顶时，两个字都必须具备「命名依据」
+// （寓意评分 / 策展分类 / 真实人名语料证据）。
+func TestNonCuratedCapRequiresNamingEvidence(t *testing.T) {
+	cases := []struct {
+		label   string
+		cand    *NameCandidate
+		wantCap bool
+	}{
+		{
+			label: "精选好字 + 无任何依据字 → 必须封顶（原缺陷场景）",
+			cand: &NameCandidate{
+				Char1: "明", Char2: "沚",
+				IsCurated1: true, PositiveScore1: 91,
+				// 沚：无寓意评分（0）、非策展（false）、不在人名语料（tier 0）
+			},
+			wantCap: true,
+		},
+		{
+			label: "精选好字 + 有人名语料依据 → 豁免",
+			cand: &NameCandidate{
+				Char1: "明", Char2: "慧",
+				IsCurated1: true, PositiveScore1: 91, NameFreqTier2: 5,
+			},
+			wantCap: false,
+		},
+		{
+			label: "精选好字 + 有策展依据 → 豁免",
+			cand: &NameCandidate{
+				Char1: "明", Char2: "慧",
+				IsCurated1: true, PositiveScore1: 91, IsCurated2: true,
+			},
+			wantCap: false,
+		},
+		{
+			label: "精选好字 + 有寓意评分 → 豁免",
+			cand: &NameCandidate{
+				Char1: "明", Char2: "泽",
+				IsCurated1: true, PositiveScore1: 91, PositiveScore2: 89,
+			},
+			wantCap: false,
+		},
+		{
+			label:   "两字都无依据（无精选好字）→ 封顶",
+			cand:    &NameCandidate{Char1: "祝", Char2: "董"},
+			wantCap: true,
+		},
+		{
+			label:   "单名不封顶",
+			cand:    &NameCandidate{Char1: "祝"},
+			wantCap: false,
+		},
+	}
+
+	for _, tc := range cases {
+		if got := nonCuratedCapApplies(tc.cand); got != tc.wantCap {
+			t.Errorf("%s：nonCuratedCapApplies = %v，期望 %v", tc.label, got, tc.wantCap)
+		}
+	}
+
+	// 策展白名单组合优先豁免，不受上述判据约束
+	SetCuratedNames([]string{"晴朗"})
+	defer SetCuratedNames(nil)
+	curated := &NameCandidate{Char1: "晴", Char2: "朗"}
+	if nonCuratedCapApplies(curated) {
+		t.Error("策展白名单组合（晴朗）应豁免封顶")
+	}
+}
+
+// TestHasNamingEvidence 命名依据判据
+func TestHasNamingEvidence(t *testing.T) {
+	cases := []struct {
+		isCurated     bool
+		positiveScore int
+		nameFreqTier  int
+		want          bool
+	}{
+		{false, 0, 0, false}, // 三无：无依据
+		{true, 0, 0, true},   // 策展分类字
+		{false, 88, 0, true}, // 寓意评分
+		{false, 0, 3, true},  // 真实人名语料
+		{true, 91, 5, true},  // 三者齐备
+	}
+	for _, c := range cases {
+		if got := hasNamingEvidence(c.isCurated, c.positiveScore, c.nameFreqTier); got != c.want {
+			t.Errorf("hasNamingEvidence(%v,%d,%d) = %v，期望 %v",
+				c.isCurated, c.positiveScore, c.nameFreqTier, got, c.want)
+		}
+	}
 }

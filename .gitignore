@@ -92,4 +92,11 @@ backend/memory-wal
 backend/cli_output.json
 
 # 项目数据源（不提交仓库，本地生成/维护）
-backend/data/
+#
+# 例外：naming_quality.json 是人工策展资产（历经 40+ 轮 verify_fate 迭代累积到
+# 1094 字），2026-09 曾因本目录整体不入库而丢失、只能凭记忆重建为 131 字，
+# 质量防线因此出现大缺口。该表必须纳入版本管理。
+# 写法说明：Git 不允许「先排除整个目录、再反选目录内的文件」，
+# 因此这里排除的是目录内容（dir/*）而不是目录本身，才能用 ! 反选出该文件。
+backend/data/*
+!backend/data/naming_quality.json

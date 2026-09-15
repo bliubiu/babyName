@@ -54,6 +54,9 @@ type NameRating struct {
 // 这类单字平凡但组合荒谬的名字继续霸榜。真出典组合（如「疏影」）靠策展白名单
 // 或 GetBigramScore 共现分加分，无需此豁免。
 //
+// 「含精选好字」的豁免另有前置条件：两个字都必须具备命名依据
+// （hasNamingEvidence：寓意评分 / 策展分类 / 真实人名语料），详见 nonCuratedCapApplies。
+//
 // 效果：荒谬组合四维封顶 75 后总分上限 = 五行85×0.30 + 75×0.70 = 78，
 // 必然低于策展好名；而优质非策展名凭五行匹配度（不封顶）拉开差距。
 func RateName(candidate *NameCandidate, fateData *FateData, raters []Rater) NameScore {
@@ -110,17 +113,48 @@ var cappedDimNames = [4]string{"文化印象", "音韵", "生肖", "三才"}
 
 // nonCuratedCapApplies 判定「非策展双名四维封顶」是否适用
 //
-// 单名无策展概念（Char2 为空）不封顶；策展白名单配对、或含「策展 ∩ 精选好字」
-// 的组合豁免封顶（详见 RateName 注释）。
+// 单名无策展概念（Char2 为空）不封顶；策展白名单配对豁免封顶。
+//
+// 此外「精选好字」触发豁免时，还要求**两个字都具备命名依据**（见 hasNamingEvidence）。
+// 这是一处必要的收紧：原实现只要有一个字是精选好字就整组豁免，而 positiveScore
+// 只覆盖少量汉字、未覆盖的字（含大量荒谬字）在评分里得不到任何负反馈、与优质字
+// 完全同分，于是「精选好字 + 任意字」直接屠榜——实测双名 Top10 有 10/10 是该形态
+// （张沚明/张鲛慧/张唣明/张慧僰/张恃泽/张蚂泽/张浩荥/张噬鹏/张蚂宏/张蚂清：
+// 好字全是 明/慧/泽/浩/鹏/宏/清，伙伴字全是无信号字）。
+//
+// 收紧后：两个有命名依据的字搭配精选好字仍可豁免，保留推荐多样性；
+// 「好字 + 无依据字」一律回落封顶上限，无法再靠单字拉动整组。
+//
 // 抽成独立函数是为了让 RateName（全量明细）与 RateNameScore（仅总分）共用同一判据，
 // 保证两条路径算出的总分完全一致。
 func nonCuratedCapApplies(candidate *NameCandidate) bool {
 	if candidate.Char1 == "" || candidate.Char2 == "" {
 		return false
 	}
-	premiumChar := (candidate.IsCurated1 && candidate.PositiveScore1 >= 90) ||
+	if IsCuratedName(candidate.Char1, candidate.Char2) {
+		return false
+	}
+	premium := (candidate.IsCurated1 && candidate.PositiveScore1 >= 90) ||
 		(candidate.IsCurated2 && candidate.PositiveScore2 >= 90)
-	return !IsCuratedName(candidate.Char1, candidate.Char2) && !premiumChar
+	if !premium {
+		return true
+	}
+	return !hasNamingEvidence(candidate.IsCurated1, candidate.PositiveScore1, candidate.NameFreqTier1) ||
+		!hasNamingEvidence(candidate.IsCurated2, candidate.PositiveScore2, candidate.NameFreqTier2)
+}
+
+// hasNamingEvidence 判定单字是否具备「命名依据」
+//
+// 三个来源任一即可：
+//   - 人工寓意评分 positiveScore > 0
+//   - 策展起名分类字（IsCurated）
+//   - 出现在 95.7 万条真实人名语料中（NameFreqTier > 0）
+//
+// 注意这是「有没有依据」而非「好不好」——它不参与打分，只用于判断一个字是否有
+// 资格参与「豁免封顶」的组队，避免评分体系的信号盲区（positiveScore 覆盖不足）
+// 让无信号字白嫖精选好字的豁免。
+func hasNamingEvidence(isCurated bool, positiveScore, nameFreqTier int) bool {
+	return isCurated || positiveScore > 0 || nameFreqTier > 0
 }
 
 // weightOf 按维度名取权重（仅在封顶分支调用，至多 4 次；避免为此构造 map）

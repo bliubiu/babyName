@@ -2,7 +2,7 @@
 //
 // 覆盖六项检查：
 //  1. 多场景耗时（双名/单名/复姓/经典来源/避讳/笔画区间/显式五行）
-//  2. 推荐用字质量（一/二/三级字分布、门禁字命中、无正分信号字）
+//  2. 推荐用字质量（一/二/三级字分布、门禁字命中、无命名依据字占比）
 //  3. 参数生效性（避讳长辈、经典来源偏好）
 //  4. 双路径一致性（/names/generate 与 /names/generate/analysis）
 //  5. 同一请求可复现性
@@ -54,16 +54,28 @@ func withOver(over map[string]any) map[string]any {
 
 // ---------- 本地字库（只读） ----------
 
-// charData 从 namer.json / naming_quality.json 读出的字级属性索引。
+// charData 从 namer.json / naming_quality.json 等读出的字级属性索引。
 type charData struct {
-	level map[string]int // 通用规范汉字表等级（1/2/3；0=表外补充字）
-	pos   map[string]int // 人工寓意评分 positiveScore（0=无信号）
-	gate  map[string]bool
+	level   map[string]int  // 通用规范汉字表等级（1/2/3；0=表外补充字）
+	pos     map[string]int  // 人工寓意评分 positiveScore（0=无信号）
+	corpus  map[string]bool // 95.7 万条真实人名语料中出现过的字（name_frequency.json）
+	curated map[string]bool // 策展好名中出现过的字（curated_names.json）
+	gate    map[string]bool
 }
 
 func (c *charData) levelOf(ch string) int { return c.level[ch] }
 func (c *charData) posOf(ch string) int   { return c.pos[ch] }
 func (c *charData) inGate(ch string) bool { return c.gate[ch] }
+
+// hasEvidence 该字是否具备「命名依据」——与 fate.hasNamingEvidence 同一口径：
+// 人工寓意评分 / 策展分类字 / 真实人名语料证据，三者任一。
+//
+// 用这个口径而非「positiveScore>0」判榜：positiveScore 只覆盖少量汉字，
+// 大量正常名字用字（如 珀/赟/茗/诗）本就没有寓意评分却完全可用；
+// 真正该为 0 的是「三无字」——那才是荒谬字霸榜的成因。
+func (c *charData) hasEvidence(ch string) bool {
+	return c.pos[ch] > 0 || c.curated[ch] || c.corpus[ch]
+}
 
 // resolveDataDir 依次尝试候选路径，返回第一个含 namer.json 的目录。
 //
@@ -83,9 +95,11 @@ func resolveDataDir(preferred string) string {
 
 func loadCharData(dataDir string) (*charData, error) {
 	cd := &charData{
-		level: map[string]int{},
-		pos:   map[string]int{},
-		gate:  map[string]bool{},
+		level:   map[string]int{},
+		pos:     map[string]int{},
+		corpus:  map[string]bool{},
+		curated: map[string]bool{},
+		gate:    map[string]bool{},
 	}
 
 	raw, err := os.ReadFile(filepath.Join(dataDir, "namer.json"))
@@ -105,6 +119,36 @@ func loadCharData(dataDir string) (*charData, error) {
 	for _, c := range namer.Chars {
 		cd.level[c.Char] = c.Level
 		cd.pos[c.Char] = c.PositiveScore
+	}
+
+	// 人名语料字集（缺失不阻断，仅失去该维度判据）
+	if raw, err := os.ReadFile(filepath.Join(dataDir, "name_frequency.json")); err == nil {
+		var freq struct {
+			Frequency []struct {
+				Char string `json:"char"`
+			} `json:"frequency"`
+		}
+		if err := json.Unmarshal(raw, &freq); err == nil {
+			for _, e := range freq.Frequency {
+				cd.corpus[e.Char] = true
+			}
+		}
+	}
+
+	// 策展好名字集
+	if raw, err := os.ReadFile(filepath.Join(dataDir, "curated_names.json")); err == nil {
+		var entries []struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(raw, &entries); err == nil {
+			for _, e := range entries {
+				for _, ch := range e.Name {
+					if ch >= 0x4E00 && ch <= 0x9FFF {
+						cd.curated[string(ch)] = true
+					}
+				}
+			}
+		}
 	}
 
 	// 门禁表缺失不阻断（与引擎降级行为一致）
@@ -321,6 +365,16 @@ func dedup(in []string) []string {
 	return out
 }
 
+// optionalSuffix 把命中字列表去重排序后拼成「（命中：xx）」后缀，为空返回空串。
+func optionalSuffix(hits []string) string {
+	if len(hits) == 0 {
+		return ""
+	}
+	s := append([]string(nil), hits...)
+	sort.Strings(s)
+	return "（命中：" + strings.Join(dedup(s), "") + "）"
+}
+
 func median(xs []float64) float64 {
 	if len(xs) == 0 {
 		return 0
@@ -469,30 +523,33 @@ func main() {
 		}
 
 		// 双名特有的质量缺陷探测器：
-		// 好字信号（positiveScore）只覆盖 8105 字中的少数，无信号的字在评分上与优质字
-		// 完全等价。一旦「封顶豁免」被单字触发，伙伴字可以任意膨胀，榜单即被稀释。
-		// 因此把「含无正分信号字的比例」作为双名榜的质量水位指标。
+		// 评分体系对「无命名依据的字」（既无寓意评分、非策展、也从未出现在 95.7 万条
+		// 真实人名语料中）没有任何负反馈，它们与优质字完全同分。因此把「含无依据字的
+		// 比例」作为双名榜的质量水位指标——这正是荒谬字霸榜的量化形态。
 		if label == "/analysis 双名 基线" {
 			hit, tot := 0, 0
+			var offenders []string
 			for i, n := range v.names {
 				if i >= 50 {
 					break
 				}
 				tot++
 				for _, ch := range strField(n, "given_name") {
-					if cd.posOf(string(ch)) == 0 {
+					if !cd.hasEvidence(string(ch)) {
 						hit++
+						offenders = append(offenders, string(ch))
 						break
 					}
 				}
 			}
 			if tot > 0 {
 				ratio := float64(hit) / float64(tot)
-				fmt.Printf("    含无正分信号字的比例: %d/%d（%.0f%%）\n", hit, tot, 100*ratio)
+				fmt.Printf("    含无命名依据字的比例: %d/%d（%.0f%%）%s\n", hit, tot, 100*ratio,
+					optionalSuffix(offenders))
 				if ratio > 0.5 {
-					ck.bad("双名榜 %d/%d 含无正分信号字（positiveScore=0）：好字与荒谬字在评分上不可区分，榜单易被伙伴字稀释", hit, tot)
+					ck.bad("双名榜 %d/%d 含无命名依据字（无寓意评分/非策展/不在人名语料）：评分无法区分优劣，榜单被稀释", hit, tot)
 				} else {
-					ck.ok("双名榜无正分信号字比例 %.0f%%（阈值 50%%）", 100*ratio)
+					ck.ok("双名榜无命名依据字比例 %.0f%%（阈值 50%%）", 100*ratio)
 				}
 			}
 		}
