@@ -35,8 +35,12 @@ import (
 
 // nonNamingChars 名字用字质量门禁表（候选池阶段剔除）
 //
-// 数据外置：表主体在 data/naming_quality.json（1094 字），
+// 数据外置：表主体在 data/naming_quality.json（当前 2990 字），
 // 由 LoadNamingQualityFromJSON 启动时加载，本文件不再内嵌 325KB 字表。
+//
+// 表内容来自两条来源（见 backend/tools/gate_expand）：
+//   - 人工策展：历经 40+ 轮 verify_fate 迭代累积（git aa024f4 内嵌 1094 字版可追溯）
+//   - 规则扩容：四个「证据维度」全部落空的字（真实人名语料 / 寓意评分 / 策展 / 诗词出处）
 var (
 	nonNamingCharsMu sync.RWMutex
 	nonNamingChars   = map[string]bool{}
