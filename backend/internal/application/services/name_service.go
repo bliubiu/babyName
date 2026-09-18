@@ -114,7 +114,7 @@ type GenerateRequest struct {
 	BirthYear          int    `json:"birth_year" binding:"required"`
 	BirthMonth         int    `json:"birth_month" binding:"required"`
 	BirthDay           int    `json:"birth_day" binding:"required"`
-	BirthHour          int    `json:"birth_hour" binding:"required"`
+	BirthHour          int    `json:"birth_hour"`
 	BirthMinute        int    `json:"birth_minute"`
 	BirthLocation      string `json:"birth_location"`
 	// BirthLongitude 显式出生地经度（度，东经为正）；>0 时优先于地点查表

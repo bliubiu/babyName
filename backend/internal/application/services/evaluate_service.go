@@ -33,7 +33,7 @@ type EvaluateRequest struct {
 	BirthYear  int    `json:"birth_year" binding:"required"`
 	BirthMonth int    `json:"birth_month" binding:"required"`
 	BirthDay   int    `json:"birth_day" binding:"required"`
-	BirthHour  int    `json:"birth_hour" binding:"required"`
+	BirthHour  int    `json:"birth_hour"`
 	BirthMinute int   `json:"birth_minute"`
 	// BirthLocation 出生地（用于真太阳时校正，按地点经度查表）
 	BirthLocation string `json:"birth_location"`

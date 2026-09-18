@@ -141,11 +141,27 @@ func TestNameHandler(t *testing.T) {
 		{name: "Generate_EmptySurname", method: "POST", path: "/names/generate", body: `{"surname":"","gender":"male","birth_year":2024,"birth_month":1,"birth_day":15,"birth_hour":12}`, wantStatus: 400},
 		{name: "Generate_InvalidGender", method: "POST", path: "/names/generate", body: `{"surname":"王","gender":"","birth_year":2024,"birth_month":1,"birth_day":15,"birth_hour":12}`, wantStatus: 400},
 		{name: "Generate_ValidRequest", method: "POST", path: "/names/generate", body: `{"surname":"王","gender":"male","birth_year":2024,"birth_month":1,"birth_day":15,"birth_hour":12}`, wantStatus: 200},
+		{name: "Generate_ZeroHour", method: "POST", path: "/names/generate", body: `{"surname":"王","gender":"male","birth_year":2024,"birth_month":1,"birth_day":15,"birth_hour":0,"birth_minute":12}`, wantStatus: 200},
 		{name: "Generate_SurnameWithSpaces", method: "POST", path: "/names/generate", body: `{"surname":" 王 ","gender":"male","birth_year":2024,"birth_month":1,"birth_day":15,"birth_hour":12}`, wantStatus: 200},
 	}
 	runHandlerTests(t, tests, func(r *gin.Engine) {
 		h := NewNameHandler(svc)
 		r.POST("/names/generate", h.Generate)
+	})
+}
+
+// TestNameEvaluateHandler 测名接口：出生时辰为 0（子时）属合法输入，不得返回 400
+func TestNameEvaluateHandler(t *testing.T) {
+	svc, err := setupFateNameService(t)
+	if err != nil {
+		t.Fatalf("装配带 fate 引擎的 NameService 失败: %v", err)
+	}
+	tests := []handlerTestCase{
+		{name: "Evaluate_ZeroHour", method: "POST", path: "/names/evaluate", body: `{"surname":"王","given_name":"浩","gender":"male","birth_year":2024,"birth_month":1,"birth_day":15,"birth_hour":0,"birth_minute":12}`, wantStatus: 200},
+	}
+	runHandlerTests(t, tests, func(r *gin.Engine) {
+		h := NewNameHandler(svc)
+		r.POST("/names/evaluate", h.Evaluate)
 	})
 }
 
