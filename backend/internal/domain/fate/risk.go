@@ -161,25 +161,28 @@ func AssessNameRisks(provider CharacterProvider, surname, given string) []RiskIt
 		}
 	}
 
-	// ——— 谐音检查（含姓氏，覆盖跨字谐音与拼音连读） ———
+	// ——— 谐音检查（只针对名字用字；姓氏交由下方连读检测） ———
+	// 姓氏是既定事实，不进逐字谐音匹配：按其拼音匹配负面词会产生
+	// 「赵→罩」「王→亡」类误报（几乎每个姓都有负面同音字）。
+	// 姓氏参与的糟糕联想（如「杜子腾→肚子疼」）由 CheckBadPinyinCombo 连读检测覆盖。
 	if surname != "" {
 		surnamePinyin := firstPinyinForSurname(surname, provider)
 		if surnamePinyin != "" {
 			pairs := make([]string, 0, 6)
-			// 姓氏本字不可得，用空字符串占位（不触发本字豁免，与音韵评分器一致）
-			pairs = append(pairs, surnamePinyin, "")
 			for _, c := range chars {
 				if c == nil {
 					continue
 				}
 				pairs = append(pairs, pinyinOf(c), c.Char)
 			}
-			if hit, descs := CheckAllBadHomophones(pairs...); hit {
-				items = append(items, RiskItem{
-					Category: "谐音",
-					Level:    RiskFail,
-					Detail:   "含不吉谐音：" + strings.Join(descs, "、"),
-				})
+			if len(pairs) > 0 {
+				if hit, descs := CheckAllBadHomophones(pairs...); hit {
+					items = append(items, RiskItem{
+						Category: "谐音",
+						Level:    RiskFail,
+						Detail:   "含不吉谐音：" + strings.Join(descs, "、"),
+					})
+				}
 			}
 			givenPinyins := make([]string, 0, len(chars))
 			for _, c := range chars {

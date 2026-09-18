@@ -175,6 +175,49 @@ func TestAssessNameRisks_BadLength(t *testing.T) {
 	}
 }
 
+// TestAssessNameRisks_SurnameNotPunishedForHomophone 姓氏同音负面词不归咎名字
+func TestAssessNameRisks_SurnameNotPunishedForHomophone(t *testing.T) {
+	p := riskStubProvider(
+		&Character{Char: "赵", Pinyin: []string{"zhào"}, CommonLevel: 1},
+		&Character{Char: "心", Pinyin: []string{"xīn"}, CommonLevel: 1},
+	)
+	// 姓氏「赵」拼音 zhào 与负面词「罩」同音，但姓氏是既定事实，不应判名字谐音 fail
+	items := AssessNameRisks(p, "赵", "心")
+	for _, it := range items {
+		if it.Category == "谐音" {
+			t.Fatalf("姓氏同音负面词不应归咎名字，items=%v", items)
+		}
+	}
+}
+
+// TestAssessNameRisks_ComboHomophoneStillCatches 姓氏+名字连读的糟糕联想仍拦截
+func TestAssessNameRisks_ComboHomophoneStillCatches(t *testing.T) {
+	p := riskStubProvider(
+		&Character{Char: "王", Pinyin: []string{"wáng"}, CommonLevel: 1},
+		&Character{Char: "赵", Pinyin: []string{"zhào"}, CommonLevel: 1},
+		&Character{Char: "八", Pinyin: []string{"bā"}, CommonLevel: 1},
+	)
+	// 「王八」为姓氏+名字连读的不雅称谓，应判 fail（由连读检测负责）
+	items := AssessNameRisks(p, "王", "八")
+	found := false
+	for _, it := range items {
+		if it.Category == "谐音" && it.Level == RiskFail && strings.Contains(it.Detail, "王八") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("「王八」连读应产生谐音 fail，items=%v", items)
+	}
+
+	// 对照：姓「赵」名「八」无不良连读，不应报谐音
+	items2 := AssessNameRisks(p, "赵", "八")
+	for _, it := range items2 {
+		if it.Category == "谐音" {
+			t.Fatalf("「赵八」不应报谐音，items=%v", items2)
+		}
+	}
+}
+
 // TestAssessNameRisks_GoodNamePass 正常好字 → 无 fail，汇总 pass/warn
 func TestAssessNameRisks_GoodNamePass(t *testing.T) {
 	p := riskStubProvider(

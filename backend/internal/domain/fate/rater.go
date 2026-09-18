@@ -747,8 +747,9 @@ func (r *YinYunRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 					ds.add("单字与姓氏韵母相同")
 				}
 			}
-			// 姓氏+单字连读谐音检测（本字豁免：传入本字避免同音好字被误判）
-			if hit, descs := CheckAllBadHomophones(sp, "", p1, candidate.Char1); hit {
+			// 单字不吉谐音检测（本字豁免：传入本字避免同音好字被误判；
+			// 姓氏不参与逐字匹配——见 CheckBadPinyinCombo 的连读检测）
+			if hit, descs := CheckAllBadHomophones(p1, candidate.Char1); hit {
 				score -= float64(len(descs)) * 10
 				if !ds.skip {
 					ds.add("含不吉谐音: " + strings.Join(descs, "、"))
@@ -807,12 +808,10 @@ func (r *YinYunRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 	// ——— 谐音检测（包含姓氏拼音，确保检测跨字谐音如"杜子腾"→肚子疼） ———
 
 	// 1. 逐字检测不吉谐音（本字豁免：把每字的拼音与本字一一对应传入，
-	//    避免"思"拼音 si 与"死"谐音混淆等常见好字被误判）
+	//    避免"思"拼音 si 与"死"谐音混淆等常见好字被误判。
+	//    姓氏不参与逐字匹配：按拼音匹配负面词会产生「赵→罩」「王→亡」类误报，
+	//    姓氏相关的糟糕联想（如"杜子腾"→肚子疼）由下方连读检测 CheckBadPinyinCombo 负责）
 	pinyinCharPairs := []string{p1, candidate.Char1}
-	if candidate.SurnamePinyin != "" {
-		// 姓氏本字从 input 取不到（未传），用空字符串占位（不会触发本字豁免）
-		pinyinCharPairs = append([]string{candidate.SurnamePinyin, ""}, pinyinCharPairs...)
-	}
 	if p2 != "" {
 		pinyinCharPairs = append(pinyinCharPairs, p2, candidate.Char2)
 	}
