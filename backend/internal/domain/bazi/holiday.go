@@ -5,7 +5,10 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"name/internal/domain/bazi/tyme"
+	"name/internal/infrastructure/logger"
 )
 
 type HolidayType string
@@ -71,7 +74,12 @@ func (hs *HolidayService) GetHoliday(year, month, day int) (*Holiday, error) {
 	}
 
 	var legalHoliday *tyme.LegalHoliday
-	legalHoliday, _ = tyme.LegalHoliday{}.FromYmd(year, month, day)
+	legalHoliday, err = tyme.LegalHoliday{}.FromYmd(year, month, day)
+	if err != nil {
+		logger.Warn("法定节假日解析失败，按非节假日处理",
+			zap.String("date", fmt.Sprintf("%04d-%02d-%02d", year, month, day)), zap.Error(err))
+		legalHoliday = nil
+	}
 	if legalHoliday != nil {
 		holiday.Name = legalHoliday.GetName()
 		holiday.HolidayType = HolidayTypePublic
@@ -162,7 +170,12 @@ func (hs *HolidayService) IsVacationDay(year, month, day int) bool {
 	defer hs.mu.RUnlock()
 
 	var legalHoliday *tyme.LegalHoliday
-	legalHoliday, _ = tyme.LegalHoliday{}.FromYmd(year, month, day)
+	legalHoliday, err := tyme.LegalHoliday{}.FromYmd(year, month, day)
+	if err != nil {
+		logger.Warn("法定节假日解析失败，按非节假日处理",
+			zap.String("date", fmt.Sprintf("%04d-%02d-%02d", year, month, day)), zap.Error(err))
+		legalHoliday = nil
+	}
 	if legalHoliday != nil {
 		return !legalHoliday.IsWork()
 	}
@@ -186,7 +199,12 @@ func (hs *HolidayService) IsWorkDay(year, month, day int) bool {
 	defer hs.mu.RUnlock()
 
 	var legalHoliday *tyme.LegalHoliday
-	legalHoliday, _ = tyme.LegalHoliday{}.FromYmd(year, month, day)
+	legalHoliday, err := tyme.LegalHoliday{}.FromYmd(year, month, day)
+	if err != nil {
+		logger.Warn("法定节假日解析失败，按非节假日处理",
+			zap.String("date", fmt.Sprintf("%04d-%02d-%02d", year, month, day)), zap.Error(err))
+		legalHoliday = nil
+	}
 	if legalHoliday != nil {
 		return legalHoliday.IsWork()
 	}

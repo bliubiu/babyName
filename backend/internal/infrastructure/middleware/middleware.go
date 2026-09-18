@@ -312,23 +312,7 @@ func (il *IPRateLimiter) cleanup() {
 	}
 }
 
-// RateLimit 全局速率限制中间件（已废弃，建议使用IPRateLimit）
-func RateLimit(capacity, rate float64) gin.HandlerFunc {
-	limiter := NewRateLimiter(capacity, rate)
 
-	return func(c *gin.Context) {
-		if !limiter.Allow() {
-			c.AbortWithStatusJSON(429, gin.H{
-				"code":    429,
-				"success": false,
-				"message": "请求过于频繁，请稍后再试",
-			})
-			return
-		}
-
-		c.Next()
-	}
-}
 
 // IPRateLimitWithLimiter 创建IP级别速率限制中间件并返回限流器实例
 func IPRateLimitWithLimiter(capacity, rate float64) (gin.HandlerFunc, *IPRateLimiter) {

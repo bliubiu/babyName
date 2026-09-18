@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 	"name/internal/infrastructure/logger"
 )
 
@@ -165,7 +166,9 @@ func registerPageRoute(group *gin.RouterGroup, page, mode, root string) {
 			return
 		}
 		defer f.Close()
-		io.Copy(c.Writer, f)
+		if _, err := io.Copy(c.Writer, f); err != nil {
+			logger.Warn("静态文件传输失败", zap.String("path", txtPath), zap.Error(err))
+		}
 	})
 }
 
@@ -193,6 +196,8 @@ func serveHTML(filePath string) gin.HandlerFunc {
 			return
 		}
 		defer f.Close()
-		io.Copy(c.Writer, f)
+		if _, err := io.Copy(c.Writer, f); err != nil {
+			logger.Warn("静态文件传输失败", zap.String("path", filePath), zap.Error(err))
+		}
 	}
 }
