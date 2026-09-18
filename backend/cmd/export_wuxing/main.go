@@ -65,7 +65,7 @@ func main() {
 
 	// 输出目录
 	outDir := filepath.Join(dataDir, "wuxing_export")
-	os.MkdirAll(outDir, 0755)
+	_ = os.MkdirAll(outDir, 0755)
 
 	// 1. 每个五行一个文件
 	for _, wx := range wuxingOrder {

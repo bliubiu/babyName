@@ -659,6 +659,6 @@ func ParseTimeToHourMinute(timeStr string) (hour, minute int, err error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	fmt.Sscanf(timeStr, "%d:%d", &hour, &minute)
+	_, _ = fmt.Sscanf(timeStr, "%d:%d", &hour, &minute)
 	return hour, minute, nil
 }

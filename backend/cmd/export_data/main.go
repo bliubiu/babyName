@@ -15,7 +15,7 @@ import (
 
 func writeJSON(path string, data interface{}) error {
 	dir := filepath.Dir(path)
-	os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0755)
 
 	file, err := os.Create(path)
 	if err != nil {
@@ -39,7 +39,7 @@ func main() {
 
 	// 导出汉字数据（写入生成原料目录 raw/，与运行时数据隔离）
 	rawDir := filepath.Join(dataDir, "raw")
-	os.MkdirAll(rawDir, 0755)
+	_ = os.MkdirAll(rawDir, 0755)
 	hanziList := make([]hanzi.Hanzi, 0, len(hanzi.HanziData))
 	for _, h := range hanzi.HanziData {
 		hanziList = append(hanziList, h)

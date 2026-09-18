@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	Log     *zap.Logger
-	Sugar  *zap.SugaredLogger
+	Log   *zap.Logger
+	Sugar *zap.SugaredLogger
 )
 
 type Config struct {
@@ -73,9 +73,9 @@ func Init(cfg *Config) error {
 		// 使用 lumberjack 实现日志轮转
 		lj := &lumberjack.Logger{
 			Filename:   cfg.OutputPath,
-			MaxSize:    100, // MB，单文件最大大小
-			MaxBackups: 32,  // 保留旧文件最大个数（与 MaxAge 一致，满足 AGENTS.md 保留 32 天要求）
-			MaxAge:     32,  // 保留旧文件最大天数
+			MaxSize:    100,  // MB，单文件最大大小
+			MaxBackups: 32,   // 保留旧文件最大个数（与 MaxAge 一致，满足 AGENTS.md 保留 32 天要求）
+			MaxAge:     32,   // 保留旧文件最大天数
 			Compress:   true, // 压缩旧文件
 		}
 		writeSyncer = zapcore.AddSync(lj)
@@ -223,7 +223,7 @@ func With(fields ...zap.Field) *zap.Logger {
 
 func Sync() {
 	if Log != nil {
-		Log.Sync()
+		_ = Log.Sync()
 	}
 }
 

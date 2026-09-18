@@ -1,0 +1,82 @@
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - bodyclose
+    - copyloopvar
+    - errcheck
+    - goconst
+    - gocritic
+    - gocyclo
+    - gofmt
+    - goimports
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - noctx
+    - nolintlint
+    - prealloc
+    - predeclared
+    - revive
+    - staticcheck
+    - stylecheck
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - performance
+      - style
+    disabled-checks:
+      - dupImport
+      - ifElseChain
+      - rangeValCopy
+      - singleCaseSwitch
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+        disabled: false
+      - name: unused-parameter
+        severity: warning
+      - name: unreachable-code
+        severity: error
+      - name: redefines-builtin-id
+        severity: error
+      - name: var-naming
+        severity: warning
+        disabled: false
+  staticcheck:
+    checks: ["all", "-ST1000"]
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - goconst
+        - dupl
+        - funlen
+    - path: tools/
+      linters:
+        - gocyclo
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true

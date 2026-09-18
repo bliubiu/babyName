@@ -12,17 +12,18 @@
 // 因此新增规则 0：按来源/标签剔除历史人物字号采集条目（数据级根治）。
 //
 // 清洗规则（与 fate 引擎语义门禁完全一致，避免规则漂移）：
-//   0. 来源/标签为历史人物字号采集（source=古人云_历史人名 或
-//      meaning=历史人物字号/别名 或 tags 含「历史人名」）→ 剔除（数据级根治）
-//   1. 名字长度必须为 2（策展名是双字名）
-//   2. 任一位置为语义门禁字（IsNonNamingChar：虚词/排行字/口语物名/数字量词）→ 剔除
-//   3. 历史人物字/号专名（IsHistoricalFigureCombo）→ 剔除
-//   4. 禁忌组合（IsBadCombo：父母/蜂蜜 等）→ 剔除
-//   5. 任一位置为硬禁用字（IsHardNegativeChar：屎/尸/淫/盗/暴 等）→ 剔除
-//   6. 任一位置为软惩罚字（病/疾/哀/愁 等），且非祈福豁免组合 → 剔除
+//  0. 来源/标签为历史人物字号采集（source=古人云_历史人名 或
+//     meaning=历史人物字号/别名 或 tags 含「历史人名」）→ 剔除（数据级根治）
+//  1. 名字长度必须为 2（策展名是双字名）
+//  2. 任一位置为语义门禁字（IsNonNamingChar：虚词/排行字/口语物名/数字量词）→ 剔除
+//  3. 历史人物字/号专名（IsHistoricalFigureCombo）→ 剔除
+//  4. 禁忌组合（IsBadCombo：父母/蜂蜜 等）→ 剔除
+//  5. 任一位置为硬禁用字（IsHardNegativeChar：屎/尸/淫/盗/暴 等）→ 剔除
+//  6. 任一位置为软惩罚字（病/疾/哀/愁 等），且非祈福豁免组合 → 剔除
 //
 // 用法: go run ./cmd/clean_curated <dataDir>
-//  例: go run ./cmd/clean_curated ../data
+//
+//	例: go run ./cmd/clean_curated ../data
 package main
 
 import (

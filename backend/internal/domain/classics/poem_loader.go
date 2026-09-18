@@ -194,8 +194,8 @@ func loadYuanquToIndex(idx *PoemIndex, dataDir string) error {
 	}
 
 	var raw struct {
-		元曲一 struct {
-			关汉卿 []struct {
+		YuanquYi struct {
+			GuanHanqing []struct {
 				Title      string   `json:"title"`
 				Author     string   `json:"author"`
 				Paragraphs []string `json:"paragraphs"`
@@ -207,7 +207,7 @@ func loadYuanquToIndex(idx *PoemIndex, dataDir string) error {
 		return err
 	}
 
-	for _, entry := range raw.元曲一.关汉卿 {
+	for _, entry := range raw.YuanquYi.GuanHanqing {
 		pe := &PoemEntry{
 			Title:    entry.Title,
 			Author:   entry.Author,
@@ -224,7 +224,7 @@ func loadYuanquToIndex(idx *PoemIndex, dataDir string) error {
 		idx.AddEntry(pe)
 	}
 
-	logger.Info("元曲已加载到索引", zap.Int("条目数", len(raw.元曲一.关汉卿)))
+	logger.Info("元曲已加载到索引", zap.Int("条目数", len(raw.YuanquYi.GuanHanqing)))
 	return nil
 }
 
