@@ -248,6 +248,10 @@
 - https://github.com/uiwjs/province-city-china # 省、市、区县、乡镇街道 json,csv,sql数据
 - https://github.com/pwxcoo/chinese-xinhua  # 字典
 
+- `chinese-poetry`（中华古诗词数据库）
+- `Chinese-Names-Corpus`（中文姓名语料）
+- `chineseStroke`（笔画数据）
+
 
 
 
