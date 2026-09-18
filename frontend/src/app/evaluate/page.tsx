@@ -126,15 +126,15 @@ export default function EvaluatePage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
               {([
                 ['出生年', birthYear, setBirthYear, 1900, 2100],
                 ['月', birthMonth, setBirthMonth, 1, 12],
                 ['日', birthDay, setBirthDay, 1, 31],
                 ['时', birthHour, setBirthHour, 0, 23],
                 ['分', birthMinute, setBirthMinute, 0, 59],
-              ] as const).map(([label, value, setter, min, max]) => (
-                <div key={label}>
+              ] as const).map(([label, value, setter, min, max], index) => (
+                <div key={label} className={index === 0 ? 'col-span-2 min-w-[7rem]' : ''}>
                   <label className="block text-sm text-ink-light mb-1.5" htmlFor={`eval-${label}`}>{label}</label>
                   <input
                     id={`eval-${label}`}
