@@ -84,7 +84,7 @@ func setupFileSystemStatic(router *gin.Engine, cfg StaticConfig) {
 	}
 
 	// 页面路由
-	pages := []string{"index", "compare", "favorites", "history", "result", "huangli"}
+	pages := []string{"index", "compare", "evaluate", "favorites", "history", "result", "huangli", "stat"}
 	for _, page := range pages {
 		registerPageRoute(staticGroup, page, mode, cfg.Root)
 	}
@@ -118,6 +118,8 @@ func getCacheRules() map[string]cacheRule {
 		"/history":    noCache,
 		"/result":     noCache,
 		"/huangli":    noCache,
+		"/evaluate":   noCache,
+		"/stat":       noCache,
 	}
 }
 
