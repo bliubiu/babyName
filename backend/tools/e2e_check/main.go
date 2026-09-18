@@ -645,6 +645,7 @@ func main() {
 	}
 	var allOK []float64
 	var allTotal int
+	var totalWall float64
 	for round := 0; round < *rounds; round++ {
 		codes := map[string]int{}
 		durs := make([]float64, *conc)
@@ -664,6 +665,7 @@ func main() {
 		}
 		wg.Wait()
 		wall := time.Since(t0).Seconds()
+		totalWall += wall
 		okDurs := filterPositive(durs)
 		allOK = append(allOK, okDurs...)
 		allTotal += *conc
@@ -675,16 +677,19 @@ func main() {
 		fmt.Printf("  汇总: 成功 %d/%d  中位=%.3fs p95=%.3fs\n",
 			len(allOK), allTotal, median(allOK), percentile(allOK, 0.95))
 
-		// 并发超订探测：每个请求内部按 NumCPU 固定分片，并发一上来 worker 数
-		// 就会成倍超过核数，单请求耗时随之放大、吞吐却不涨。
-		if serial := durs["/analysis 双名 基线"]; serial > 0 {
-			ratio := median(allOK) / serial
-			fmt.Printf("  并发放大系数: %.2f×（并发中位 %.3fs / 串行基线 %.3fs）\n", ratio, median(allOK), serial)
-			if ratio > 2.5 {
-				ck.bad("%d 并发下单请求耗时放大 %.1f 倍（串行 %.3fs → 并发中位 %.3fs），worker 按 NumCPU 固定分片导致超订",
-					*conc, ratio, serial, median(allOK))
+		// 并发超订探测（P2-7 令牌钳制后的语义）：worker 总数被全局令牌钳制在
+		// NumCPU 内，单请求的排队延迟会随并发抬升，但「吞吐不随并发恶化」
+		// 才是目标。改用吞吐加速比判定：并发总吞吐相对串行吞吐（1/串行时长）
+		// 应有实质提升，否则说明调度仍是串行化/超订。
+		if serial := durs["/analysis 双名 基线"]; serial > 0 && totalWall > 0 {
+			speedup := float64(allTotal) / totalWall * serial
+			fmt.Printf("  并发加速比: %.2f×（并发吞吐 %.2f req/s / 串行吞吐 %.2f req/s）\n",
+				speedup, float64(allTotal)/totalWall, 1.0/serial)
+			if speedup < 1.5 {
+				ck.bad("%d 并发下吞吐加速比 %.2f×，几乎无并行收益——worker 调度存在串行化或超订",
+					*conc, speedup)
 			} else {
-				ck.ok("并发放大系数 %.2f× 在可接受范围内", ratio)
+				ck.ok("吞吐相对串行有 %.2f× 加速，worker 收敛无超订", speedup)
 			}
 		}
 	}
