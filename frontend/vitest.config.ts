@@ -6,6 +6,21 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: [],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        '.next/',
+        'out/',
+        'public/',
+        '**/*.test.{ts,tsx}',
+        '**/*.spec.{ts,tsx}',
+        '**/*.d.ts',
+        'vitest.config.ts',
+        'eslint.config.js',
+      ],
+    },
   },
   resolve: {
     alias: {

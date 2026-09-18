@@ -3,15 +3,16 @@
 import { useState, useEffect } from 'react';
 import { IconSun, IconMoon } from './Icons';
 
-export default function ThemeToggle() {
-  const [isDark, setIsDark] = useState(false);
+function getInitialTheme(): boolean {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('theme');
+    return saved === 'dark';
+  }
+  return false;
+}
 
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark') {
-      enableDarkMode();
-    }
-  }, []);
+export default function ThemeToggle() {
+  const [isDark, setIsDark] = useState(getInitialTheme);
 
   const enableDarkMode = () => {
     document.body.classList.add('dark');
@@ -24,6 +25,14 @@ export default function ThemeToggle() {
     localStorage.setItem('theme', 'light');
     setIsDark(false);
   };
+
+  useEffect(() => {
+    if (isDark) {
+      document.body.classList.add('dark');
+    } else {
+      document.body.classList.remove('dark');
+    }
+  }, [isDark]);
 
   const toggleTheme = () => {
     if (isDark) {

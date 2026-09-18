@@ -18,7 +18,6 @@ export function RadicalSelector({ onSelectChars, selectedChars, disabled }: Radi
 
   useEffect(() => {
     let mounted = true;
-    setLoading(true);
     getCharGroups()
       .then((data) => {
         if (mounted) {
