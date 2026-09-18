@@ -65,14 +65,7 @@ function NameCard({
   const fullName = name.full_name || `${name.surname}${name.given_name}`;
   const score = Math.min(100, name.total_score ?? name.score);
 
-  // 多维度评分配置：优先使用 score_detail，回退到旧字段
-  const dimsFromDetail = name.score_detail?.map(d => ({
-    key: d.name,
-    label: d.name,
-    value: d.score,
-    color: colorMap[d.name] || 'bg-gray-400',
-  })) || [];
-
+  // 多维度评分颜色映射（须在 dimsFromDetail 之前声明，避免 TDZ）
   const colorMap: Record<string, string> = {
     '五行匹配': 'bg-amber-500',
     '音韵律动': 'bg-sky-500',
@@ -83,6 +76,14 @@ function NameCard({
     '诗词共现': 'bg-cyan-400',
     '人名频率': 'bg-indigo-400',
   };
+
+  // 多维度评分配置：优先使用 score_detail，回退到旧字段
+  const dimsFromDetail = name.score_detail?.map(d => ({
+    key: d.name,
+    label: d.name,
+    value: d.score,
+    color: colorMap[d.name] || 'bg-gray-400',
+  })) || [];
 
   const dims = dimsFromDetail.length > 0 ? dimsFromDetail : [
     { key: 'wuxing', label: '五行匹配', value: name.wuxing_score ?? 0, color: 'bg-amber-500' },
