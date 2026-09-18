@@ -1,0 +1,92 @@
+# frontend/.dockerignore
+# ============================================================
+# 构建上下文忽略文件 - 减少构建上下文大小，加速构建
+# ============================================================
+
+# Git 相关
+.git
+.gitignore
+.github
+
+# IDE/编辑器配置
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# 依赖目录 (构建时重新安装)
+node_modules/
+.pnpm-store/
+
+# 构建产物 (构建时重新生成)
+.next/
+out/
+build/
+dist/
+
+# 测试覆盖率
+coverage/
+.nyc_output/
+
+# 环境变量文件 (运行时配置)
+.env
+.env.*
+!.env.example
+!.env.template
+
+# 日志文件
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 测试相关
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__mocks__/
+
+# 类型检查缓存
+*.tsbuildinfo
+
+# IDE/编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 文档
+*.md
+docs/
+README.md
+CHANGELOG.md
+
+# 脚本
+scripts/
+*.sh
+*.bat
+*.ps1
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+*.temp
+
+# 编译缓存
+.turbo/
+.cache/
+
+# 其他
+*.pem
+.vercel
+.netlify

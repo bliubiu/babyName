@@ -1,0 +1,122 @@
+# docker-compose.dev.yml
+# ============================================================
+# 起名项目 - 开发环境编排 (热重载)
+# 启动: docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.development up -d
+# ============================================================
+
+version: '3.8'
+
+services:
+  # ===== 后端开发 (Air 热重载) =====
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: builder  # 使用构建阶段镜像 (包含完整 Go 工具链)
+    container_name: namer-backend-dev
+    restart: unless-stopped
+    command: air -c .air.toml  # 热重载
+    environment:
+      - GIN_MODE=debug
+      - PORT=8080
+      - DATA_DIR=/app/data
+      - LOG_LEVEL=debug
+      - LOG_DIR=/app/logs
+      - JWT_SECRET=dev-secret-key-change-in-production
+      - JWT_EXPIRE=24h
+    volumes:
+      - ./backend:/app                    # 源码挂载 (热重载)
+      - /app/tmp                          # 避免覆盖容器内编译产物
+      - ./backend/data:/app/data          # 数据持久化
+      - ./backend/logs:/app/logs          # 日志持久化
+      - ./backend/config:/app/config      # 配置文件
+    networks:
+      - namer-network
+    ports:
+      - "8080:8080"                       # 宿主机端口映射 (便于调试)
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  # ===== 前端开发 (Next.js 热重载) =====
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: deps  # 使用依赖安装阶段镜像 (包含完整 Node.js)
+    container_name: namer-frontend-dev
+    restart: unless-stopped
+    command: pnpm run dev  # Next.js 热重载
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_BASE=http://localhost:8080
+      - NEXT_PUBLIC_WS_BASE=ws://localhost:8080
+      - NEXT_PUBLIC_APP_NAME=起名工具 (开发版)
+      - NEXT_PUBLIC_APP_VERSION=dev
+      - WATCHPACK_POLLING=true  # 启用轮询模式 (解决 Docker 卷文件监听问题)
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./frontend:/app                       # 源码挂载
+      - /app/node_modules                     # 保护依赖目录不被覆盖
+      - /app/.next                            # 保护构建缓存
+      - /app/.turbo                           # 保护 Turbo 缓存
+    networks:
+      - namer-network
+    ports:
+      - "3000:3000"                           # 宿主机端口映射
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  # ===== 开发环境 Redis (可选) =====
+  redis:
+    image: redis:7-alpine
+    container_name: namer-redis-dev
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - namer-network
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+networks:
+  namer-network:
+    driver: bridge
+    name: namer-network-dev
+
+volumes:
+  redis_dev_data:
+    driver: local

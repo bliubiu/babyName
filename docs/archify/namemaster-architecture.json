@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "起名 NameMaster 运行时架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1280, 600]
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "用户", "sublabel": "浏览器 / 移动端", "pos": [40, 270], "size": [120, 60] },
+    { "id": "frontend", "type": "frontend", "label": "Next.js 前端", "sublabel": "React + Tailwind", "pos": [230, 270], "size": [130, 60], "tag": "起名/收藏/对比/历史" },
+    { "id": "middleware", "type": "security", "label": "中间件", "sublabel": "CORS / 限流 / 日志", "pos": [440, 50], "size": [130, 60] },
+    { "id": "gin", "type": "backend", "label": "Gin HTTP 服务", "sublabel": "路由 + 静态文件", "pos": [440, 270], "size": [130, 60] },
+    { "id": "app", "type": "backend", "label": "应用层", "sublabel": "Handlers + Services", "pos": [650, 270], "size": [140, 60] },
+    { "id": "cache", "type": "database", "label": "内存缓存", "sublabel": "sync.Map", "pos": [650, 50], "size": [140, 60] },
+    { "id": "domain", "type": "backend", "label": "领域层", "sublabel": "fate / hanzi / bazi", "pos": [860, 270], "size": [140, 60], "tag": "DDD 领域核心" },
+    { "id": "sqlite", "type": "database", "label": "SQLite", "sublabel": "WAL 模式", "pos": [1070, 270], "size": [130, 60] },
+    { "id": "datafiles", "type": "cloud", "label": "JSON 数据文件", "sublabel": "data/*.json", "pos": [860, 440], "size": [140, 60] },
+    { "id": "memory", "type": "database", "label": "内存存储", "sublabel": "降级回退", "pos": [1070, 440], "size": [130, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Go 后端进程", "wraps": ["middleware", "gin", "app", "cache", "domain", "sqlite", "datafiles", "memory"] },
+    { "kind": "security-group", "label": "DDD 领域边界", "wraps": ["app", "domain"] }
+  ],
+  "connections": [
+    { "id": "user-to-fe", "from": "user", "to": "frontend", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "fe-to-gin", "from": "frontend", "to": "gin", "label": "REST API" },
+    { "id": "mw-to-gin", "from": "middleware", "to": "gin", "label": "拦截请求", "variant": "security", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
+    { "id": "gin-to-app", "from": "gin", "to": "app", "label": "路由分发" },
+    { "id": "app-to-cache", "from": "app", "to": "cache", "label": "读写缓存", "fromSide": "top", "toSide": "bottom", "labelDy": -58 },
+    { "id": "app-to-domain", "from": "app", "to": "domain", "label": "领域调用" },
+    { "id": "domain-to-sqlite", "from": "domain", "to": "sqlite", "label": "SQL 查询" },
+    { "id": "data-to-domain", "from": "datafiles", "to": "domain", "label": "启动加载", "variant": "dashed", "fromSide": "top", "toSide": "bottom" },
+    { "id": "sqlite-to-memory", "from": "sqlite", "to": "memory", "label": "降级回退", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelDy": 58 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "前端", "items": ["Next.js + React + Tailwind CSS", "页面：起名、收藏、对比、历史", "通过 REST API 调用后端"] },
+    { "dot": "emerald", "title": "后端 (Go + Gin)", "items": ["Gin HTTP 路由 + 静态文件服务", "中间件：CORS、限流、日志、超时", "应用层编排领域逻辑，Handlers + Services"] },
+    { "dot": "violet", "title": "DDD 领域核心", "items": ["fate 引擎：Rater 评分链 + 避讳规则", "hanzi 汉字库 / bazi 八字 / yijing 易经", "zodiac 生肖 / name 候选名库"] },
+    { "dot": "amber", "title": "数据持久化", "items": ["SQLite WAL 模式持久化", "内存缓存加速热点查询", "data/*.json 启动时加载文化数据", "SQLite 不可用时降级内存存储"] }
+  ]
+}

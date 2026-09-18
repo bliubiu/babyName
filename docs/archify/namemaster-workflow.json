@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "起名 NameMaster 业务流程",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1240, 794]
+  },
+  "lanes": [
+    { "id": "ui", "label": "用户交互" },
+    { "id": "destiny", "label": "命理层" },
+    { "id": "numerology", "label": "数理层" },
+    { "id": "character", "label": "字象层" },
+    { "id": "output", "label": "验证输出" }
+  ],
+  "phases": [
+    { "id": "input", "label": "输入", "fromCol": 0, "toCol": 0 },
+    { "id": "analyze", "label": "命理分析", "fromCol": 1, "toCol": 2, "variant": "emphasis" },
+    { "id": "select", "label": "选字配名", "fromCol": 3, "toCol": 4 },
+    { "id": "deliver", "label": "验证交付", "fromCol": 5, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "destiny_core", "label": "命理决策", "lane": "destiny", "fromCol": 1, "toCol": 2, "variant": "emphasis" },
+    { "id": "char_build", "label": "字象构建", "lane": "character", "fromCol": 3, "toCol": 4 }
+  ],
+  "mainPath": ["input", "bazi", "yongshen", "shuli", "xuanzi", "jiaoyan", "verify", "score", "result"],
+  "nodes": [
+    { "id": "input", "lane": "ui", "col": 0, "type": "external", "label": "用户输入", "sublabel": "姓氏 + 生辰" },
+    { "id": "bazi", "lane": "destiny", "col": 1, "type": "backend", "label": "八字排盘", "sublabel": "四柱 + 五行旺衰", "tag": "命理层" },
+    { "id": "yongshen", "lane": "destiny", "col": 2, "type": "backend", "label": "喜用神推导", "sublabel": "定调补什么" },
+    { "id": "shuli", "lane": "numerology", "col": 2, "type": "backend", "label": "数理配置", "sublabel": "河图 + 笔画" },
+    { "id": "yijing", "lane": "numerology", "col": 3, "type": "backend", "label": "易卦解读", "sublabel": "姓名卦象" },
+    { "id": "xuanzi", "lane": "character", "col": 3, "type": "backend", "label": "五行选字", "sublabel": "用神对应部首" },
+    { "id": "jiaoyan", "lane": "character", "col": 4, "type": "backend", "label": "字义音韵 + 出典", "sublabel": "校正 + 搭配 + 诗词", "width": 120 },
+    { "id": "verify", "lane": "output", "col": 4, "type": "security", "label": "五行验证", "sublabel": "生克检查", "tag": "姓+名1+名2" },
+    { "id": "score", "lane": "output", "col": 5, "type": "backend", "label": "智能评分", "sublabel": "100分制" },
+    { "id": "result", "lane": "ui", "col": 5, "type": "frontend", "label": "结果展示", "sublabel": "候选名 + 评分" }
+  ],
+  "edges": [
+    { "id": "e1", "from": "input", "to": "bazi", "label": "排盘", "variant": "emphasis" },
+    { "id": "e2", "from": "bazi", "to": "yongshen" },
+    { "id": "e3", "from": "yongshen", "to": "shuli", "label": "用神选数理", "variant": "emphasis" },
+    { "id": "e4", "from": "shuli", "to": "xuanzi", "label": "数理定框架" },
+    { "id": "e5", "from": "shuli", "to": "yijing", "label": "卦象", "variant": "dashed", "role": "branch" },
+    { "id": "e6", "from": "xuanzi", "to": "jiaoyan", "label": "选字完成" },
+    { "id": "e7", "from": "jiaoyan", "to": "verify", "label": "提交验证" },
+    { "id": "e8", "from": "yijing", "to": "jiaoyan", "label": "卦象辅助", "variant": "dashed", "role": "async" },
+    { "id": "e9", "from": "verify", "to": "score", "label": "生克通过" },
+    { "id": "e10", "from": "score", "to": "result", "label": "输出结果", "variant": "emphasis", "role": "return" }
+  ],
+  "cards": []
+}
