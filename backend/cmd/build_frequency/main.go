@@ -51,13 +51,13 @@ type FrequencyMeta struct {
 
 // CharFrequencyOutput 单字频率输出文件
 type CharFrequencyOutput struct {
-	Meta      FrequencyMeta     `json:"meta"`
+	Meta      FrequencyMeta    `json:"meta"`
 	Frequency []*CharFrequency `json:"frequency"` // 按频率降序
 }
 
 // BigramFrequencyOutput 双字频率输出文件
 type BigramFrequencyOutput struct {
-	Meta      FrequencyMeta        `json:"meta"`
+	Meta      FrequencyMeta      `json:"meta"`
 	Frequency []*BigramFrequency `json:"frequency"` // 按频率降序
 }
 
@@ -475,8 +475,4 @@ func printSummary(charFreq []*CharFrequency, bigramFreq []*BigramFrequency) {
 	}
 
 	fmt.Println("\n═══════════════════════════════════════════")
-
-	// 辅助定位工具
-	_ = math.MaxInt
-	_ = sort.Strings
 }
