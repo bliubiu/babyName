@@ -7,7 +7,7 @@ import { Name, FavoriteData } from '@/types';
 import { ResultPageSkeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/Toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { saveFavorite, deleteFavorite } from '@/lib/api';
+import { saveFavorite, deleteFavorite, exploreNames } from '@/lib/api';
 import type { FavoritesResponse } from '@/types/api/favorites';
 import Navigation from '@/components/Navigation';
 import { NameFilters } from '@/components/NameFilter';
@@ -38,6 +38,8 @@ export default function ResultPage() {
   const [selectedName, setSelectedName] = useState<number | null>(null);
   const [favoriteStatus, setFavoriteStatus] = useState<Record<string, boolean>>({});
   const [compareNames, setCompareNames] = useState<number[]>([]);
+  // 探索模式（换一批）：非空时列表展示换上的这一批（与推荐榜零交集）
+  const [exploreBatch, setExploreBatch] = useState<Name[] | null>(null);
   const { showToast } = useToast();
 
   const queryClient = useQueryClient();
@@ -83,6 +85,26 @@ export default function ResultPage() {
 
     checkFavorites();
   }, [result, queryClient]);
+
+  // 探索模式（换一批）：从同一生成会话的候选表中取与榜单零交集的新一批候选
+  const exploreMutation = useMutation({
+    mutationFn: async () => {
+      if (!result?.generation_id) throw new Error('缺少生成会话 ID');
+      const data = await exploreNames(result.generation_id, 10);
+      if (!data) throw new Error('探索结果为空');
+      return data;
+    },
+    onSuccess: (data) => {
+      setExploreBatch(data.names as Name[]);
+      setSelectedName(null);
+      setCompareNames([]);
+      showToast(`已换一批新名字（${data.names.length} 个）`, 'success');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    onError: () => {
+      showToast('换一批失败，请稍后重试', 'error');
+    },
+  });
 
    const toggleFavoriteMutation = useMutation({
      mutationFn: async (name: Name) => {
@@ -203,7 +225,9 @@ export default function ResultPage() {
   }
 
   const { bazi, nayin, zodiac, hexagram, names } = result;
-  const topNames = filteredNames.slice(0, 20);
+  // 探索模式下展示换上的一批；否则展示筛选后的推荐榜
+  const displayList = exploreBatch ?? filteredNames;
+  const topNames = displayList.slice(0, 20);
 
   const handleCompare = () => {
     if (compareNames.length < 2) {
@@ -286,7 +310,7 @@ export default function ResultPage() {
         {/* 名字列表 */}
         <div className="mb-6 md:mb-8">
           <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-            <h2 className="section-title">推荐名字</h2>
+            <h2 className="section-title">{exploreBatch ? '换一批' : '推荐名字'}</h2>
             <div className="flex items-center gap-2">
               {compareNames.length > 0 && (
                 <button
@@ -294,6 +318,23 @@ export default function ResultPage() {
                   className="px-3.5 py-1.5 bg-crimson text-white rounded-xl text-sm hover:bg-crimson-light transition-all duration-200"
                 >
                   对比 {compareNames.length} 个
+                </button>
+              )}
+              {exploreBatch && (
+                <button
+                  onClick={() => { setExploreBatch(null); setSelectedName(null); setCompareNames([]); }}
+                  className="px-3.5 py-1.5 bg-ink/5 text-ink rounded-xl text-sm hover:bg-ink/10 transition-all duration-200"
+                >
+                  返回推荐榜
+                </button>
+              )}
+              {!exploreBatch && result.generation_id && (
+                <button
+                  onClick={() => exploreMutation.mutate()}
+                  disabled={exploreMutation.isPending}
+                  className="px-3.5 py-1.5 bg-jade/10 text-jade rounded-xl text-sm hover:bg-jade/20 transition-all duration-200 disabled:opacity-50"
+                >
+                  {exploreMutation.isPending ? '换一批中…' : '换一批'}
                 </button>
               )}
               <button

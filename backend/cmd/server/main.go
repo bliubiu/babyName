@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
@@ -19,7 +18,6 @@ import (
 	"name/internal/domain/fate"
 	"name/internal/domain/hanzi"
 	"name/internal/domain/name"
-	"name/internal/domain/namestatistics"
 	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/config"
 	"name/internal/infrastructure/data"
@@ -210,15 +208,11 @@ func initStore(dbPath, dataDir string) database.Store {
 // --- 服务装配 ---
 
 type appServices struct {
-	name      *services.NameService
-	bazi      *services.BaziService
-	yijing    *services.YijingService
-	zodiac    *services.ZodiacService
-	history   *services.HistoryService
-	favorite  *services.FavoriteService
-	report    *services.ReportService
-	feedback  *services.FeedbackService
-	namestats namestatistics.NameStatisticsService
+	name     *services.NameService
+	tasks    *services.TaskService
+	history  *services.HistoryService
+	favorite *services.FavoriteService
+	report   *services.ReportService
 }
 
 func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *appServices {
@@ -265,27 +259,21 @@ func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *a
 		services.WithFateService(fateSvc), // fate 引擎优先（新引擎更完善）
 	)
 
+	// 异步生成任务（长任务体验：提交 task_id → 轮询进度/结果）
+	taskSvc := services.NewTaskService(nameSvc)
+
 	// 创建收藏服务（需要 NameDB 实现自学习）
 	favSvc := services.NewFavoriteService(store)
 	if ndb := nameSvc.GetNameDB(); ndb != nil {
 		favSvc.SetNameDB(ndb)
 	}
 
-	// 姓名统计服务（数据源：data 目录 JSON，由 build_namestats 从语料生成）
-	namestatsSvc := namestatistics.NewNameStatisticsService(
-		namestatistics.NewFileNameStatStore(dataDir),
-	)
-
 	return &appServices{
-		name:      nameSvc,
-		bazi:      services.NewBaziService(cacheInst),
-		report:    services.NewReportService(),
-		yijing:    services.NewYijingService(store, cacheInst),
-		zodiac:    services.NewZodiacService(store),
-		history:   services.NewHistoryService(store),
-		favorite:  favSvc,
-		feedback:  services.NewFeedbackService(store, store),
-		namestats: namestatsSvc,
+		name:     nameSvc,
+		tasks:    taskSvc,
+		report:   services.NewReportService(),
+		history:  services.NewHistoryService(store),
+		favorite: favSvc,
 	}
 }
 
@@ -293,33 +281,25 @@ func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *a
 
 type appHandlers struct {
 	name      *handlers.NameHandler
-	bazi      *handlers.BaziHandler
-	yijing    *handlers.YijingHandler
-	zodiac    *handlers.ZodiacHandler
+	nameAsync *handlers.NameAsyncHandler
 	history   *handlers.HistoryHandler
 	favorite  *handlers.FavoriteHandler
 	report    *handlers.ReportHandler
-	feedback  *handlers.FeedbackHandler
 	stat      *handlers.NameStatHandler
 	huangli   *handlers.HuangliHandler
 	character *handlers.CharacterHandler
-	namestats *handlers.NameStatisticsHandler
 }
 
 func newHandlers(svc *appServices, dataDir string) *appHandlers {
 	return &appHandlers{
 		name:      handlers.NewNameHandler(svc.name),
-		bazi:      handlers.NewBaziHandler(svc.bazi),
-		yijing:    handlers.NewYijingHandler(svc.yijing),
-		zodiac:    handlers.NewZodiacHandler(svc.zodiac),
+		nameAsync: handlers.NewNameAsyncHandler(handlers.NewNameHandler(svc.name), svc.tasks, svc.name),
 		history:   handlers.NewHistoryHandler(svc.history),
 		favorite:  handlers.NewFavoriteHandler(svc.favorite),
 		report:    handlers.NewReportHandler(svc.report),
-		feedback:  handlers.NewFeedbackHandler(svc.feedback),
 		stat:      handlers.NewNameStatHandler(),
 		huangli:   handlers.NewHuangliHandler(),
 		character: handlers.NewCharacterHandler(svc.name.GetNameDB()),
-		namestats: handlers.NewNameStatisticsHandler(svc.namestats),
 	}
 }
 
@@ -360,15 +340,19 @@ func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store
 	api := router.Group("/api/v1")
 	{
 		api.POST("/names/generate", h.name.Generate)
-		api.POST("/names/generate/analysis", h.name.GenerateWithAnalysis)
+		// 异步生成（长任务体验）：提交 task_id → 轮询进度/结果
+		api.POST("/names/generate/async", h.nameAsync.GenerateAsync)
+		api.GET("/names/task/:id", h.nameAsync.GetTask)
+		// 探索模式（换一批）：与上次生成结果零交集
+		api.POST("/names/generate/explore", h.nameAsync.Explore)
+		// 测名：输入姓名 + 生辰 → 完整评分报告 + 风险体检
+		api.POST("/names/evaluate", h.name.Evaluate)
 
-		api.POST("/bazi/analyze", h.bazi.Analyze)
-
-		api.GET("/yijing/hexagram/:id", h.yijing.GetHexagram)
-		api.GET("/yijing/hexagram", h.yijing.GetAllHexagrams)
-
-		api.GET("/zodiac/:animal", h.zodiac.GetZodiac)
-		api.GET("/zodiac", h.zodiac.GetAllZodiacs)
+		// 注：/names/generate/analysis、/bazi/analyze、/yijing/*、/zodiac/*、
+		// /feedback*、/report/html、/namestats/*、/characters/radical|curated-names|styles、
+		// /favorites/check、/history/batch、/favorites/batch 已下线——前端无页面调用
+		// （docs/27 接口利用率审计：30 个接口仅 9 个在用）。领域层能力保留，
+		// 由生成管线内部消费（八字/易卦/生肖已并入生成响应）。
 
 		api.GET("/history", h.history.GetHistory)
 		api.POST("/history", h.history.SaveHistory)
@@ -377,39 +361,17 @@ func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store
 		api.GET("/favorites", h.favorite.GetFavorites)
 		api.POST("/favorites", h.favorite.SaveFavorite)
 		api.DELETE("/favorites/:id", h.favorite.DeleteFavorite)
-		api.GET("/favorites/check", h.favorite.CheckFavorite)
-		api.POST("/history/batch", h.history.BatchSaveHistory)
-		api.POST("/favorites/batch", h.favorite.BatchSaveFavorite)
-		api.DELETE("/favorites/batch", h.favorite.BatchDeleteFavorite)
-
-		api.POST("/feedback", h.feedback.SaveFeedback)
-		api.POST("/feedback/request", h.feedback.SaveRequest)
-		api.GET("/feedback/algorithm-performance", h.feedback.GetAlgorithmPerformance)
 
 		api.POST("/report/pdf", h.report.GeneratePDF)
-		api.POST("/report/html", h.report.GenerateHTML)
 
 		api.GET("/namestat/:name", h.stat.GetNameStats)
 		api.GET("/namestat", h.stat.GetTopNames)
-
-		// 姓名统计（基于 Chinese-Names-Corpus）
-		api.GET("/namestats/surnames", h.namestats.GetSurnameStats)
-		api.GET("/namestats/surnames/:surname", h.namestats.GetSurnameStat)
-		api.GET("/namestats/surnames/:surname/given-names", h.namestats.GetGivenNameStats)
-		api.GET("/namestats/surnames/:surname/full-names", h.namestats.GetFullNameStats)
-		api.GET("/namestats/full-names/:full_name", h.namestats.GetFullNameStat)
-		api.GET("/namestats/names/:name/gender", h.namestats.GetNameGenderStats)
-		api.GET("/namestats/top", h.namestats.GetTopFullNames)
-		api.GET("/namestats/total", h.namestats.GetTotalNameCount)
 
 		api.GET("/huangli", h.huangli.GetHuangli)
 		api.GET("/lunar", h.huangli.GetLunarCalendar)
 
 		// 汉字/偏旁数据
 		api.GET("/characters/groups", h.character.GetCharGroups)
-		api.GET("/characters/radical", h.character.GetRadicalChars)
-		api.GET("/characters/curated-names", h.character.GetCuratedNames)
-		api.GET("/characters/styles", h.character.GetStyles)
 	}
 
 	// 静态文件服务（仅 all 模式）
@@ -512,17 +474,9 @@ func loadCulturalData(dataDir string) error {
 // loadCuratedNamesForFate 读取 curated_names.json 的 name 字段，返回策展好名列表
 // 注入 fate 引擎作为共现分白名单（与 verify_fate 的 loadCuratedNames 逻辑一致）
 func loadCuratedNamesForFate(dataDir string) []string {
-	path := filepath.Join(dataDir, "curated_names.json")
-	data, err := os.ReadFile(path)
+	entries, err := name.LoadCuratedNamesData(dataDir)
 	if err != nil {
 		logger.Warn("读取 curated_names.json 失败，fate 引擎无策展白名单", logger.ErrField(err))
-		return nil
-	}
-	var entries []struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(data, &entries); err != nil {
-		logger.Warn("解析 curated_names.json 失败，fate 引擎无策展白名单", logger.ErrField(err))
 		return nil
 	}
 	names := make([]string, 0, len(entries))

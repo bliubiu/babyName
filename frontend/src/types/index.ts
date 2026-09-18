@@ -151,6 +151,77 @@ export interface GenerateResponse {
     ziwei?: Record<string, unknown>;
     names: Name[];
     suggestions?: string[];
+    /** 生成会话标识：凭它调 POST /names/generate/explore 换一批（探索模式） */
+    generation_id?: string;
+  };
+}
+
+// --- 异步生成任务（长任务体验） ---
+
+export interface AsyncSubmitResponse {
+  success: boolean;
+  message?: string;
+  data?: { task_id: string };
+}
+
+export interface TaskStatusResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    task_id: string;
+    status: 'pending' | 'running' | 'success' | 'failed';
+    stage: string;
+    percent: number;
+    error?: string;
+    result?: GenerateResponse['data'];
+  };
+}
+
+// --- 探索模式（换一批） ---
+
+export interface ExploreResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    generation_id: string;
+    names: Name[];
+    remaining: number;
+  };
+}
+
+// --- 测名 + 风险体检 ---
+
+export interface EvaluateRequest {
+  surname: string;
+  given_name: string;
+  gender: 'male' | 'female';
+  birth_year: number;
+  birth_month: number;
+  birth_day: number;
+  birth_hour: number;
+  birth_minute?: number;
+  birth_location?: string;
+  birth_longitude?: number;
+}
+
+/** 风险体检单项（谐音/生僻字/多音字/负面联想/门禁字/撞名热度/户籍友好度/敏感词） */
+export interface RiskItem {
+  category: string;
+  level: 'pass' | 'warn' | 'fail';
+  detail: string;
+}
+
+export interface EvaluateResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    full_name: string;
+    /** 与 /generate 的 names[] 元素同构，可直接复用 Name 渲染组件 */
+    name: Name;
+    bazi: BaziAnalysis;
+    zodiac: string;
+    risks: RiskItem[];
+    risk_level: 'pass' | 'warn' | 'fail';
   };
 }
 

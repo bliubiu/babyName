@@ -12,6 +12,31 @@
 | 版本 | 要点 |
 |------|------|
 | `.0` | `/names/generate` 首次返回 `score_detail` 评分依据（关闭 `docs/24` P2-5）+ 请求体上限中间件（P1-4）+ 修复诗词异步加载可能挂死全站（P2-9） |
+| `.1` | ★ 五项能力扩展：异步任务+进度、探索模式（换一批）、**测名+风险体检**、HTTP 双链路收口（analysis 路由下线）、接口整合清理（30→17 条） |
+
+---
+
+## [2026.09.18.1]
+
+### ✨ New Features 新增功能
+
+- 【services/fate】★ **测名 + 风险体检**（`docs/27` 红色缺口 ①②，全竞品标配）：
+  - 新增 `POST /api/v1/names/evaluate`（前端 `/evaluate` 页）：输入姓名 + 生辰 → 完整评分报告 + 风险清单。核心前提已按蓝图要求补齐——抽出 `fate.RateGivenName`/`GivenNameStrokes` 装配函数，按引擎枚举时的同一逻辑组装 `NameCandidate` 全量元数据（拼音/五行/笔画/寓意/频率档位/策展标记），八字走同一 `BaziAnalyzerAdapter`，评分走同一 `DefaultRaters()` 链 → **测名与生成同源同分**，不产生双口径。
+  - 新增 `fate.AssessNameRisks` 风险体检聚合：谐音（负面词/贬义组合）、生僻字（字表等级）、多音字、户籍友好度（笔画/字表/生僻）、网红字撞名、历史人物谐音，输出分级结论（pass/warn/fail）。
+- 【services/handlers】★ **长任务异步化 + 进度**：新增 `POST /names/generate/async`（立即返回 `task_id`）+ `GET /names/task/:id`（轮询 stage/percent/result），前端 `generateNamesWithProgress` 以 500ms 轮询驱动真实进度条，替换"点生成后干等"的体验；引擎 session 增加阶段打点（排盘 → 检索 → 枚举进度按完成数上报 → 补全），TaskService 进程内托管任务状态（含过期清理），同步路由保留兜底。
+- 【services】★ **探索模式（换一批）**：生成响应新增 `generation_id`，会话候选表进程内缓存（TTL 清理）；`POST /names/generate/explore` 凭 ID 从**未上过榜**的候选中随机补一批（与榜单零交集，引擎 `MarkShown` 保证）；结果页新增「换一批 / 返回推荐榜」。
+- 【server】路由级双链路收口：**`POST /names/generate/analysis` 下线**。喜用神口径此前已统一，且 `score_detail` 两条链路同源后，analysis 的用户可见增量只剩"字段集分裂"这一种负面价值。服务层 `GenerateWithAnalysis`（引擎分析能力，10+ 处 E2E 覆盖）保留。`/generate` 成为唯一公开生成入口。
+
+### 🗑 Removed 废弃功能
+
+- 【handlers/services】**接口整合清理：HTTP 路由 30 → 17 条**（`docs/27` 接口利用率审计：前端 9 个页面仅覆盖 9 组接口）。下线无前端调用的 20 条：`/bazi/analyze`、`/yijing/*`×2、`/zodiac/*`×2、`/favorites/check`、`/history/batch`、`/favorites/batch`×2、`/feedback`×3、`/report/html`、`/namestats/*`×8、`/characters/radical|curated-names|styles`，并删除对应 handler/service 文件（bazi/yijing/zodiac/feedback 服务、namestatistics handler）。**领域层能力全部保留**（八字/易卦/生肖已并入生成响应内部消费；`namestatistics` 包含独立测试与数据资产，留作探索页素材）。`/report/pdf` 保留（批次三要接的出口）。
+- 【frontend】`api.ts` 与页面一一对应，无未用导出；`HomeContent` 切换到 `generateNamesWithProgress`（进度条）。
+
+### 🧪 Tests 测试
+
+- 新增 fate 层：`risk_test.go`、`rate_given_name_test.go`（装配字段完整性/确定性）、`engine_progress_test.go`（进度单调不减、阶段序列）。
+- 新增服务层 `evaluate_e2e_test.go`：测名 E2E（含同名同分断言）、探索零交集、异步任务提交→轮询→取结果全流程。
+- 调整：handlers 测试移除已下线接口用例；拼音回归 3 例切到 `/names/generate`；报告测试移除 HTML 用例。`go test ./...` 18 包全绿，`go vet` 通过，前端 `tsc --noEmit` 通过。
 
 ---
 

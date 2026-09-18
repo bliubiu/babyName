@@ -3,7 +3,7 @@
 import { useState, lazy, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNameStore } from '@/lib/store';
-import { generateNames, saveHistory } from '@/lib/api';
+import { generateNamesWithProgress, saveHistory } from '@/lib/api';
 import { useMutation } from '@tanstack/react-query';
 import { useToast } from '@/components/Toast';
 import { validateBirthTime, validateSurname } from '@/lib/validation';
@@ -26,12 +26,16 @@ export default function HomeContent() {
   const [keywords, setKeywords] = useState('');
   const [sourceClassic, setSourceClassic] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // 长任务进度（异步任务轮询）：stage 阶段名 / percent 百分比
+  const [progress, setProgress] = useState<{ stage: string; percent: number } | null>(null);
 
   const { mutateAsync: generateNamesMutate, isPending: isGenerating } = useMutation({
-    mutationFn: generateNames,
-    onSuccess: (response) => {
-      if (response.success && response.data) {
-        setGenerateResult(response.data);
+    mutationFn: (payload: Parameters<typeof generateNamesWithProgress>[0]) =>
+      generateNamesWithProgress(payload, (stage, percent) => setProgress({ stage, percent })),
+    onSuccess: (data) => {
+      setProgress(null);
+      if (data && data.names) {
+        setGenerateResult(data);
 
         saveHistory({
           surname: formData.surname,
@@ -39,7 +43,7 @@ export default function HomeContent() {
           birth_date: `${formData.birthYear}-${formData.birthMonth}-${formData.birthDay}`,
           birth_time: `${formData.birthHour}:${formData.birthMinute.toString().padStart(2, '0')}`,
           birth_location: formData.birthLocation,
-          results: response.data,
+          results: data,
         }).catch((err) => {
           console.error('Failed to save history:', err);
         });
@@ -47,12 +51,13 @@ export default function HomeContent() {
         showToast('名字生成成功！', 'success');
         router.push('/result');
       } else {
-        const msg = response.message || '生成名字失败';
+        const msg = '生成名字失败';
         setErrorMessage(msg);
         showToast(msg, 'error');
       }
     },
     onError: (error) => {
+      setProgress(null);
       const errorMsg = error instanceof Error ? error.message : '未知错误';
       setErrorMessage(errorMsg);
       showToast('生成名字时出错，请稍后重试', 'error');
@@ -147,6 +152,22 @@ export default function HomeContent() {
             onSourceClassicChange={setSourceClassic}
           />
         </Suspense>
+
+        {/* 生成进度（异步任务轮询） */}
+        {isGenerating && progress && (
+          <div className="mt-5 mb-1 px-1" aria-live="polite">
+            <div className="flex justify-between text-xs text-jade/80 mb-1.5">
+              <span>{progress.stage || '生成中'}</span>
+              <span>{Math.round(progress.percent)}%</span>
+            </div>
+            <div className="h-2 bg-ink/5 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-crimson/70 rounded-full transition-all duration-500"
+                style={{ width: `${Math.max(4, Math.min(100, progress.percent))}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 底部装饰 */}

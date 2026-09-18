@@ -122,48 +122,6 @@ func TestGeneratePDFContextCancelled(t *testing.T) {
 	if _, err := svc.GeneratePDF(ctx, sampleReportPayload()); err == nil {
 		t.Error("ctx 已取消却成功返回")
 	}
-	if _, err := svc.GenerateHTML(ctx, sampleReportPayload()); err == nil {
-		t.Error("ctx 已取消时 GenerateHTML 也应报错")
-	}
-}
-
-// TestGenerateHTMLSharesModel PDF 与 HTML 必须来自同一份报表模型
-func TestGenerateHTMLSharesModel(t *testing.T) {
-	svc := NewReportService()
-	html, err := svc.GenerateHTML(context.Background(), sampleReportPayload())
-	if err != nil {
-		t.Fatalf("GenerateHTML 失败: %v", err)
-	}
-	for _, want := range []string{"张氏宝宝起名报告", "张珀熙", "张慧茗", "92.4", "甲辰 己巳 丙申 癸巳", "水（喜神：金）"} {
-		if !strings.Contains(html, want) {
-			t.Errorf("HTML 缺少 %q", want)
-		}
-	}
-	// 分数字段为整数时不应出现 ".0" 之类的噪声
-	if strings.Contains(html, ">91.0<") {
-		t.Error("整数分被格式化成 91.0，应显示 91")
-	}
-}
-
-// TestGenerateHTMLEscapesUserInput XSS 防护：请求数据里的 HTML 必须被转义
-func TestGenerateHTMLEscapesUserInput(t *testing.T) {
-	svc := NewReportService()
-	payload := map[string]interface{}{
-		"surname": `<script>alert(1)</script>`,
-		"names": []interface{}{
-			map[string]interface{}{"full_name": `<img src=x onerror=alert(1)>`, "score": 90.0},
-		},
-	}
-	html, err := svc.GenerateHTML(context.Background(), payload)
-	if err != nil {
-		t.Fatalf("GenerateHTML 失败: %v", err)
-	}
-	if strings.Contains(html, "<script>") || strings.Contains(html, "<img src=x") {
-		t.Error("请求数据中的 HTML 未被转义")
-	}
-	if !strings.Contains(html, "&lt;script&gt;") {
-		t.Error("未按预期输出转义后的实体")
-	}
 }
 
 // TestParseReportModelToleratesShapes 模型解析需兼容多种 JSON 形态

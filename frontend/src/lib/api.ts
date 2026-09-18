@@ -1,4 +1,4 @@
-import type { GenerateResponse, Hexagram, APIResponse, FavoriteData, GenerateRequest, StandardCharGroup, CuratedName, NameStat } from '@/types';
+import type { GenerateResponse, APIResponse, FavoriteData, GenerateRequest, StandardCharGroup, NameStat, AsyncSubmitResponse, TaskStatusResponse, ExploreResponse, EvaluateRequest, EvaluateResponse } from '@/types';
 import type { HistoryResponse } from '@/types/api/history';
 import type { FavoritesResponse } from '@/types/api/favorites';
 
@@ -210,6 +210,135 @@ export async function generateNames(data: GenerateRequest): Promise<GenerateResp
   return await handleResponse(response);
 }
 
+// --- 异步生成任务（长任务体验） ---
+
+/** 提交异步生成任务，立即返回 task_id（不阻塞等待引擎完成） */
+export async function generateNamesAsync(data: GenerateRequest): Promise<string> {
+  const processedData = {
+    ...data,
+    birth_year: safeParseInt(data.birth_year),
+    birth_month: safeParseInt(data.birth_month),
+    birth_day: safeParseInt(data.birth_day),
+    birth_hour: safeParseInt(data.birth_hour),
+    birth_minute: safeParseInt(data.birth_minute),
+  };
+
+  if (!processedData.surname || processedData.surname.trim() === '') {
+    throw new ValidationError('姓氏不能为空');
+  }
+  if (processedData.birth_year < 1900 || processedData.birth_year > 2100) {
+    throw new ValidationError('出生年份必须在1900-2100之间');
+  }
+
+  const response = await fetchWithRetry(`${API_BASE_URL}/v1/names/generate/async`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify(processedData),
+  });
+  const result = await handleResponse<AsyncSubmitResponse>(response);
+  if (!result.data?.task_id) {
+    throw new ServerError('任务提交失败，请稍后重试');
+  }
+  return result.data.task_id;
+}
+
+/** 查询异步任务状态；成功时 data.result 为完整生成结果（取走即弃） */
+export async function getTaskStatus(taskId: string): Promise<TaskStatusResponse['data']> {
+  if (!taskId || taskId.trim() === '') {
+    throw new ValidationError('任务ID不能为空');
+  }
+  const response = await fetchWithRetry(`${API_BASE_URL}/v1/names/task/${encodeURIComponent(taskId)}`);
+  const result = await handleResponse<TaskStatusResponse>(response);
+  return result.data;
+}
+
+/**
+ * 提交异步生成并轮询直到完成，返回完整生成结果。
+ * onProgress 每 500ms 回调一次（stage 阶段名 / percent 百分比）。
+ */
+export async function generateNamesWithProgress(
+  data: GenerateRequest,
+  onProgress?: (stage: string, percent: number) => void,
+  pollIntervalMs: number = 500,
+): Promise<GenerateResponse['data']> {
+  const taskId = await generateNamesAsync(data);
+  const deadline = Date.now() + 5 * 60 * 1000;
+
+  for (;;) {
+    const status = await getTaskStatus(taskId);
+    if (!status) {
+      throw new ServerError('任务不存在或已过期');
+    }
+    if (status.status === 'success' && status.result) {
+      onProgress?.('完成', 100);
+      return status.result;
+    }
+    if (status.status === 'failed') {
+      throw new ServerError(status.error || '名字生成失败，请稍后重试');
+    }
+    onProgress?.(status.stage || '生成中', status.percent || 0);
+    if (Date.now() > deadline) {
+      throw new TimeoutError('生成耗时过长，请稍后重试');
+    }
+    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+  }
+}
+
+// --- 探索模式（换一批） ---
+
+/** 从指定生成会话换一批：与上次结果零交集的随机候选 */
+export async function exploreNames(generationId: string, count: number = 10): Promise<ExploreResponse['data']> {
+  if (!generationId || generationId.trim() === '') {
+    throw new ValidationError('生成会话ID不能为空');
+  }
+  const response = await fetchWithRetry(`${API_BASE_URL}/v1/names/generate/explore`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify({ generation_id: generationId, count }),
+  });
+  const result = await handleResponse<ExploreResponse>(response);
+  return result.data;
+}
+
+// --- 测名 + 风险体检 ---
+
+/** 测名：输入姓名 + 生辰 → 完整评分报告 + 风险体检清单 */
+export async function evaluateName(data: EvaluateRequest): Promise<EvaluateResponse['data']> {
+  if (!data.surname || data.surname.trim() === '') {
+    throw new ValidationError('姓氏不能为空');
+  }
+  if (!data.given_name || data.given_name.trim() === '') {
+    throw new ValidationError('名字不能为空');
+  }
+  if (data.birth_year < 1900 || data.birth_year > 2100) {
+    throw new ValidationError('出生年份必须在1900-2100之间');
+  }
+
+  const response = await fetchWithRetry(`${API_BASE_URL}/v1/names/evaluate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify({
+      ...data,
+      birth_year: safeParseInt(data.birth_year),
+      birth_month: safeParseInt(data.birth_month),
+      birth_day: safeParseInt(data.birth_day),
+      birth_hour: safeParseInt(data.birth_hour),
+      birth_minute: safeParseInt(data.birth_minute ?? 0),
+    }),
+  });
+  const result = await handleResponse<EvaluateResponse>(response);
+  if (!result.data) {
+    throw new ServerError('测名失败，请稍后重试');
+  }
+  return result.data;
+}
+
 export async function getHistory(): Promise<HistoryResponse> {
   const response = await fetchWithRetry(`${API_BASE_URL}/v1/history`);
   return await handleResponse(response);
@@ -235,16 +364,6 @@ export async function deleteHistory(id: string): Promise<HistoryResponse> {
     method: 'DELETE',
   });
   return await handleResponse(response);
-}
-
-export async function getHexagrams(): Promise<APIResponse<Hexagram[]>> {
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/yijing/hexagram`);
-  return await handleResponse<APIResponse<Hexagram[]>>(response);
-}
-
-export async function getZodiacs(): Promise<APIResponse> {
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/zodiac`);
-  return await handleResponse<APIResponse>(response);
 }
 
 export async function getFavorites(): Promise<FavoritesResponse> {
@@ -282,18 +401,6 @@ export async function deleteFavorite(id: string): Promise<APIResponse> {
   const response = await fetchWithRetry(`${API_BASE_URL}/v1/favorites/${id}`, {
     method: 'DELETE',
   });
-  return await handleResponse(response);
-}
-
-export async function checkFavorite(surname: string, givenName: string): Promise<APIResponse<{ is_favorite: boolean }>> {
-  if (!surname || surname.trim() === '') {
-    throw new ValidationError('姓氏不能为空');
-  }
-  if (!givenName || givenName.trim() === '') {
-    throw new ValidationError('名字不能为空');
-  }
-
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/favorites/check?surname=${encodeURIComponent(surname)}&given_name=${encodeURIComponent(givenName)}`);
   return await handleResponse(response);
 }
 
@@ -348,31 +455,6 @@ export async function getLunarCalendar(year: number, month: number, day: number,
 export async function getCharGroups(): Promise<StandardCharGroup[]> {
   const response = await fetchWithRetry(`${API_BASE_URL}/v1/characters/groups`);
   const result = await handleResponse<APIResponse<StandardCharGroup[]>>(response);
-  return result.data || [];
-}
-
-export async function getRadicalChars(radical: string): Promise<StandardCharGroup | null> {
-  if (!radical || radical.trim() === '') {
-    throw new ValidationError('偏旁不能为空');
-  }
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/characters/radical?radical=${encodeURIComponent(radical)}`);
-  const result = await handleResponse<APIResponse<StandardCharGroup>>(response);
-  return result.data || null;
-}
-
-export async function getCuratedNames(gender?: string, style?: string): Promise<CuratedName[]> {
-  const params = new URLSearchParams();
-  if (gender) params.set('gender', gender);
-  if (style) params.set('style', style);
-  const query = params.toString();
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/characters/curated-names${query ? '?' + query : ''}`);
-  const result = await handleResponse<APIResponse<CuratedName[]>>(response);
-  return result.data || [];
-}
-
-export async function getCharStyles(): Promise<string[]> {
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/characters/styles`);
-  const result = await handleResponse<APIResponse<string[]>>(response);
   return result.data || [];
 }
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"html"
 	"os"
 	"strings"
 	"sync"
@@ -367,119 +366,6 @@ func genderLabel(g string) string {
 	default:
 		return g
 	}
-}
-
-// ---------- HTML ----------
-
-// GenerateHTML 生成 HTML 报告
-//
-// 与 PDF 共用 parseReportModel，保证两种格式的字段口径一致。
-func (s *ReportService) GenerateHTML(ctx context.Context, data interface{}) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	m := parseReportModel(data)
-
-	var b strings.Builder
-	b.WriteString(`<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>` + html.EscapeString(m.Title()) + `</title>
-	<style>
-		body { font-family: "PingFang SC", "Microsoft YaHei", Arial, sans-serif; line-height: 1.7; margin: 0; padding: 20px; background: #f5f5f5; color: #232323; }
-		.container { max-width: 820px; margin: 0 auto; background: #fff; padding: 40px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,.1); }
-		h1 { color: #294a90; text-align: center; margin: 0 0 6px; }
-		.meta { text-align: center; color: #737373; font-size: 13px; margin-bottom: 28px; }
-		h2 { color: #294a90; border-bottom: 2px solid #e6ebf5; padding-bottom: 8px; margin: 28px 0 14px; font-size: 17px; }
-		.info-item { margin-bottom: 8px; }
-		.info-label { font-weight: 600; display: inline-block; width: 88px; color: #737373; }
-		table { width: 100%; border-collapse: collapse; font-size: 14px; }
-		th { text-align: left; background: #f0f4fb; color: #4a4a4a; font-weight: 600; }
-		th, td { padding: 8px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
-		.score { font-weight: 700; color: #b3261e; text-align: right; white-space: nowrap; }
-		.meaning { color: #5c5c5c; font-size: 13px; }
-		.empty { color: #737373; }
-		footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #eee; color: #9a9a9a; font-size: 12px; text-align: center; }
-	</style>
-</head>
-<body>
-	<div class="container">
-		<h1>` + html.EscapeString(m.Title()) + `</h1>
-		<div class="meta">生成时间：` + time.Now().Format("2006-01-02 15:04") + `</div>`)
-
-	if !m.HasData {
-		b.WriteString(`
-		<p class="empty">本次请求未提供有效的报告数据（data 字段应为对象）。</p>`)
-	} else {
-		b.WriteString(`
-		<h2>一、基本信息</h2>`)
-		b.WriteString(htmlInfoRows([][2]string{
-			{"姓氏", m.Surname},
-			{"性别", genderLabel(m.Gender)},
-			{"出生日期", m.BirthDate},
-			{"出生时间", m.BirthTime},
-		}))
-
-		b.WriteString(`
-		<h2>二、八字与五行</h2>`)
-		b.WriteString(htmlInfoRows([][2]string{
-			{"八字", m.Bazi},
-			{"五行", m.WuXing},
-			{"喜用神", m.XiYongShen},
-		}))
-
-		b.WriteString(`
-		<h2>三、推荐名字</h2>`)
-		if len(m.Names) == 0 {
-			b.WriteString(`
-		<p class="empty">请求中未包含推荐名字列表（names 字段）。</p>`)
-		} else {
-			b.WriteString(`
-		<table>
-			<thead><tr><th style="width:44px">序号</th><th style="width:88px">姓名</th><th style="width:150px">拼音</th><th style="width:60px">五行</th><th style="width:60px">评分</th></tr></thead>
-			<tbody>`)
-			for i, n := range m.Names {
-				b.WriteString(`
-				<tr>
-					<td>` + fmt.Sprintf("%d", i+1) + `</td>
-					<td><strong>` + html.EscapeString(n.FullName) + `</strong></td>
-					<td>` + html.EscapeString(n.Pinyin) + `</td>
-					<td>` + html.EscapeString(n.WuXing) + `</td>
-					<td class="score">` + html.EscapeString(n.Score) + `</td>
-				</tr>`)
-				if n.Meaning != "" {
-					b.WriteString(`
-				<tr><td></td><td colspan="4" class="meaning">` + html.EscapeString(n.Meaning) + `</td></tr>`)
-				}
-			}
-			b.WriteString(`
-			</tbody>
-		</table>`)
-		}
-	}
-
-	b.WriteString(`
-		<footer>由 NameMaster 起名系统生成</footer>
-	</div>
-</body>
-</html>`)
-	return b.String(), nil
-}
-
-func htmlInfoRows(rows [][2]string) string {
-	var b strings.Builder
-	for _, r := range rows {
-		v := r[1]
-		if strings.TrimSpace(v) == "" {
-			v = "—"
-		}
-		b.WriteString(`
-			<div class="info-item"><span class="info-label">` + html.EscapeString(r[0]) +
-			`：</span><span>` + html.EscapeString(v) + `</span></div>`)
-	}
-	return b.String()
 }
 
 // ---------- 取值工具 ----------

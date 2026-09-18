@@ -71,6 +71,19 @@ type Session interface {
 	ExcludedChars() []string
 }
 
+// ProgressReporter 会话进度上报（可选接口）
+//
+// sessionImpl 额外实现此接口；调用方通过类型断言获取（不加入 Session
+// 主接口，避免破坏既有实现与测试桩）：
+//
+//	if pr, ok := session.(fate.ProgressReporter); ok {
+//	    stage, percent := pr.Progress()
+//	}
+type ProgressReporter interface {
+	// Progress 返回当前阶段名与完成百分比（0-100）
+	Progress() (stage string, percent float64)
+}
+
 // Output 命名会话输出结果
 type Output struct {
 	Input          *Input           `json:"input"`           // 输入参数

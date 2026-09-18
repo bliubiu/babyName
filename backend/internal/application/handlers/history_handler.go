@@ -109,38 +109,3 @@ func (h *HistoryHandler) DeleteHistory(c *gin.Context) {
 
 	response.SuccessJSON(c, gin.H{"message": "删除成功"})
 }
-
-// BatchSaveHistory 批量保存历史记录
-// @Summary 批量保存历史记录
-// @Description 批量保存多条历史记录
-// @Tags 历史记录
-// @Accept json
-// @Produce json
-// @Param request body []services.HistoryRecord true "历史记录请求参数列表"
-// @Success 200 {object} object "成功，返回记录ID列表"
-// @Failure 400 {object} response.Response "请求参数错误"
-// @Failure 500 {object} response.Response "服务器内部错误"
-// @Router /history/batch [post]
-func (h *HistoryHandler) BatchSaveHistory(c *gin.Context) {
-	var reqs []services.HistoryRecord
-	if err := c.ShouldBindJSON(&reqs); err != nil {
-		logger.Warn("BatchSaveHistory: invalid request", zap.Error(err))
-		response.ErrorJSON(c, 400, "请求参数格式错误")
-		return
-	}
-
-	// 转换为指针切片
-	ptrReqs := make([]*services.HistoryRecord, len(reqs))
-	for i := range reqs {
-		ptrReqs[i] = &reqs[i]
-	}
-
-	ids, err := h.service.BatchSaveHistory(c.Request.Context(), ptrReqs)
-	if err != nil {
-		logger.Error("BatchSaveHistory: failed to save history", zap.Error(err))
-		response.ErrorJSON(c, 500, "保存历史记录失败")
-		return
-	}
-
-	response.SuccessJSON(c, gin.H{"ids": ids})
-}

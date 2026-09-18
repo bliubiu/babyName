@@ -16,7 +16,7 @@ import (
 )
 
 // 本文件将此前的人工验证固化为自动化回归：
-// 通过真实 fate 引擎链路调用 POST /names/generate/analysis，
+// 通过真实 fate 引擎链路调用 POST /names/generate，
 // 断言生成结果的拼音字段已回填（修复 ExcellentEntry 不存储拼音导致的恒空缺陷）。
 
 var (
@@ -93,8 +93,8 @@ func loadCuratedNamesForTest(dataDir string) []string {
 	return names
 }
 
-// analysisResponse 分析接口响应结构（仅提取断言所需字段）
-type analysisResponse struct {
+// generateResponse 生成接口响应结构（仅提取断言所需字段）
+type generateResponse struct {
 	Success bool `json:"success"`
 	Data    struct {
 		Bazi  json.RawMessage `json:"bazi"`
@@ -107,8 +107,8 @@ type analysisResponse struct {
 	} `json:"data"`
 }
 
-// TestGenerateWithAnalysis_PinyinFilled 真实 fate 链路上拼音必须回填到每个候选名
-func TestGenerateWithAnalysis_PinyinFilled(t *testing.T) {
+// TestGeneratePinyin_PinyinFilled 真实 fate 链路上拼音必须回填到每个候选名
+func TestGeneratePinyin_PinyinFilled(t *testing.T) {
 	svc, err := setupFateNameService(t)
 	if err != nil {
 		t.Fatalf("fate 服务装配失败: %v", err)
@@ -116,13 +116,13 @@ func TestGenerateWithAnalysis_PinyinFilled(t *testing.T) {
 
 	r := gin.New()
 	h := NewNameHandler(svc)
-	r.POST("/names/generate/analysis", h.GenerateWithAnalysis)
+	r.POST("/names/generate", h.Generate)
 
 	body := `{"surname":"王","gender":"male","birth_year":2024,"birth_month":1,"birth_day":15,"birth_hour":12}`
-	w := performRequest(r, "POST", "/names/generate/analysis", []byte(body))
+	w := performRequest(r, "POST", "/names/generate", []byte(body))
 	assertStatus(t, w.Code, 200)
 
-	var resp analysisResponse
+	var resp generateResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("响应反序列化失败: %v", err)
 	}
@@ -146,8 +146,8 @@ func TestGenerateWithAnalysis_PinyinFilled(t *testing.T) {
 	}
 }
 
-// TestGenerateWithAnalysis_PinyinSingleName 单名模式同样必须回填拼音且无尾随空白
-func TestGenerateWithAnalysis_PinyinSingleName(t *testing.T) {
+// TestGeneratePinyin_PinyinSingleName 单名模式同样必须回填拼音且无尾随空白
+func TestGeneratePinyin_PinyinSingleName(t *testing.T) {
 	svc, err := setupFateNameService(t)
 	if err != nil {
 		t.Fatalf("fate 服务装配失败: %v", err)
@@ -155,13 +155,13 @@ func TestGenerateWithAnalysis_PinyinSingleName(t *testing.T) {
 
 	r := gin.New()
 	h := NewNameHandler(svc)
-	r.POST("/names/generate/analysis", h.GenerateWithAnalysis)
+	r.POST("/names/generate", h.Generate)
 
 	body := `{"surname":"李","gender":"female","birth_year":2023,"birth_month":8,"birth_day":20,"birth_hour":10,"name_length":1}`
-	w := performRequest(r, "POST", "/names/generate/analysis", []byte(body))
+	w := performRequest(r, "POST", "/names/generate", []byte(body))
 	assertStatus(t, w.Code, 200)
 
-	var resp analysisResponse
+	var resp generateResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("响应反序列化失败: %v", err)
 	}
@@ -192,9 +192,9 @@ func trimSpaceASCII(s string) string {
 	return s[start:end]
 }
 
-// TestGenerateWithAnalysis_SourceClassicPoetryChars 诗词来源参数必须真正消费
+// TestGeneratePinyin_SourceClassicPoetryChars 诗词来源参数必须真正消费
 // 设置 source_classic:"shijing" 后，结果中至少一个候选名的字应出自诗经字库。
-func TestGenerateWithAnalysis_SourceClassicPoetryChars(t *testing.T) {
+func TestGeneratePinyin_SourceClassicPoetryChars(t *testing.T) {
 	svc, err := setupFateNameService(t)
 	if err != nil {
 		t.Fatalf("fate 服务装配失败: %v", err)
@@ -202,13 +202,13 @@ func TestGenerateWithAnalysis_SourceClassicPoetryChars(t *testing.T) {
 
 	r := gin.New()
 	h := NewNameHandler(svc)
-	r.POST("/names/generate/analysis", h.GenerateWithAnalysis)
+	r.POST("/names/generate", h.Generate)
 
 	body := `{"surname":"王","gender":"male","birth_year":2024,"birth_month":3,"birth_day":10,"birth_hour":9,"source_classic":"shijing"}`
-	w := performRequest(r, "POST", "/names/generate/analysis", []byte(body))
+	w := performRequest(r, "POST", "/names/generate", []byte(body))
 	assertStatus(t, w.Code, 200)
 
-	var resp analysisResponse
+	var resp generateResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("响应反序列化失败: %v", err)
 	}

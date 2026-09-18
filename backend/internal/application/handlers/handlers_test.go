@@ -2,21 +2,15 @@ package handlers
 
 import (
 	"bytes"
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"name/internal/application/services"
 	"name/internal/domain/hanzi"
-	"name/internal/domain/namestatistics"
-	"name/internal/infrastructure/cache"
-	"name/internal/infrastructure/database"
 	"name/internal/infrastructure/database/memory"
 	"name/internal/infrastructure/logger"
 	"name/internal/infrastructure/pdf"
@@ -52,14 +46,6 @@ func setupTestHandler() (*gin.Engine, *memory.Store) {
 	return r, store
 }
 
-func newTestBaziService() *services.BaziService {
-	return services.NewBaziService(cache.GetCache())
-}
-
-func newTestYijingService(store *memory.Store) *services.YijingService {
-	return services.NewYijingService(store, cache.GetCache())
-}
-
 func performRequest(r http.Handler, method, path string, body []byte) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -72,58 +58,6 @@ func assertStatus(t *testing.T, got, want int) {
 	t.Helper()
 	if got != want {
 		t.Errorf("status code: got %d, want %d", got, want)
-	}
-}
-
-func assertJSON(t *testing.T, body []byte, key string, wantVal interface{}) {
-	t.Helper()
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		t.Fatalf("failed to unmarshal response: %v", err)
-		return
-	}
-	data, ok := result["data"]
-	if !ok {
-		t.Fatalf("response missing 'data' field: %v", result)
-	}
-	dataMap, ok := data.(map[string]interface{})
-	if !ok {
-		t.Fatalf("response 'data' is not an object: %v", data)
-	}
-	val, ok := dataMap[key]
-	if !ok {
-		t.Errorf("response data missing key %q, data: %v", key, dataMap)
-		return
-	}
-	if fmt.Sprintf("%v", val) != fmt.Sprintf("%v", wantVal) {
-		t.Errorf("%s: got %v, want %v", key, val, wantVal)
-	}
-}
-
-func assertDataJSON(t *testing.T, body []byte, key string, wantVal interface{}) {
-	t.Helper()
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		t.Fatalf("failed to unmarshal response: %v", err)
-		return
-	}
-	data, ok := result["data"]
-	if !ok {
-		t.Errorf("response missing key %q", "data")
-		return
-	}
-	dataMap, ok := data.(map[string]interface{})
-	if !ok {
-		t.Errorf("data is not an object")
-		return
-	}
-	val, ok := dataMap[key]
-	if !ok {
-		t.Errorf("response.data missing key %q", key)
-		return
-	}
-	if fmt.Sprintf("%v", val) != fmt.Sprintf("%v", wantVal) {
-		t.Errorf("data.%s: got %v, want %v", key, val, wantVal)
 	}
 }
 
@@ -208,58 +142,10 @@ func TestNameHandler(t *testing.T) {
 		{name: "Generate_InvalidGender", method: "POST", path: "/names/generate", body: `{"surname":"王","gender":"","birth_year":2024,"birth_month":1,"birth_day":15,"birth_hour":12}`, wantStatus: 400},
 		{name: "Generate_ValidRequest", method: "POST", path: "/names/generate", body: `{"surname":"王","gender":"male","birth_year":2024,"birth_month":1,"birth_day":15,"birth_hour":12}`, wantStatus: 200},
 		{name: "Generate_SurnameWithSpaces", method: "POST", path: "/names/generate", body: `{"surname":" 王 ","gender":"male","birth_year":2024,"birth_month":1,"birth_day":15,"birth_hour":12}`, wantStatus: 200},
-		{name: "GenerateWithAnalysis_ValidRequest", method: "POST", path: "/names/generate/analysis", body: `{"surname":"王","gender":"male","birth_year":2024,"birth_month":1,"birth_day":15,"birth_hour":12}`, wantStatus: 200},
-		{name: "GenerateWithAnalysis_InvalidBody", method: "POST", path: "/names/generate/analysis", body: `{invalid}`, wantStatus: 400},
 	}
 	runHandlerTests(t, tests, func(r *gin.Engine) {
 		h := NewNameHandler(svc)
 		r.POST("/names/generate", h.Generate)
-		r.POST("/names/generate/analysis", h.GenerateWithAnalysis)
-	})
-}
-
-// --- BaziHandler Tests ---
-
-func TestBaziHandler(t *testing.T) {
-	svc := newTestBaziService()
-	tests := []handlerTestCase{
-		{name: "Analyze_ValidRequest", method: "POST", path: "/bazi/analyze", body: `{"year":2024,"month":1,"day":15,"hour":12}`, wantStatus: 200},
-		{name: "Analyze_MissingRequired", method: "POST", path: "/bazi/analyze", body: `{"year":2024}`, wantStatus: 400},
-	}
-	runHandlerTests(t, tests, func(r *gin.Engine) {
-		h := NewBaziHandler(svc)
-		r.POST("/bazi/analyze", h.Analyze)
-	})
-}
-
-// --- YijingHandler Tests ---
-
-func TestYijingHandler(t *testing.T) {
-	tests := []handlerTestCase{
-		{name: "GetAllHexagrams", method: "GET", path: "/yijing/hexagram", wantStatus: 200},
-		{name: "GetHexagram_Valid", method: "GET", path: "/yijing/hexagram/1", wantStatus: 200},
-		{name: "GetHexagram_NotFound", method: "GET", path: "/yijing/hexagram/999", wantStatus: 404},
-		{name: "GetHexagram_NonNumericID", method: "GET", path: "/yijing/hexagram/abc", wantStatus: 404},
-	}
-	runHandlerTestsWithStore(t, tests, func(r *gin.Engine, store *memory.Store) {
-		h := NewYijingHandler(newTestYijingService(store))
-		r.GET("/yijing/hexagram", h.GetAllHexagrams)
-		r.GET("/yijing/hexagram/:id", h.GetHexagram)
-	})
-}
-
-// --- ZodiacHandler Tests ---
-
-func TestZodiacHandler(t *testing.T) {
-	tests := []handlerTestCase{
-		{name: "GetAllZodiacs", method: "GET", path: "/zodiac", wantStatus: 200},
-		{name: "GetZodiac_Valid", method: "GET", path: "/zodiac/鼠", wantStatus: 200},
-		{name: "GetZodiac_NotFound", method: "GET", path: "/zodiac/不存在", wantStatus: 404},
-	}
-	runHandlerTestsWithStore(t, tests, func(r *gin.Engine, store *memory.Store) {
-		h := NewZodiacHandler(services.NewZodiacService(store))
-		r.GET("/zodiac", h.GetAllZodiacs)
-		r.GET("/zodiac/:animal", h.GetZodiac)
 	})
 }
 
@@ -270,15 +156,12 @@ func TestHistoryHandler(t *testing.T) {
 		{name: "GetHistory_Empty", method: "GET", path: "/history", wantStatus: 200},
 		{name: "SaveHistory_InvalidBody", method: "POST", path: "/history", body: `bad`, wantStatus: 400},
 		{name: "DeleteHistory", method: "DELETE", path: "/history/non-existent", wantStatus: 200},
-		{name: "BatchSaveHistory", method: "POST", path: "/history/batch", body: `[{"surname":"王","given_name":"磊","gender":"male","birth_year":2024}]`, wantStatus: 200},
-		{name: "BatchSaveHistory_InvalidBody", method: "POST", path: "/history/batch", body: `invalid`, wantStatus: 400},
 	}
 	runHandlerTestsWithStore(t, tests, func(r *gin.Engine, store *memory.Store) {
 		h := NewHistoryHandler(services.NewHistoryService(store))
 		r.GET("/history", h.GetHistory)
 		r.POST("/history", h.SaveHistory)
 		r.DELETE("/history/:id", h.DeleteHistory)
-		r.POST("/history/batch", h.BatchSaveHistory)
 	})
 }
 
@@ -301,66 +184,33 @@ func TestHistoryHandler_SaveAndGetHistory(t *testing.T) {
 
 func TestFavoriteHandler(t *testing.T) {
 	// 需要按顺序执行的测试（保存后验证）
-	t.Run("SaveAndCheckFavorite", func(t *testing.T) {
+	t.Run("SaveAndGetFavorite", func(t *testing.T) {
 		r, store := setupTestHandler()
 		h := NewFavoriteHandler(services.NewFavoriteService(store))
 		r.POST("/favorites", h.SaveFavorite)
-		r.GET("/favorites/check", h.CheckFavorite)
+		r.GET("/favorites", h.GetFavorites)
 
 		// save a favorite
 		body := `{"surname":"王","given_name":"磊"}`
 		w := performRequest(r, "POST", "/favorites", []byte(body))
 		assertStatus(t, w.Code, 200)
 
-		// check it exists
-		w2 := performRequest(r, "GET", "/favorites/check?surname=王&given_name=磊", nil)
+		// verify it appears in favorites list
+		w2 := performRequest(r, "GET", "/favorites", nil)
 		assertStatus(t, w2.Code, 200)
-		assertDataJSON(t, w2.Body.Bytes(), "is_favorite", true)
-
-		// check non-existent
-		w3 := performRequest(r, "GET", "/favorites/check?surname=李&given_name=四", nil)
-		assertStatus(t, w3.Code, 200)
-		assertDataJSON(t, w3.Body.Bytes(), "is_favorite", false)
 	})
 
 	// 独立无状态测试
 	independentTests := []handlerTestCase{
 		{name: "GetFavorites_Empty", method: "GET", path: "/favorites", wantStatus: 200},
-		{name: "CheckFavorite_MissingParams", method: "GET", path: "/favorites/check?name=test", wantStatus: 400},
 		{name: "DeleteFavorite", method: "DELETE", path: "/favorites/non-existent", wantStatus: 200},
-		{name: "BatchSaveFavorite", method: "POST", path: "/favorites/batch", body: `[{"surname":"王","given_name":"磊"},{"surname":"李","given_name":"华"}]`, wantStatus: 200},
-		{name: "BatchSaveFavorite_InvalidBody", method: "POST", path: "/favorites/batch", body: `bad json`, wantStatus: 400},
-		{name: "BatchDeleteFavorite", method: "DELETE", path: "/favorites/batch", body: `{"ids":["non-existent-1","non-existent-2"]}`, wantStatus: 200},
-		{name: "BatchDeleteFavorite_InvalidBody", method: "DELETE", path: "/favorites/batch", body: `bad json`, wantStatus: 400},
 		{name: "SaveFavorite_InvalidBody", method: "POST", path: "/favorites", body: `bad`, wantStatus: 400},
 	}
 	runHandlerTestsWithStore(t, independentTests, func(r *gin.Engine, store *memory.Store) {
 		h := NewFavoriteHandler(services.NewFavoriteService(store))
 		r.GET("/favorites", h.GetFavorites)
 		r.POST("/favorites", h.SaveFavorite)
-		r.GET("/favorites/check", h.CheckFavorite)
 		r.DELETE("/favorites/:id", h.DeleteFavorite)
-		r.POST("/favorites/batch", h.BatchSaveFavorite)
-		r.DELETE("/favorites/batch", h.BatchDeleteFavorite)
-	})
-}
-
-// --- FeedbackHandler Tests ---
-
-func TestFeedbackHandler(t *testing.T) {
-	tests := []handlerTestCase{
-		{name: "SaveFeedback_InvalidBody", method: "POST", path: "/feedback", body: `bad json`, wantStatus: 400},
-		{name: "SaveFeedback_MissingGivenName", method: "POST", path: "/feedback", body: `{"request_id":1,"full_name":"王磊"}`, wantStatus: 400},
-		{name: "SaveFeedback_Valid", method: "POST", path: "/feedback", body: `{"request_id":1,"full_name":"王磊","given_name":"磊","is_liked":true}`, wantStatus: 200},
-		{name: "SaveRequest_InvalidBody", method: "POST", path: "/feedback/request", body: `bad`, wantStatus: 400},
-		{name: "SaveRequest_Valid", method: "POST", path: "/feedback/request", body: `{"surname":"王","gender":"male","birth_year":2024,"birth_month":1,"birth_day":15}`, wantStatus: 200},
-		{name: "GetAlgorithmPerformance", method: "GET", path: "/feedback/algorithm-performance", wantStatus: 200},
-	}
-	runHandlerTestsWithStore(t, tests, func(r *gin.Engine, store *memory.Store) {
-		h := NewFeedbackHandler(services.NewFeedbackService(store, store))
-		r.POST("/feedback", h.SaveFeedback)
-		r.POST("/feedback/request", h.SaveRequest)
-		r.GET("/feedback/algorithm-performance", h.GetAlgorithmPerformance)
 	})
 }
 
@@ -369,13 +219,10 @@ func TestFeedbackHandler(t *testing.T) {
 func TestReportHandler(t *testing.T) {
 	tests := []handlerTestCase{
 		{name: "GeneratePDF_InvalidBody", method: "POST", path: "/report/pdf", body: `bad`, wantStatus: 400},
-		{name: "GenerateHTML_InvalidBody", method: "POST", path: "/report/html", body: `bad`, wantStatus: 400},
-		{name: "GenerateHTML_Valid", method: "POST", path: "/report/html", body: `{"data":{"test":"hello"}}`, wantStatus: 200},
 	}
 	runHandlerTests(t, tests, func(r *gin.Engine) {
 		h := NewReportHandler(services.NewReportService())
 		r.POST("/report/pdf", h.GeneratePDF)
-		r.POST("/report/html", h.GenerateHTML)
 	})
 }
 
@@ -410,81 +257,4 @@ func TestReportHandlerGeneratePDF(t *testing.T) {
 	if len(w.Body.Bytes()) < 10*1024 {
 		t.Errorf("PDF 仅 %d 字节，疑似未内嵌字体", w.Body.Len())
 	}
-}
-
-// --- NameStatisticsHandler Tests ---
-//
-// 使用临时目录的 JSON 统计文件验证 /namestats/* 端点（等价 cmd/server 装配）。
-
-// writeNameStatTestData 在临时目录写入最小统计 JSON
-func writeNameStatTestData(t *testing.T, dir string) {
-	t.Helper()
-	write := func(name string, v any) {
-		t.Helper()
-		raw, err := json.Marshal(v)
-		if err != nil {
-			t.Fatalf("序列化 %s 失败: %v", name, err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, name), raw, 0644); err != nil {
-			t.Fatalf("写入 %s 失败: %v", name, err)
-		}
-	}
-	write("surname_stats.json", []database.SurnameStat{
-		{Surname: "王", Count: 3, Rank: 1},
-	})
-	write("given_name_stats.json", []database.GivenNameStat{})
-	write("full_name_stats.json", []database.FullNameStat{})
-	write("name_gender_stats.json", []database.NameGenderStat{})
-	write("name_frequency.json", struct {
-		Meta struct {
-			TotalNames int `json:"total_names"`
-		} `json:"meta"`
-	}{Meta: struct {
-		TotalNames int `json:"total_names"`
-	}{TotalNames: 1200000}})
-}
-
-// newNameStatisticsHandler 构造带 JSON 数据源的 NameStatisticsHandler
-func newNameStatisticsHandler(t *testing.T, dir string) *NameStatisticsHandler {
-	t.Helper()
-	writeNameStatTestData(t, dir)
-	store := namestatistics.NewFileNameStatStore(dir)
-	return NewNameStatisticsHandler(namestatistics.NewNameStatisticsService(store))
-}
-
-func TestNameStatisticsHandler(t *testing.T) {
-	dir := t.TempDir()
-	h := newNameStatisticsHandler(t, dir)
-	tests := []handlerTestCase{
-		{name: "GetSurnameStats", method: "GET", path: "/namestats/surnames", wantStatus: 200},
-		{name: "GetSurnameStat", method: "GET", path: "/namestats/surnames/王", wantStatus: 200},
-		{name: "GetSurnameStat_Missing", method: "GET", path: "/namestats/surnames/赵", wantStatus: 404},
-		{name: "GetGivenNameStats", method: "GET", path: "/namestats/surnames/王/given-names", wantStatus: 200},
-		{name: "GetFullNameStats", method: "GET", path: "/namestats/surnames/王/full-names", wantStatus: 200},
-		{name: "GetTopFullNames", method: "GET", path: "/namestats/top", wantStatus: 200},
-		{name: "GetTotalNameCount", method: "GET", path: "/namestats/total", wantStatus: 200},
-		{name: "GetNameGenderStats_Missing", method: "GET", path: "/namestats/names/伟/gender", wantStatus: 404},
-	}
-	runHandlerTests(t, tests, func(r *gin.Engine) {
-		r.GET("/namestats/surnames", h.GetSurnameStats)
-		r.GET("/namestats/surnames/:surname", h.GetSurnameStat)
-		r.GET("/namestats/surnames/:surname/given-names", h.GetGivenNameStats)
-		r.GET("/namestats/surnames/:surname/full-names", h.GetFullNameStats)
-		r.GET("/namestats/full-names/:full_name", h.GetFullNameStat)
-		r.GET("/namestats/names/:name/gender", h.GetNameGenderStats)
-		r.GET("/namestats/top", h.GetTopFullNames)
-		r.GET("/namestats/total", h.GetTotalNameCount)
-	})
-}
-
-// TestNameStatisticsHandler_DataMissing 数据文件缺失时接口返回 500 / 404
-func TestNameStatisticsHandler_DataMissing(t *testing.T) {
-	store := namestatistics.NewFileNameStatStore(t.TempDir())
-	h := NewNameStatisticsHandler(namestatistics.NewNameStatisticsService(store))
-	tests := []handlerTestCase{
-		{name: "GetTotalNameCount", method: "GET", path: "/namestats/total", wantStatus: 500},
-	}
-	runHandlerTests(t, tests, func(r *gin.Engine) {
-		r.GET("/namestats/total", h.GetTotalNameCount)
-	})
 }

@@ -37,6 +37,43 @@ type BaziAnalyzer interface {
 	Analyze(born time.Time, gender Gender) (*FateData, error)
 }
 
+// candidateWorkerLimit 双重枚举 worker 的全局并发上限（信号量）。
+//
+// 历史问题（P2-7）：generateDoubleName 每个请求都按 runtime.NumCPU() 固定分片，
+// 并发请求数 × 16 个 worker 全部在跑，16 核机床上 8 并发就有 128 个 goroutine
+// 抢占 CPU，单请求耗时线性恶化、吞吐在低并发就封顶。
+//
+// 现在把「worker 并发总量」下沉到进程级：无论同时在飞多少请求，所有请求的
+// 双重枚举 worker 合计不超过 CPU 核数（channel 容量即令牌数）。先到先占，
+// 请求之间按到达顺序共享这份 CPU，避免了 N 请求各自开 16 线程的超订放大。
+//
+// 变量设计为包级可替换（:=）而不是 const，是为了让测试能注入小容量信号量，
+// 如实模拟并发放大场景断言「worker 总量受控」（见 engine_concurrency_test.go）。
+var candidateWorkerLimit = make(chan struct{}, runtime.NumCPU())
+
+// candidateWorkerActive 当前正在执行双重枚举的 worker 数（并发钳制观测值）。
+var candidateWorkerActive atomic.Int64
+
+// candidateWorkerPeak 双重枚举 worker 并发峰值（P2-7 回归观测：任何时刻都不应
+// 超过 candidateWorkerLimit 容量）。仅用于测试断言，生产路径零额外开销。
+var candidateWorkerPeak atomic.Int64
+
+// workerCountHint 计算双重枚举的 worker 规划数：
+// 仍按 CPU 核数切分候选池以获得均匀分片，但实际并发由 candidateWorkerLimit 钳制。
+func workerCountHint(n int) int {
+	workers := runtime.NumCPU()
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > n {
+		workers = n
+	}
+	if workers == 0 {
+		workers = 1
+	}
+	return workers
+}
+
 // EngineFactoryFunc EngineFactory 的默认实现
 func EngineFactoryFunc(provider CharacterProvider, analyzer BaziAnalyzer) EngineFactory {
 	return func(raters []Rater) (Fate, error) {
@@ -62,6 +99,24 @@ type charInfo struct {
 	poetryFound    bool
 	poetryDesc     string
 	meaningProfile *meaningProfile
+}
+
+// sessionStage 会话进度阶段（供异步任务的进度查询）
+const (
+	sessionStageBazi     int32 = iota // 八字排盘
+	sessionStageLoadChars             // 加载字库
+	sessionStagePool                  // 构建候选池
+	sessionStageScore                 // 评分筛选（笛卡尔积枚举）
+	sessionStageRank                  // 汇总排序
+)
+
+// sessionStageNames 阶段中文名（对外展示用）
+var sessionStageNames = map[int32]string{
+	sessionStageBazi:     "八字排盘",
+	sessionStageLoadChars: "加载字库",
+	sessionStagePool:      "构建候选池",
+	sessionStageScore:     "评分筛选",
+	sessionStageRank:      "汇总排序",
 }
 
 // --- engineImpl: Fate 接口默认实现 ---
@@ -116,6 +171,12 @@ type sessionImpl struct {
 	// 负面反馈
 	excludedChars  map[string]bool // 排除的字符
 	excludedCombos map[string]bool // 排除的组合 "char1+char2"（排序后）
+
+	// 进度上报（异步任务轮询用）。
+	// stage 为阶段下标（sessionStage*），percent 为百分比 ×100 的整数
+	// （避免浮点原子操作）；两者只在 generate 流程内写入、查询侧原子读取。
+	stage    atomic.Int32
+	percentX atomic.Int64
 }
 
 func (s *sessionImpl) Start(ctx context.Context, input *Input) error {
@@ -184,6 +245,19 @@ func (s *sessionImpl) Stop() error {
 		s.state = SessionStateCanceled
 	}
 	return nil
+}
+
+// Progress 返回当前生成阶段名与完成百分比（0-100）。
+// 实现 ProgressReporter 可选接口，供异步任务轮询（type 断言获取，不影响既有调用方）。
+func (s *sessionImpl) Progress() (string, float64) {
+	stage := sessionStageNames[s.stage.Load()]
+	return stage, float64(s.percentX.Load()) / 100
+}
+
+// setStage 更新进度阶段与百分比（percent 单位 %）
+func (s *sessionImpl) setStage(stage int32, percent float64) {
+	s.stage.Store(stage)
+	s.percentX.Store(int64(percent * 100))
 }
 
 // ——— 负面反馈实现 ———
@@ -273,11 +347,14 @@ func (s *sessionImpl) run(ctx context.Context, input *Input) {
 
 // generate 核心生成逻辑
 func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, error) {
+	s.setStage(sessionStageBazi, 2)
+
 	// 1. 八字分析
 	fateData, err := s.engine.analyzer.Analyze(input.Born, input.Gender)
 	if err != nil {
 		return nil, fmt.Errorf("八字分析失败: %w", err)
 	}
+	s.setStage(sessionStageBazi, 8)
 
 	// 2. 获取姓氏笔画信息（用于总笔画数计算，支撑河图数理与易经卦象解读）
 	l1, l2, err := s.engine.provider.GetSurnameStrokes(input.Surname)
@@ -479,6 +556,7 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 
 	if nameLen == 1 {
 		// 单名：仅迭代第一个字（候选集小，串行足够快）
+		s.setStage(sessionStageScore, 30)
 		s.generateSingleName(ctx, infos, table, &totalCount, fateData, surnamePinyin)
 	} else {
 		// 双名：迭代 Char1 × Char2（全量枚举，按外层 Char1 分片并行）
@@ -486,6 +564,7 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	}
 
 	// 7. 构建 TopNames 输出（过滤禁止的国家机关单位名称）
+	s.setStage(sessionStageRank, 90)
 	// 五行多样性保底策略：取更多候选（Top10N），确保每种五行组合至少1个代表，
 	// 避免单一五行组合（如金金）垄断排名。未达多样性要求时退化为纯分数排序。
 	// 注意：ExcellentTable容量10000，远超Top10N（~1000），不会溢出。
@@ -505,6 +584,7 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	// 用 RateName 回算一次完整明细，填回条目供下游透传。
 	// 回算用独立候选（skipDetail=false），不影响枚举期的复用候选。
 	s.fillEntryDetails(topEntries, infos, fateData, surnamePinyin)
+	s.setStage(sessionStageRank, 97)
 
 	topNames := make([]NameResult, 0, len(topEntries))
 	rank := 0
@@ -562,6 +642,7 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		})
 	}
 
+	s.setStage(sessionStageRank, 100)
 	return &Output{
 		Input:          input,
 		FateData:       fateData,
@@ -1002,6 +1083,8 @@ func (s *sessionImpl) generateSingleName(
 		if cancelled(ctx) {
 			break
 		}
+		// 进度：单名串行，30% 起步按外层推进到 85%
+		s.percentX.Store(int64((30 + 55*float64(i)/float64(max(len(infos), 1))) * 100))
 		a := infos[i]
 		if !s.filter.CheckStrokePair(a.stroke, 0) {
 			continue
@@ -1056,16 +1139,7 @@ func (s *sessionImpl) generateDoubleName(
 	topCount int,
 	xiSet map[string]bool,
 ) {
-	workers := runtime.NumCPU()
-	if workers < 1 {
-		workers = 1
-	}
-	if workers > len(infos) {
-		workers = len(infos)
-	}
-	if workers == 0 {
-		workers = 1
-	}
+	workers := workerCountHint(len(infos))
 
 	// localTable 容量自适应 topCount（避免无谓的 10000 容量浪费内存）：
 	// 取 topCount*2 留余量避免抖动，溢出时 TryPush 按堆顶最小分替换。
@@ -1079,6 +1153,10 @@ func (s *sessionImpl) generateDoubleName(
 	localTables := make([]*ExcellentTable, workers)
 	var wg sync.WaitGroup
 
+	// 进度上报：所有 worker 共享一个外层完成计数器（0 → len(infos)），
+	// 按推进比例把评分阶段映射到 30%–85%。只写 percentX，不改阶段。
+	var outerDone atomic.Int64
+
 	for w := 0; w < workers; w++ {
 		start := w * chunkSize
 		end := start + chunkSize
@@ -1089,9 +1167,30 @@ func (s *sessionImpl) generateDoubleName(
 			continue
 		}
 
+		// 获取全局 worker 令牌：总量 = CPU 核数，跨请求共享（P2-7）。
+		// 高并发下后来的 worker 在此排队，最多等 CPU 核数个在跑，杜绝
+		// 「并发请求数 × NumCPU」的超订放大。ctx 取消时直接放弃令牌占用，
+		// 避免积累无谓的排队位。
+		select {
+		case candidateWorkerLimit <- struct{}{}:
+		case <-ctx.Done():
+			return
+		}
+
 		wg.Add(1)
 		go func(start, end, w int) {
 			defer wg.Done()
+			defer func() { <-candidateWorkerLimit }()
+			// 并发钳制观测：本 worker 进入枚举前记录活跃计数与峰值，
+			// 退出时递减。生产为零开销的原子递增，仅峰值恒定供测试断言。
+			cur := candidateWorkerActive.Add(1)
+			defer candidateWorkerActive.Add(-1)
+			for {
+				peak := candidateWorkerPeak.Load()
+				if cur <= peak || candidateWorkerPeak.CompareAndSwap(peak, cur) {
+					break
+				}
+			}
 			// worker 局部表：本分片的 (i, j) 组合天然唯一，无需 seen 去重
 			// （省下每个条目一次「两个汉字拼接成字符串 + map 写入」的分配）。
 			local := NewExcellentTableUnique(localCap)
@@ -1209,6 +1308,9 @@ func (s *sessionImpl) generateDoubleName(
 					local.TryPush(entry)
 					totalCount.Add(1)
 				}
+				// 外层 i 完成一步：共享计数器推进评分阶段进度（30%–85%）
+				done := outerDone.Add(1)
+				s.percentX.Store(int64((30 + 55*float64(done)/float64(max(len(infos), 1))) * 100))
 			}
 			localTables[w] = local
 		}(start, end, w)

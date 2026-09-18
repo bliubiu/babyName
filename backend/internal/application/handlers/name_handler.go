@@ -95,20 +95,42 @@ func (h *NameHandler) Generate(c *gin.Context) {
 	response.SuccessJSON(c, result)
 }
 
-// GenerateWithAnalysis 生成带详细分析的名字
-func (h *NameHandler) GenerateWithAnalysis(c *gin.Context) {
-	req, ok := h.validateGenerateRequest(c)
-	if !ok {
+// Evaluate 测名：输入姓名 + 生辰 → 完整评分报告 + 风险体检
+func (h *NameHandler) Evaluate(c *gin.Context) {
+	var req services.EvaluateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Warn("Evaluate: invalid request", zap.Error(err))
+		response.ErrorJSON(c, 400, "请求参数格式错误")
 		return
 	}
 
-	logger.Info("GenerateWithAnalysis: creating names with analysis",
-		zap.String("surname", req.Surname),
+	req.Surname = strings.TrimSpace(req.Surname)
+	req.GivenName = strings.TrimSpace(req.GivenName)
+
+	if err := validator.ValidateSurname(req.Surname); err != nil {
+		response.ErrorJSON(c, 400, err.Error())
+		return
+	}
+	if err := validator.ValidateGender(req.Gender); err != nil {
+		response.ErrorJSON(c, 400, err.Error())
+		return
+	}
+	if err := validator.ValidateDate(req.BirthYear, req.BirthMonth, req.BirthDay); err != nil {
+		response.ErrorJSON(c, 400, err.Error())
+		return
+	}
+	if err := validator.ValidateTime(req.BirthHour, req.BirthMinute); err != nil {
+		response.ErrorJSON(c, 400, err.Error())
+		return
+	}
+
+	logger.Info("Evaluate: start",
+		zap.String("full_name", req.Surname+req.GivenName),
 		zap.String("gender", req.Gender),
 	)
-	result, err := h.service.GenerateWithAnalysis(c.Request.Context(), req)
+	result, err := h.service.Evaluate(c.Request.Context(), &req)
 	if err != nil {
-		writeGenerateError(c, err, "GenerateWithAnalysis")
+		writeGenerateError(c, err, "Evaluate")
 		return
 	}
 

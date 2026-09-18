@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	crand "crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"sync"
@@ -29,6 +31,25 @@ type NameService struct {
 	fateService    *FateNameService // fate 路径委托服务（可选）
 	cache          cache.Cache
 	nameDB         *name.NameDB // 候选名库管理器（API 层共享自学习精选名数据）
+
+	// 探索模式（换一批）候选表缓存：generation_id → 本轮生成的候选表与上下文。
+	// 容量受控（exploreStoreCapacity），FIFO 淘汰最旧。
+	exploreMu     sync.Mutex
+	exploreStore  map[string]*exploreContext
+	exploreOrder  []string
+	exploreSeqGen func() string // 生成 ID（可测试注入；nil 用默认随机实现）
+}
+
+// exploreStoreCapacity 探索模式缓存的最大生成会话数
+const exploreStoreCapacity = 32
+
+// exploreContext 一次生成的探索上下文
+type exploreContext struct {
+	table     *fate.ExcellentTable
+	fateData  *fate.FateData
+	surname   string
+	gender    string
+	createdAt time.Time
 }
 
 // NameServiceOption 名字服务选项
@@ -131,6 +152,9 @@ type GenerateResponse struct {
 	HexagramMatch *yijing.HexagramMatch `json:"hexagram_match,omitempty"`
 	Ziwei         *ziwei.ZiweiAnalysis  `json:"ziwei,omitempty"`
 	Names         []name.Name           `json:"names"`
+	// GenerationID 本轮生成会话标识：凭它可调 POST /names/generate/explore
+	// 从同一候选表中「换一批」（探索模式，与 Top-N 零交集）。空表示本轮不支持。
+	GenerationID string `json:"generation_id,omitempty"`
 }
 
 // GenerateWithAnalysisResponse 带详细分析的名字生成响应
@@ -144,8 +168,15 @@ type GenerateWithAnalysisResponse struct {
 	Suggestions []string             `json:"suggestions"`
 }
 
-// Generate 生成名字
+// Generate 生成名字（同步，无进度回调）
 func (s *NameService) Generate(ctx context.Context, req *GenerateRequest) (*GenerateResponse, error) {
+	return s.GenerateWithProgress(ctx, req, nil)
+}
+
+// GenerateWithProgress 生成名字，并通过 onProgress 上报引擎阶段进度。
+// onProgress 可能从独立 goroutine 调用（引擎生成是异步会话），实现方需自行保证
+// 并发安全；传 nil 时行为与 Generate 完全一致（异步任务即靠它轮询进度）。
+func (s *NameService) GenerateWithProgress(ctx context.Context, req *GenerateRequest, onProgress func(stage string, percent float64)) (*GenerateResponse, error) {
 	start := time.Now()
 
 	// 1. 八字分析
@@ -159,17 +190,21 @@ func (s *NameService) Generate(ctx context.Context, req *GenerateRequest) (*Gene
 	}
 
 	// 2. 生成名字
-	names, generateDuration, err := s.generateNames(ctx, req, baziAnalysis)
+	names, generationID, generateDuration, err := s.generateNames(ctx, req, baziAnalysis, onProgress)
 	if err != nil {
 		return nil, err
 	}
 
 	// 3. 计算易经卦象和紫微斗数（并行计算）
+	if onProgress != nil {
+		onProgress("命理扩展", 98)
+	}
 	hexagram, hexagramMatch, ziweiAnalysis, parallelDuration := s.calculateHexagramAndZiweiParallel(names, baziAnalysis, req)
 
 	// 4. 构建响应
 	zodiacName := s.zodiacFinder.FindByYear(req.BirthYear)
 	response := s.buildResponse(baziAnalysis, names, hexagram, hexagramMatch, ziweiAnalysis, zodiacName)
+	response.GenerationID = generationID
 
 	// 5. 记录日志
 	s.logGeneration(start, response, req, baziDuration, generateDuration, parallelDuration)
@@ -219,11 +254,12 @@ func (s *NameService) performBaziAnalysis(req *GenerateRequest) (*bazi.BaziAnaly
 	return baziAnalysis, baziDuration, nil
 }
 
-// generateNames 生成名字列表
-func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, baziAnalysis *bazi.BaziAnalysis) ([]name.Name, time.Duration, error) {
+// generateNames 生成名字列表；同时登记探索上下文并返回 generationID（失败返回空）。
+func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, baziAnalysis *bazi.BaziAnalysis, onProgress func(stage string, percent float64)) ([]name.Name, string, time.Duration, error) {
 	generateStart := time.Now()
 
 	var names []name.Name
+	var generationID string
 	var err error
 
 	// fate 引擎（唯一生成引擎；FateNameService 未配置时无法生成）
@@ -231,7 +267,7 @@ func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, b
 	if s.fateService == nil {
 		err = errors.NewError(errors.ErrCodeInternalError, "名字生成引擎未初始化")
 	} else {
-		names, err = s.generateNamesViaFate(ctx, req, baziAnalysis)
+		names, generationID, err = s.generateNamesViaFate(ctx, req, baziAnalysis, onProgress)
 	}
 
 	generateDuration := time.Since(generateStart)
@@ -241,7 +277,7 @@ func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, b
 			zap.String("surname", req.Surname),
 			zap.Error(err),
 		)
-		return nil, generateDuration, errors.NewError(errors.ErrCodeBadRequest, "无法生成符合条件的名字，请调整筛选条件")
+		return nil, "", generateDuration, errors.NewError(errors.ErrCodeBadRequest, "无法生成符合条件的名字，请调整筛选条件")
 	}
 
 	if len(names) == 0 {
@@ -249,7 +285,7 @@ func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, b
 			zap.String("surname", req.Surname),
 			zap.String("gender", req.Gender),
 		)
-		return nil, generateDuration, errors.NewError(errors.ErrCodeBadRequest, "无法生成符合条件的名字，请调整筛选条件")
+		return nil, "", generateDuration, errors.NewError(errors.ErrCodeBadRequest, "无法生成符合条件的名字，请调整筛选条件")
 	}
 
 	logger.Info("Generate: names generated successfully",
@@ -258,12 +294,18 @@ func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, b
 		zap.Duration("duration", generateDuration),
 	)
 
-	return names, generateDuration, nil
+	return names, generationID, generateDuration, nil
 }
 
-// generateNamesViaFate 通过 fate 引擎生成名字
-func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateRequest, baziAnalysis *bazi.BaziAnalysis) ([]name.Name, error) {
-	born := time.Date(req.BirthYear, time.Month(req.BirthMonth), req.BirthDay, req.BirthHour, max(0, req.BirthMinute), 0, 0, time.UTC)
+// generateNamesViaFate 通过 fate 引擎生成名字。
+// 返回值中的 generationID 为本轮候选表的探索会话标识（探索模式「换一批」凭它取另一批）。
+func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateRequest, baziAnalysis *bazi.BaziAnalysis, onProgress func(stage string, percent float64)) ([]name.Name, string, error) {
+	// 真太阳时校正：与 /generate/analysis 路径对齐（P2-6 收尾）。
+	// 此前该路径直接用钟表时间构造 born，而 analysis 路径先做 ApplyTrueSolar，
+	// 两条链路喂给引擎的出生时刻可能不同 → FateData 可能不同。
+	sy, sm, sd, sh, smin := req.BirthYear, req.BirthMonth, req.BirthDay, req.BirthHour, max(0, req.BirthMinute)
+	sy, sm, sd, sh, smin, _ = bazi.ApplyTrueSolar(sy, sm, sd, sh, smin, req.BirthLocation, req.BirthLongitude)
+	born := time.Date(sy, time.Month(sm), sd, sh, smin, 0, 0, time.UTC)
 
 	fo := fate.NewFilterOption().
 		WithMinStroke(req.MinStrokes).
@@ -316,23 +358,111 @@ func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateReq
 	}
 
 	if err := session.Start(ctx, input); err != nil {
-		return nil, fmt.Errorf("会话启动失败: %w", err)
+		return nil, "", fmt.Errorf("会话启动失败: %w", err)
 	}
+
+	// 进度上报：引擎是异步会话，起一个轮询 goroutine 把 ProgressReporter 的
+	// 阶段/百分比转发给 onProgress（每 200ms 一次；Wait 返回后停止）。
+	stopWatch := make(chan struct{})
+	defer close(stopWatch)
+	if onProgress != nil {
+		if pr, ok := session.(fate.ProgressReporter); ok {
+			go func() {
+				ticker := time.NewTicker(200 * time.Millisecond)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-stopWatch:
+						return
+					case <-ticker.C:
+						if stage, percent := pr.Progress(); percent > 0 {
+							onProgress(stage, percent)
+						}
+					}
+				}
+			}()
+		}
+	}
+
 	if err := session.Wait(); err != nil {
-		return nil, fmt.Errorf("名字生成失败: %w", err)
+		return nil, "", fmt.Errorf("名字生成失败: %w", err)
 	}
 	// 同 FateNameService：ctx 到期/取消后引擎返回的是被截断的榜单，
 	// 必须转成错误交给 handler 映射为 503，而不是当作正常结果返回。
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("名字生成被中止: %w", err)
+		return nil, "", fmt.Errorf("名字生成被中止: %w", err)
 	}
 
 	output := session.Result()
 	if output == nil || len(output.TopNames) == 0 {
-		return nil, errors.NewError(errors.ErrCodeBadRequest, "无法生成符合条件的名字，请调整筛选条件")
+		return nil, "", errors.NewError(errors.ErrCodeBadRequest, "无法生成符合条件的名字，请调整筛选条件")
 	}
 
-	return convertFateToNameNames(output.TopNames, req.Gender), nil
+	// 登记探索上下文并把 Top-N 标记为已展示：后续「换一批」只会采样
+	// 未上过榜的候选，与本次结果零交集。
+	generationID := s.registerExploreContext(output, req)
+
+	return convertFateToNameNames(output.TopNames, req.Gender), generationID, nil
+}
+
+// registerExploreContext 把本轮生成的候选表登记进探索缓存，返回 generationID。
+// 缓存容量受控（exploreStoreCapacity），超限时 FIFO 淘汰最旧的会话。
+func (s *NameService) registerExploreContext(output *fate.Output, req *GenerateRequest) string {
+	if output == nil || output.ExcellentTable == nil || output.FateData == nil {
+		return ""
+	}
+
+	id := ""
+	if s.exploreSeqGen != nil {
+		id = s.exploreSeqGen()
+	} else {
+		id = newGenerationID()
+	}
+	if id == "" {
+		return ""
+	}
+
+	// Top-N 标记为已展示：探索模式只补未上过榜的候选
+	for _, nr := range output.TopNames {
+		runes := []rune(nr.GivenName)
+		switch len(runes) {
+		case 1:
+			output.ExcellentTable.MarkShown(string(runes[0]), "")
+		case 2:
+			output.ExcellentTable.MarkShown(string(runes[0]), string(runes[1]))
+		}
+	}
+
+	s.exploreMu.Lock()
+	defer s.exploreMu.Unlock()
+	if s.exploreStore == nil {
+		s.exploreStore = make(map[string]*exploreContext, exploreStoreCapacity)
+	}
+	s.exploreStore[id] = &exploreContext{
+		table:     output.ExcellentTable,
+		fateData:  output.FateData,
+		surname:   req.Surname,
+		gender:    req.Gender,
+		createdAt: time.Now(),
+	}
+	s.exploreOrder = append(s.exploreOrder, id)
+	for len(s.exploreOrder) > exploreStoreCapacity {
+		oldest := s.exploreOrder[0]
+		s.exploreOrder = s.exploreOrder[1:]
+		delete(s.exploreStore, oldest)
+	}
+	return id
+}
+
+// newGenerationID 生成探索会话 ID（时间戳 + 随机后缀，进程内唯一即可）
+func newGenerationID() string {
+	var b [4]byte
+	if _, err := crand.Read(b[:]); err != nil {
+		return fmt.Sprintf("g%d", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("g%d-%s", time.Now().UnixNano(), hex.EncodeToString(b[:]))
 }
 
 // convertFateToNameNames 将 fate 引擎的 NameResult 转换为旧 name.Name 结构
