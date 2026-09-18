@@ -94,11 +94,12 @@ type CORSConfig struct {
 }
 
 // DefaultCORSConfig 默认 CORS 配置
-// 注意：不使用 "*" 通配符与 AllowCredentials: true 同时存在（违反 W3C CORS 规范），
-// 而是使用空列表让运行时回显请求的 Origin。
+// 本地工具定位：允许任意来源跨域访问（如页面 127.0.0.1:8080 调用 localhost:8080）。
+// AllowCredentials 与 "*" 同用时违反 W3C CORS 规范，因此凭据模式下运行时
+// 回显请求的具体 Origin（见 CORSMiddlewareWithConfig），无需维护原始端口白名单。
 func DefaultCORSConfig() CORSConfig {
 	return CORSConfig{
-		AllowOrigins:     []string{},
+		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"POST", "OPTIONS", "GET", "PUT", "DELETE", "PATCH"},
 		AllowHeaders:     []string{"Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization", "accept", "origin", "Cache-Control", "X-Requested-With", "X-Request-ID"},
 		AllowCredentials: true,

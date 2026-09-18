@@ -146,19 +146,24 @@ func TestRequestIDReusesHeader(t *testing.T) {
 
 // --- CORS 中间件测试 ---
 
-// TestCORSMiddlewareSetsHeaders 普通 GET 应设置凭据与 Vary 头
+// TestCORSMiddlewareSetsHeaders 普通 GET 应设置凭据、回显 Origin 与 Vary 头
 func TestCORSMiddlewareSetsHeaders(t *testing.T) {
 	r := setupGin(t)
 	r.Use(CORSMiddleware())
 	r.GET("/", func(c *gin.Context) { c.String(200, "ok") })
 
+	origin := "http://127.0.0.1:8080"
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("Origin", "https://example.com")
+	req.Header.Set("Origin", origin)
 	r.ServeHTTP(w, req)
 
 	if w.Header().Get("Access-Control-Allow-Credentials") != "true" {
 		t.Error("应设置 Access-Control-Allow-Credentials: true")
+	}
+	// 默认配置为通配源 + 凭据：凭据模式下必须回显具体 Origin（W3C CORS 规范禁止 * 与 credentials 同用）
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != origin {
+		t.Errorf("应回显 Origin %q，实际 %q", origin, got)
 	}
 	if w.Header().Get("Vary") != "Origin" {
 		t.Error("Vary 应包含 Origin")

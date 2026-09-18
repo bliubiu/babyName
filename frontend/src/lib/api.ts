@@ -4,11 +4,19 @@ import type { FavoritesResponse } from '@/types/api/favorites';
 
 // 动态获取API基础URL
 // 策略优先级：
-// 1. 环境变量：NEXT_PUBLIC_API_URL
-// 2. 默认值：http://localhost:8080/api
+// 1. 环境变量：NEXT_PUBLIC_API_URL（跨域后端/独立部署时显式指定）
+// 2. 页面同源推导：window.location.origin + /api
+//    —— all 模式前端页面由后端托管，同源请求天然无 CORS 限制；
+//      亦可规避 127.0.0.1 与 localhost 互为异源的经典踩坑
+// 3. SSR/构建期兜底：http://localhost:8080/api
 const getApiBaseUrl = (): string => {
-  // 优先使用环境变量，否则使用默认值
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}/api`;
+  }
+  return 'http://localhost:8080/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();
