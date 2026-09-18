@@ -13,6 +13,38 @@
 |------|------|
 | `.0` | `/names/generate` 首次返回 `score_detail` 评分依据（关闭 `docs/24` P2-5）+ 请求体上限中间件（P1-4）+ 修复诗词异步加载可能挂死全站（P2-9） |
 | `.1` | ★ 五项能力扩展：异步任务+进度、探索模式（换一批）、**测名+风险体检**、HTTP 双链路收口（analysis 路由下线）、接口整合清理（30→17 条） |
+| `.2` | 关闭 `docs/24` 全部 P2 项：并发 worker 全局令牌钳制（P2-7）、收藏自学习失败告警（P2-8）、classics 版本读失败重建（P2-10）、删除临时 cmd 与 `_ =` hack（P2-11）、curated_names 读取 4 处收敛（P2-12）；P3-13~18 卫生清理与文档过期修正；e2e 超订探测改为吞吐加速比语义 |
+
+---
+
+## [2026.09.18.2]
+
+### 🐛 Bug Fixes 问题修复
+
+- 【fate】**并发 worker 超订钳制**（`docs/24` P2-7）：双击列举的 worker 按每请求 `runtime.NumCPU()` 固定分片，8 并发即 128 个 worker 抢 16 核，吞吐在低并发出封顶、之后单请求耗时线性恶化。现引入**进程级全局令牌信号量** `candidateWorkerLimit`（容量 = `NumCPU()`）跨请求共享，worker 启动前「拿令牌，拿不到就等 `ctx.Done`」，并加 `candidateWorkerActive/Peak` 原子观测。回归护栏 `engine_concurrency_test.go`：注入小容量信号量、8 并发断言峰值 ≤ 容量；单请求在无竞争时仍可动用全部 worker。
+- 【services】**收藏自学习写入失败不再静默吞掉**（P2-8）：`favorite_service` 自学习路径的 `_ = AddCuratedName(...)` / `_ = SaveCuratedName(...)` 改为显式捕获并 `logger.Warn`（保留降级语义）。
+- 【database】**classics 版本号读失败按「需要重建」处理**（P2-10）：`store_classics.go` 两处 `classics_version` 读取失败不再被当作「版本一致」，改 `logger.Warn` + 走重建分支。
+- 【domain/infra】`tyme.LegalHoliday` 解析失败不再等同「非节假日」（P3-15）——告警后降级；静态文件路由 `io.Copy` 错误补日志（P3-16）。
+
+### 📈 Improvements 性能/体验优化
+
+- 【fate】`data/forbidden_combos.json` 962 条清洗组合已动态加载（`semantic_filter.go:146`），历史报告 `docs/19` 的 B1 结论关闭。
+- 【cmd】删除自述「临时」的 `cmd/diag_curated`、`cmd/probe_chars`，清理 `build_frequency` 的 `_ = math.MaxInt` hack（P2-11）。
+
+### ♻️ Refactor 结构优化
+
+- 【domain/name】**curated_names 读取收敛为单一导出函数**（P2-12）：新增 `name.LoadCuratedNamesData`，4 处重复实现（server / namer-cli / sqlite seed / name_db）统一调用。
+- 【tools】`e2e_check` 并发超订探测从「单请求放大系数」改为「**吞吐加速比**」语义——P2-7 后 worker 被钳制在核数内，排队延迟是正常现象，判定目标改为验证并发吞吐相对串行的实质加速。
+
+### 🧹 Cleanup 卫生清理
+
+- 【repo】13 个 Go 文件补齐末尾换行（P3-13）；`git rm` 无引用的 1.1 MB 大图 `docs/assets/黄历3.png`（P3-14）；删除废弃 `middleware.RateLimit`（P3-17，占位 Store 方法是 `database.Store` 接口实现故保留）；前端删除 6 个零引用 API 导出（P3-18，`checkFavorite`/`getCharStyles`/`getCuratedNames`/`getHexagrams`/`getRadicalChars`/`getZodiacs`）。
+
+### 📚 Docs 文档更新
+
+- `docs/24` 全量回填状态：P1-4 与 P2-5~12 全部 ✅，P3-13~18 标注（P3-17 部分、P3-19 因有 `NEXT_PUBLIC_API_URL` 兜底保留）。
+- `docs/19` 两处过期陈述加「后续进展」指针（`engine.go` 行号漂移 600-601→1215；`naming_quality.json` 131→2990 字）。
+- `docs/20` 数据规模表更新 `naming_quality.json` 为 `32 KB / 2990 字`。
 
 ---
 
