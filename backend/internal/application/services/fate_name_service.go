@@ -114,8 +114,15 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 	sy, sm, sd, sh, smin, _ = bazi.ApplyTrueSolar(sy, sm, sd, sh, smin, req.BirthLocation, req.BirthLongitude)
 	born := time.Date(sy, time.Month(sm), sd, sh, smin, 0, 0, time.UTC)
 
+	// 经典喜用神：既是候选池收窄口径，也是响应 Bazi.Xiyongshen 的口径。
+	// 历史隐患（P2-6）：响应此前直接用 fate 引擎内部 BalanceXiYongJi 的
+	// XiYongShen，导致 /analysis=[水] 与 /generate=[木水金] 自相矛盾；
+	// 两路径 Top10 交集却为 10/10（候选池实际都按经典喜用神收窄）。
+	// 统一为经典口径后，两条链路结论一致，且与响应四柱/用神分析相符。
+	classicXi := s.classicXiyongShen(req)
+
 	session := s.engine.NewSessionWithFilter(
-		s.buildFilterOption(req, s.classicXiyongShen(req)),
+		s.buildFilterOption(req, classicXi),
 	)
 
 	input := &fate.Input{
@@ -204,20 +211,10 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 				na.SancaiAnalysis = v
 			}
 		}
-		// 按固定维度顺序输出 ScoreDetail（前端通用渲染：分数条 + 依据文字）
-		// 顺序与 DefaultRaters 权重降序一致，确保推荐名展示稳定
-		detailOrder := []string{"五行八字", "文化印象", "音韵", "新颖度", "生肖", "共现", "三才", "人名频率"}
-		for _, dim := range detailOrder {
-			score, ok := nr.Score.Items[dim]
-			if !ok {
-				continue
-			}
-			na.ScoreDetail = append(na.ScoreDetail, name.ScoreDetailItem{
-				Name:   dim,
-				Score:  score,
-				Detail: nr.Score.Details[dim],
-			})
-		}
+		// 按固定维度顺序输出 ScoreDetail（前端通用渲染：分数条 + 依据文字）。
+		// 顺序与 DefaultRaters 权重降序一致，确保推荐名展示稳定。
+		// 提取自 buildScoreDetail，与 /generate 路径同源，避免两套顺序漂移。
+		na.ScoreDetail = buildScoreDetail(nr.Score.Items, nr.Score.Details)
 		// 诗词出处回填（engine 构建 NameResult 时未设 PoetryFrom，需单独传递）
 		if nr.PoetryFrom != "" {
 			na.PoetrySource = nr.PoetryFrom
@@ -236,6 +233,11 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 	if output.FateData != nil {
 		// 用 fate 的八字数据填充响应
 		xiYongShen := output.FateData.WuXingXiji.XiYongShen
+		// 喜用神统一为经典口径（见函数头注释，P2-6）：候选池收窄用经典，
+		// 响应也必须报告经典喜用神，否则同人两个答案。
+		if len(classicXi) > 0 {
+			xiYongShen = classicXi
+		}
 		nayin := ""
 		if len(output.FateData.BaziInfo.NaYin) > 0 {
 			nayin = output.FateData.BaziInfo.NaYin[0]

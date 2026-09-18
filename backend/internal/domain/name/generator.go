@@ -28,6 +28,7 @@ type Name struct {
 	PoetryDynasty   string   `json:"poetry_dynasty,omitempty"`
 	PoetryFullText  string   `json:"poetry_full_text,omitempty"`
 	WuxingAnalysis  string   `json:"wuxing_analysis"`
+	MeaningDetail   string   `json:"meaning_detail"` // 字义内涵依据文字（文化印象维度）
 	BaziScoreDetail string   `json:"bazi_score_detail"`
 	Yinyun          string   `json:"yinyun"`
 	Reasons         []string `json:"reasons"`
@@ -46,6 +47,14 @@ type Name struct {
 	SancaiAnalysis  string  `json:"sancai_analysis"`  // 三才分析详情
 	Hexagram        string  `json:"hexagram"`         // 卦象名称
 	HexagramMeaning string  `json:"hexagram_meaning"` // 卦象解读
+
+	// ScoreDetail 各维度评分明细（维度名/分数/依据文字）
+	//
+	// 与 NameAnalysis.ScoreDetail 同构。fate 引擎各 Rater 的
+	// NameRating{Score, Detail} 由服务层透传而来，使 /names/generate 与
+	// /names/generate/analysis 两条链路都能回答「为什么是这个分」，
+	// 前端无需硬编码维度即可通用渲染分数条 + 依据文字。
+	ScoreDetail []ScoreDetailItem `json:"score_detail,omitempty"`
 }
 
 // ScoreDetailItem 单维度评分明细（确定性评分数据载体）

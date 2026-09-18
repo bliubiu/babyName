@@ -5,6 +5,52 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.09.18] 当日总览
+
+竞品对标与业务能力扩展专项：产出竞品蓝图 `docs/27`（含对 `docs/15`/`18` 三处过期或违规结论的纠正）+ 三项「可解释性 / 健壮性」落地，版本 `2026.09.18.0`。
+
+| 版本 | 要点 |
+|------|------|
+| `.0` | `/names/generate` 首次返回 `score_detail` 评分依据（关闭 `docs/24` P2-5）+ 请求体上限中间件（P1-4）+ 修复诗词异步加载可能挂死全站（P2-9） |
+
+---
+
+## [2026.09.18.0]
+
+### ✨ New Features 新增功能
+
+- 【services】★ **`/names/generate` 首次返回 `score_detail`（各维度评分依据文字）**。前端 `NameCard`/`NameDetail` 早就写好了「优先使用 `score_detail`，回退旧字段」的分支，`docs/24` P2-5 记录该分支**永不执行**——本路径此前只把引擎的 `Score.Items`（各维度分数）映射到 `name.Name`，**丢弃了 `Score.Details`（依据文字）**，导致用户始终看不到「为什么是这个分」，`FullReport` 只能用本地函数自造命理文案。现收敛为 `applyFateScoreDetail` 一处映射，分数 / 依据文字 / `score_detail` 三件事一次做完，并与 `/generate/analysis` 共用 `buildScoreDetail` 的维度顺序（避免两套顺序漂移）。
+  - 顺带修掉一处**漏映射**：`case "三才"` 分支此前只留注释不赋值（当时 `name.Name` 无对应字段），三才分在 `/generate` 路径整项丢失；现映射到 `SancaiScore`，并新增 `MeaningDetail` 字段承接「文化印象」依据文字。
+  - 空/纯空白的依据文字视为「引擎未提供」，**不覆盖**调用方已填的文案（避免空串冲掉 `buildResponse` 阶段的兜底文案）。
+- 【middleware】**新增 `MaxBodyBytes` 请求体大小上限中间件**（`docs/24` P1-4）：全仓此前无 `http.MaxBytesReader`，handler 直接 `ShouldBindJSON` 读全量 body，单个大 body 即可造成内存放大（全局 IP 限流按请求数计量，挡不住"少请求、大体量"）。两层防护：`Content-Length` 已知且超限 → 直接 **413 + 中文提示**且不进 handler；长度未知（分块传输）→ `http.MaxBytesReader` 兜底。`cmd/server/main.go` 全局挂载 1 MiB。
+
+### 🐛 Bug Fixes 问题修复
+
+- 【classics】★ **修复诗词异步加载可能挂死全站**（`docs/24` P2-9）：`loadShiCiAsync` 的加载协程写成 `go func(){ ...; close(shiciReady) }()`——既未 `defer close` 也无 `recover`。后果是双重的：加载中 panic 会因 goroutine 内未 recover 而**打崩整个进程**；即便外层能 recover，`close(shiciReady)` 也永不执行，而 `ensureShiCiLoaded()` 是无超时的 `<-shiciReady` 死等 → 所有依赖诗词的请求（出处回填、共现评分、经典来源加字）**全部挂死且不报错**（表现为"服务假死"而非失败）。现改为 `runShiCiLoad`（`recover` + `defer close`，loader 以参数注入以便测试钉住这条不变量）与 `waitShiCiLoaded` 有界等待（超时 30s 即降级为无诗词共现数据并告警）。
+- 【services】`applyFateScoreDetail` 对空白依据文字的判据用 `strings.TrimSpace`，纯空白不再覆盖既有文案（由新增测试 `TestApplyFateScoreDetail_KeepsExistingTextWhenDetailMissing` 暴露）。
+
+### 📚 Docs 文档更新
+
+- 新增 `docs/27-竞品对标与业务能力扩展蓝图.md`：以**真实代码核对**（30 个后端接口逐条比对前端接入情况）与 2026-09 市场现状为基准，给出三层（业务功能 / 质量 / 服务交互）差距矩阵、落到文件级的借鉴清单、明确不引入清单与后续批次验收标准。三条关键结论：
+  - **纠正 `docs/15`/`docs/18` 三处**：① `docs/18` 建议「必须补五格数理 + 三才配置」与 `AGENTS.md`「禁用熊崎五格数理」直接冲突，明确排除（三才保留、81 数吉凶不引入）；② `docs/18` 判定的「缺少文字解读」实为**能力没接出来**而非缺能力（依据文字与前端渲染分支都已存在）；③ 用「维度数量」证明领先对用户无感，度量口径改为**依据文字覆盖率**。
+  - **最扎眼的发现**：后端 30 个业务接口中前端只有 9 个有页面在用——八维评分依据、八字分析、易经卦象、生肖宜忌、**8 条人名语料统计**、真实 PDF 报告（`docs/25` 已实现）全部没有入口；`word.json` 16,142 条字义素材完全未展示。故后续优先级排序为「**接出口 > 补缺口 > 加新算法**」。
+  - **两处红色缺口**：① 「**测名 / 评名**」全竞品标配而本项目完全缺失（行业数据：用户攒下的候选名约 70% 会在测名环节被筛掉）；② **风险体检**（谐音 / 生僻字 / 多音字 / 户籍友好度 / 网红字撞名）判据都在引擎里但不产出清单。其中 A1（测名）已核对实现前提——`fate.RateName` 虽导出，但 `NameCandidate` 的 20+ 字段目前只在引擎内部枚举时组装，需先抽出「给定姓名 → NameCandidate」的装配函数，否则会制造"结果页与测名页同名字不同分"的新双口径问题。
+
+### 🧪 Tests 测试
+
+- 新增 `name_service_score_detail_test.go`（5 用例）：八维度（含三才）分数与依据文字全映射、空白依据文字不覆盖既有文案、nil/空评分/未知维度安全、`buildScoreDetail` 顺序与缺失维度跳过，以及**端到端** `TestGenerate_EmitsScoreDetail`（走真实 fate 引擎，断言每个名字都带 `score_detail`、维度落在白名单内、至少一维带依据文字、三才分与 `sancai_score` 一致）。
+- 新增 `max_body_bytes_test.go`（5 用例）：超限 413 且 handler 不执行、未超限 body 完整可读、**长度未知时由 `MaxBytesReader` 兜底**（读出字节数不超过上限且报错）、`limit<=0` 不限制、无 body 请求不受影响。
+- 新增 `shici_ready_test.go`（7 用例）：★ `TestRunShiCiLoad_ClosesChannelOnPanic` 钉住「loader panic 也会关闭通道」这条核心不变量（修复前会死等），另有报错/成功路径关闭通道、有界等待超时与非正超时（不限时）语义。用注入通道/loader 的纯函数测试，避免触碰 `sync.Once` 保护的全局 `shiciReady`。
+- `go test ./...` 全部通过（18 个包）；`go build ./...` 通过。
+- 注：`gofmt -l` 仍会列出若干 CRLF 文件（含本仓库既有状态，见 `docs/24` P3-13）；本次改动的 `name_service.go` / `generator.go` / `classic_loader.go` 均无格式告警。
+
+### 📚 相关
+
+- 修复进度回写：`docs/24` 的 P1-4、P2-5、P2-9 现已完成；P2-6 喜用神口径两条链路已统一为经典口径，
+  响应字段集统一仍待做（`docs/27` §6 批次三）。
+
+---
+
 ## [2026.09.13] 当日总览
 
 命理数据准确性专项（审查 1–14 闭环 + 后续增强），版本 `2026.09.13.0` → `.6`：

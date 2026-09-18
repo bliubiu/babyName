@@ -332,6 +332,9 @@ func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store
 	router.Use(middleware.ZapLogger())
 	router.Use(middleware.ZapRecovery())
 	router.Use(middleware.RequestID())
+	// 请求体上限：本站最大请求体是 /report/* 的报告数据（几十 KB 量级），
+	// 1 MiB 留足余量；超限直接 413，避免大 body 造成内存放大。
+	router.Use(middleware.MaxBodyBytes(1 << 20))
 	router.Use(middleware.RequestTimeout(30 * time.Second))
 	router.Use(middleware.CORSMiddleware())
 	rateLimitHandler, rateLimiter := middleware.IPRateLimitWithLimiter(rateCapacity, rateRate)

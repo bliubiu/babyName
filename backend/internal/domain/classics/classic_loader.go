@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"go.uber.org/zap"
@@ -115,24 +116,72 @@ func (e ChuCiEntry) GetSource() string    { return "楚辞" }
 // shiciReady 通道，shici.json 加载完成后关闭
 var shiciReady = make(chan struct{})
 
+// shiciLoadTimeout 等待 shici.json 加载完成的上限。
+// 正常耗时约 200ms（6.7MB），30s 已远超实际需要，只用于兜住异常路径。
+var shiciLoadTimeout = 30 * time.Second
+
 // loadShiCiOnce 保证 shici 异步加载只启动一次（多次 assembly/测试不会重复 close 通道）
 var loadShiCiOnce sync.Once
 
 // ensureShiCiLoaded 确保唐诗宋词数据已加载完成
-// 适用于异步加载场景：shici.json（6.7MB）后台加载，业务入口处同步等待
+//
+// 适用于异步加载场景：shici.json（6.7MB）后台加载，业务入口处同步等待。
+//
+// ⚠ 历史上这里是无超时的 `<-shiciReady` 死等：一旦加载协程 panic，
+// close(shiciReady) 永不执行（panic 未 recover 时进程直接崩溃；若外层
+// 有 recover 则通道永远不关），所有依赖诗词的请求会**全部挂死**而不是报错。
+// 现在改为有界等待：超时即降级（本次请求按「无诗词共现数据」继续），
+// 并由 runShiCiLoad 的 recover 保证通道一定被关闭。
 func ensureShiCiLoaded() {
-	<-shiciReady
+	if !waitShiCiLoaded(shiciReady, shiciLoadTimeout) {
+		logger.Warn("唐诗宋词数据等待超时，本次请求降级为不含诗词共现数据",
+			zap.Duration("timeout", shiciLoadTimeout))
+	}
+}
+
+// waitShiCiLoaded 等待 ready 关闭，最多等待 timeout；返回是否在超时前完成。
+//
+// 独立成纯函数（ready/timeout 均为入参）是为了可被确定性测试覆盖——
+// 包级 shiciReady 是 sync.Once 保护的全局单例，测试里无法安全地重置。
+func waitShiCiLoaded(ready <-chan struct{}, timeout time.Duration) bool {
+	if timeout <= 0 {
+		<-ready
+		return true
+	}
+	select {
+	case <-ready:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
+// runShiCiLoad 执行诗词加载并在结束时**必定**关闭 ready 通道。
+//
+// loader 以参数注入，便于测试验证「loader panic 也会关闭通道」这条关键不变量。
+func runShiCiLoad(loader func() error, ready chan struct{}) {
+	// defer 是后进先出：先 recover 掉 panic，再关闭 ready。
+	// 两者缺一不可——只 recover 不 close 会让等待方死等，只 close 不 recover
+	// 则 panic 会直接打崩进程（goroutine 内未 recover 的 panic 是致命的）。
+	defer close(ready)
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("唐诗宋词后台加载 panic，已降级为无诗词共现数据",
+				zap.Any("panic", r))
+		}
+	}()
+
+	if err := loader(); err != nil {
+		logger.Error("唐诗宋词后台加载失败", zap.Error(err))
+	}
 }
 
 // loadShiCiAsync 在后台协程中加载 shici.json，不阻塞启动
 func loadShiCiAsync(dataDir string) {
 	loadShiCiOnce.Do(func() {
-		go func() {
-			if err := loadShiCiFromJSON(dataDir); err != nil {
-				logger.Error("唐诗宋词后台加载失败", zap.Error(err))
-			}
-			close(shiciReady)
-		}()
+		go runShiCiLoad(func() error {
+			return loadShiCiFromJSON(dataDir)
+		}, shiciReady)
 
 		logger.Info("唐诗宋词数据已提交后台加载（6.7MB），不阻塞启动")
 	})

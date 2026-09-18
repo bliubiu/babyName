@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -362,29 +363,12 @@ func convertFateToNameNames(results []fate.NameResult, gender string) []name.Nam
 		}
 		// 出典完整结构化回填（作品·篇目·原句·作者·朝代·全诗），与 analysis 路径一致
 		enrichPoetryForName(&n, nr.GivenName)
-		// 多维度评分映射（fate Rater 链产出的 Items → name.Name 分数字段）
-		// 与 fate_name_service.go 保持一致：三才、共现、新颖度同步映射（此前版本漏三才）
-		for k, v := range nr.Score.Items {
-			switch k {
-			case "五行八字":
-				n.WuxingScore = v
-			case "音韵":
-				n.YinyunScore = v
-			case "文化印象":
-				n.MeaningScore = v
-			case "生肖":
-				n.ZodiacScore = v
-			case "新颖度":
-				n.NoveltyScore = v
-			case "共现":
-				n.BigramScore = v
-			case "人名频率":
-				n.FrequencyScore = v
-			case "三才":
-				// name.Name 无 SancaiScore 字段，但 WuxingAnalysis/Yinyun/SancaiAnalysis 等
-				// 文字字段在 buildResponse 阶段由独立函数填充，此处仅兜底
-			}
-		}
+		// 多维度评分映射：Items 分数 + Details 依据文字 + score_detail 明细，
+		// 统一由 applyFateScoreDetail 处理，与 /generate/analysis 路径同源。
+		// （此前 /generate 只映射了分数、丢弃了依据文字，导致前端
+		//   NameCard/NameDetail 的「优先 score_detail」分支永不执行，
+		//   FullReport 只能本地自造命理文案 —— docs/24 P2-5。）
+		applyFateScoreDetail(&n, nr.Score)
 		n.Reasons = nr.Reasons
 		names[i] = n
 	}
@@ -507,6 +491,82 @@ func (s *NameService) logGeneration(
 		zap.Duration("parallel", parallelDuration),
 		zap.Int("name_count", len(response.Names)),
 	)
+}
+
+// applyFateScoreDetail 把 fate 引擎的 NameScore（Items 分数 + Details 依据文字）
+// 平铺到 name.Name 的既有字段，并生成 score_detail 明细。
+//
+// 为什么要走这一层：`name.Name` 是 /names/generate 的对外结构，字段名是历史命名的
+// （wuxing_score / yinyun / meaning_detail …），而引擎侧用中文维度名聚合。
+// 两者之间的映射此前散落在两个路径各自的 for 循环里，已出现漏映射（三才分）与
+// 漏依据文字（Details 全程只映射分数）两处漂移，故收敛到一处。
+func applyFateScoreDetail(n *name.Name, score fate.NameScore) {
+	if n == nil {
+		return
+	}
+
+	// ① 各维度分数 → 对应分数字段
+	for k, v := range score.Items {
+		switch k {
+		case "五行八字":
+			n.WuxingScore = v
+		case "音韵":
+			n.YinyunScore = v
+		case "文化印象":
+			n.MeaningScore = v
+		case "生肖":
+			n.ZodiacScore = v
+		case "新颖度":
+			n.NoveltyScore = v
+		case "共现":
+			n.BigramScore = v
+		case "人名频率":
+			n.FrequencyScore = v
+		case "三才":
+			n.SancaiScore = v
+		}
+	}
+
+	// ② 各维度依据文字 → 对应文字字段（前端按既有字段名直接渲染，无需改组件）
+	// 空/纯空白视为「引擎未提供」，保留调用方已填的文案（如 buildResponse 阶段的兜底）
+	for k, v := range score.Details {
+		if strings.TrimSpace(v) == "" {
+			continue
+		}
+		switch k {
+		case "五行八字":
+			n.WuxingAnalysis = v
+		case "音韵":
+			n.Yinyun = v
+		case "文化印象":
+			n.MeaningDetail = v
+		case "三才":
+			n.SancaiAnalysis = v
+		}
+	}
+
+	// ③ 评分明细（维度名/分数/依据文字），与 /generate/analysis 同源同序
+	n.ScoreDetail = buildScoreDetail(score.Items, score.Details)
+}
+
+// buildScoreDetail 按固定维度顺序输出评分明细（供 /generate 与 /generate/analysis 共用）。
+// 顺序与 DefaultRaters 权重降序一致，确保推荐名展示稳定；维度内聚为
+// 「维度名/分数/依据文字」，前端无需硬编码维度即可渲染评分分解。
+func buildScoreDetail(items map[string]float64, details map[string]string) []name.ScoreDetailItem {
+	detailOrder := []string{"五行八字", "文化印象", "音韵", "新颖度", "生肖", "共现", "三才", "人名频率"}
+	var out []name.ScoreDetailItem
+	for _, dim := range detailOrder {
+		score, ok := items[dim]
+		if !ok {
+			continue
+		}
+		out = append(out, name.ScoreDetailItem{
+			Name:   dim,
+			Score:  score,
+			Detail: details[dim],
+		})
+	}
+	return out
 }
 
 // generateNameSuggestions 生成起名建议（包级函数，供 NameService 和 FateNameService 共用）

@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -407,5 +408,40 @@ func RequestTimeout(timeout time.Duration) gin.HandlerFunc {
 				"message": "请求超时，请稍后重试",
 			})
 		}
+	}
+}
+
+// MaxBodyBytes 请求体大小上限中间件
+//
+// 背景：此前全仓没有任何 body 上限（handler 直接 ShouldBindJSON 读全量 body），
+// 单个大 body 即可造成内存放大；而全局 IP 限流是按「请求数」计量的，
+// 挡不住「少请求、大体量」的形态。
+//
+// 两层防护：
+//  1. Content-Length 已知且超限 → 直接 413 中止，不读 body、不进 handler
+//     （这样客户端拿到明确的「请求体过大」语义，而不是被反序列化错误误导成参数非法）；
+//  2. Content-Length 未知（分块传输 / 无长度头）→ 用 http.MaxBytesReader 兜底，
+//     读取超限时下游读 body 会得到错误，不会无界地占内存。
+//
+// limit <= 0 表示不限制（保留配置能力，便于测试或特殊部署）。
+func MaxBodyBytes(limit int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if limit <= 0 || c.Request.Body == nil {
+			c.Next()
+			return
+		}
+
+		if c.Request.ContentLength > limit {
+			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{
+				"code":    http.StatusRequestEntityTooLarge,
+				"success": false,
+				"message": "请求体过大，请精简后重试",
+			})
+			return
+		}
+
+		// 长度未知或未超限：包一层有界读取，作为第二道防线
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
+		c.Next()
 	}
 }
