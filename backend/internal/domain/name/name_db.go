@@ -128,16 +128,29 @@ func (db *NameDB) Reload() error {
 	return db.Load()
 }
 
+// LoadCuratedNamesData 读取 curated_names.json 的完整条目列表。
+//
+// 「读 curated_names.json」此前在 4 处各自实现（NameDB 种子、SQLite seed、
+// cmd/server、cmd/namer-cli），格式一改就要同步改 4 处，且出现过字段漂移。
+// 统一收敛到此一处（docs/24 P2-12）：文件不存在或解析失败返回 error，
+// 交由调用方决定降级策略（seed 跳过 / 无白名单 / 告警）。
+func LoadCuratedNamesData(dataDir string) ([]CuratedName, error) {
+	path := filepath.Join(dataDir, "curated_names.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var names []CuratedName
+	if err := json.Unmarshal(raw, &names); err != nil {
+		return nil, err
+	}
+	return names, nil
+}
+
 // loadCuratedNames 从 JSON 加载精选候选名库
 func (db *NameDB) loadCuratedNames() error {
-	path := filepath.Join(db.dataDir, "curated_names.json")
-	data, err := os.ReadFile(path)
+	names, err := LoadCuratedNamesData(db.dataDir)
 	if err != nil {
-		return err
-	}
-
-	var names []CuratedName
-	if err := json.Unmarshal(data, &names); err != nil {
 		return err
 	}
 

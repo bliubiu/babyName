@@ -5,14 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
 	"name/internal/domain/hanzi"
+	"name/internal/domain/name"
 	"name/internal/domain/yijing"
 	"name/internal/domain/zodiac"
 	"name/internal/infrastructure/database"
@@ -415,7 +414,7 @@ func (s *Store) BatchDeleteHistory(ids []string) error {
 	if err != nil {
 		return fmt.Errorf("batch delete history begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Prepare(`DELETE FROM history WHERE id = ?`)
 	if err != nil {
@@ -564,7 +563,7 @@ func (s *Store) BatchDeleteFavorite(ids []string) error {
 	if err != nil {
 		return fmt.Errorf("batch delete favorites begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Prepare(`DELETE FROM favorites WHERE id = ?`)
 	if err != nil {
@@ -795,21 +794,10 @@ func (s *Store) seedCuratedNames(dataDir string) {
 		return
 	}
 
-	path := filepath.Join(dataDir, "curated_names.json")
-	data, err := os.ReadFile(path)
+	// 读取统一收敛到 name.LoadCuratedNamesData（P2-12），避免四处各自解析漂移
+	entries, err := name.LoadCuratedNamesData(dataDir)
 	if err != nil {
-		logger.Warn("sqlite: seed curated_names.json not found, skipping", logger.ErrField(err))
-		return
-	}
-
-	var entries []struct {
-		Name        string  `json:"name"`
-		Pinyin      string  `json:"pinyin"`
-		Gender      string  `json:"gender"`
-		YinyunScore float64 `json:"yinyun_score"`
-	}
-	if err := json.Unmarshal(data, &entries); err != nil {
-		logger.Warn("sqlite: failed to parse curated_names.json", logger.ErrField(err))
+		logger.Warn("sqlite: seed curated_names.json 读取失败，跳过", logger.ErrField(err))
 		return
 	}
 
@@ -818,7 +806,7 @@ func (s *Store) seedCuratedNames(dataDir string) {
 		logger.Warn("sqlite: seed curated names tx begin failed", logger.ErrField(err))
 		return
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Prepare("INSERT OR IGNORE INTO curated_names(name,pinyin,gender,score,source) VALUES(?,?,?,?,?)")
 	if err != nil {
@@ -897,7 +885,7 @@ func (s *Store) seedHanziData() {
 		logger.Error("sqlite: seedHanziData begin tx failed", logger.ErrField(err))
 		return
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO hanzi_data(
 		char, pinyin, strokes, radical, meaning, wuxing, gender,
@@ -958,7 +946,7 @@ func (s *Store) ReloadHanziData() {
 		logger.Error("sqlite: ReloadHanziData begin tx failed", logger.ErrField(err))
 		return
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.Exec("DELETE FROM hanzi_data"); err != nil {
 		logger.Error("sqlite: ReloadHanziData delete failed", logger.ErrField(err))

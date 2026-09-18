@@ -5,6 +5,9 @@ import (
 
 	"name/internal/domain/name"
 	"name/internal/infrastructure/database"
+	"name/internal/infrastructure/logger"
+
+	"go.uber.org/zap"
 )
 
 // FavoriteService 收藏服务
@@ -77,11 +80,17 @@ func (s *FavoriteService) SaveFavorite(ctx context.Context, record *FavoriteReco
 	if record.Score >= 80 {
 		fullName := record.Surname + record.GivenName
 		if s.nameDB != nil {
-			// NameDB.AddCuratedName 同时更新内存索引和持久化
-			_ = s.nameDB.AddCuratedName(fullName, record.Pinyin, record.Gender, float64(record.Score), "user_favorite")
+			// NameDB.AddCuratedName 同时更新内存索引和持久化。
+			// 失败不阻断收藏本身（收藏已成功），但必须告警，避免自学习
+			// 静默失效：用户重复收藏同分名字也进不了精选库（P2-8）。
+			if err := s.nameDB.AddCuratedName(fullName, record.Pinyin, record.Gender, float64(record.Score), "user_favorite"); err != nil {
+				logger.Warn("收藏自学习：加入内存精选库失败", zap.String("name", fullName), zap.Error(err))
+			}
 		} else if s.curatedStore != nil {
 			// 无 NameDB 时直接持久化
-			_ = s.curatedStore.SaveCuratedName(fullName, record.Pinyin, record.Gender, float64(record.Score), "user_favorite")
+			if err := s.curatedStore.SaveCuratedName(fullName, record.Pinyin, record.Gender, float64(record.Score), "user_favorite"); err != nil {
+				logger.Warn("收藏自学习：持久化精选名失败", zap.String("name", fullName), zap.Error(err))
+			}
 		}
 	}
 

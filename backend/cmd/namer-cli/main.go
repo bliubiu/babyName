@@ -19,7 +19,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -29,6 +28,7 @@ import (
 	"name/internal/application/services"
 	"name/internal/domain/fate"
 	"name/internal/domain/hanzi"
+	"name/internal/domain/name"
 	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/data"
 	"name/internal/infrastructure/logger"
@@ -214,15 +214,8 @@ func generate(req *services.GenerateRequest, dataDir string) (*services.Generate
 
 // loadCuratedNames 读取 curated_names.json 的 name 字段列表
 func loadCuratedNames(dataDir string) []string {
-	path := filepath.Join(dataDir, "curated_names.json")
-	raw, err := os.ReadFile(path)
+	entries, err := name.LoadCuratedNamesData(dataDir)
 	if err != nil {
-		return nil
-	}
-	var entries []struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(raw, &entries); err != nil {
 		return nil
 	}
 	names := make([]string, 0, len(entries))

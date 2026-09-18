@@ -192,7 +192,13 @@ func (s *Store) seedClassicsData(dataDir string) error {
 	version := classicsDataVersion(dataDir)
 
 	stored := ""
-	_ = s.db.QueryRow(`SELECT value FROM data_meta WHERE key = 'classics_version'`).Scan(&stored)
+	err := s.db.QueryRow(`SELECT value FROM data_meta WHERE key = 'classics_version'`).Scan(&stored)
+	if err != nil {
+		// 读失败不能当作「版本一致」跳过（P2-10）：stored 保持零值即可
+		// 与最新 version 不相等 → 走重建分支，并告警以便排查。
+		logger.Warn("读取 classics_version 失败，按「需要重建」处理", logger.ErrField(err))
+		stored = ""
+	}
 
 	var count int
 	if err := s.db.QueryRow("SELECT COUNT(*) FROM classics_books").Scan(&count); err != nil {
@@ -310,9 +316,15 @@ func (s *Store) saveMeta(key, value string) error {
 }
 
 // GetClassicsDataVersion 读取当前经典数据版本指纹
+// 读取失败返回空串并告警（P2-10）：调用方应按「版本未知 → 核对重建」处理，
+// 而不是把空串误判成「版本一致」。
 func (s *Store) GetClassicsDataVersion() string {
 	var v string
-	_ = s.db.QueryRow(`SELECT value FROM data_meta WHERE key = 'classics_version'`).Scan(&v)
+	err := s.db.QueryRow(`SELECT value FROM data_meta WHERE key = 'classics_version'`).Scan(&v)
+	if err != nil {
+		logger.Warn("读取 classics_version 失败，返回空版本指纹", logger.ErrField(err))
+		return ""
+	}
 	return v
 }
 
@@ -359,7 +371,7 @@ func (s *Store) importArrayWorks(works []arrayWork, fileName, category string) e
 	if err != nil {
 		return fmt.Errorf("开启事务失败: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// 确定书籍元数据（从第一条推断）
 	title := category
@@ -452,7 +464,7 @@ func (s *Store) importBookObject(book *bookObject, fileName, category string) er
 	if err != nil {
 		return fmt.Errorf("开启事务失败: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// 写入 book
 	bookResult, err := tx.Exec(
@@ -601,7 +613,7 @@ func (s *Store) importQianziwen(data []byte, fileName, category string) error {
 	if err != nil {
 		return fmt.Errorf("开启事务失败: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	bookResult, err := tx.Exec(
 		`INSERT INTO classics_books (file_name, category, title, author, dynasty, book, tags)
