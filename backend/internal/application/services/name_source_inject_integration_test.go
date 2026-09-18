@@ -74,7 +74,7 @@ func TestGenerateNamesViaFate_SourceClassicInjected(t *testing.T) {
 		}
 	}
 
-	withSource, err := svc.generateNamesViaFate(ctx, mkReq("论语"), nil)
+	withSource, _, err := svc.generateNamesViaFate(ctx, mkReq("论语"), nil, nil)
 	if err != nil {
 		t.Fatalf("SourceClassic=论语 生成失败: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestGenerateNamesViaFate_SourceClassicInjected(t *testing.T) {
 		t.Fatal("SourceClassic=论语 未生成任何名字")
 	}
 
-	baseline, err := svc.generateNamesViaFate(ctx, mkReq(""), nil)
+	baseline, _, err := svc.generateNamesViaFate(ctx, mkReq(""), nil, nil)
 	if err != nil {
 		t.Fatalf("无来源生成失败: %v", err)
 	}

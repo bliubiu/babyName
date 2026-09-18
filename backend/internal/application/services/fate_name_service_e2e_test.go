@@ -72,6 +72,7 @@ func setupFateNameServiceE2E(t *testing.T) *FateNameService {
 		cache.Init()
 		fateEngine := fate.NewEngine(&HanziDataProvider{}, NewBaziAnalyzerAdapter(), fate.DefaultRaters())
 		fateServiceE2E = NewFateNameService(fateEngine,
+			WithFateBaziAnalyzer(&BaziAdapter{}),
 			WithFateHexagramFinder(&HexagramAdapter{}),
 			WithFateZiweiAnalyzer(&ZiweiAdapter{}),
 		)
@@ -177,6 +178,17 @@ func TestFateNameService_E2E_SingleName(t *testing.T) {
 	}
 	if len(resp.Bazi.Xiyongshen) == 0 {
 		t.Error("Bazi.Xiyongshen（喜用神）应至少 1 项")
+	}
+	// P2-6 回归：响应喜用神必须与经典喜用神（候选池收窄口径）一致。
+	// 此前 API 直接暴露 fate 引擎内部 BalanceXiYongJi 的结果，造成
+	// /analysis=[水] 与 /generate=[木水金] 同人两个答案的矛盾。
+	if classic := svc.classicXiyongShen(req); len(classic) > 0 {
+		if strings.Join(resp.Bazi.Xiyongshen, ",") != strings.Join(classic, ",") {
+			t.Errorf("P2-6：响应喜用神 = %v，经典口径 = %v，两者必须一致",
+				resp.Bazi.Xiyongshen, classic)
+		}
+	} else {
+		t.Error("P2-6：classicXiyongShen 应返回经典喜用神（baziAnalyzer 已装配）")
 	}
 	if resp.Zodiac == "" {
 		t.Error("Zodiac（生肖）未填充")

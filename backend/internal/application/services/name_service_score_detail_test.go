@@ -210,7 +210,7 @@ func TestGenerate_EmitsScoreDetail(t *testing.T) {
 		NameLength: 2,
 	}
 
-	names, err := svc.generateNamesViaFate(context.Background(), req, nil)
+	names, _, err := svc.generateNamesViaFate(context.Background(), req, nil, nil)
 	if err != nil {
 		t.Fatalf("生成失败: %v", err)
 	}
