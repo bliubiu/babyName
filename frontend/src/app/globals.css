@@ -29,6 +29,12 @@
     --color-seal-red-light: 224 74 74;
   }
 
+  /* ---- 字体栈（替代 next/font/google，避免构建期联网下载字体） ---- */
+  :root {
+    --font-noto-sans-sc: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', sans-serif;
+    --font-noto-serif-sc: 'Noto Serif SC', 'STSong', 'SimSun', 'Songti SC', serif;
+  }
+
   /* ---- 深色模式色彩变量 ---- */
   .dark {
     --color-warm-white: 17 17 17;
