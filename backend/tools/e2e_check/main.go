@@ -1,12 +1,17 @@
 // 命令 e2e_check 是起名链路的端到端巡检工具（纯 Go 实现，仅依赖标准库）。
 //
-// 覆盖六项检查：
+// 覆盖八项检查：
 //  1. 多场景耗时（双名/单名/复姓/经典来源/避讳/笔画区间/显式五行）
 //  2. 推荐用字质量（一/二/三级字分布、门禁字命中、无命名依据字占比）
 //  3. 参数生效性（避讳长辈、经典来源偏好）
-//  4. 双路径一致性（/names/generate 与 /names/generate/analysis）
+//  4. 同步与异步一致性（/names/generate 与 /names/generate/async + /names/task/:id）
 //  5. 同一请求可复现性
 //  6. 并发压测（中位/p95/最大耗时与吞吐）
+//  7. 测名 /names/evaluate（与生成同源同分）
+//  8. 探索模式 /names/generate/explore（换一批与上一轮零交集）
+//
+// 路由口径（2026.09.18.1 起）：/names/generate/analysis 已下线，
+// /names/generate 是唯一公开生成入口，本工具不再访问已下线路由。
 //
 // 前置：先启动服务（cd backend && ./namer-server.exe）。
 //
@@ -33,6 +38,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+)
+
+// 现行路由常量：analysis 路由已于 2026.09.18.1 下线，巡检一律走 /names/generate。
+const (
+	pathGenerate = "/api/v1/names/generate"
+	pathAsync    = "/api/v1/names/generate/async"
+	pathExplore  = "/api/v1/names/generate/explore"
+	pathEvaluate = "/api/v1/names/evaluate"
 )
 
 // 默认请求体：一个固定的男宝出生时间，便于跨轮次横向对比。
@@ -278,9 +291,28 @@ func (c *client) call(path string, body map[string]any) result {
 	return result{raw: raw, httpCode: resp.StatusCode, dur: time.Since(t0), err: err}
 }
 
+// get 发起 GET 请求（轮询异步任务状态用）。
+func (c *client) get(path string) result {
+	t0 := time.Now()
+	resp, err := c.hc.Get(c.base + path)
+	if err != nil {
+		return result{err: err, dur: time.Since(t0)}
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(resp.Body)
+	return result{raw: raw, httpCode: resp.StatusCode, dur: time.Since(t0), err: err}
+}
+
+// strAt 从响应体顶层 data 中取字符串字段（如 generation_id）。
+func strAt(v *view, key string) string { return strField(v.data, key) }
+
 // parse 解析调用结果；任何结构问题都降级为空视图而不是报错，
 // 以便巡检继续跑完并如实呈现「哪个字段缺失」。
-func (r result) parse() *view {
+func (r result) parse() *view { return r.parseAt("") }
+
+// parseAt 在 parse 的基础上再下沉一层：异步任务把生成结果放在 data.result 里，
+// 传 field="result" 即可用同一套视图逻辑解析。field 为空时与 parse 等价。
+func (r result) parseAt(field string) *view {
 	v := &view{size: float64(len(r.raw)) / 1024}
 	if len(r.raw) == 0 {
 		return v
@@ -296,9 +328,28 @@ func (r result) parse() *view {
 			v.data = flat
 		}
 	}
+	if field != "" {
+		var nested map[string]json.RawMessage
+		if err := json.Unmarshal(v.data[field], &nested); err == nil {
+			v.data = nested
+		}
+	}
 	_ = json.Unmarshal(v.data["names"], &v.names)
 	_ = json.Unmarshal(v.data["bazi"], &v.bazi)
 	return v
+}
+
+// numAt 从视图的 data 中取数字字段（评分、百分比等），缺失返回 NaN。
+func numAt(v *view, key string) float64 {
+	raw, ok := v.data[key]
+	if !ok {
+		return math.NaN()
+	}
+	var f float64
+	if err := json.Unmarshal(raw, &f); err != nil {
+		return math.NaN()
+	}
+	return f
 }
 
 // ---------- 巡检状态 ----------
@@ -318,6 +369,85 @@ func (c *checker) bad(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	c.issues = append(c.issues, msg)
 	fmt.Printf("  ★ %s\n", msg)
+}
+
+// ---------- 异步任务 ----------
+
+// asyncOutcome 一次异步任务的终态观察结果。
+type asyncOutcome struct {
+	view     *view         // 终态生成结果（解析 data.result）
+	httpCode int           // 提交请求的 HTTP 状态
+	dur      time.Duration // 从提交到拿到终态的总耗时
+	stages   string        // 轮询过程中观察到的进度阶段序列
+}
+
+// runAsync 提交异步任务并轮询到终态。
+//
+// 异步链路的价值在于「提交即返回 + 可查进度」，因此除了终态结果，
+// 这里还记录轮询途中观察到的阶段序列——若阶段一直不变或直接从 pending
+// 跳到 success，前端进度条就形同虚设。
+func runAsync(c *client, path string, body map[string]any, timeout time.Duration) *asyncOutcome {
+	sub := c.call(path, body)
+	if sub.err != nil {
+		fmt.Printf("  ★ 异步提交失败: %v\n", sub.err)
+		return nil
+	}
+	if sub.httpCode != 200 {
+		fmt.Printf("  ★ 异步提交返回非 200: HTTP=%d %s\n", sub.httpCode, string(sub.raw))
+		return nil
+	}
+	taskID := strAt(sub.parse(), "task_id")
+	if taskID == "" {
+		fmt.Printf("  ★ 异步提交响应缺少 task_id: %s\n", string(sub.raw))
+		return nil
+	}
+
+	t0 := time.Now()
+	deadline := time.Now().Add(timeout)
+	var stages []string
+	seen := map[string]bool{}
+	for time.Now().Before(deadline) {
+		r := c.get("/api/v1/names/task/" + taskID)
+		v := r.parse()
+		status := strField(v.data, "status")
+		mark := fmt.Sprintf("%s:%s@%.0f%%", status, strField(v.data, "stage"), numAt(v, "percent"))
+		if !seen[mark] {
+			seen[mark] = true
+			stages = append(stages, mark)
+		}
+		switch status {
+		case "success":
+			return &asyncOutcome{view: r.parseAt("result"), httpCode: sub.httpCode,
+				dur: time.Since(t0), stages: strings.Join(stages, " → ")}
+		case "failed":
+			fmt.Printf("  ★ 异步任务失败: %s\n", strField(v.data, "error"))
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	fmt.Printf("  ★ 异步任务在 %.0fs 内未到达终态\n", timeout.Seconds())
+	return nil
+}
+
+// exploreStoreCapacity 与 services.exploreStoreCapacity 对齐：
+// 探索会话缓存是进程内 FIFO，容量固定，超过就淘汰最旧的会话。
+const exploreStoreCapacity = 32
+
+// clip 截断字符串，避免把整个响应体打进巡检日志。
+func clip(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}
+
+// fmtNum 格式化数字，NaN 显示为空占位，避免日志里出现 "NaN%"。
+func fmtNum(f float64) string {
+	if math.IsNaN(f) {
+		return "-"
+	}
+	return fmt.Sprintf("%.0f", f)
 }
 
 // ---------- 各段检查 ----------
@@ -433,7 +563,7 @@ func main() {
 	fmt.Println(strings.Repeat("=", 96))
 
 	// ---------- 0. 预热 ----------
-	if r := c.call("/api/v1/names/generate/analysis", baseBody()); r.err != nil {
+	if r := c.call(pathGenerate, baseBody()); r.err != nil {
 		fmt.Printf("预热失败，服务未就绪: %v\n", r.err)
 		os.Exit(2)
 	} else {
@@ -447,15 +577,14 @@ func main() {
 		body  map[string]any
 	}
 	scenarios := []scenario{
-		{"/analysis 双名 基线", "/api/v1/names/generate/analysis", withOver(nil)},
-		{"/generate 双名 基线", "/api/v1/names/generate", withOver(nil)},
-		{"/analysis 单名", "/api/v1/names/generate/analysis", withOver(map[string]any{"name_length": 1})},
-		{"/analysis 女宝 李", "/api/v1/names/generate/analysis", withOver(map[string]any{"gender": "female", "surname": "李"})},
-		{"/analysis 经典来源=论语", "/api/v1/names/generate/analysis", withOver(map[string]any{"source_classic": "论语"})},
-		{"/analysis 显式五行=水", "/api/v1/names/generate/analysis", withOver(map[string]any{"wuxing_match": []string{"水"}})},
-		{"/analysis 避讳 张伟/王秀英", "/api/v1/names/generate/analysis", withOver(map[string]any{"avoid_elder_names": []string{"张伟", "王秀英"}})},
-		{"/analysis 复姓 欧阳", "/api/v1/names/generate/analysis", withOver(map[string]any{"surname": "欧阳"})},
-		{"/analysis 笔画 5-20", "/api/v1/names/generate/analysis", withOver(map[string]any{"min_strokes": 5, "max_strokes": 20})},
+		{"双名 基线", pathGenerate, withOver(nil)},
+		{"单名", pathGenerate, withOver(map[string]any{"name_length": 1})},
+		{"女宝 李", pathGenerate, withOver(map[string]any{"gender": "female", "surname": "李"})},
+		{"经典来源=论语", pathGenerate, withOver(map[string]any{"source_classic": "论语"})},
+		{"显式五行=水", pathGenerate, withOver(map[string]any{"wuxing_match": []string{"水"}})},
+		{"避讳 张伟/王秀英", pathGenerate, withOver(map[string]any{"avoid_elder_names": []string{"张伟", "王秀英"}})},
+		{"复姓 欧阳", pathGenerate, withOver(map[string]any{"surname": "欧阳"})},
+		{"笔画 5-20", pathGenerate, withOver(map[string]any{"min_strokes": 5, "max_strokes": 20})},
 	}
 
 	section("1. 场景耗时")
@@ -497,7 +626,7 @@ func main() {
 	// ---------- 2. 用字质量 ----------
 	section("2. 推荐用字质量")
 	// 实测结论：单名 Top-N 用字一直正常，双名是历史问题区，两者都查。
-	for _, label := range []string{"/analysis 双名 基线", "/analysis 单名"} {
+	for _, label := range []string{"双名 基线", "单名"} {
 		v := views[label]
 		if v == nil || len(v.names) == 0 {
 			continue
@@ -526,7 +655,7 @@ func main() {
 		// 评分体系对「无命名依据的字」（既无寓意评分、非策展、也从未出现在 95.7 万条
 		// 真实人名语料中）没有任何负反馈，它们与优质字完全同分。因此把「含无依据字的
 		// 比例」作为双名榜的质量水位指标——这正是荒谬字霸榜的量化形态。
-		if label == "/analysis 双名 基线" {
+		if label == "双名 基线" {
 			hit, tot := 0, 0
 			var offenders []string
 			for i, n := range v.names {
@@ -557,7 +686,7 @@ func main() {
 
 	// ---------- 3. 参数生效性 ----------
 	section("3. 参数生效性")
-	avoid := views["/analysis 避讳 张伟/王秀英"]
+	avoid := views["避讳 张伟/王秀英"]
 	if avoid != nil {
 		var bad []string
 		for _, n := range avoid.names {
@@ -573,7 +702,7 @@ func main() {
 			ck.ok("避讳长辈(张伟/王秀英) Top%d 无避讳字", len(avoid.names))
 		}
 	}
-	if b, l := views["/analysis 双名 基线"], views["/analysis 经典来源=论语"]; b != nil && l != nil {
+	if b, l := views["双名 基线"], views["经典来源=论语"]; b != nil && l != nil {
 		inter := intersectCount(b.givenNames(10), l.givenNames(10))
 		inter50 := intersectCount(b.givenNames(50), l.givenNames(50))
 		fmt.Printf("  经典来源=论语 与基线 Top10 交集: %d/10（越小说明来源偏好影响越大）；Top50 交集 %d/50\n", inter, inter50)
@@ -584,43 +713,50 @@ func main() {
 		}
 	}
 
-	// ---------- 4. 双路径一致性 ----------
-	section("4. 双路径一致性（/names/generate vs /names/generate/analysis）")
-	a, g := views["/analysis 双名 基线"], views["/generate 双名 基线"]
-	if a != nil && g != nil {
-		xa, xg := a.xiyongshen(), g.xiyongshen()
-		fmt.Printf("  喜用神: /analysis=%v   /generate=%v\n", xa, xg)
-		if !equalStrings(xa, xg) {
-			ck.bad("两条链路喜用神不一致：/analysis=%v vs /generate=%v", xa, xg)
+	// ---------- 4. 同步 vs 异步一致性 ----------
+	section("4. 同步 vs 异步一致性（/names/generate vs /names/generate/async + /names/task/:id）")
+	baseline := views["双名 基线"]
+	if async := runAsync(c, pathAsync, baseBody(), *timeout); async != nil {
+		fmt.Printf("  异步: HTTP=%d 轮询耗时=%.3fs 名字数=%d 响应KB=%.1f\n",
+			async.httpCode, async.dur.Seconds(), len(async.view.names), async.view.size)
+		fmt.Printf("  进度条: %s\n", async.stages)
+		if len(async.view.names) == 0 {
+			ck.bad("异步任务成功但未返回任何名字")
 		} else {
-			ck.ok("两条链路喜用神一致")
+			ck.ok("异步任务返回 %d 个名字", len(async.view.names))
 		}
-		fmt.Printf("  前10名交集: %d/10\n", intersectCount(a.givenNames(10), g.givenNames(10)))
-
-		// 响应结构差异（前端需分别适配两套结构）
-		ka, kg := a.baziKeys(), g.baziKeys()
-		if d := diffKeys(ka, kg); len(d) > 0 {
-			fmt.Printf("  bazi 字段差异: %s\n", strings.Join(d, "、"))
-		} else {
-			ck.ok("bazi 字段集一致（%d 个）", len(ka))
+		if baseline != nil && len(baseline.names) > 0 {
+			xs, xa := baseline.xiyongshen(), async.view.xiyongshen()
+			fmt.Printf("  喜用神: 同步=%v  异步=%v\n", xs, xa)
+			if !equalStrings(xs, xa) {
+				ck.bad("同步/异步喜用神不一致：%v vs %v", xs, xa)
+			} else {
+				ck.ok("同步/异步喜用神一致")
+			}
+			// 异步与同步走同一套服务层逻辑，Top 榜应当一致；
+			// 不一致说明任务侧参数装配或评分链路存在偏差。
+			inter := intersectCount(baseline.givenNames(10), async.view.givenNames(10))
+			fmt.Printf("  前10名交集: %d/10\n", inter)
+			if inter < 10 {
+				ck.bad("异步与同步 Top10 不一致，任务侧参数装配或评分链路存在偏差")
+			} else {
+				ck.ok("异步与同步 Top10 完全一致")
+			}
+			if d := diffKeys(baseline.baziKeys(), async.view.baziKeys()); len(d) > 0 {
+				ck.bad("同步/异步 bazi 字段集差异: %s", strings.Join(d, "、"))
+			} else {
+				ck.ok("同步/异步 bazi 字段集一致（%d 个）", len(baseline.baziKeys()))
+			}
 		}
-		na, ng := a.nameKeys(), g.nameKeys()
-		if d := diffKeys(na, ng); len(d) > 0 {
-			fmt.Printf("  names[0] 字段差异: %s\n", strings.Join(d, "、"))
-		}
-		_, hasA := a.names[0]["score_detail"]
-		_, hasG := g.names[0]["score_detail"]
-		fmt.Printf("  score_detail: /analysis=%v  /generate=%v\n", hasA, hasG)
-		if hasA != hasG {
-			ck.bad("score_detail 只在单侧出现（/analysis=%v /generate=%v），前端需写两套渲染逻辑", hasA, hasG)
-		}
+	} else {
+		ck.bad("异步任务未到达终态，异步链路不可用")
 	}
 
 	// ---------- 5. 可复现性 ----------
 	section(fmt.Sprintf("5. 同一请求可复现性（连发 %d 次）", *repeat))
 	seen := map[string]int{}
 	for i := 0; i < *repeat; i++ {
-		r := c.call("/api/v1/names/generate/analysis", baseBody())
+		r := c.call(pathGenerate, baseBody())
 		key := strings.Join(r.parse().givenNames(10), " ")
 		seen[key]++
 	}
@@ -656,7 +792,7 @@ func main() {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				r := c.call("/api/v1/names/generate/analysis", bodies[i%len(bodies)])
+				r := c.call(pathGenerate, bodies[i%len(bodies)])
 				mu.Lock()
 				defer mu.Unlock()
 				codes[fmt.Sprintf("%d", r.httpCode)]++
@@ -681,7 +817,7 @@ func main() {
 		// NumCPU 内，单请求的排队延迟会随并发抬升，但「吞吐不随并发恶化」
 		// 才是目标。改用吞吐加速比判定：并发总吞吐相对串行吞吐（1/串行时长）
 		// 应有实质提升，否则说明调度仍是串行化/超订。
-		if serial := durs["/analysis 双名 基线"]; serial > 0 && totalWall > 0 {
+		if serial := durs["双名 基线"]; serial > 0 && totalWall > 0 {
 			speedup := float64(allTotal) / totalWall * serial
 			fmt.Printf("  并发加速比: %.2f×（并发吞吐 %.2f req/s / 串行吞吐 %.2f req/s）\n",
 				speedup, float64(allTotal)/totalWall, 1.0/serial)
@@ -691,6 +827,91 @@ func main() {
 			} else {
 				ck.ok("吞吐相对串行有 %.2f× 加速，worker 收敛无超订", speedup)
 			}
+		}
+	}
+
+	// ---------- 7. 测名 ----------
+	section("7. 测名 /names/evaluate（与生成同源同分）")
+	if baseline != nil && len(baseline.names) > 0 {
+		top := baseline.names[0]
+		given, full := strField(top, "given_name"), strField(top, "full_name")
+		genScore := numAt(&view{data: top}, "total_score")
+		body := baseBody()
+		body["given_name"] = given
+		r := c.call(pathEvaluate, body)
+		// 测名把名字对象放在 data.name 下，下沉一层即可复用同一套字段读取逻辑
+		evScore := numAt(r.parseAt("name"), "total_score")
+		fmt.Printf("  测名 %s：HTTP=%d 耗时=%.3fs 生成链路分=%.2f 测名分=%.2f\n",
+			full, r.httpCode, r.dur.Seconds(), genScore, evScore)
+		if r.httpCode != 200 {
+			ck.bad("测名 %s 返回非 200: HTTP=%d", full, r.httpCode)
+		} else if math.IsNaN(evScore) {
+			ck.bad("测名响应缺少 total_score，前端无法展示评分")
+		} else if evScore < 0 || evScore > 100 {
+			ck.bad("测名评分 %.2f 越界（应为 0-100）", evScore)
+		} else {
+			ck.ok("测名评分 %.2f 在合理区间", evScore)
+		}
+		if !math.IsNaN(genScore) && !math.IsNaN(evScore) && math.Abs(genScore-evScore) > 0.01 {
+			ck.bad("同一名字生成链路 %.2f 与测名 %.2f 不同分，两条链路评分未收口", genScore, evScore)
+		} else if !math.IsNaN(genScore) {
+			ck.ok("测名与生成链路同分（%.2f）", genScore)
+		}
+		// 参数校验：缺 given_name 必须被拒
+		if bad := c.call(pathEvaluate, baseBody()); bad.httpCode != 400 {
+			ck.bad("测名缺少 given_name 时应返回 400，实际 HTTP=%d", bad.httpCode)
+		} else {
+			ck.ok("测名缺少 given_name 正确返回 400")
+		}
+	}
+
+	// ---------- 8. 探索模式 ----------
+	section("8. 探索模式 /names/generate/explore（换一批）")
+	// 注意：探索会话存在进程内 FIFO 缓存（容量 32），前面压测已生成几十个会话，
+	// 直接用第 1 节的基线 generation_id 必然已被淘汰。真实用户也是「生成→换一批」
+	// 紧邻操作，因此这里就地重新生成一次再换一批。
+	fresh := c.call(pathGenerate, baseBody())
+	fv := fresh.parse()
+	gid := strAt(fv, "generation_id")
+	fmt.Printf("  新会话 generation_id=%q\n", gid)
+	if gid == "" {
+		ck.bad("/names/generate 响应缺少 generation_id，探索模式无法工作")
+	} else {
+		r := c.call(pathExplore, map[string]any{"generation_id": gid, "count": 10})
+		v := r.parse()
+		fmt.Printf("  换一批: HTTP=%d 耗时=%.3fs 名字数=%d 剩余=%s\n",
+			r.httpCode, r.dur.Seconds(), len(v.names), fmtNum(numAt(v, "remaining")))
+		if r.httpCode != 200 {
+			ck.bad("探索模式返回非 200: HTTP=%d %s", r.httpCode, clip(string(r.raw), 200))
+		} else if len(v.names) == 0 {
+			ck.bad("探索模式未返回任何名字（候选池已取尽或会话失效）")
+		} else {
+			ck.ok("探索模式返回 %d 个名字", len(v.names))
+			// 核心契约：换一批与上一轮零交集
+			prev, next := fv.givenNames(50), v.givenNames(50)
+			overlap := intersectCount(prev, next)
+			fmt.Printf("  与本轮 Top50 交集: %d（契约要求 0）\n", overlap)
+			if overlap > 0 {
+				ck.bad("换一批与上一轮存在 %d 个重复名字，MarkShown 去重失效", overlap)
+			} else {
+				ck.ok("换一批与上一轮零交集")
+			}
+		}
+
+		// 会话被 FIFO 淘汰后的行为：必须给出可恢复的明确错误，而不是 500 或空榜。
+		// 用单名（约 0.2s）快速把缓存顶满，避免这一步拖慢巡检。
+		for i := 0; i < exploreStoreCapacity+2; i++ {
+			c.call(pathGenerate, withOver(map[string]any{"name_length": 1}))
+		}
+		e := c.call(pathExplore, map[string]any{"generation_id": gid, "count": 10})
+		msg := strField(e.parse().data, "message")
+		fmt.Printf("  会话被淘汰后: HTTP=%d message=%q\n", e.httpCode, msg)
+		if e.httpCode != 400 {
+			ck.bad("探索会话被淘汰后应返回 400，实际 HTTP=%d", e.httpCode)
+		} else if !strings.Contains(msg, "重新生成") {
+			ck.bad("会话淘汰的错误提示未引导用户重新生成: %q", msg)
+		} else {
+			ck.ok("会话淘汰后返回 400 且提示用户重新生成（缓存容量 %d，FIFO 淘汰）", exploreStoreCapacity)
 		}
 	}
 
