@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -93,13 +95,34 @@ type CORSConfig struct {
 	AllowCredentials bool
 }
 
-// DefaultCORSConfig 默认 CORS 配置
-// 本地工具定位：允许任意来源跨域访问（如页面 127.0.0.1:8080 调用 localhost:8080）。
-// AllowCredentials 与 "*" 同用时违反 W3C CORS 规范，因此凭据模式下运行时
-// 回显请求的具体 Origin（见 CORSMiddlewareWithConfig），无需维护原始端口白名单。
+// defaultCORSOrigins 默认允许的来源：本机同源的两个常用端口。
+//
+// 早前这里是 "*" 且 AllowCredentials=true，中间件会回显请求方的任意 Origin，
+// 效果等于「任意站点 + 带凭据」跨域读取——用户访问任何恶意站点都能读到他的
+// 起名历史与收藏。默认收敛为本地白名单；正式部署需要多域名时用
+// NAMER_CORS_ORIGINS（逗号分隔）显式列出，不要退回通配。
+var defaultCORSOrigins = []string{
+	"http://localhost:8080",
+	"http://127.0.0.1:8080",
+	"http://localhost:3000",
+	"http://127.0.0.1:3000",
+}
+
+// DefaultCORSConfig 默认 CORS 配置。
+//
+// 允许的来源可用环境变量 NAMER_CORS_ORIGINS 覆盖（逗号分隔），未设置时用本地白名单。
 func DefaultCORSConfig() CORSConfig {
+	origins := defaultCORSOrigins
+	if env := strings.TrimSpace(os.Getenv("NAMER_CORS_ORIGINS")); env != "" {
+		origins = nil
+		for _, part := range strings.Split(env, ",") {
+			if o := strings.TrimSpace(part); o != "" {
+				origins = append(origins, o)
+			}
+		}
+	}
 	return CORSConfig{
-		AllowOrigins:     []string{"*"},
+		AllowOrigins:     origins,
 		AllowMethods:     []string{"POST", "OPTIONS", "GET", "PUT", "DELETE", "PATCH"},
 		AllowHeaders:     []string{"Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization", "accept", "origin", "Cache-Control", "X-Requested-With", "X-Request-ID"},
 		AllowCredentials: true,

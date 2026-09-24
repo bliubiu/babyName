@@ -6,8 +6,8 @@ import { useNameStore } from '@/lib/store';
 import { Name, FavoriteData } from '@/types';
 import { ResultPageSkeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/Toast';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { saveFavorite, deleteFavorite, exploreNames } from '@/lib/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { saveFavorite, deleteFavorite, exploreNames, getFavorites } from '@/lib/api';
 import type { FavoritesResponse } from '@/types/api/favorites';
 import Navigation from '@/components/Navigation';
 import { NameFilters } from '@/components/NameFilter';
@@ -35,14 +35,20 @@ const getCachedFavorites = (queryClient: ReturnType<typeof useQueryClient>): Fav
 export default function ResultPage() {
   const router = useRouter();
   const { generateResult, setGenerateResult, setCompareResult, _hasHydrated } = useNameStore();
-  const [selectedName, setSelectedName] = useState<number | null>(null);
+  // 存 nameKey（surname:given_name）而不是列表下标
+  const [selectedName, setSelectedName] = useState<string | null>(null);
   const [favoriteStatus, setFavoriteStatus] = useState<Record<string, boolean>>({});
-  const [compareNames, setCompareNames] = useState<number[]>([]);
+  const [compareNames, setCompareNames] = useState<string[]>([]);
   // 探索模式（换一批）：非空时列表展示换上的这一批（与推荐榜零交集）
   const [exploreBatch, setExploreBatch] = useState<Name[] | null>(null);
   const { showToast } = useToast();
 
   const queryClient = useQueryClient();
+
+  // 结果页必须自己拉一次收藏列表：收藏态图标原先只读 ['favorites'] 缓存，
+  // 而缓存只有访问过收藏页才会被填充，导致没访问过的人心形图标一律显示未收藏。
+  const favoritesQuery = useQuery({ queryKey: ['favorites'], queryFn: getFavorites });
+  const cachedFavorites = favoritesQuery.data?.success ? favoritesQuery.data.data ?? [] : [];
 
   const result = generateResult;
   const [filters, setFilters] = useState<NameFilters>({});
@@ -68,15 +74,23 @@ export default function ResultPage() {
     return true;
   }) : [], [result, filters]);
 
+  // 探索模式下展示换上的一批；否则展示筛选后的推荐榜
+  const displayList = exploreBatch ?? filteredNames;
+  const topNames = displayList.slice(0, 20);
+
+  // 选中/对比一律按 nameKey 记录身份，不用数组下标：
+  // 筛选或换一批后列表会变短，下标会错位甚至越界成 undefined。
+  const nameByKey = (key: string) => displayList.find(n => nameKey(n) === key);
+
   useEffect(() => {
     const checkFavorites = async () => {
       if (!result?.names) return;
 
-      const cached = getCachedFavorites(queryClient);
+      if (favoritesQuery.isPending) return;
       const status: Record<string, boolean> = {};
       for (const name of result.names) {
         const key = nameKey(name);
-        status[key] = cached.some(
+        status[key] = cachedFavorites.some(
           f => f.surname === name.surname && f.given_name === name.given_name
         );
       }
@@ -84,7 +98,7 @@ export default function ResultPage() {
     };
 
     checkFavorites();
-  }, [result, queryClient]);
+  }, [result, cachedFavorites, favoritesQuery.isPending]);
 
   // 探索模式（换一批）：从同一生成会话的候选表中取与榜单零交集的新一批候选
   const exploreMutation = useMutation({
@@ -199,22 +213,27 @@ export default function ResultPage() {
     toggleFavoriteMutation.mutate(name);
   };
 
+  // 入参仍是 NameCard 给的下标，落库前先换成稳定的 nameKey
   const toggleCompare = (index: number) => {
-    if (compareNames.includes(index)) {
-      setCompareNames(compareNames.filter(i => i !== index));
+    const key = topNames[index] ? nameKey(topNames[index]) : null;
+    if (!key) return;
+    if (compareNames.includes(key)) {
+      setCompareNames(compareNames.filter(k => k !== key));
     } else if (compareNames.length < 4) {
-      setCompareNames([...compareNames, index]);
+      setCompareNames([...compareNames, key]);
     } else {
       showToast('最多对比4个名字', 'warning');
     }
   };
 
   const handleSelect = (index: number) => {
-    setSelectedName(selectedName === index ? null : index);
+    const key = topNames[index] ? nameKey(topNames[index]) : null;
+    if (!key) return;
+    setSelectedName(selectedName === key ? null : key);
   };
 
-  // hydrate 未完成时显示骨架屏，避免 SSR/CSR 不一致和刷新时短暂 null
-  if (!_hasHydrated || !result) {
+  // hydrate 未完成时显示骨架屏，避免 SSR/CSR 不一致
+  if (!_hasHydrated) {
     return (
       <main className="min-h-screen py-6 md:py-8 px-4 md:px-6">
         <div className="max-w-2xl mx-auto">
@@ -224,20 +243,50 @@ export default function ResultPage() {
     );
   }
 
+  // 刷新后走这里：store 的 partialize 只持久化了 formData，生成结果不落盘，
+  // 所以必须给一个带导航栏和出口的空状态——否则用户被永久困在骨架屏里。
+  if (!result) {
+    return (
+      <main className="min-h-screen py-6 md:py-8 px-4 md:px-6">
+        <div className="max-w-2xl mx-auto">
+          <Navigation showBackButton={true} showHistory={true} showFavorites={true} />
+          <div className="text-center py-16">
+            <p className="text-ink font-medium mb-2">没有可展示的起名结果</p>
+            <p className="text-jade/60 text-sm mb-6">
+              生成结果不会被保存，刷新页面后需要重新生成一次
+            </p>
+            <button
+              onClick={() => router.push('/')}
+              className="px-5 py-2 bg-crimson text-white rounded-xl text-sm hover:bg-crimson-light transition-all duration-200"
+            >
+              回到首页重新起名
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   const { bazi, nayin, zodiac, hexagram, names } = result;
-  // 探索模式下展示换上的一批；否则展示筛选后的推荐榜
-  const displayList = exploreBatch ?? filteredNames;
-  const topNames = displayList.slice(0, 20);
 
   const handleCompare = () => {
     if (compareNames.length < 2) {
       showToast('请至少选择2个名字进行对比', 'warning');
       return;
     }
-    const compareData = compareNames.map(i => topNames[i]);
+    const compareData = compareNames
+      .map(nameByKey)
+      .filter((n): n is Name => !!n);
+    if (compareData.length < 2) {
+      showToast('所选名字已不在当前列表，请重新选择', 'warning');
+      return;
+    }
     setCompareResult(compareData);
     router.push('/compare');
   };
+
+  // 列表变化后按 key 回查；查不到（已被筛掉）时不渲染详情而不是崩溃
+  const selectedEntry = selectedName ? nameByKey(selectedName) : undefined;
 
   return (
     <main className="min-h-screen py-4 md:py-8 px-4 md:px-6">
@@ -351,8 +400,8 @@ export default function ResultPage() {
                 <NameCard
                   name={name}
                   index={index}
-                  isSelected={selectedName === index}
-                  isComparing={compareNames.includes(index)}
+                  isSelected={selectedName === nameKey(name)}
+                  isComparing={compareNames.includes(nameKey(name))}
                   isFavorite={favoriteStatus[nameKey(name)] || false}
                   onSelect={handleSelect}
                   onToggleFavorite={toggleFavorite}
@@ -363,13 +412,13 @@ export default function ResultPage() {
           </div>
         </div>
 
-        {selectedName !== null && <NameDetail name={topNames[selectedName]} />}
+        {selectedEntry && <NameDetail name={selectedEntry} />}
 
         {showFullReport && result && (
           <FullReport
             data={result}
             onClose={() => setShowFullReport(false)}
-            selectedNameIndex={selectedName !== null ? names.findIndex((n: Name) => n.surname === topNames[selectedName].surname && n.given_name === topNames[selectedName].given_name) : undefined}
+            selectedNameIndex={selectedEntry ? names.findIndex((n: Name) => n.surname === selectedEntry.surname && n.given_name === selectedEntry.given_name) : undefined}
           />
         )}
       </div>

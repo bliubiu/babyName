@@ -8,9 +8,12 @@ import { useMutation } from '@tanstack/react-query';
 import { useToast } from '@/components/Toast';
 import { validateBirthTime, validateSurname } from '@/lib/validation';
 
+// 懒加载取组件本体；提交载荷类型单独以 type-only 方式引入，
+// 避免为拿一个类型就把整个组件打进首屏包。
 const NameForm = lazy(() => import('@/components/NameForm').then(module => ({
   default: module.NameForm
 })));
+import type { NameFormSubmission } from '@/components/NameForm';
 
 interface FormErrors {
   surname?: string;
@@ -23,7 +26,6 @@ export default function HomeContent() {
 
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<FormErrors>({});
-  const [keywords, setKeywords] = useState('');
   const [sourceClassic, setSourceClassic] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   // 长任务进度（异步任务轮询）：stage 阶段名 / percent 百分比
@@ -64,7 +66,9 @@ export default function HomeContent() {
     },
   });
 
-  const handleSubmit = () => {
+  // 形参不能省：NameForm 把用户填的寓意关键词与偏旁选字从 onSubmit 传出来，
+  // 早前这里写成无参函数，导致那些输入全部被丢弃（后端 meaning_keywords 其实支持）。
+  const handleSubmit = (submission: NameFormSubmission) => {
     const surnameError = validateSurname(formData.surname);
     if (surnameError) {
       setErrors({ surname: surnameError });
@@ -100,7 +104,8 @@ export default function HomeContent() {
       generation_position: formData.generationPosition,
       name_type: formData.nameType,
       name_length: formData.nameType === 'double' ? 2 : 1,
-      meaning_keywords: keywords.split(/[,，\s]+/).filter(Boolean),
+      // 寓意关键词来自 NameForm 提交载荷（用户在「个性补充」输入 + 偏旁选字）
+      meaning_keywords: submission.keywords.split(/[,，\s]+/).filter(Boolean),
       source_classic: sourceClassic || undefined,
       avoid_elder_names: formData.avoidElderNames
         ? formData.avoidElderNames.split(/[,，\s]+/).filter(Boolean)

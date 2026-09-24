@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNameStore } from '@/lib/store';
 import { useToast } from '@/components/Toast';
@@ -20,7 +19,7 @@ const nameKey = (n: Name) => `${n.surname}:${n.given_name}`;
 
 export default function ComparePage() {
   const router = useRouter();
-  const { compareResult, setCompareResult, _hasHydrated } = useNameStore();
+  const { compareResult, _hasHydrated } = useNameStore();
   const { showToast } = useToast();
 
   const metrics = [
@@ -37,9 +36,9 @@ export default function ComparePage() {
     { key: 'gender', label: '性别', getValue: (n: Name) => n.gender === 'male' ? '男' : '女' },
   ];
 
-  useEffect(() => {
-    return () => { setCompareResult(null); };
-  }, [setCompareResult]);
+  // 注：这里不要写「卸载时清空 compareResult」的 cleanup——reactStrictMode 下
+  // effect 会 mount→cleanup→mount，刚进页面数据就被自己清掉了。
+  // 进入本页总是携带新选中的一批名字，无需手动清理。
 
   // hydrate 未完成时显示等待，避免刷新后立即显示空状态
   if (!_hasHydrated) {

@@ -109,13 +109,17 @@ func createTables(db *sql.DB) error {
 			results TEXT NOT NULL,
 			created_at TIMESTAMP NOT NULL
 		)`,
+		// score 用 REAL：综合评分是 0-100 的浮点（如 92.7），早前声明为 INTEGER
+		// 时前端原样提交的浮点会被 Go 的 int 字段拒绝（400）。
+		// 存量库仍是 INTEGER 亲和，SQLite 对无法无损转整数的值本就按 REAL 存储，
+		// 因此无需迁移即可读写小数。
 		`CREATE TABLE IF NOT EXISTS favorites (
 			id TEXT PRIMARY KEY,
 			surname TEXT NOT NULL,
 			given_name TEXT NOT NULL,
 			pinyin TEXT NOT NULL,
 			gender TEXT NOT NULL,
-			score INTEGER NOT NULL,
+			score REAL NOT NULL,
 			source TEXT,
 			notes TEXT,
 			created_at TIMESTAMP NOT NULL

@@ -9,7 +9,10 @@ import { PreferenceSelector } from './PreferenceSelector';
 import { RadicalSelector } from './RadicalSelector';
 import { Spinner } from './Spinner';
 
-interface NameFormSubmission {
+// 提交载荷：keywords 是用户在「个性补充」里填的寓意关键词，
+// 偏旁选字的包含字也会被拼进这个串（见 handleRadicalToggle）。
+// 必须导出——HomeContent 要靠它接住这些输入，否则用户输入会被静默丢弃。
+export interface NameFormSubmission {
   formData: FormData;
   keywords: string;
   selectedChars?: string[];

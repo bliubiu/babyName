@@ -14,6 +14,7 @@
 | E2E 巡检 | 修复后 **17/17 通过**（`-strict` 退出码 0）；修复前工具全部指向已下线的 `/generate/analysis`，预热即失败，一行业务检查都跑不到 |
 | 后端测试 | `go test ./...` 19 个包全绿，0 FAIL / 0 panic / 0 data race |
 | 审查发现 | 已实测确认 4 项 Critical（收藏必然 400、关键词被丢弃、刷新死路、下标崩溃）+ 后端 W1~W8 / 前端 W1~W10 |
+| `.1` | 审查发现的 P0/P1 实施修复：收藏评分改浮点、CORS 收敛白名单、关键词接上、刷新死路给出口、下标换稳定 key，另修 hydration 与 StrictMode 自清空；补 2 条回归测试 |
 
 ---
 
@@ -34,6 +35,31 @@
 ### 📚 Docs 文档更新
 
 - 新增 `docs/28-全链路E2E验证与代码审查报告.md`：E2E 修复与 17 项结果、探索会话容量 32 的 FIFO 淘汰风险、已实测确认的 4 项 Critical、前后端 Warning/Info 清单、20 条未使用导出符号、处置优先级。
+
+---
+
+## [2026.09.24.1]
+
+### 🐛 Bug Fixes 问题修复
+
+- 【services/database】★ **收藏接口几乎必然 400**：前端原样提交 `total_score`（浮点如 `92.7`），而 `FavoriteRecord.Score` / `database.FavoriteRecord.Score` 声明为 `int`，`encoding/json` 小数→int 抛 `UnmarshalTypeError`，只有评分恰好整除时才侥幸成功。现统一改为 **`float64`**，favorites 表 `score` 列声明改 `REAL`（存量库为 INTEGER 亲和，SQLite 对无法无损转整数的值本就按 REAL 存储，无需迁移）。实测：`{"score":80.7}` 由 400 → **200**，列表回读 `92.7` 小数完整保留。
+- 【middleware】★ **CORS 默认「任意源 + 允许凭据」**：`AllowOrigins: ["*"]` 与 `AllowCredentials: true` 并存，中间件回显请求方任意 `Origin`，任意站点可跨域读取用户的起名历史与收藏。现收敛为本机白名单（`localhost`/`127.0.0.1` 的 `:8080` 与 `:3000`），并新增 `NAMER_CORS_ORIGINS`（逗号分隔）供多域名部署覆盖。实测：`Origin: http://evil.example.com` 不再返回 `Access-Control-Allow-Origin`。
+- 【frontend/result】**刷新后永久骨架屏**：`partialize` 只持久化 `formData`，生成结果不落盘。现拆两个分支——hydrate 未完成仍显示骨架屏；已 hydrate 但无结果显示**带导航栏 + 「回到首页重新起名」**的空状态，不再把用户困死。
+- 【frontend/result】**用数组下标当身份**：`selectedName`/`compareNames` 改存 `nameKey`（`surname:given_name`），`handleSelect`/`toggleCompare` 收到下标后先换成 key，新增 `nameByKey` 回查；筛选或换一批导致列表变短时不再取到 `undefined` 崩溃，`handleCompare` 对已被筛掉的名字给出提示。
+- 【frontend/home】★ **首页「寓意关键词 / 偏旁选字」被全部丢弃**：`NameForm` 通过 `onSubmit` 传出了 `{formData, keywords, selectedChars}`，但 `HomeContent.handleSubmit` 写成无参函数，读的是自己那个从未被赋值的 `keywords` state，于是 `meaning_keywords` 恒为 `[]`——而后端该字段真实存在且被消费。现导出 `NameFormSubmission` 并由 `handleSubmit` 接收使用；删除失效的 `keywords` state。
+- 【frontend/result】收藏态图标只读 React Query 缓存，而结果页从未发起过该 query，导致没访问过收藏页的用户心形图标一律显示未收藏。现补 `useQuery({ queryKey:['favorites'], queryFn: getFavorites })`。
+- 【frontend/ThemeToggle】`useState(getInitialTheme)` 在 SSR 返回 `false`、客户端返回 localStorage 值，造成 hydration mismatch。初值固定 `false`，真实主题改在挂载后的 effect 里同步。
+- 【frontend/compare】StrictMode 下 `effect → cleanup → effect`，卸载时 `setCompareResult(null)` 会把刚进页面的数据自己清掉。删除该 cleanup，并清理随之失效的 `useEffect` import 与 `setCompareResult` 解构。
+
+### 🧪 Tests 测试补充
+
+- 【services】新增两条针对收藏评分的回归护栏：`TestFavoriteRecord_JSONDecimalScore`（JSON 里的 `92.7` 必须能反序列化进 `FavoriteRecord`）、`TestSaveFavorite_DecimalScore`（浮点评分完整落库且原值传给自学习精选库）。
+- 后端 `go test ./...`：19 个包全绿，0 FAIL / 0 panic / 0 data race；E2E `-strict` 17 项全部通过。
+- 前端：`tsc --noEmit` 下本次改动的 5 个文件全部 clean。注：仓库未安装 `vitest`（`node_modules/vitest` 不存在），前端自动化测试无法执行，本次前端修复仅经类型检查与人工核对。
+
+### 📚 Docs 文档更新
+
+- `docs/28` 新增「七、修复实施记录」：逐项记录改法与实测结果。
 
 ---
 

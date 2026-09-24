@@ -173,7 +173,7 @@ type FavoriteRecord struct {
 	GivenName string    `json:"given_name"`
 	Pinyin    string    `json:"pinyin"`
 	Gender    string    `json:"gender"`
-	Score     int       `json:"score"`
+	Score     float64   `json:"score"` // 综合评分是浮点（如 92.7），不能用 int 收
 	Source    string    `json:"source"`
 	Notes     string    `json:"notes"`
 	CreatedAt time.Time `json:"created_at"`
