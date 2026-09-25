@@ -67,9 +67,31 @@ func NewStore(dbPath string, dataDir string) (*Store, error) {
 	if err := readDB.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping sqlite read connection: %w", err)
 	}
-	// 读连接也设置 WAL 模式（确保使用同一 WAL 文件）
-	if _, err := readDB.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		logger.Warn("sqlite: failed to set WAL mode for read connection", logger.ErrField(err))
+	// ★ 不在只读连接上执行 PRAGMA journal_mode=WAL（docs/28 W7）。
+	//
+	// 原审查记录称该语句「必然失败，每次启动打一条噪音 Warn」。
+	// 实测（modernc.org/sqlite，探针见下方说明）**两个判断都不成立**，真实情况更严重：
+	//
+	//   - 语句**不会失败**：`Exec` 返回 nil，无任何 Warn 输出；
+	//   - 语句**真的会写文件**：以 `mode=ro` 打开、库原处 delete 模式时执行
+	//     `PRAGMA journal_mode=WAL`，SQLite 文件头偏移 18/19 字节由 (1,1) 变为 (2,2)
+	//     ——即 legacy → WAL，**文件被实际改写**。实测数据：
+	//         原始 文件头[18]=1 [19]=1  →  事后 文件头[18]=2 [19]=2
+	//         新只读连接读到 journal_mode = "wal"
+	//
+	// 也就是说：问题不是「打噪音日志」，而是「一个显式声明只读的连接在悄悄写库」。
+	// 这条语句在本函数里恰好无害（上面写连接已把库设为 WAL，此处退化为 no-op），
+	// 但它是一个**依赖调用顺序才安全的陷阱**：任何「先建只读连接、后建写连接」
+	// 的重构、或对非 WAL 库（如外部只读副本）的误用，都会变成真实的数据写入。
+	//
+	// 因此删除该语句，改为**只读校验**：读回 journal_mode 确认与写连接一致。
+	// 若不一致说明两个连接（意外地）指向了不同文件，属真正需要告警的情况。
+	var readJournalMode string
+	if err := readDB.QueryRow("PRAGMA journal_mode").Scan(&readJournalMode); err != nil {
+		logger.Warn("sqlite: 读取只读连接的 journal_mode 失败", logger.ErrField(err))
+	} else if readJournalMode != "wal" {
+		logger.Warn("sqlite: 只读连接的 journal_mode 与预期不符（读写连接可能指向了不同文件）",
+			logger.String("journal_mode", readJournalMode))
 	}
 
 	if err := createTables(writeDB); err != nil {

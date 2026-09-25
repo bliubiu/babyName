@@ -9,8 +9,16 @@ import (
 
 // ExcellentTable 容量常量
 const (
-	excellentTableCapacity = 10000 // 最大保留候选数
+	excellentTableCapacity = 10000 // 最大保留候选数（NewExcellentTable 的默认容量）
 	maxShownNames          = 100   // 最大展示数
+
+	// minExcellentTablePoolSize 按 topCount 自适应建表时的容量下限。
+	//
+	// 建表容量取 topCount*10（下游 poolSize 即 Top10N 的规模），但 topCount 很小时
+	// （如单名请求 Count=10）容量会小到频繁触发「堆顶替换」，每次替换都是 O(log n)
+	// 且伴随条目拷贝。留一个下限把这类极端入参的影响抹平——它远小于历史固定值
+	// 10000，因此不会让 docs/28 W6 的省内存效果落空。
+	minExcellentTablePoolSize = 1000
 )
 
 // ExcellentEntry 优秀名字条目

@@ -426,7 +426,14 @@ func (s *sessionImpl) run(ctx context.Context, input *Input) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err != nil {
-		s.state = SessionStateFailed
+		// 取消/超时与真正的生成错误在语义上不同：前者是调用方主动中止
+		// （或超时兜底），会话应标记为 Canceled 而非 Failed，
+		// 便于上层区分「该重试」与「该放弃/改参数」（docs/28 W3）。
+		if ctx.Err() != nil {
+			s.state = SessionStateCanceled
+		} else {
+			s.state = SessionStateFailed
+		}
 		s.err = err
 		return
 	}
@@ -632,11 +639,6 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	surnamePinyin := firstPinyinForSurname(input.Surname, s.engine.provider)
 
 	// 生成名字候选 */
-	table := NewExcellentTable()
-	// totalCount 统计「完成 RateName 评分」的候选组合数（被过滤/早停跳过的组合不计数），
-	// 用于展示生成规模统计，语义为「已评分组合数」而非「总尝试组合数」（B11）。
-	var totalCount atomic.Int64
-
 	nameLen := input.Options.NameLength
 	if nameLen <= 0 {
 		nameLen = 2
@@ -646,21 +648,43 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		topCount = 100
 	}
 
+	// 表的容量统一取「本请求真正需要的池大小」而非固定的 10000（docs/28 W6）。
+	//
+	// 历史缺陷：这里先 `NewExcellentTable()`（容量恒为 10000，堆切片 + 两个 map
+	// 一次预分配），紧接着 generateDoubleName 内部又 `*table = NewExcellentTable()`
+	// 重造一份，第一份**从未被写入任何条目**就直接变成垃圾。按 ExcellentEntry
+	// 约 200 字节估算，每次请求白白分配又丢弃约 2MB。
+	//
+	// 现在：容量按 topCount*10 计算——这正是下游 poolSize（Top10N，用于五行多样性
+	// 保底）所需的规模，既不再超额预分配 10000，也不再需要事后重造。
+	// 注意此处用 NewExcellentTableWithCap（容量自适应），它仍需保留去重能力
+	// （合并各分片时条目来源不同，必须按 Char1+Char2 去重）。
+	poolSize := topCount * 10
+	if poolSize < minExcellentTablePoolSize {
+		// 小 topCount 场景留一个下限，避免堆频繁替换（每次替换 O(log n)）
+		poolSize = minExcellentTablePoolSize
+	}
+	table := NewExcellentTableWithCap(poolSize)
+	// totalCount 统计「完成 RateName 评分」的候选组合数（被过滤/早停跳过的组合不计数），
+	// 用于展示生成规模统计，语义为「已评分组合数」而非「总尝试组合数」（B11）。
+	var totalCount atomic.Int64
+
 	if nameLen == 1 {
 		// 单名：仅迭代第一个字（候选集小，串行足够快）
 		s.setStage(sessionStageScore, 30)
 		s.generateSingleName(ctx, infos, table, &totalCount, fateData, surnamePinyin)
 	} else {
 		// 双名：迭代 Char1 × Char2（全量枚举，按外层 Char1 分片并行）
-		s.generateDoubleName(ctx, infos, &table, &totalCount, fateData, surnamePinyin, topCount, xiSet)
+		// 合并结果**就地写入**传入的 table，不再重造（docs/28 W6）。
+		s.generateDoubleName(ctx, infos, table, &totalCount, fateData, surnamePinyin, topCount, xiSet)
 	}
 
 	// 7. 构建 TopNames 输出（过滤禁止的国家机关单位名称）
 	s.setStage(sessionStageRank, 90)
 	// 五行多样性保底策略：取更多候选（Top10N），确保每种五行组合至少1个代表，
 	// 避免单一五行组合（如金金）垄断排名。未达多样性要求时退化为纯分数排序。
-	// 注意：ExcellentTable容量10000，远超Top10N（~1000），不会溢出。
-	poolSize := topCount * 10
+	// 注意：建表容量即 topCount*10，故正常情况下 table.Len() >= poolSize，
+	// 只有候选池极小或全部被过滤时才会触发下面这条下调。
 	if poolSize > table.Len() {
 		poolSize = table.Len()
 	}
@@ -735,6 +759,23 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	}
 
 	s.setStage(sessionStageRank, 100)
+
+	// ★ 取消/超时必须显式失败（docs/28 W3）。
+	//
+	// 各枚举循环在 `cancelled(ctx)` 为真时只是 `return`（静默退出该 worker），
+	// 主流程照常往下走并组装出 TopNames。结果是：会话被取消，但 session.Wait()
+	// 正常返回 nil、State() 显示 SessionStateFinish、Result() 给出一份
+	// **被截断的榜单**——上层（服务层 / handler）若不额外检查 ctx.Err()
+	// 就会把它当成正常结果回 200，客户端拿到不完整的名单却毫不知情、不会重试。
+	//
+	// 这里在返回前统一判定：只要 ctx 已结束，就以 ctx 的错误作为本次生成的结果，
+	// 让失败**在领域层自身**可见，而不是依赖每个调用方都记得补一次 ctx.Err() 检查。
+	// 返回的 error 包装了 ctx.Err()，因此调用方仍可用
+	// errors.Is(err, context.Canceled/DeadlineExceeded) 判定并映射为 503。
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("名字生成被中止: %w", err)
+	}
+
 	return &Output{
 		Input:          input,
 		FateData:       fateData,
@@ -1231,11 +1272,16 @@ func (s *sessionImpl) generateSingleName(
 //   - 早停：local.IsFull() 时按 (a, b) 组合潜力分与本地堆最小分比较
 //
 // localTable 容量自适应 topCount（避免无谓的 10000 容量浪费内存）。
-// 末尾合并各分片局部 Top-N 到主表 → 全局 TopN。
+// 末尾合并各分片局部 Top-N 到调用方传入的 table（**就地填充，不再重造**）。
+//
+// ★ 历史缺陷（docs/28 W6）：本函数的 table 参数曾是 `**ExcellentTable`，
+// 末尾执行 `*table = NewExcellentTable()` —— 把 generate() 里刚建好的、容量
+// 10000 的表整份丢弃再重造一个。前者从未写入任何条目，纯属垃圾。
+// 现改为 `*ExcellentTable`，直接向已有表 TryPush 合并结果。
 func (s *sessionImpl) generateDoubleName(
 	ctx context.Context,
 	infos []charInfo,
-	table **ExcellentTable,
+	table *ExcellentTable,
 	totalCount *atomic.Int64,
 	fateData *FateData,
 	surnamePinyin string,
@@ -1421,16 +1467,19 @@ func (s *sessionImpl) generateDoubleName(
 
 	wg.Wait()
 
-	// 合并各分片的局部 Top-N 到主表（全局 Top-k 必落在某分片局部 Top-容量内）
-	*table = NewExcellentTable()
+	// 合并各分片的局部 Top-N 到调用方传入的主表。
+	// 全局 Top-k 必落在「某分片的局部 Top-容量」内，因此只需合并各分片保留的条目。
+	//
+	// ★ 此前此处是 `*table = NewExcellentTable()`（丢弃调用方刚建好的表并重造
+	// 一个容量 10000 的新表），即 docs/28 W6 所指的重复预分配。现就地填充。
 	for _, lt := range localTables {
 		if lt == nil {
 			continue
 		}
 		lt.Finalize()
 		for _, e := range lt.entries {
-			(*table).TryPush(e)
+			table.TryPush(e)
 		}
 	}
-	(*table).Finalize()
+	table.Finalize()
 }
