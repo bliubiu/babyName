@@ -27,14 +27,14 @@ import (
 
 // EvaluateRequest 测名请求（生辰字段与 GenerateRequest 同名同义）
 type EvaluateRequest struct {
-	Surname    string `json:"surname" binding:"required"`
-	GivenName  string `json:"given_name" binding:"required"`
-	Gender     string `json:"gender" binding:"required"`
-	BirthYear  int    `json:"birth_year" binding:"required"`
-	BirthMonth int    `json:"birth_month" binding:"required"`
-	BirthDay   int    `json:"birth_day" binding:"required"`
-	BirthHour  int    `json:"birth_hour"`
-	BirthMinute int   `json:"birth_minute"`
+	Surname     string `json:"surname" binding:"required"`
+	GivenName   string `json:"given_name" binding:"required"`
+	Gender      string `json:"gender" binding:"required"`
+	BirthYear   int    `json:"birth_year" binding:"required"`
+	BirthMonth  int    `json:"birth_month" binding:"required"`
+	BirthDay    int    `json:"birth_day" binding:"required"`
+	BirthHour   int    `json:"birth_hour"`
+	BirthMinute int    `json:"birth_minute"`
 	// BirthLocation 出生地（用于真太阳时校正，按地点经度查表）
 	BirthLocation string `json:"birth_location"`
 	// BirthLongitude 显式经度（度，东经为正）；>0 时优先于地点查表
@@ -166,31 +166,11 @@ func assembleEvaluatedName(provider *HanziDataProvider, surname, given, gender s
 	return n
 }
 
-// combineTwoMeanings 组合两字释义为名字寓意（与引擎 combineCharMeanings 同语义：
-// 每字按 rune 截断至 60 字，双名以「；」连接）。独立实现因引擎侧函数未导出。
+// combineTwoMeanings 组合两字释义为名字寓意。
+//
+// 直接委托领域层 fate.CombineMeanings（docs/28 W8）：此处原为一份独立拷贝，
+// 仅因引擎侧函数未导出而复制，两侧常量硬编码 60 且无任何机制阻止漂移。
+// 保留本函数只是为了让调用点保持简短，语义与截断上限完全由领域层单点决定。
 func combineTwoMeanings(m1, m2 string) string {
-	trunc := func(m string) string {
-		m = strings.TrimSpace(m)
-		if m == "" {
-			return ""
-		}
-		r := []rune(m)
-		if len(r) > 60 {
-			return string(r[:60]) + "…"
-		}
-		return m
-	}
-	c1 := trunc(m1)
-	if m2 == "" {
-		return c1
-	}
-	c2 := trunc(m2)
-	switch {
-	case c1 == "":
-		return c2
-	case c2 == "":
-		return c1
-	default:
-		return c1 + "；" + c2
-	}
+	return fate.CombineMeanings(m1, m2, 60)
 }

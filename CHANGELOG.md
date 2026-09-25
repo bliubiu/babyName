@@ -7,18 +7,49 @@
 
 ## [2026.09.25] 当日总览
 
-前端测试环境修复专项，版本 `2026.09.25.0`。
+前端测试环境修复专项 + 后端审查 Warning 处置，版本 `2026.09.25.0` 与 `2026.09.25.1`。
 
 | 项 | 结论 |
 |------|------|
 | 根因 | 本机建不出可用**符号链接**（`os.symlink()` 不报错但产出空 junction）→ pnpm 隔离式装配必然失败，vitest 依赖链接全缺 |
 | `.0` | 新增 `frontend/scripts/hoist-deps.mjs`（postinstall 自动执行），用**目录 junction** 完成平铺；前端测试首次跑通 **36/36** |
 | 附带 | 前端 `tsc --noEmit` 由 6 个错误 → **0 错误**（此前报错全是 vitest 模块缺失引起） |
-| 回归 | 后端 19 包全绿（0 FAIL）＋ E2E `-strict` **17/17 通过** |
+| `.1` | 处置后端 Warning **W2 / W4 / W8**，其中 **W4 连带发现两个更严重缺陷**（fatal 竞态 + 排除功能完全失效）；另修 W2 的第三处缺陷（配置路径不存在被判致命） |
+| 回归 | 后端 **20 包**全绿（0 FAIL / 0 panic / 0 data race）；前端 36/36；E2E 16/17（唯一未过项为吞吐判据，详见 `docs/28` §8.5） |
 
 ---
 
-## [2026.09.24] 当日总览
+## [2026.09.25.1]
+
+### 🐛 Bug Fixes 问题修复
+
+- 【config】★ **viper 全局/局部实例断裂，5 个 getter 恒定返回默认值**（`docs/28` W2）：`Load()` 用 `viper.New()` 建**局部实例**并在其上 `SetDefault`/`ReadInConfig`，而 `GetString/GetInt/GetFloat64/GetBool/GetDuration` 读的是 `viper.GetViper()` —— 一个与之无关的**包级全局单例**，两者自始至终没有交集，配置文件里的值永远不会被读到。现新增包级 `globalConfig`/`globalViper` + `sync.RWMutex`，`Load()` 在写锁内存下两者，getter 统一走新的 `getViper()`；`Get()` 由「每次调用重新懒加载」改为返回已加载实例。**实测**：配置文件写 `server.port: 8765`，修复后 `GetInt("server.port")` → `8765`，旧路径 `viper.GetViper().GetInt("server.port")` → `0`。
+- 【config】**显式传入不存在的配置路径被判致命错误**（`docs/28` W2 连带发现）：`SetConfigFile` 模式下 viper 对缺失文件返回 `*fs.PathError` 而非 `viper.ConfigFileNotFoundError`，原代码只判后者，于是"找不到配置文件"这个完全正常的场景被当成致命错误抛出、进程起不来。新增 `isConfigNotFound(err, configPath)` 同时识别两种形态，统一回落默认值。
+- 【fate】★ **负面反馈排除功能完全失效**（`docs/28` W4 连带发现，危害高于原记录）：`Start()` 无条件执行 `s.excludedChars = make(...)` / `s.excludedCombos = make(...)`，把调用方在 `Start()` **之前**设置的排除项全部抹掉。而接口契约明确要求「后续重新生成时所有包含该字的候选将被过滤」，即「先从界面排除 → 再重新生成」这一唯一合理用法 —— 结果排除功能**从未生效过**。**实测**：`ExcludeChar("渝")` 后 50 个结果中含「渝」的数量由 **12 → 0**。现改为不重置（空 map 由 `ExcludeChar`/`ExcludeCombo` 内部按需创建，`ClearExclusions` 负责显式清空）。
+- 【fate】**排除集读路径存在 `concurrent map read and map write` 致命竞态**（`docs/28` W4）：`isCharExcluded`/`isComboExcluded` 不加锁直接读 map，其注释声称「并发安全由 `s.mu` 守护（generate 与 ExcludeChar 互斥）」—— 该论断是错的，`generate()` 全程并不持有 `s.mu`。生成进行中调用 `ExcludeChar` 会触发 Go 运行时**不可 recover 的 fatal error**，直接终止整个服务进程。现改为读取 `atomic.Pointer[exclusionSnapshot]` 不可变快照，写方 copy-on-write 重建 —— 正确且**无锁**。
+- 【services】**释义拼接重复实现**（`docs/28` W8）：`evaluate_service.go` 的 `combineTwoMeanings` 是 `fate.combineCharMeanings` 的逐行复制，截断常量 `60` 硬编码两处且无机制阻止漂移 —— 只改一边会让同一个名字在「结果页」与「测名页」显示不同寓意。现领域层新增导出的 `fate.CombineMeanings(m1, m2, maxRunes)` 作为唯一实现，应用层改为一行委托。
+
+### 📈 Improvements 性能/体验优化
+
+- 【fate】**排除集读路径由「逐次 `RLock`」优化为「原子快照」，消除热路径锁开销**：`isComboExcluded` 位于双名 N×N 笛卡尔积的**最内层循环**（真实数据下每次生成调用千万次量级），首版修复用 `RWMutex.RLock` 虽然正确，但实测让**串行吞吐下降约 20%**。现改为 `atomic.Pointer` 不可变快照：读方仅一次原子指针加载 + 一次 map 查找，写方（调用次数为个位数量级）在写锁内复制后发布。关键约束是**先复制、后发布**（若直接放可写 map，写方后续写入会命中读方正在遍历的同一份 map，等同复现竞态）。无排除项时快照为 `nil`，零额外开销。**微基准**：`Empty` **1.1 ns/op**（线上绝大多数请求的真实形态）/ `Populated` ~58 ns/op（单核）/ `Hit` ~66 ns/op。
+- 【fate】排除项语义由「`generate()` 入口一次性快照消费」改进为「每次调用时加载快照」—— 生成进行中新增的排除项会**立即**对尚未评估的组合生效，比首版更及时；同时 `Start()` 不再需要为「无排除项」预建空 map。
+
+### 🧪 Tests 测试补充
+
+- 【config】新增 `internal/infrastructure/config/config_test.go`（**5 条**）：getter 读文件值、无文件时读默认值、`GetDuration` 解析与回落、`GetString` 空串回落语义、`Get()` 身份一致性。其中 2 条在首轮直接失败，暴露了上述第三处缺陷。
+- 【fate】新增 `internal/domain/fate/engine_exclusion_race_test.go`（**3 条 + 3 个基准**）：`TestSessionExclusionConcurrentAccess`（生成中 4 goroutine 并发增删排除集，不得触发 fatal 且结束后状态自洽）、`TestSessionExclusionAppliedWhenSetBeforeStart`（契约正向：排除后结果中该字零出现）、`TestSessionExclusionOnlyAffectsNextGenerate`（反向：生成后改排除集不得回溯改变结果），以及 `BenchmarkIsComboExcluded{Empty,Populated,Hit}`。
+  - 注：本机无 gcc，`go test -race` 不可用（`-race` 需 cgo），故竞态用例依赖 Go 运行时自身的 map 并发检测 + 结果自洽断言。
+
+### 📚 Docs 文档更新
+
+- `docs/28` 新增 §8「后端 Warning 处置记录」：逐条记录 W2/W4/W8 的根因、修法、实测证据与验证口径，并在 §4 表格中将三项标记为已修；§8.5 列出待办（后端 W3/W5/W6/W7、前端 W2-W10、E2E 吞吐判据）。
+- `docs/28` §8.5 记录 E2E `-strict` 复查为 **16/17** 的排查结论：唯一未过项（并发吞吐加速比 1.33× < 1.5 阈值）**非本轮修复引入** —— 串行吞吐由 1.09 提升到 1.45 req/s（+33%），并发吞吐基本持平（1.99 → 1.93），加速比下降是「分母变好」的结果；判据本身在基线改善时会自动收紧，属度量设计问题。
+
+---
+
+## [2026.09.25.0]
+
+### 🐛 Bug Fixes 问题修复
 
 全链路 E2E 验证与代码审查专项，版本 `2026.09.24.0`，产出 `docs/28`。
 
@@ -54,6 +85,7 @@
 ### 🧪 Tests 测试补充
 
 - 回归验证：后端 `go test ./...` 19 包全绿（0 FAIL / 0 panic / 0 data race）；E2E `e2e_check -strict` **17/17 通过**；前端 `pnpm test` 36/36 通过、`tsc --noEmit` 0 错误。
+  - 注：该 17/17 结论为 `2026.09.25.0` 时点；`2026.09.25.1` 修复后复查为 16/17，唯一未过项为吞吐判据，排查结论见 `[2026.09.25.1]` 的 Docs 条目。
 
 ---
 

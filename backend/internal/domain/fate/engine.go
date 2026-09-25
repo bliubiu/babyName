@@ -151,7 +151,12 @@ func (e *engineImpl) NewSessionWithFilter(filter Filter) Session {
 // --- sessionImpl: Session 接口默认实现 ---
 
 type sessionImpl struct {
-	mu     sync.Mutex
+	// mu 守护 state/input/output/err 以及负面反馈排除集的**可写副本**。
+	//
+	// 排除集的**读路径**（isCharExcluded/isComboExcluded）不走此锁，而是读取
+	// atomic.Pointer 指向的不可变快照 exclusionSnap（见该字段说明），因此要
+	// 修改 s.excludedChars/s.excludedCombos 就必须同时重建快照，切勿只改 map。
+	mu     sync.RWMutex
 	engine *engineImpl
 	filter Filter
 	state  SessionState
@@ -169,8 +174,24 @@ type sessionImpl struct {
 	bigramCache *SessionBigramCache
 
 	// 负面反馈
+	//
+	// excludedChars/excludedCombos 是**可写副本**，仅在持有 s.mu 写锁时被修改；
+	// 每次修改都会同步重建一份不可变快照发布到 exclusionSnap。
 	excludedChars  map[string]bool // 排除的字符
 	excludedCombos map[string]bool // 排除的组合 "char1+char2"（排序后）
+
+	// exclusionSnap 指向排除集的**不可变只读快照**（*exclusionSnapshot）。
+	//
+	// 为什么不直接对 map 加锁读：isComboExcluded 位于双名 N×N 笛卡尔积的最内层
+	// 循环，真实数据下每次生成会被调用数百万次；即便 RWMutex 的读锁只是原子
+	// 计数，量级足够大时仍会显现（实测串行吞吐损失约 20%）。
+	//
+	// 快照方案把读路径降为「一次原子指针加载 + 一次 map 查找」，无锁无竞争；
+	// 写路径（ExcludeChar/ExcludeCombo/ClearExclusions，调用次数为个位数量级）
+	// 在写锁内 copy-on-write 重建快照——排除集通常只有几个元素，重建成本可忽略。
+	//
+	// 语义：nil 快照等价于「空排除集」，因此 Start() 之前无需初始化。
+	exclusionSnap atomic.Pointer[exclusionSnapshot]
 
 	// 进度上报（异步任务轮询用）。
 	// stage 为阶段下标（sessionStage*），percent 为百分比 ×100 的整数
@@ -187,8 +208,21 @@ func (s *sessionImpl) Start(ctx context.Context, input *Input) error {
 	}
 	s.input = input
 	s.state = SessionStateGenerating
-	s.excludedChars = make(map[string]bool)
-	s.excludedCombos = make(map[string]bool)
+	// 排除集**不在此重置**：接口契约（fate.Session 的 ExcludeChar 注释）要求
+	// 「后续重新生成时所有包含该字的候选将被过滤」，即排除项需跨多次 Start 保持。
+	//
+	// ★ 历史缺陷（docs/28 W4 连带发现）：此处原本无条件
+	//     s.excludedChars = make(map[string]bool)
+	//     s.excludedCombos = make(map[string]bool)
+	// 把调用方在 Start 之前设置的排除项全部抹掉，导致 ExcludeChar/ExcludeCombo
+	// 在「先从界面排除、再重新生成」这一唯一合理用法下**完全失效**
+	// （实测：ExcludeChar("渝") 后生成，TopNames 中仍出现 12 个含「渝」的名字）。
+	//
+	// 空 map 的初始化改由 ExcludeChar/ExcludeCombo 内部按需完成（两者已有
+	// nil 判断），ClearExclusions 负责显式清空。
+	//
+	// 排除集为空时 exclusionSnap 保持 nil，读路径据此直接返回 false，
+	// 因此无需在此为「无排除项」的常规请求付出任何快照开销。
 	// 复制 engine.raters 到 session 级别，避免并发会话相互覆盖
 	s.raters = make([]Rater, len(s.engine.raters))
 	copy(s.raters, s.engine.raters)
@@ -262,6 +296,37 @@ func (s *sessionImpl) setStage(stage int32, percent float64) {
 
 // ——— 负面反馈实现 ———
 
+// exclusionSnapshot 是排除集的不可变副本。
+// 一旦由 rebuildExclusionSnapshot 发布，其内容不再被任何代码修改；
+// 读方拿到指针后可安全地在无锁状态下遍历（只读 map 无数据竞争）。
+type exclusionSnapshot struct {
+	chars  map[string]bool
+	combos map[string]bool
+}
+
+// rebuildExclusionSnapshotLocked 在持有 s.mu 写锁的前提下，
+// 把当前可写 map 复制为一份新的不可变快照并原子发布。
+//
+// 必须「先复制、后发布」：若直接把 s.excludedChars 放进快照，写方后续对
+// map 的写入就会命中读方正在遍历的同一份 map，重现 concurrent map read
+// and map write。
+func (s *sessionImpl) rebuildExclusionSnapshotLocked() {
+	snap := &exclusionSnapshot{}
+	if n := len(s.excludedChars); n > 0 {
+		snap.chars = make(map[string]bool, n)
+		for k, v := range s.excludedChars {
+			snap.chars[k] = v
+		}
+	}
+	if n := len(s.excludedCombos); n > 0 {
+		snap.combos = make(map[string]bool, n)
+		for k, v := range s.excludedCombos {
+			snap.combos[k] = v
+		}
+	}
+	s.exclusionSnap.Store(snap)
+}
+
 func (s *sessionImpl) ExcludeChar(char string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -269,6 +334,7 @@ func (s *sessionImpl) ExcludeChar(char string) {
 		s.excludedChars = make(map[string]bool)
 	}
 	s.excludedChars[char] = true
+	s.rebuildExclusionSnapshotLocked()
 }
 
 func (s *sessionImpl) ExcludeCombo(c1, c2 string) {
@@ -283,6 +349,7 @@ func (s *sessionImpl) ExcludeCombo(c1, c2 string) {
 		a, b = b, a
 	}
 	s.excludedCombos[a+"+"+b] = true
+	s.rebuildExclusionSnapshotLocked()
 }
 
 func (s *sessionImpl) ClearExclusions() {
@@ -290,6 +357,7 @@ func (s *sessionImpl) ClearExclusions() {
 	defer s.mu.Unlock()
 	s.excludedChars = make(map[string]bool)
 	s.excludedCombos = make(map[string]bool)
+	s.rebuildExclusionSnapshotLocked()
 }
 
 func (s *sessionImpl) ExcludedChars() []string {
@@ -302,18 +370,39 @@ func (s *sessionImpl) ExcludedChars() []string {
 	return chars
 }
 
-// sessionImpl 上的闭包：调用方直接用 s.isCharExcluded / s.isComboExcluded
-// 不再加锁（session 生命周期内 excludedChars/excludedCombos 只读不变）
+// sessionImpl 上的负反馈查询：**全链路无锁**。
+//
+// ★ 历史缺陷（docs/28 W4）三连：
+//   ① 这两处曾不加锁直接读 map，并附注释声称「并发安全由 s.mu 守护
+//      （generate 与 ExcludeChar 互斥）」——该论断是错的：generate() 全程
+//      并不持有 s.mu（见 generate 入口），因此「生成进行中调用 ExcludeChar」
+//      会与这里的读形成 concurrent map read and map write，Go 运行时直接抛
+//      不可 recover 的 fatal error 终止整个进程。
+//   ② 首版修复改为逐次 RLock，正确但代价高：这两个函数位于 N×N 笛卡尔积的
+//      最内层循环，调用数百万次，读锁的原子计数开销实测拖慢串行吞吐约 20%。
+//   ③ 现改为读取不可变快照（atomic.Pointer），读路径无锁无竞争，
+//      写路径 copy-on-write 重建快照——既消除数据竞争，又比 RLock 更快。
+//
+// 时序语义：指针加载发生在**本次调用**，因此生成进行中调用 ExcludeChar 后，
+// 尚未评估的组合会立刻看到新的排除集（比 RLock 版本更及时）。
 func (s *sessionImpl) isCharExcluded(char string) bool {
-	return s.excludedChars[char]
+	snap := s.exclusionSnap.Load()
+	if snap == nil {
+		return false
+	}
+	return snap.chars[char]
 }
 
 func (s *sessionImpl) isComboExcluded(c1, c2 string) bool {
+	snap := s.exclusionSnap.Load()
+	if snap == nil || len(snap.combos) == 0 {
+		return false
+	}
 	a, b := c1, c2
 	if a > b {
 		a, b = b, a
 	}
-	return s.excludedCombos[a+"+"+b]
+	return snap.combos[a+"+"+b]
 }
 
 // run 异步启动的名字生成主流程
@@ -384,8 +473,8 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	}
 
 	// 5. 对每个字符进行过滤（含负面反馈排除的字符）
-	// excludedChars/excludedCombos 由 sessionImpl 字段持有，通过 s.isCharExcluded / s.isComboExcluded
-	// 方法直接查询，并发安全由 s.mu 守护（generate 与 ExcludeChar 互斥）。
+	// 排除集由 isCharExcluded / isComboExcluded 查询，两者读取不可变快照，
+	// 无锁、无竞争（见 exclusionSnap 字段说明）。
 
 	// 避讳长辈：构建同形字与同音字排除集
 	// 规则：同形字=侵佔福分，同音字=气场冲撞（"压运"）
@@ -395,9 +484,12 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	// 普通格局需移除敏感字（龙/凤/乾/坤/圣/贤/天/帝/皇/神/仙/君）
 	allowSensitive := isExtremeStrongPattern(fateData)
 
-	// 负面反馈排除通过 s.isCharExcluded / s.isComboExcluded 调用（直接读 session 字段，
-	// session 生命周期内 excludedChars/excludedCombos 仅在 ExcludeChar/ExcludeCombo 时变更），
-	// 但 generate() 与 Exclude* 并发安全通过 s.mu 守护。
+	// 负面反馈排除通过 s.isCharExcluded / s.isComboExcluded 查询，两者读取
+	// 不可变快照（atomic.Pointer），对写方 ExcludeChar/ExcludeCombo/
+	// ClearExclusions 无锁可见（修复 docs/28 W4：读路径此前完全不加锁）。
+	//
+	// 时序语义：快照指针在**每次调用**时加载，因此生成进行中新增的排除项会
+	// 立即对「尚未评估的组合」生效（无需等待下一次 generate）。
 	validChars := make([]*Character, 0, len(allChars))
 	for _, c := range allChars {
 		if s.isCharExcluded(c.Char) {
@@ -772,14 +864,25 @@ const maxPerCharMeaningRunes = 60
 // 单名仅取首字释义；双名以「；」连接两字释义；
 // 每字释义按 rune 截断至 maxPerCharMeaningRunes 并补省略号。
 func combineCharMeanings(m1, m2 string) string {
+	return CombineMeanings(m1, m2, maxPerCharMeaningRunes)
+}
+
+// CombineMeanings 按指定上限截断并连接两字释义，是释义拼接的**唯一实现**。
+//
+// 释义拼接原为两份独立拷贝（领域层 combineCharMeanings 与应用层
+// combineTwoMeanings，后者因前者未导出而复制），两者常量都硬编码为 60。
+// docs/28 W8 指出：这种重复实现没有任何机制阻止两侧漂移，一旦有人只改一边，
+// 同一个名字在「结果页」与「测名页」会显示不同寓意——正是本项目反复强调的
+// 「双口径」缺陷。现收敛到本函数，应用层直接调用。
+func CombineMeanings(m1, m2 string, maxRunes int) string {
 	trunc := func(m string) string {
 		m = strings.TrimSpace(m)
 		if m == "" {
 			return ""
 		}
 		r := []rune(m)
-		if len(r) > maxPerCharMeaningRunes {
-			return string(r[:maxPerCharMeaningRunes]) + "…"
+		if len(r) > maxRunes {
+			return string(r[:maxRunes]) + "…"
 		}
 		return m
 	}
@@ -1242,7 +1345,7 @@ func (s *sessionImpl) generateDoubleName(
 						continue
 					}
 
-					// 负面反馈：排除组合（sessionImpl 方法，调用时不加锁）
+					// 负面反馈：排除组合（sessionImpl 方法，读取不可变快照，无锁）
 					if s.isComboExcluded(a.ch.Char, b.ch.Char) {
 						continue
 					}

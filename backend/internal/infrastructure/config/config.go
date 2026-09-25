@@ -1,9 +1,12 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/spf13/viper"
@@ -54,7 +57,27 @@ type RedisConfig struct {
 	DB       int    `mapstructure:"db"`
 }
 
-var globalConfig *AppConfig
+var (
+	globalConfig *AppConfig
+
+	// globalViper 保存 Load() 实际使用的配置实例。
+	//
+	// ★ 历史缺陷（docs/28 W2）：Load() 用 viper.New() 创建**局部**实例，
+	// 而 GetString/GetInt/GetFloat64/GetBool/GetDuration 五个 getter 读的是
+	// viper.GetViper() —— 那是 viper 的**包级全局单例**，与局部实例毫无关系。
+	// 后果：这五个 getter 恒定返回 viper 默认值（空串/0/false），配置文件里
+	// 写了什么、环境变量设了什么，一概读不到；且因 viper 全局单例从未被写入，
+	// 连默认值也不会有（v.SetDefault 只作用于局部实例）。
+	//
+	// 现统一为：Load() 把实例存进此处，getter 读它，内部走同一份配置来源。
+	// 同时显式把 viper 全局单例也指向同一实例（SetDefault 反向同步无法做到，
+	// 故 getter 一律走 globalViper，不再依赖全局单例）。
+	globalViper *viper.Viper
+
+	// configMu 保护 globalConfig / globalViper 的读写：
+	// Load 可能被 main 与测试并发调用（config.Get() 的懒加载分支亦会触发）。
+	configMu sync.RWMutex
+)
 
 // Load 加载配置文件
 // configPath: 配置文件路径，如果为空则使用默认路径
@@ -100,8 +123,17 @@ func Load(configPath string) (*AppConfig, error) {
 	}
 
 	// 读取配置（如果文件不存在则使用默认值）
+	//
+	// ★ 注意 viper 两种模式的错误类型不同（历史缺陷，本次一并修复）：
+	//   - SetConfigName + AddConfigPath 模式（未指定路径）：文件找不到返回
+	//     viper.ConfigFileNotFoundError —— 这是「正常回落默认值」的信号；
+	//   - SetConfigFile 模式（显式指定路径）：文件找不到返回 *fs.PathError，
+	//     **不是** ConfigFileNotFoundError。
+	// 原实现只判断 ConfigFileNotFoundError，导致「显式指定了一个不存在的配置
+	// 路径」会直接 fatal 报错退出，而不是按注释承诺的「使用默认值」。
+	// 现两种都视为可回落的缺文件情形。
 	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		if !isConfigNotFound(err, configPath) {
 			return nil, fmt.Errorf("加载配置文件失败: %w", err)
 		}
 		// 配置文件不存在，使用默认值
@@ -121,23 +153,57 @@ func Load(configPath string) (*AppConfig, error) {
 		}
 	}
 
+	configMu.Lock()
 	globalConfig = &cfg
+	globalViper = v
+	configMu.Unlock()
 	return &cfg, nil
+}
+
+// getViper 返回当前生效的配置实例；未加载时返回 nil。
+// 所有 getter 都必须经由此处取实例，禁止直接使用 viper.GetViper() 全局单例。
+func getViper() *viper.Viper {
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return globalViper
+}
+
+// isConfigNotFound 判断读取配置的错误是否属于「配置文件不存在」（应回落默认值），
+// 而非真正的解析/权限错误（应向上报错）。
+//
+// viper 在两种加载模式下给出不同类型的错误：
+//   - SetConfigName/AddConfigPath 模式 → viper.ConfigFileNotFoundError
+//   - SetConfigFile 模式               → *fs.PathError（errors.Is(err, fs.ErrNotExist)）
+func isConfigNotFound(err error, configPath string) bool {
+	if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+		return true
+	}
+	// 显式指定路径时，仅当该路径确实不存在才回落；其余错误一律上报。
+	if configPath != "" && errors.Is(err, fs.ErrNotExist) {
+		return true
+	}
+	return false
 }
 
 // Get 获取全局配置
 func Get() *AppConfig {
-	if globalConfig == nil {
-		// 如果未加载，尝试加载默认配置
-		cfg, _ := Load("")
+	configMu.RLock()
+	cfg := globalConfig
+	configMu.RUnlock()
+	if cfg != nil {
 		return cfg
 	}
-	return globalConfig
+	// 未加载时惰性加载默认配置（Load 内部会写回 globalConfig/globalViper）
+	loaded, err := Load("")
+	if err != nil || loaded == nil {
+		return &AppConfig{}
+	}
+	return loaded
 }
 
 // GetString 获取字符串配置值
 func GetString(key string, defaultValue ...string) string {
-	v := viper.GetViper()
+	v := getViper()
 	if v == nil {
 		if len(defaultValue) > 0 {
 			return defaultValue[0]
@@ -153,7 +219,7 @@ func GetString(key string, defaultValue ...string) string {
 
 // GetInt 获取整数配置值
 func GetInt(key string, defaultValue ...int) int {
-	v := viper.GetViper()
+	v := getViper()
 	if v == nil {
 		if len(defaultValue) > 0 {
 			return defaultValue[0]
@@ -169,7 +235,7 @@ func GetInt(key string, defaultValue ...int) int {
 
 // GetFloat64 获取浮点数配置值
 func GetFloat64(key string, defaultValue ...float64) float64 {
-	v := viper.GetViper()
+	v := getViper()
 	if v == nil {
 		if len(defaultValue) > 0 {
 			return defaultValue[0]
@@ -185,7 +251,7 @@ func GetFloat64(key string, defaultValue ...float64) float64 {
 
 // GetBool 获取布尔配置值
 func GetBool(key string, defaultValue ...bool) bool {
-	v := viper.GetViper()
+	v := getViper()
 	if v == nil {
 		if len(defaultValue) > 0 {
 			return defaultValue[0]
@@ -197,7 +263,7 @@ func GetBool(key string, defaultValue ...bool) bool {
 
 // GetDuration 获取时间配置值
 func GetDuration(key string, defaultValue ...time.Duration) time.Duration {
-	v := viper.GetViper()
+	v := getViper()
 	if v == nil {
 		if len(defaultValue) > 0 {
 			return defaultValue[0]
