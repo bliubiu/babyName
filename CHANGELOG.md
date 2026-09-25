@@ -5,6 +5,19 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.09.25] 当日总览
+
+前端测试环境修复专项，版本 `2026.09.25.0`。
+
+| 项 | 结论 |
+|------|------|
+| 根因 | 本机建不出可用**符号链接**（`os.symlink()` 不报错但产出空 junction）→ pnpm 隔离式装配必然失败，vitest 依赖链接全缺 |
+| `.0` | 新增 `frontend/scripts/hoist-deps.mjs`（postinstall 自动执行），用**目录 junction** 完成平铺；前端测试首次跑通 **36/36** |
+| 附带 | 前端 `tsc --noEmit` 由 6 个错误 → **0 错误**（此前报错全是 vitest 模块缺失引起） |
+| 回归 | 后端 19 包全绿（0 FAIL）＋ E2E `-strict` **17/17 通过** |
+
+---
+
 ## [2026.09.24] 当日总览
 
 全链路 E2E 验证与代码审查专项，版本 `2026.09.24.0`，产出 `docs/28`。
@@ -15,6 +28,32 @@
 | 后端测试 | `go test ./...` 19 个包全绿，0 FAIL / 0 panic / 0 data race |
 | 审查发现 | 已实测确认 4 项 Critical（收藏必然 400、关键词被丢弃、刷新死路、下标崩溃）+ 后端 W1~W8 / 前端 W1~W10 |
 | `.1` | 审查发现的 P0/P1 实施修复：收藏评分改浮点、CORS 收敛白名单、关键词接上、刷新死路给出口、下标换稳定 key，另修 hydration 与 StrictMode 自清空；补 2 条回归测试 |
+
+---
+
+## [2026.09.25.0]
+
+### 🐛 Bug Fixes 问题修复
+
+- 【frontend/build】★ **前端完全无法运行自动化测试（根因是符号链接）**：本机（无管理员权限、未开启 Windows 开发者模式）创建符号链接会**静默失败**——`os.symlink()` 不抛异常，但产出一个不可用的空 junction（`islink=False`、`listdir()==[]`）。pnpm 默认的隔离式 `node_modules` 完全依赖符号链接装配，于是包文件都下载进了 `.pnpm`，依赖之间的链接却建不起来：`pnpm test` 直接崩在 `ERR_MODULE_NOT_FOUND: Cannot find package 'std-env' imported from .pnpm/vitest@5.0.0/.../vitest/dist/cli.js`（vitest 的 13 个运行时依赖只建出 2 个，且都是空目录）。
+  - **`node-linker=hoisted` 已失效**：这是官方解法，但 pnpm 11 移除了该配置项（`pnpm config get node-linker` → `undefined`），写入 `.npmrc` 也不再生效，重装后仍是 isolated 布局。
+  - 现新增 **`frontend/scripts/hoist-deps.mjs`**，挂在 `package.json` 的 `postinstall` 上自动执行：扫描 `.pnpm` 虚拟存储，把 426 个包用**目录 junction**（`fs.symlinkSync(..., 'junction')`，不需要 SeCreateSymbolicLinkPrivilege）平铺到顶层 `node_modules`；多版本（38 个）取最高版本；脚本幂等，重复执行只补缺失项。
+
+### ✨ New Features 新增功能
+
+- 【frontend/tests】**前端自动化测试首次跑通**：`pnpm test` → `vitest run`，4 个测试文件、**36 个用例全部通过**（`birthdayShichen` 5 / `validation` 15 / `utils` 6 / `store` 10），耗时 3.09s。此前前端仅有 `tsc --noEmit` 可用，本次修复的 5 个前端文件属于首次获得运行时用例覆盖能力。
+
+### 📈 Improvements 性能/体验优化
+
+- 【frontend/types】**`tsc --noEmit` 由 6 个错误降为 0**：此前长期存在的报错（`vitest` 模块缺失 ×5、`.next/types/validator.ts`）全部由 vitest 未装配引起，依赖装好后自行消失，不再需要"按改动文件是否在错误列表里"来判断。
+
+### 📚 Docs 文档更新
+
+- `frontend/.npmrc` 重写为说明性注释：记录符号链接失效现象、`node-linker=hoisted` 为何不再可用、以及改用 junction 的理由。
+
+### 🧪 Tests 测试补充
+
+- 回归验证：后端 `go test ./...` 19 包全绿（0 FAIL / 0 panic / 0 data race）；E2E `e2e_check -strict` **17/17 通过**；前端 `pnpm test` 36/36 通过、`tsc --noEmit` 0 错误。
 
 ---
 
@@ -55,7 +94,7 @@
 
 - 【services】新增两条针对收藏评分的回归护栏：`TestFavoriteRecord_JSONDecimalScore`（JSON 里的 `92.7` 必须能反序列化进 `FavoriteRecord`）、`TestSaveFavorite_DecimalScore`（浮点评分完整落库且原值传给自学习精选库）。
 - 后端 `go test ./...`：19 个包全绿，0 FAIL / 0 panic / 0 data race；E2E `-strict` 17 项全部通过。
-- 前端：`tsc --noEmit` 下本次改动的 5 个文件全部 clean。注：仓库未安装 `vitest`（`node_modules/vitest` 不存在），前端自动化测试无法执行，本次前端修复仅经类型检查与人工核对。
+- 前端：`tsc --noEmit` 下本次改动的 5 个文件全部 clean。注：仓库未安装 `vitest`（`node_modules/vitest` 不存在），前端自动化测试无法执行，本次前端修复仅经类型检查与人工核对。（此限制已于 `2026.09.25.0` 解除，vitest 恢复可用。）
 
 ### 📚 Docs 文档更新
 

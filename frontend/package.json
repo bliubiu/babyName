@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx",
+    "postinstall": "node scripts/hoist-deps.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
