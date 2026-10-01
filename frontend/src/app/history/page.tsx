@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { GenerateResponse } from '@/types';
@@ -16,6 +17,9 @@ export default function HistoryPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { setGenerateResult } = useNameStore();
+  // 正在删除的记录 ID：防双击重复提交——第二次 DELETE 会 404，
+  // 用户反而看到「删除失败」的误导提示（docs/29 P3）
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const { data: historyResponse, error, isLoading } = useQuery({
     queryKey: ['history'],
     queryFn: getHistory,
@@ -35,12 +39,16 @@ export default function HistoryPage() {
   }> = Array.isArray(rawData) ? rawData : (rawData?.records ?? []);
 
   const handleDelete = async (id: string) => {
+    if (deletingId) return;
+    setDeletingId(id);
     try {
       await deleteHistory(id);
       queryClient.invalidateQueries({ queryKey: ['history'] });
       showToast('删除成功', 'success');
     } catch {
       showToast('删除失败', 'error');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -136,7 +144,8 @@ export default function HistoryPage() {
                     </div>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDelete(record.id); }}
-                      className="p-1.5 rounded-full text-ink-light/30 hover:text-crimson transition-all opacity-0 group-hover:opacity-100"
+                      disabled={deletingId === record.id}
+                      className="p-1.5 rounded-full text-ink-light/30 hover:text-crimson transition-all opacity-0 group-hover:opacity-100 disabled:opacity-40"
                     >
                       <IconTrash size={16} />
                     </button>

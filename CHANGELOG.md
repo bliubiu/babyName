@@ -5,6 +5,40 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.01.2]
+
+`docs/29` **P3 摘要项批量处置**（补齐 `docs/30` §四第 4 条遗留）。验证口径：
+后端 22 包全绿、前端 tsc 0 错误、vitest 45/45、lint 0 errors。
+
+### 🐛 Bug Fixes 问题修复
+
+- 【sqlite】`rows.Err()` 补齐 10 处 `rows.Next()` 循环：迭代中途的 IO/解码
+  错误此前被当成「正常取完」，静默返回截断数据（历史列表缺后半页、
+  精选名库缺行）。无错误返回值的方法记录错误日志，可返错的保持原签名。
+- 【sqlite】`NewStore` 失败路径泄漏连接句柄：写连接打开成功后任一步骤
+  失败（含读连接打开/Ping、建表）直接 return，残留句柄在 Windows 上锁住
+  namer.db。改用 success 标记 + defer 统一关闭读/写两个连接。
+- 【server】关闭路径两缺口：启动失败分支跳过 store 关闭/限流器停止/
+  缓存释放（与信号分支不对称）；`signal.Notify` 注册晚于 ListenAndServe
+  启动，早期信号走默认处置直接杀进程。现注册前置、失败分支走完整清理。
+- 【middleware】访问日志补 `request_id` 字段：X-Request-ID 此前与日志行
+  无法关联，排查目标落空。
+- 【server】中间件顺序：CORS 移到 MaxBodyBytes(413)/RequestTimeout(503)
+  之前——此前跨源请求的错误响应不带 CORS 头，浏览器把真实状态误报为
+  CORS 错误。
+- 【前端 Toast】id 由 `Date.now()` 改自增序号（同毫秒双 toast 定时器互相
+  覆盖、误删）；容器补 `role="status"` + `aria-live="polite"`。
+- 【前端 history】删除按钮防双击（`deletingId` state）：此前双击第二次
+  DELETE 404 误报「删除失败」。
+
+### 📈 Improvements 性能/体验优化
+
+- 【前端 evaluate】测名提交前校验出生时间（复用 `validateBirthTime`）：
+  数值输入清空得到 0 此前直接打到后端靠 400 兜底；`validateBirthTime`
+  补真实日历校验（2 月 30 日这类范围检查拦不住的日期）。
+- 【前端】生产构建 `removeConsole` 保留 `error/warn`：ErrorBoundary 的
+  线上日志此前被整段剥除，前端故障无从排查。
+
 ## [2026.10.01.1]
 
 `docs/29` 第二轮审查发现的 **P1×10 + P2×17** 修复实施。详细实施记录见

@@ -19,6 +19,9 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // 自增 id：Date.now() 同毫秒触发两条 toast 会生成相同 id，
+  // 定时器互相覆盖、filter 误删（docs/29 P3）
+  const seqRef = useRef(0);
 
   // 组件卸载时清理所有未完成的定时器
   useEffect(() => {
@@ -29,7 +32,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
-    const id = Date.now().toString();
+    seqRef.current += 1;
+    const id = `toast-${seqRef.current}`;
     setToasts((prev) => [...prev, { id, message, type }]);
 
     const timer = setTimeout(() => {
@@ -51,7 +55,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className="toast-container">
+      {/* aria-live：屏幕阅读器需要能感知到操作反馈（docs/29 P3 a11y） */}
+      <div className="toast-container" role="status" aria-live="polite">
         {toasts.map((toast) => (
           <div
             key={toast.id}

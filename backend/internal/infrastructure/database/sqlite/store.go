@@ -33,6 +33,19 @@ func NewStore(dbPath string, dataDir string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite write connection: %w", err)
 	}
+	// 任一后续步骤失败都必须关闭写连接（docs/29 P3）：否则进程内残留
+	// 持有 namer.db 句柄的连接，Windows 上锁住库文件，且上层回退内存
+	// 存储后服务照常运行，泄漏不可见。
+	var readDB *sql.DB
+	success := false
+	defer func() {
+		if !success {
+			_ = writeDB.Close()
+			if readDB != nil {
+				_ = readDB.Close()
+			}
+		}
+	}()
 	writeDB.SetMaxOpenConns(1) // 写必须串行
 	writeDB.SetMaxIdleConns(1)
 	writeDB.SetConnMaxLifetime(0)
@@ -56,7 +69,7 @@ func NewStore(dbPath string, dataDir string) (*Store, error) {
 	}
 
 	// 读连接池：WAL 模式下读不阻塞写，可并发
-	readDB, err := sql.Open("sqlite", dbPath+"?mode=ro")
+	readDB, err = sql.Open("sqlite", dbPath+"?mode=ro")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite read connection: %w", err)
 	}
@@ -116,6 +129,7 @@ func NewStore(dbPath string, dataDir string) (*Store, error) {
 	// 导入汉字字库缓存（仅在表为空时）
 	store.seedHanziData()
 
+	success = true
 	return store, nil
 }
 
@@ -385,6 +399,11 @@ func (s *Store) GetHistoryPageWithLimit(page, limit int) []*database.HistoryReco
 		}
 		records = append(records, &r)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return records
 }
 
@@ -410,6 +429,11 @@ func (s *Store) GetHistoryPage(page, limit int) ([]*database.HistoryRecord, int,
 		}
 		records = append(records, &r)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return records, total, nil
 }
 
@@ -562,6 +586,11 @@ func (s *Store) GetFavorites() []*database.FavoriteRecord {
 		}
 		records = append(records, &r)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return records
 }
 
@@ -587,6 +616,11 @@ func (s *Store) GetFavoritesPage(page, limit int) ([]*database.FavoriteRecord, i
 		}
 		records = append(records, &r)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return records, total, nil
 }
 
@@ -796,6 +830,11 @@ func (s *Store) GetNameFeedbackByRequestID(requestID int64) []*database.NameFeed
 		}
 		result = append(result, &f)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return result
 }
 
@@ -822,6 +861,11 @@ func (s *Store) GetAlgorithmPerformance() ([]*database.AlgorithmPerformance, err
 		}
 		result = append(result, &p)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return result, nil
 }
 
@@ -896,6 +940,11 @@ func (s *Store) LoadAllCuratedNames() ([]database.CuratedNameEntry, error) {
 		}
 		result = append(result, e)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return result, nil
 }
 
@@ -1063,6 +1112,11 @@ func (s *Store) QueryHanziByWuxing(wuxing string) ([]database.Hanzi, error) {
 		}
 		result = append(result, h)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return result, nil
 }
 
@@ -1085,6 +1139,11 @@ func (s *Store) QueryHanziByStrokes(min, max int) ([]database.Hanzi, error) {
 		}
 		result = append(result, h)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return result, nil
 }
 
@@ -1173,6 +1232,11 @@ func (s *Store) SearchHanziByFilter(
 		}
 		result = append(result, &h)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	// rows.Err 覆盖迭代中途的 IO/解码错误：不查就等于把截断结果当正常取完
 	if err := rows.Err(); err != nil {
 		logger.Error("SearchHanziByFilter 迭代失败", logger.ErrField(err))

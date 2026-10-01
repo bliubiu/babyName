@@ -6,7 +6,7 @@ import { evaluateName } from '@/lib/api';
 import { EvaluateRequest, RiskItem } from '@/types';
 import { useNameStore } from '@/lib/store';
 import { useToast } from '@/components/Toast';
-import { validateSurname } from '@/lib/validation';
+import { validateBirthTime, validateSurname } from '@/lib/validation';
 import Navigation from '@/components/Navigation';
 
 // 风险等级展示配置
@@ -51,6 +51,19 @@ export default function EvaluatePage() {
     const given = givenName.trim();
     if (!given || given.length > 2) {
       showToast('名字需为 1-2 个汉字', 'error');
+      return;
+    }
+    // 出生时间提交前校验：数值输入被清空会得到 0，input 的 min/max
+    // 属性拦不住键盘输入，此前 0 值直接打到后端靠 400 兜底（docs/29 P3）
+    const birthError = validateBirthTime({
+      birthYear,
+      birthMonth,
+      birthDay,
+      birthHour,
+      birthMinute,
+    });
+    if (birthError) {
+      showToast(birthError, 'error');
       return;
     }
     mutation.mutate({

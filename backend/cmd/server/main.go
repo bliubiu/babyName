@@ -338,15 +338,18 @@ func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store
 		logger.Warn("设置可信代理失败，使用 gin 默认（信任所有代理）", logger.ErrField(err))
 	}
 
-	// 全局中间件
+	// 全局中间件。
+	// CORS 必须位于所有可能自行中止响应的中间件（MaxBodyBytes 413 /
+	// RequestTimeout 503）之前：否则跨源请求的错误响应不带 CORS 头，
+	// 浏览器把 413/503 上报成含糊的 CORS 错误而非真实状态（docs/29 P3）。
 	router.Use(middleware.ZapLogger())
 	router.Use(middleware.ZapRecovery())
 	router.Use(middleware.RequestID())
+	router.Use(middleware.CORSMiddleware())
 	// 请求体上限：本站最大请求体是 /report/* 的报告数据（几十 KB 量级），
 	// 1 MiB 留足余量；超限直接 413，避免大 body 造成内存放大。
 	router.Use(middleware.MaxBodyBytes(1 << 20))
 	router.Use(middleware.RequestTimeout(30 * time.Second))
-	router.Use(middleware.CORSMiddleware())
 	rateLimitHandler, rateLimiter := middleware.IPRateLimitWithLimiter(rateCapacity, rateRate)
 	router.Use(rateLimitHandler)
 
@@ -434,6 +437,13 @@ func startServer(router *gin.Engine, addr, cwd string, store database.Store, rat
 
 	// errCh 用于将启动失败信号回传主流程，避免主流程在等信号时无法感知
 	errCh := make(chan error, 1)
+
+	// 信号注册必须先于 ListenAndServe 启动：否则启动早期到达的
+	// SIGINT/SIGTERM 走默认处置直接杀进程，跳过下方全部清理
+	// （Windows 上未关闭的 SQLite 句柄会锁住库文件，docs/29 P3）。
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
 	go func() {
 		certFile := filepath.Join(cwd, "cert.pem")
 		keyFile := filepath.Join(cwd, "key.pem")
@@ -454,14 +464,13 @@ func startServer(router *gin.Engine, addr, cwd string, store database.Store, rat
 	}()
 
 	// 等待中断信号或启动失败
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	select {
 	case sig := <-quit:
 		logger.Info("Shutting down server", logger.String("signal", sig.String()))
 	case err := <-errCh:
+		// 启动失败同样要走完整清理：此前直接 return，跳过 store 关闭、
+		// 限流器停止与缓存释放，Windows 下残留句柄锁住 namer.db
 		logger.Error("Failed to start server", logger.ErrField(err))
-		return
 	}
 
 	// 给予 10 秒时间完成正在处理的请求

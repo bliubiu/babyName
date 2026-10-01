@@ -33,6 +33,14 @@ func ZapLogger() gin.HandlerFunc {
 			logger.String("user-agent", c.Request.UserAgent()),
 		}
 
+		// request_id 落日志：否则响应头里的 X-Request-ID 与日志行无法关联，
+		// 排查目标落空（docs/29 P3）。RequestID 中间件先于本中间件执行。
+		if rid, ok := c.Get("request_id"); ok {
+			if s, ok := rid.(string); ok && s != "" {
+				fields = append(fields, logger.String("request_id", s))
+			}
+		}
+
 		if len(c.Errors) > 0 {
 			fields = append(fields, logger.String("errors", c.Errors.String()))
 		}

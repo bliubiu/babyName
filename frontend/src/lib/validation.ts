@@ -38,6 +38,11 @@ export const validateBirthTime = (input: {
   if (!Number.isInteger(birthDay) || birthDay < 1 || birthDay > 31) {
     return '出生日期无效';
   }
+  // 真实日历校验：2 月 30 日这类日期范围检查拦不住，后端 tyme 也会拒绝
+  const daysInMonth = new Date(birthYear, birthMonth, 0).getDate();
+  if (birthDay > daysInMonth) {
+    return '出生日期不存在（如 2 月 30 日）';
+  }
   if (!Number.isInteger(birthHour) || birthHour < 0 || birthHour > 23) {
     return '出生小时需在 0–23 之间';
   }
