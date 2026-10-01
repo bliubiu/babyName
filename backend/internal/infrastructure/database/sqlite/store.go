@@ -458,7 +458,7 @@ func (s *Store) BatchDeleteHistory(ids []string) error {
 
 // --- FavoriteStore ---
 
-func (s *Store) SaveFavorite(record *database.FavoriteRecord) string {
+func (s *Store) SaveFavorite(record *database.FavoriteRecord) (string, error) {
 	if record.ID == "" {
 		record.ID = uuid.New().String()
 	}
@@ -477,16 +477,19 @@ func (s *Store) SaveFavorite(record *database.FavoriteRecord) string {
 	)
 	if err != nil {
 		logger.Error("sqlite: SaveFavorite failed", logger.ErrField(err))
+		// 写入失败必须把错误上抛（docs/29 A6）：此前吞错仍返回 ID，
+		// 服务层据此返回成功，收藏静默丢失且自学习照常入精选库
+		return "", err
 	}
-	return record.ID
+	return record.ID, nil
 }
 
-func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) []string {
+func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string, error) {
 	ids := make([]string, len(records))
 	tx, err := s.writeDB.Begin()
 	if err != nil {
 		logger.Error("sqlite: BatchSaveFavorite begin tx failed", logger.ErrField(err))
-		return ids
+		return ids, err
 	}
 
 	stmt, err := tx.Prepare(
@@ -497,9 +500,10 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) []string {
 	if err != nil {
 		logger.Error("sqlite: BatchSaveFavorite prepare failed", logger.ErrField(err))
 		_ = tx.Rollback()
-		return ids
+		return ids, err
 	}
 
+	var firstErr error
 	var failedIndexes []int
 	for i, record := range records {
 		if record.ID == "" {
@@ -512,6 +516,9 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) []string {
 			record.Gender, record.Score, record.Source, record.Notes, record.CreatedAt)
 		if err != nil {
 			logger.Error("sqlite: BatchSaveFavorite exec failed", logger.ErrField(err))
+			if firstErr == nil {
+				firstErr = err
+			}
 			failedIndexes = append(failedIndexes, i)
 			continue
 		}
@@ -521,14 +528,21 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) []string {
 
 	if err := tx.Commit(); err != nil {
 		logger.Error("sqlite: BatchSaveFavorite commit failed", logger.ErrField(err))
-		return ids
+		return ids, err
 	}
 
 	// 事务提交成功后，对失败记录通过单独连接重试（避免单连接死锁）
 	for _, i := range failedIndexes {
-		ids[i] = s.SaveFavorite(records[i])
+		id, err := s.SaveFavorite(records[i])
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		ids[i] = id
 	}
-	return ids
+	return ids, firstErr
 }
 
 func (s *Store) GetFavorites() []*database.FavoriteRecord {

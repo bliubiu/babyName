@@ -163,7 +163,7 @@ func (s *Store) BatchDeleteHistory(ids []string) error {
 	return nil
 }
 
-func (s *Store) SaveFavorite(record *database.FavoriteRecord) string {
+func (s *Store) SaveFavorite(record *database.FavoriteRecord) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -178,7 +178,7 @@ func (s *Store) SaveFavorite(record *database.FavoriteRecord) string {
 	// 更新按名称索引
 	key := record.Surname + ":" + record.GivenName
 	s.FavoritesByName[key] = record
-	return record.ID
+	return record.ID, nil
 }
 
 func (s *Store) GetFavoritesPage(page, limit int) ([]*database.FavoriteRecord, int, error) {
@@ -246,7 +246,7 @@ func (s *Store) GetFavoriteByName(surname, givenName string) *database.FavoriteR
 	return &copyR
 }
 
-func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) []string {
+func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -266,7 +266,7 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) []string {
 		ids[i] = record.ID
 	}
 
-	return ids
+	return ids, nil
 }
 
 func (s *Store) BatchDeleteFavorite(ids []string) error {

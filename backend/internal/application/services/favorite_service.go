@@ -65,7 +65,7 @@ func (s *FavoriteService) SaveFavorite(ctx context.Context, record *FavoriteReco
 	if existing != nil {
 		return existing.ID, nil
 	}
-	id := s.store.SaveFavorite(&database.FavoriteRecord{
+	id, err := s.store.SaveFavorite(&database.FavoriteRecord{
 		ID:        record.ID,
 		Surname:   record.Surname,
 		GivenName: record.GivenName,
@@ -75,8 +75,15 @@ func (s *FavoriteService) SaveFavorite(ctx context.Context, record *FavoriteReco
 		Source:   record.Source,
 		Notes:    record.Notes,
 	})
+	if err != nil {
+		// 写库失败必须上抛（docs/29 A6）：此前吞错后仍返回 ID + nil error，
+		// 用户看到「收藏成功」实际没存上，且自学习照常把名字塞进精选库，
+		// 形成「收藏失败但进了精选库」的不一致
+		return "", err
+	}
 
-	// 自学习：评分≥80 自动加入精选库（实时更新内存 + 持久化）
+	// 自学习：评分≥80 自动加入精选库（实时更新内存 + 持久化）。
+	// 仅在收藏确实落库后执行。
 	if record.Score >= 80 {
 		fullName := record.Surname + record.GivenName
 		if s.nameDB != nil {
@@ -118,7 +125,11 @@ func (s *FavoriteService) BatchSaveFavorite(ctx context.Context, records []*Favo
 			Notes:    record.Notes,
 		}
 	}
-	return s.store.BatchSaveFavorite(storeRecords), nil
+	ids, err := s.store.BatchSaveFavorite(storeRecords)
+	if err != nil {
+		return ids, err
+	}
+	return ids, nil
 }
 
 // BatchDeleteFavorite 批量删除收藏

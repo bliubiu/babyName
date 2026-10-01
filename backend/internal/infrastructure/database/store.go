@@ -29,8 +29,11 @@ type HistoryStore interface {
 
 // FavoriteStore 收藏存储接口
 type FavoriteStore interface {
-	SaveFavorite(record *FavoriteRecord) string
-	BatchSaveFavorite(records []*FavoriteRecord) []string
+	// SaveFavorite 保存收藏；写入失败返回空 ID 与错误（此前吞错返回假 ID，
+	// 服务层误判为成功，收藏静默丢失——docs/29 A6）
+	SaveFavorite(record *FavoriteRecord) (string, error)
+	// BatchSaveFavorite 批量保存；返回各记录 ID（失败位为空串）与首个错误
+	BatchSaveFavorite(records []*FavoriteRecord) ([]string, error)
 	GetFavorites() []*FavoriteRecord
 	GetFavoritesPage(page, limit int) ([]*FavoriteRecord, int, error)
 	DeleteFavorite(id string) error
