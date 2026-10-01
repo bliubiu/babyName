@@ -190,8 +190,13 @@ func hourToInt(hour int) int {
 
 // calculateFourPillars 使用 tyme 库计算四柱
 func calculateFourPillars(year, month, day, hour int) (nianZhu, yueZhu, riZhu, shiZhu string, lunarYear, lunarMonth, lunarDayNum int, yearGanIndex int) {
-	// 使用 tyme 库的 SolarDay 进行公历→农历转换
-	solarDay, _ := tyme.SolarDay{}.FromYmd(year, month, day)
+	// 使用 tyme 库的 SolarDay 进行公历→农历转换。
+	// 日期不合法（如 2024-02-30）时 FromYmd 返回 nil，旧代码吞错后
+	// nil 解引用 panic（docs/29 A2），现返回零值由调用方得到退化排盘。
+	solarDay, err := tyme.SolarDay{}.FromYmd(year, month, day)
+	if err != nil || solarDay == nil {
+		return
+	}
 	lunarDayObj := solarDay.GetLunarDay()
 	lunarMonthObj := lunarDayObj.GetLunarMonth()
 	lunarYearObj := lunarMonthObj.GetLunarYear()
@@ -231,7 +236,10 @@ func calculateFourPillars(year, month, day, hour int) (nianZhu, yueZhu, riZhu, s
 	riZhu = riZhuObj.GetName()
 
 	// 时柱（tyme 库内部已处理晚子时日进位）
-	lunarHour, _ := tyme.LunarHour{}.FromYmdHms(lunarYearObj.GetYear(), lunarMonthObj.GetMonthWithLeap(), lunarDayObj.GetDay(), hour, 0, 0)
+	lunarHour, hourErr := tyme.LunarHour{}.FromYmdHms(lunarYearObj.GetYear(), lunarMonthObj.GetMonthWithLeap(), lunarDayObj.GetDay(), hour, 0, 0)
+	if hourErr != nil || lunarHour == nil {
+		return
+	}
 	shiZhuObj := lunarHour.GetSixtyCycleHour().GetSixtyCycle()
 	shiZhu = shiZhuObj.GetName()
 

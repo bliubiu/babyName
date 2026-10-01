@@ -38,10 +38,18 @@ type LunarCalendar struct {
 }
 
 func GetLunarCalendar(year, month, day, hour, minute int) *LunarCalendar {
-	// 使用 tyme4go 库获取农历信息
-	solarDay, _ := tyme.SolarDay{}.FromYmd(year, month, day)
+	// 使用 tyme4go 库获取农历信息。
+	// 日期不合法（如 2024-02-30）时 FromYmd 返回 (nil, err)，旧代码吞错后
+	// 在此直接 nil 解引用 panic（docs/29 A2），现返回 nil 由调用方处理。
+	solarDay, err := tyme.SolarDay{}.FromYmd(year, month, day)
+	if err != nil || solarDay == nil {
+		return nil
+	}
 	lunarDay := solarDay.GetLunarDay()
-	lunarHour, _ := tyme.LunarHour{}.FromYmdHms(lunarDay.GetYear(), lunarDay.GetMonth(), lunarDay.GetDay(), hour, minute, 0)
+	lunarHour, err := tyme.LunarHour{}.FromYmdHms(lunarDay.GetYear(), lunarDay.GetMonth(), lunarDay.GetDay(), hour, minute, 0)
+	if err != nil || lunarHour == nil {
+		return nil
+	}
 	sixtyCycleDay := lunarDay.GetSixtyCycleDay()
 	sixtyCycleHour := lunarHour.GetSixtyCycleHour()
 
@@ -314,8 +322,12 @@ func GetXiongSha(dayGan, dayZhi string) []string {
 }
 
 func GetHuangli(year, month, day int) *Huangli {
-	// 使用 tyme4go 库获取准确的农历信息
-	solarDay, _ := tyme.SolarDay{}.FromYmd(year, month, day)
+	// 使用 tyme4go 库获取准确的农历信息。
+	// 日期不合法时 FromYmd 返回 nil，旧代码吞错后 nil 解引用 panic，现返回 nil。
+	solarDay, err := tyme.SolarDay{}.FromYmd(year, month, day)
+	if err != nil || solarDay == nil {
+		return nil
+	}
 	lunarDay := solarDay.GetLunarDay()
 	sixtyCycleDay := lunarDay.GetSixtyCycleDay()
 

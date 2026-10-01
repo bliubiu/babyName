@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"name/internal/application/response"
+	"name/internal/application/validator"
 	"name/internal/domain/bazi"
 	"name/internal/infrastructure/logger"
 	"go.uber.org/zap"
@@ -55,6 +56,13 @@ func (h *HuangliHandler) GetHuangli(c *gin.Context) {
 
 	logger.Info("GetHuangli called", zap.Int("year", year), zap.Int("month", month), zap.Int("day", day))
 
+	// 真实日历校验：2024-02-30 这类「格式合法但不存在」的日期会让
+	// tyme.SolarDay{}.FromYmd 返回 nil，下游直接 nil 解引用（docs/29 A2）
+	if err := validator.ValidateDate(year, month, day); err != nil {
+		response.ErrorJSON(c, 400, "日期不合法（如 2 月 30 日）")
+		return
+	}
+
 	// 捕获可能的 panic
 	defer func() {
 		if r := recover(); r != nil {
@@ -65,6 +73,11 @@ func (h *HuangliHandler) GetHuangli(c *gin.Context) {
 	}()
 
 	huangli := bazi.GetHuangli(year, month, day)
+	if huangli == nil {
+		// 领域层对不存在的日期返回 nil（如 1900 前的年份超出 tyme 支持）
+		response.ErrorJSON(c, 400, "该日期无法换算黄历，请检查年月日")
+		return
+	}
 
 	logger.Debug("Huangli data generated",
 		zap.String("year", huangli.Year),
@@ -134,8 +147,20 @@ func (h *HuangliHandler) GetLunarCalendar(c *gin.Context) {
 		return
 	}
 
+	// 真实日历校验：格式合法但不存在的日期会让 tyme 返回 nil，
+	// 下游 nil 解引用 panic（docs/29 A2，该 handler 此前无 recover 兜底）
+	if err := validator.ValidateDate(year, month, day); err != nil {
+		response.ErrorJSON(c, 400, "日期不合法（如 2 月 30 日）")
+		return
+	}
+
 	logger.Info("GetLunarCalendar called", zap.Int("year", year), zap.Int("month", month), zap.Int("day", day), zap.Int("hour", hour), zap.Int("minute", minute))
 	lunar := bazi.GetLunarCalendar(year, month, day, hour, minute)
+	if lunar == nil {
+		// 领域层对不存在的日期返回 nil（如 1900 前的年份超出 tyme 支持）
+		response.ErrorJSON(c, 400, "该日期无法换算农历，请检查年月日")
+		return
+	}
 
 	// 调试日志：输出农历数据详情
 	logger.Debug("Lunar calendar data generated",
