@@ -95,6 +95,10 @@ services:
           memory: 1G
 
   # ===== 开发环境 Redis (可选) =====
+  # ⚠ 安全（docs/29 B15）：开发编排此前把 Redis 以 "6379:6379" 发布到宿主机
+  # 0.0.0.0 且未设密码 —— 同一网络内任何主机都能直连、清空甚至写入数据。
+  # 现改为仅监听回环地址；如需跨机访问请自行改回端口映射并同时启用密码，
+  # 不要把无密码 Redis 暴露到宿主机。
   redis:
     image: redis:7-alpine
     container_name: namer-redis-dev
@@ -105,7 +109,7 @@ services:
     networks:
       - namer-network
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

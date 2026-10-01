@@ -5,6 +5,47 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.01.1]
+
+`docs/29` 第二轮审查发现的 **P1×10 + P2×17** 修复实施。详细实施记录见
+`docs/30-第二轮审查修复实施记录.md`。
+
+### 🐛 Bug Fixes 问题修复
+
+- 【fate/domain】**A1/A3/A4/A5 与 fate 令牌配对死锁**：自制 `syncOnce` 并发首调 fatal、大衍筮法永无动爻、卦号矩阵码误当传统卦序、紫微禄存/擎羊/陀罗表全错，并修复 fate 令牌配对死锁（`646ba99`）。
+- 【bazi/handlers】**A2 非法日期 nil panic**：日期解析吞错后在领域层解引用 nil，用户侧 500；现返回 400（`0298379`）。
+- 【favorite/sqlite/memory】**A6 收藏写入失败伪装成功**：存储层错误被吞，接口返回成功但数据未落库（`5f7cac3`）。
+- 【fate】**B3 除夕硬编码腊月三十**：腊月为小月（29 天）的年份除夕识别失败；改用 `tyme.LunarDay.GetDayCount()` 判定当月最后一天。新增 `holiday_ny_eve_test.go` 覆盖大小月与放假日。
+- 【bazi】**B4 节假日查询 730 次全量推算**：`GetHolidayInfo` 内两段逐字重复的 365 次逐日轮询合并为单次轮询，并为 `GetHoliday` 增加按日期缓存（返回副本，附上界重建）。新增对拍测试确保与原算法逐字一致。
+- 【frontend】**B5 黄历年月切换日期溢出**：1 月 31 日切到 2 月被 `new Date` 自动进位为 3 月 3 日（跳过整月）；新增 `buildClampedDate` 将日钳制到目标月末，覆盖闰年/大小月/跨年。
+- 【classics】**B10 `ShiCiExtracted` 并发读写**：写侧有锁、读侧裸读；`shici.json`（6.7MB）后台加载完成瞬间与 HTTP 请求构成 slice 并发读写。所有 `*Extracted` 读取统一走加读锁的快照复制 `copyExtracted`。
+- 【name】**B11 `Reload()` 自死锁**：持 `db.mu` 调用 `Load()`，子加载器二次加锁导致永久阻塞（表现为超时而非报错）。改为「清空索引临界区」后释放锁再 `Load()`。新增带超时守护的回归测试，并实测在旧实现上 10s 未返回而失败。
+- 【hanzi】**B9 全局字库并发无锁写**：`ApplyWuxingOverrides`/`mergeKangxiStrokes` 对全局 `HanziData` 无锁写，读侧 `IsCommonChar`/`HetuWuxingOfChar` 等亦无锁，热更新接通即 `fatal error: concurrent map write`。写侧加 `mu` 写锁，所有直接读取迁移到线程安全访问器 `GetHanzi`/`GetNamerChar`。并发回归测试经实测可在旧实现上稳定触发 fatal。
+- 【services】**B7 异步任务无上限堆积 OOM**：`Submit` 无条件 `go ts.run`，淘汰只删 map 不终止 goroutine，稳态可堆积数千个 5 分钟枚举任务。新增容量 4 的运行信号量、满载 `ErrTooManyTasks`（handler → 503）、淘汰/TTL 取消运行中任务、取消后不回填结果并释放槽位。
+- 【services/sqlite】**B8 SQL 故障伪装成「无结果」**：`SearchHanziByFilter` 出错吞为 `nil`，注释承诺的 Go 降级路径永不可达。全链路改为返回 `error`，SQL 故障可降级 Go 过滤，成功空结果与基础设施故障可区分。
+- 【services/handlers】**B6 历史/收藏无分页上限**：`/history` 的 `limit` 无上限（内嵌完整结果 JSON，可一次拖走全库）且未使用已有的页大小钳制；`/favorites` 全量返回。统一走分页查询并钳制 `maxPageSize = 100`，非法分页返回 400。
+- 【config】**B13 环境变量覆盖静默失效**：`AutomaticEnv` 缺 `SetEnvKeyReplacer`，嵌套键名形如 `NAME_SERVER.PORT` 无法设置。补 replacer 并新增覆盖测试。
+- 【deploy】**B12 生产配置链断裂（补正）**：镜像原 `COPY config/` 路径不存在导致构建必失败；修正后仍有两处缺陷——① compose 用宿主目录挂载 `/app/config` 会遮蔽镜像内配置，新部署配置缺失、viper 全量回落默认值；② 进程固定读 `cwd/data` 而入口脚本按 `DATA_DIR` 播种。现改为「配置与字库同样烘焙 seed + 入口脚本 `cp -n` 播种」，并让 `main.go` 以 `DATA_DIR` 为准（缺省回落 `cwd/data`）。
+- 【deploy】**B15 dev Redis 无密码暴露**：`6379` 由 `0.0.0.0` 改为仅绑定 `127.0.0.1`。
+
+### ✨ New Features 新增功能
+
+- 【fate】**A9 寓意关键词 / 偏旁选字全链路生效**：`MeaningKeywords` 原被引擎丢弃，前端把点选字拼进文本关键词、结构化通道从未被读。现把偏好落到候选池（收窄而非打分，避免破坏 `RateNameScore` 权重和恒为 1.0 的语义）：命中字义/起名分类的字 ∪ 点选字；偏好集为空时回退原池，绝不产出零结果。
+- 【favorite】**B6 收藏分页 API**：`GET /favorites` 支持 `page`/`limit`，返回 `data`/`records`/`total`/`page`/`limit`。
+
+### 📈 Improvements 性能/体验优化
+
+- 【frontend】**A7/B16/B17 收藏稳定性与请求取消**：修复收藏 effect 临时数组导致的无限重渲染白屏；收藏态覆盖 `exploreBatch`；`fetchWithRetry`、异步生成/轮询/进度全链路接入 `AbortSignal`，防止过期响应覆盖。
+- 【frontend】**A8 lint 质量门禁恢复**：恢复 ESLint 10 配置、移除废弃 `--ext`，修复 Windows 扁平依赖树中的 minimatch 版本污染与 4 处 `no-useless-assignment`。门禁由「完全失效」恢复为 `0 errors / 34 warnings`。
+- 【holiday】节假日缓存将重复查询由 730 次换算降为一次 map 查找，月度视图收益最明显。
+
+### 📚 Docs 文档更新
+
+- 新增 `docs/30-第二轮审查修复实施记录.md`：逐项记录处置方式、验证命令与实测反证。
+- 【B14 安全】确认后端零鉴权、仓库无任何 JWT 实现；移除 compose 与 `.env` 中的 `JWT_SECRET`/`JWT_EXPIRE` 死配置，在 `DOCKER_QUICKSTART.md` 明确公网部署须在 Nginx/网关层做访问控制。应用层鉴权方案待产品决策。
+
+---
+
 ## [2026.10.01.0]
 
 ### 📚 Docs 文档更新

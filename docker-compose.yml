@@ -50,12 +50,29 @@ services:
     restart: unless-stopped
     environment:
       - GIN_MODE=${GIN_MODE:-release}
-      - PORT=${PORT:-8080}
+      # ---- 配置来源（docs/29 B12）----
+      # 配置文件搜索目录。宿主机配置挂载在 /app/config，而进程 cwd 是 /app，
+      # 必须显式告知去哪儿找，否则配置文件被静默跳过、整套默认值生效。
+      - CONFIG_DIR=/app/config
+      # ---- 以下均需 NAME_ 前缀 ----
+      # viper 的 AutomaticEnv 带 NAME_ 前缀（docs/29 B13）。原来的
+      # PORT / LOG_LEVEL / LOG_DIR 三个变量名对配置层完全无效：
+      # 设了不生效，日志级别与日志文件路径一律走默认值。
+      #
+      # server.host 必须是 0.0.0.0：默认值 localhost 只绑定回环地址，
+      # 容器外（含 nginx）根本连不上，表现为「容器 healthy 但 502」。
+      - NAME_SERVER_HOST=0.0.0.0
+      - NAME_SERVER_PORT=${PORT:-8080}
+      # 日志文件必须落在挂载卷内，否则写容器可写层，重启/重建即丢
+      - NAME_LOG_LEVEL=${LOG_LEVEL:-info}
+      - NAME_LOG_OUTPUT_PATH=${LOG_DIR:-/app/logs}/namer.log
+      # 数据库文件必须落在挂载卷内。默认值是相对路径 namer.db，
+      # 会写到 /app/namer.db —— 不在任何挂载卷里，重建容器数据全丢。
+      - NAME_DATABASE_PATH=/app/data/namer.db
       - DATA_DIR=${DATA_DIR:-/app/data}
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-      - LOG_DIR=${LOG_DIR:-/app/logs}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_EXPIRE=${JWT_EXPIRE:-24h}
+      # 注意：JWT_SECRET / JWT_EXPIRE 为历史遗留死配置，后端无任何鉴权实现，
+      # 设置它们不产生保护作用。公网暴露请在 Nginx/网关层做访问控制。
+      # 详见 DOCKER_QUICKSTART.md 安全提示（docs/29 B14）。
       # 数据库 (可选 PostgreSQL)
       # - DSN=${DSN}
       # Redis (可选)

@@ -73,3 +73,23 @@ cmd/*/main.go.bak
 # 其他
 .DS_Store
 Thumbs.db
+
+# ============================================================
+# 容器运行必需项（docs/29 B12）
+# ============================================================
+# 上面把 data/ 与 *.sh 全部排除了，但镜像运行时二者都不可缺：
+#   - data/：汉字库/诗词/姓名统计等 JSON + 康熙笔画 CSV。运行阶段读
+#     dataDir（= /app/data），而 compose 在该路径挂了宿主机目录，
+#     挂载会遮蔽镜像内文件 —— 镜像不内置字库，容器里 data/ 就是空的，
+#     服务能启动却生成不出名字，且无任何报错。
+#   - docker-entrypoint.sh：负责把内置字库播种到数据卷。
+#     没有它，COPY 阶段直接构建失败。
+#
+# dockerignore 后出现的规则优先，故这些反向规则必须放在文件末尾。
+!data/
+# data/raw 是 110MB 生成原料（语料、zip、字典导出），仅保留运行时
+# 真正读取的康熙笔画 CSV（dataloader → hanzi.LoadKangxiStrokesFromCSV），
+# 其余继续排除以控制镜像体积。
+data/raw/*
+!data/raw/kangxi-strokecount.csv
+!docker-entrypoint.sh
