@@ -134,12 +134,21 @@ async function handleResponse<T = unknown>(response: Response): Promise<T> {
 // 带重试机制的fetch包装器
 // 注意：maxRetries 和 retryDelay 仅对幂等请求（GET/HEAD）生效；
 // 非幂等请求（POST/PUT/DELETE）不会重试，避免重复提交。
+// externalSignal 用于让调用方（如异步生成的轮询循环）主动取消整个请求链（docs/29 B17）。
+// 取消与超时的区分：外部信号触发 → 抛 AbortError（调用方静默处理，不弹错误提示）；
+// 内部 30s 定时器触发 → 抛 TimeoutError（真实失败，走错误提示）。
 async function fetchWithRetry(
   url: string,
   options: RequestInit = {},
   maxRetries: number = 3,
-  retryDelay: number = 1000
+  retryDelay: number = 1000,
+  externalSignal?: AbortSignal
 ): Promise<Response> {
+  // 调用方已取消：不再发起请求，也不重试
+  if (externalSignal?.aborted) {
+    throw createAbortError();
+  }
+
   let lastError: unknown;
   const method = (options.method || 'GET').toUpperCase();
   const isIdempotent = method === 'GET' || method === 'HEAD';
@@ -149,18 +158,29 @@ async function fetchWithRetry(
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
+      // 外部取消也要能中断在途请求，否则超时前请求仍挂着
+      const onExternalAbort = () => controller.abort();
+      externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
 
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal
-      });
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal
+        });
 
-      clearTimeout(timeoutId);
-      return response;
+        return response;
+      } finally {
+        clearTimeout(timeoutId);
+        externalSignal?.removeEventListener('abort', onExternalAbort);
+      }
     } catch (error: unknown) {
       lastError = error;
 
       if (error instanceof Error && error.name === 'AbortError') {
+        // 外部取消优先：属于用户主动离开，不算超时失败
+        if (externalSignal?.aborted) {
+          throw createAbortError();
+        }
         throw new TimeoutError();
       }
 
@@ -170,11 +190,40 @@ async function fetchWithRetry(
 
       // 指数退避 + 随机抖动，避免惊群效应
       const delay = Math.min(retryDelay * Math.pow(2, attempt) + Math.random() * 1000, 10000);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await sleep(delay, externalSignal);
     }
   }
 
   throw lastError;
+}
+
+// 构造可识别的取消错误，供调用方与真实失败区分
+function createAbortError(): Error {
+  if (typeof DOMException !== 'undefined') {
+    return new DOMException('请求已取消', 'AbortError');
+  }
+  const err = new Error('请求已取消');
+  err.name = 'AbortError';
+  return err;
+}
+
+/** 可被外部信号打断的 sleep；取消时抛出 AbortError */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createAbortError());
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(createAbortError());
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 // 安全的数据转换函数
@@ -221,7 +270,7 @@ export async function generateNames(data: GenerateRequest): Promise<GenerateResp
 // --- 异步生成任务（长任务体验） ---
 
 /** 提交异步生成任务，立即返回 task_id（不阻塞等待引擎完成） */
-export async function generateNamesAsync(data: GenerateRequest): Promise<string> {
+export async function generateNamesAsync(data: GenerateRequest, signal?: AbortSignal): Promise<string> {
   const processedData = {
     ...data,
     birth_year: safeParseInt(data.birth_year),
@@ -244,7 +293,7 @@ export async function generateNamesAsync(data: GenerateRequest): Promise<string>
       'Content-Type': 'application/json; charset=utf-8',
     },
     body: JSON.stringify(processedData),
-  });
+  }, 3, 1000, signal);
   const result = await handleResponse<AsyncSubmitResponse>(response);
   if (!result.data?.task_id) {
     throw new ServerError('任务提交失败，请稍后重试');
@@ -253,11 +302,17 @@ export async function generateNamesAsync(data: GenerateRequest): Promise<string>
 }
 
 /** 查询异步任务状态；成功时 data.result 为完整生成结果（取走即弃） */
-export async function getTaskStatus(taskId: string): Promise<TaskStatusResponse['data']> {
+export async function getTaskStatus(taskId: string, signal?: AbortSignal): Promise<TaskStatusResponse['data']> {
   if (!taskId || taskId.trim() === '') {
     throw new ValidationError('任务ID不能为空');
   }
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/names/task/${encodeURIComponent(taskId)}`);
+  const response = await fetchWithRetry(
+    `${API_BASE_URL}/v1/names/task/${encodeURIComponent(taskId)}`,
+    {},
+    3,
+    1000,
+    signal
+  );
   const result = await handleResponse<TaskStatusResponse>(response);
   return result.data;
 }
@@ -265,17 +320,25 @@ export async function getTaskStatus(taskId: string): Promise<TaskStatusResponse[
 /**
  * 提交异步生成并轮询直到完成，返回完整生成结果。
  * onProgress 每 500ms 回调一次（stage 阶段名 / percent 百分比）。
+ *
+ * 传入 signal 可主动取消整条链（提交 + 轮询 + 退避等待），docs/29 B17：
+ * 原实现不接收取消信号，用户离开页面后最长空转 5 分钟。
+ * 取消时抛出 name === 'AbortError' 的错误，调用方应静默处理、不弹错误提示。
  */
 export async function generateNamesWithProgress(
   data: GenerateRequest,
   onProgress?: (stage: string, percent: number) => void,
   pollIntervalMs: number = 500,
+  signal?: AbortSignal
 ): Promise<GenerateResponse['data']> {
-  const taskId = await generateNamesAsync(data);
+  const taskId = await generateNamesAsync(data, signal);
   const deadline = Date.now() + 5 * 60 * 1000;
 
   for (;;) {
-    const status = await getTaskStatus(taskId);
+    // 循环入口先看取消：避免取消后再多打一次请求
+    if (signal?.aborted) throw createAbortError();
+
+    const status = await getTaskStatus(taskId, signal);
     if (!status) {
       throw new ServerError('任务不存在或已过期');
     }
@@ -290,7 +353,7 @@ export async function generateNamesWithProgress(
     if (Date.now() > deadline) {
       throw new TimeoutError('生成耗时过长，请稍后重试');
     }
-    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    await sleep(pollIntervalMs, signal);
   }
 }
 

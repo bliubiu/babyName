@@ -9,8 +9,8 @@ import { PreferenceSelector } from './PreferenceSelector';
 import { RadicalSelector } from './RadicalSelector';
 import { Spinner } from './Spinner';
 
-// 提交载荷：keywords 是用户在「个性补充」里填的寓意关键词，
-// 偏旁选字的包含字也会被拼进这个串（见 handleRadicalToggle）。
+// 提交载荷：keywords 是用户在「个性补充」里手填的寓意关键词；
+// 偏旁选字的用字走独立的 selectedChars 结构化通道。
 // 必须导出——HomeContent 要靠它接住这些输入，否则用户输入会被静默丢弃。
 export interface NameFormSubmission {
   formData: FormData;
@@ -50,12 +50,19 @@ export function NameForm({ isGenerating, onSubmit, sourceClassic, onSourceClassi
     });
   };
 
+  // 偏旁选字只更新 selectedChars 结构化通道，不再往 keywords 里拼
+  // "包含字：木木" 文本（docs/29 A9）：
+  //   1) 后端 MeaningKeywords 是按词匹配字义/分类的，"包含字：木木" 这种
+  //      拼出来的伪关键词匹配不到任何字，用户的选字等于被丢弃；
+  //   2) 早前用 `if (charStr)` 守卫，取消最后一个选字时不清 keywords，
+  //      令牌残留并被提交。
+  // 这里仍做一次兜底清理：万一历史输入框里已残留该令牌（老会话/localStorage
+  // 恢复、用户手打），一并清掉，避免脏关键词被提交。
   const handleRadicalToggle = (chars: string[]) => {
     setSelectedChars(chars);
-    const charStr = chars.join('');
-    if (charStr) {
-      const existing = keywords.replace(/包含字[：:][^\s]*/, '').trim();
-      setKeywords(existing ? `${existing} 包含字：${charStr}` : `包含字：${charStr}`);
+    const cleaned = keywords.replace(/包含字[：:][^\s]*/g, '').trim();
+    if (cleaned !== keywords) {
+      setKeywords(cleaned);
     }
   };
 

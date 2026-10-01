@@ -109,7 +109,7 @@ export default function HistoryPage() {
         ) : (
           <div className="space-y-3 md:space-y-4">
             {history.map((record, index) => {
-              let results: GenerateResponse['data'] | null = null;
+              let results: GenerateResponse['data'] | null;
               try {
                 results = typeof record.results === 'string'
                   ? JSON.parse(record.results)

@@ -9,6 +9,7 @@ import type { HuangliData, LunarCalendarData } from './types';
 import { zodiacIcons, getZodiacSign } from './types';
 import { DayView } from './components/DayView';
 import { WannianliView } from './components/WannianliView';
+import { buildClampedDate } from './dateUtils';
 
 const HuangliPage = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -105,7 +106,7 @@ const HuangliPage = () => {
             <div className="flex items-center gap-2">
               <select
                 value={currentYear}
-                onChange={(e) => setSelectedDate(new Date(parseInt(e.target.value), currentMonth - 1, currentDay))}
+                onChange={(e) => setSelectedDate(buildClampedDate(parseInt(e.target.value), currentMonth, currentDay))}
                 className="bg-warm-white/60 text-ink border-none rounded-lg px-3 py-1.5 text-sm focus:outline-none cursor-pointer"
               >
                 {Array.from({ length: 21 }).map((_, i) => (
@@ -114,7 +115,7 @@ const HuangliPage = () => {
               </select>
               <select
                 value={currentMonth}
-                onChange={(e) => setSelectedDate(new Date(currentYear, parseInt(e.target.value) - 1, currentDay))}
+                onChange={(e) => setSelectedDate(buildClampedDate(currentYear, parseInt(e.target.value), currentDay))}
                 className="bg-warm-white/60 text-ink border-none rounded-lg px-3 py-1.5 text-sm focus:outline-none cursor-pointer"
               >
                 {Array.from({ length: 12 }).map((_, i) => (

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, lazy, Suspense } from 'react';
+import { useState, useRef, useEffect, lazy, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNameStore } from '@/lib/store';
 import { generateNamesWithProgress, saveHistory } from '@/lib/api';
@@ -30,10 +30,29 @@ export default function HomeContent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   // 长任务进度（异步任务轮询）：stage 阶段名 / percent 百分比
   const [progress, setProgress] = useState<{ stage: string; percent: number } | null>(null);
+  // 异步生成的取消控制器（docs/29 B17）：原先轮询不可取消，用户离开页面后
+  // 最长空转 5 分钟。组件卸载或重新提交时 abort，轮询循环立即退出。
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const { mutateAsync: generateNamesMutate, isPending: isGenerating } = useMutation({
-    mutationFn: (payload: Parameters<typeof generateNamesWithProgress>[0]) =>
-      generateNamesWithProgress(payload, (stage, percent) => setProgress({ stage, percent })),
+    mutationFn: (payload: Parameters<typeof generateNamesWithProgress>[0]) => {
+      // 上一轮仍在跑就先取消，避免两个轮询循环并存
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      return generateNamesWithProgress(
+        payload,
+        (stage, percent) => setProgress({ stage, percent }),
+        500,
+        controller.signal
+      );
+    },
     onSuccess: (data) => {
       setProgress(null);
       if (data && data.names) {
@@ -60,6 +79,10 @@ export default function HomeContent() {
     },
     onError: (error) => {
       setProgress(null);
+      // 用户主动取消（离开页面/重新提交）不是失败：不弹错误提示、不写错误态
+      if (error instanceof Error && error.name === 'AbortError') {
+        return;
+      }
       const errorMsg = error instanceof Error ? error.message : '未知错误';
       setErrorMessage(errorMsg);
       showToast('生成名字时出错，请稍后重试', 'error');
@@ -104,8 +127,11 @@ export default function HomeContent() {
       generation_position: formData.generationPosition,
       name_type: formData.nameType,
       name_length: formData.nameType === 'double' ? 2 : 1,
-      // 寓意关键词来自 NameForm 提交载荷（用户在「个性补充」输入 + 偏旁选字）
+      // 寓意关键词来自 NameForm 提交载荷（用户在「个性补充」输入）。
+      // 注意：偏旁选字不再混进 keywords，而是走 selected_chars 结构化通道
+      // （docs/29 A9）——拼成 "包含字：木木" 的文本后端匹配不到任何字。
       meaning_keywords: submission.keywords.split(/[,，\s]+/).filter(Boolean),
+      selected_chars: submission.selectedChars,
       source_classic: sourceClassic || undefined,
       avoid_elder_names: formData.avoidElderNames
         ? formData.avoidElderNames.split(/[,，\s]+/).filter(Boolean)

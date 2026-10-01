@@ -26,6 +26,17 @@ const FullReport = lazy(() => import('@/components/FullReport'));
 // 用 surname:given_name 作为收藏状态键，避免 filter 后 index 错位
 const nameKey = (n: Name) => `${n.surname}:${n.given_name}`;
 
+// 收藏列表的共享空数组常量，配合 useMemo 保证引用稳定（见下方 cachedFavorites）
+const EMPTY_FAVORITES: FavoriteData[] = [];
+
+// 浅比较两个收藏态映射，内容相同则视为相等。
+// 只有真正变化时才 setState，从根上杜绝 effect → setState → 重渲染的自激循环。
+const sameFavoriteStatus = (a: Record<string, boolean>, b: Record<string, boolean>): boolean => {
+  const aKeys = Object.keys(a);
+  if (aKeys.length !== Object.keys(b).length) return false;
+  return aKeys.every(key => a[key] === b[key]);
+};
+
 // 从缓存中提取收藏列表（缓存类型为 FavoritesResponse，需取 .data）
 const getCachedFavorites = (queryClient: ReturnType<typeof useQueryClient>): FavoriteData[] => {
   const cached = queryClient.getQueryData<FavoritesResponse>(['favorites']);
@@ -48,7 +59,15 @@ export default function ResultPage() {
   // 结果页必须自己拉一次收藏列表：收藏态图标原先只读 ['favorites'] 缓存，
   // 而缓存只有访问过收藏页才会被填充，导致没访问过的人心形图标一律显示未收藏。
   const favoritesQuery = useQuery({ queryKey: ['favorites'], queryFn: getFavorites });
-  const cachedFavorites = favoritesQuery.data?.success ? favoritesQuery.data.data ?? [] : [];
+  // 收藏列表必须固定引用。原先写成 `? data ?? []` 会在每次渲染新建空数组，
+  // 作为下方 effect 的依赖会让 effect 每渲染都重跑（docs/29 A7）：
+  // 收藏查询失败（isError、data 为 undefined）且页面已有结果时形成
+  // 「重渲染 → 新 [] → effect 重跑 → setState → 再重渲染」死循环，
+  // 最终 "Maximum update depth exceeded" 让 ErrorBoundary 整页白屏。
+  const cachedFavorites = useMemo<FavoriteData[]>(
+    () => (favoritesQuery.data?.success ? favoritesQuery.data.data ?? EMPTY_FAVORITES : EMPTY_FAVORITES),
+    [favoritesQuery.data]
+  );
 
   const result = generateResult;
   const [filters, setFilters] = useState<NameFilters>({});
@@ -82,23 +101,22 @@ export default function ResultPage() {
   // 筛选或换一批后列表会变短，下标会错位甚至越界成 undefined。
   const nameByKey = (key: string) => displayList.find(n => nameKey(n) === key);
 
+  // 收藏态由「当前展示的列表 + 收藏缓存」推导。
+  // 覆盖 displayList（而非仅 result.names）是为了修 docs/29 B16：点「换一批」
+  // 后展示的是 exploreBatch，新名字不在 result.names 里，用 result.names 推导
+  // 会让所有心形一律显示未收藏。
   useEffect(() => {
-    const checkFavorites = async () => {
-      if (!result?.names) return;
+    if (displayList.length === 0) return;
 
-      if (favoritesQuery.isPending) return;
-      const status: Record<string, boolean> = {};
-      for (const name of result.names) {
-        const key = nameKey(name);
-        status[key] = cachedFavorites.some(
-          f => f.surname === name.surname && f.given_name === name.given_name
-        );
-      }
-      setFavoriteStatus(status);
-    };
-
-    checkFavorites();
-  }, [result, cachedFavorites, favoritesQuery.isPending]);
+    const status: Record<string, boolean> = {};
+    for (const name of displayList) {
+      const key = nameKey(name);
+      status[key] = cachedFavorites.some(
+        f => f.surname === name.surname && f.given_name === name.given_name
+      );
+    }
+    setFavoriteStatus(prev => (sameFavoriteStatus(prev, status) ? prev : status));
+  }, [displayList, cachedFavorites]);
 
   // 探索模式（换一批）：从同一生成会话的候选表中取与榜单零交集的新一批候选
   const exploreMutation = useMutation({
