@@ -2,7 +2,6 @@ package ziwei
 
 import (
 	"fmt"
-	"math"
 	"name/internal/domain/bazi/tyme"
 	"sync"
 )
@@ -74,13 +73,25 @@ var SiHuaTable = [10][4]string{
 	{"破军", "巨门", "太阴", "贪狼"}, // 癸
 }
 
-// LuCunTable 禄存查表：按年干索引 → 地支索引
-var LuCunTable = [10]int{2, 3, 4, 5, 6, 7, 8, 9, 10, 11} // 甲→寅(2), 乙→卯(3), ..., 癸→子(10/→0)
+// LuCunTable 禄存查表：按年干索引 → 地支索引（子0丑1寅2…亥11）
+// 口诀「甲禄到寅宫，乙禄居卯位，丙戊禄在巳，丁己禄居午，
+// 庚禄居申位，辛禄到酉方，壬禄亥中藏，癸禄子中藏」。
+// 原表为简单递增 2..11，自丙干起全部错位，擎羊陀罗随之全错。
+var LuCunTable = [10]int{2, 3, 5, 6, 5, 6, 8, 9, 11, 0}
 
 // TianKuiTianYueTable 天魁天钺查表：按年干索引 → [天魁地支, 天钺地支]
-// 阳干顺行到辰戌，阴干逆行到卯酉
+// 口诀「甲戊庚牛羊，乙己鼠猴乡，丙丁猪鸡位，壬癸兔蛇藏，六辛逢马虎」
 var TianKuiTianYueTable = [10][2]int{
-	{8, 10}, // 甲→戌(10), 酉(9) → 实际:阳干→戌(10)/辰(4)? 需要精确
+	{1, 7},  // 甲→丑(牛), 未(羊)
+	{0, 8},  // 乙→子(鼠), 申(猴)
+	{11, 9}, // 丙→亥(猪), 酉(鸡)
+	{11, 9}, // 丁→亥(猪), 酉(鸡)
+	{1, 7},  // 戊→丑, 未
+	{0, 8},  // 己→子, 申
+	{1, 7},  // 庚→丑, 未
+	{6, 2},  // 辛→午(马), 寅(虎)
+	{3, 5},  // 壬→卯(兔), 巳(蛇)
+	{3, 5},  // 癸→卯, 巳
 }
 
 type ZiweiChart struct {
@@ -275,25 +286,33 @@ func calculateShenGong(yearGanIndex, lunarMonth, timeIndex int) string {
 // ============================================================
 
 // calculateFiveElementsClass 计算五行局
+// 由命宫干支的纳音五行定局：水二局、木三局、金四局、土五局、火六局。
+// 原实现以「干数+支数取模」自造公式，与纳音无关，导致紫微落宫与
+// 大限起运年龄整体错位（如命宫甲子纳音海中金应为金四局，旧式算出水二局）。
 func calculateFiveElementsClass(mingGong string) string {
-	ganStr := string([]rune(mingGong)[0])
-	zhiStr := string([]rune(mingGong)[1])
-
-	ganIdx := getGanIndex(ganStr)
-	zhiIdx := getZhiIndex(zhiStr)
-
-	// 干数 = floor(ganIdx/2) + 1
-	ganNum := int(math.Floor(float64(ganIdx)/2)) + 1
-
-	// 支数 = floor(fixIndex(zhiIdx, 6)/2) + 1
-	zhiNum := int(math.Floor(float64(fixIndex(zhiIdx, 6))/2)) + 1
-
-	sum := ganNum + zhiNum
-	if sum > 5 {
-		sum -= 5
+	runes := []rune(mingGong)
+	if len(runes) < 2 {
+		return "水二局"
 	}
-
-	return FiveElementsClassTable[sum-1]
+	sc, err := tyme.SixtyCycle{}.FromName(string(runes))
+	if err != nil || sc == nil {
+		// 命宫干支非法时兜底，保证排盘不中断（此链路无错误通道）
+		return "水二局"
+	}
+	sound := sc.GetSound().GetName()
+	switch string([]rune(sound)[len([]rune(sound))-1]) {
+	case "水":
+		return "水二局"
+	case "木":
+		return "木三局"
+	case "金":
+		return "金四局"
+	case "土":
+		return "土五局"
+	case "火":
+		return "火六局"
+	}
+	return "水二局"
 }
 
 // ============================================================
@@ -339,19 +358,7 @@ func calculateSiHua(yearGanIndex int) map[string]string {
 // 大限地支 = 宫位地支（寅=2+宫位索引）
 func calculateDaXian(yearGanZhi, mingGong string, fiveElements string, gender string) map[string]DaXianEntry {
 	// 五行局数
-	var juShu int
-	switch fiveElements {
-	case "水二局":
-		juShu = 2
-	case "木三局":
-		juShu = 3
-	case "金四局":
-		juShu = 4
-	case "土五局":
-		juShu = 5
-	case "火六局":
-		juShu = 6
-	}
+	juShu := juShuOf(fiveElements)
 
 	// 年干、年支
 	yearGan := string([]rune(yearGanZhi)[0])
@@ -411,54 +418,41 @@ func calculateDaXian(yearGanZhi, mingGong string, fiveElements string, gender st
 // 紫微星定位
 // ============================================================
 
-// getZiweiPosition 计算紫微星位置
-func getZiweiPosition(lunarDayNum int, fiveElementsClass string, lunarMonth int) int {
-	// 五行局数
-	var juShu int
+// juShuOf 五行局 → 局数
+func juShuOf(fiveElementsClass string) int {
 	switch fiveElementsClass {
 	case "水二局":
-		juShu = 2
+		return 2
 	case "木三局":
-		juShu = 3
+		return 3
 	case "金四局":
-		juShu = 4
+		return 4
 	case "土五局":
-		juShu = 5
+		return 5
 	case "火六局":
-		juShu = 6
+		return 6
+	}
+	return 0
+}
+
+// getZiweiPosition 计算紫微星位置（借表法还原公式，返回地支索引 0=子）
+// 商 q = ⌈生日/局数⌉，加值 add = q×局数 - 生日；add 为偶数时自寅顺数
+// q-1+add 位，为奇数时自寅顺数 q-1 位再逆退 add 位。
+// 已对水二/木三/金四/土五/火六局逐日锚点与《紫微斗数全书》安星表核对
+// （见 ziwei_position_test.go）。原实现只有 5 组偏移且商超出范围即失准。
+func getZiweiPosition(lunarDayNum int, fiveElementsClass string, lunarMonth int) int {
+	juShu := juShuOf(fiveElementsClass)
+	if juShu <= 0 || lunarDayNum <= 0 {
+		return 2
 	}
 
-	// 需要加值才能整除的最小数
-	remainder := lunarDayNum % juShu
-	var addValue int
-	if remainder != 0 {
-		addValue = juShu - remainder
+	q := (lunarDayNum + juShu - 1) / juShu
+	add := q*juShu - lunarDayNum
+
+	if add%2 == 0 {
+		return fixIndex(2 + q - 1 + add, 12)
 	}
-
-	// 商
-	quotient := (lunarDayNum + addValue) / juShu
-
-	// 偏移量计算
-	qianduanPairs := [][2]int{
-		{6, 9}, // 六→酉(9)
-		{5, 6}, // 五→午(6)
-		{4, 11}, // 四→亥(11)
-		{3, 4}, // 三→辰(4)
-		{2, 1}, // 二→丑(1)
-	}
-
-	var offset int
-	for _, pair := range qianduanPairs {
-		if quotient >= pair[0] {
-			offset = pair[1]
-			break
-		}
-	}
-
-	// 紫微星位置
-	ziweiIndex := fixIndex(offset+quotient-1, 12)
-
-	return ziweiIndex
+	return fixIndex(2 + q - 1 - add, 12)
 }
 
 // ============================================================
@@ -466,32 +460,48 @@ func getZiweiPosition(lunarDayNum int, fiveElementsClass string, lunarMonth int)
 // ============================================================
 
 // distributeZhuXing 分布14主星
+//
+// 紫微系自紫微起逆布（地支递减）：天机-1、空、太阳-3、武曲-4、天同-5、空二宫、廉贞-8；
+// 天府与紫微以寅申轴对称：天府位 = (4 - 紫微位) mod 12；
+// 天府系自天府起顺布（地支递增）：太阴+1、贪狼+2、巨门+3、天相+4、天梁+5、七杀+6、空三宫、破军+10。
+// 宫名按地支定位：命宫居命宫地支，十二宫自命宫逆行（兄弟=命宫地支-1，以此类推）。
+// 原实现把紫微系天府系 14 星混入一个数组按宫序线性铺开，下标 12/13 永不可达
+// （破军不可能出现在任何宫），且把宫序当宫位地支。
 func distributeZhuXing(chart *ZiweiChart, lunarDayNum int, lunarMonth int) {
-	// 紫微星位置
 	ziweiPos := getZiweiPosition(lunarDayNum, chart.FiveElements, lunarMonth)
 
-	// 紫微系星（顺时针）
-	ziweiStars := []string{"紫微", "天机", "太阳", "武曲", "天同", "廉贞", "空", "天府", "太阴", "贪狼", "巨门", "天梁", "七杀", "空"}
+	mingRunes := []rune(chart.MingGong)
+	if len(mingRunes) < 2 {
+		return
+	}
+	mingZhiIdx := getZhiIndex(string(mingRunes[1]))
+	palaceByZhi := func(zhi int) string {
+		return Gongs[fixIndex(mingZhiIdx-zhi, 12)]
+	}
 
-	// 天府系星（逆时针）
-	tianfuStars := []string{"天府", "太阴", "贪狼", "巨门", "天梁", "七杀", "破军", "空", "紫微", "天机", "太阳", "武曲", "天同", "廉贞"}
+	// 紫微系（逆布）
+	ziweiSeries := []struct {
+		offset int
+		star   string
+	}{
+		{0, "紫微"}, {1, "天机"}, {3, "太阳"}, {4, "武曲"}, {5, "天同"}, {8, "廉贞"},
+	}
+	for _, s := range ziweiSeries {
+		p := palaceByZhi(fixIndex(ziweiPos-s.offset, 12))
+		chart.ZhuXing[p] = s.star
+	}
 
-	for i := 0; i < 12; i++ {
-		gongName := Gongs[i]
-
-		// 紫微系星
-		starIdx := fixIndex(ziweiPos+i, 12)
-		if starIdx < len(ziweiStars) && ziweiStars[starIdx] != "空" {
-			chart.ZhuXing[gongName] = ziweiStars[starIdx]
-		}
-
-		// 天府系星
-		tianfuIdx := fixIndex(12-ziweiPos+i, 12)
-		if tianfuIdx < len(tianfuStars) && tianfuStars[tianfuIdx] != "空" {
-			if chart.ZhuXing[gongName] == "" {
-				chart.ZhuXing[gongName] = tianfuStars[tianfuIdx]
-			}
-		}
+	// 天府系（顺布）
+	tianfuPos := fixIndex(4-ziweiPos, 12)
+	tianfuSeries := []struct {
+		offset int
+		star   string
+	}{
+		{0, "天府"}, {1, "太阴"}, {2, "贪狼"}, {3, "巨门"}, {4, "天相"}, {5, "天梁"}, {6, "七杀"}, {10, "破军"},
+	}
+	for _, s := range tianfuSeries {
+		p := palaceByZhi(fixIndex(tianfuPos+s.offset, 12))
+		chart.ZhuXing[p] = s.star
 	}
 }
 
@@ -499,55 +509,53 @@ func distributeZhuXing(chart *ZiweiChart, lunarDayNum int, lunarMonth int) {
 // 辅星分布
 // ============================================================
 
-// distributeFuXing 分布辅星
+// distributeFuXing 分布辅星（地支定位 → 宫名；十二宫自命宫地支逆行）
+// 月系：左辅辰(4)上起正月顺行，右弼戌(10)上起正月逆行；
+// 时系：文昌戌(10)上起子时逆行，文曲辰(4)上起子时顺行；
+// 年干系：天魁/天钺按口诀查表，禄存按口诀查表，擎羊居禄存下一宫、陀罗居上一宫。
+// 原实现把地支索引直接当宫位序（等价于假设命宫固定在寅），且
+// 左辅右弼文昌文曲的起宫均与口诀不符。
 func distributeFuXing(chart *ZiweiChart, lunarMonth, timeIndex, yearGanIndex int) {
-	// 初始化所有宫位辅星
-	for i := 0; i < 12; i++ {
+	for i := range Gongs {
 		chart.FuXing[Gongs[i]] = []string{}
 	}
 
-	// 左辅：monthIndex+1 顺数到地支序
-	leftFuIdx := fixIndex(lunarMonth, 12)
-	gongIdx := fixIndex(leftFuIdx-1, 12) // 转换为宫位序
-	chart.FuXing[Gongs[gongIdx]] = append(chart.FuXing[Gongs[gongIdx]], "左辅")
+	mingRunes := []rune(chart.MingGong)
+	if len(mingRunes) < 2 {
+		return
+	}
+	mingZhiIdx := getZhiIndex(string(mingRunes[1]))
+	palaceByZhi := func(zhi int) string {
+		return Gongs[fixIndex(mingZhiIdx-zhi, 12)]
+	}
+	place := func(zhi int, star string) {
+		p := palaceByZhi(fixIndex(zhi, 12))
+		chart.FuXing[p] = append(chart.FuXing[p], star)
+	}
 
-	// 右弼：12-monthIndex 逆数到地支序
-	rightBiIdx := fixIndex(12-lunarMonth, 12)
-	gongIdx = fixIndex(rightBiIdx-1, 12)
-	chart.FuXing[Gongs[gongIdx]] = append(chart.FuXing[Gongs[gongIdx]], "右弼")
+	// 闰月按其绝对值所属月份取用
+	if lunarMonth < 0 {
+		lunarMonth = -lunarMonth
+	}
 
-	// 文昌：timeIndex 顺数到地支序
-	wenChangIdx := fixIndex(timeIndex, 12)
-	gongIdx = fixIndex(wenChangIdx-1, 12)
-	chart.FuXing[Gongs[gongIdx]] = append(chart.FuXing[Gongs[gongIdx]], "文昌")
+	// 月系
+	place(4+lunarMonth-1, "左辅")
+	place(10-(lunarMonth-1), "右弼")
 
-	// 文曲：11-timeIndex 逆数到地支序
-	wenQuIdx := fixIndex(11-timeIndex, 12)
-	gongIdx = fixIndex(wenQuIdx-1, 12)
-	chart.FuXing[Gongs[gongIdx]] = append(chart.FuXing[Gongs[gongIdx]], "文曲")
+	// 时系（晚子时 timeIndex=12 经 fixIndex 归位到子时同宫）
+	place(10-timeIndex, "文昌")
+	place(4+timeIndex, "文曲")
 
-	// 天魁天钺（简化实现）
-	tianKuiIdx := fixIndex(yearGanIndex*2+8, 12) // 简化计算
-	tianYueIdx := fixIndex(yearGanIndex*2+9, 12)
-	gongIdx = fixIndex(tianKuiIdx-1, 12)
-	chart.FuXing[Gongs[gongIdx]] = append(chart.FuXing[Gongs[gongIdx]], "天魁")
-	gongIdx = fixIndex(tianYueIdx-1, 12)
-	chart.FuXing[Gongs[gongIdx]] = append(chart.FuXing[Gongs[gongIdx]], "天钺")
+	// 年干系：天魁天钺
+	kuiYue := TianKuiTianYueTable[yearGanIndex]
+	place(kuiYue[0], "天魁")
+	place(kuiYue[1], "天钺")
 
-	// 禄存
+	// 年干系：禄存及擎羊陀罗
 	luCunIdx := LuCunTable[yearGanIndex]
-	gongIdx = fixIndex(luCunIdx-1, 12)
-	chart.FuXing[Gongs[gongIdx]] = append(chart.FuXing[Gongs[gongIdx]], "禄存")
-
-	// 擎羊（禄存+1）
-	qingYangIdx := fixIndex(luCunIdx+1, 12)
-	gongIdx = fixIndex(qingYangIdx-1, 12)
-	chart.FuXing[Gongs[gongIdx]] = append(chart.FuXing[Gongs[gongIdx]], "擎羊")
-
-	// 陀罗（禄存-1）
-	tuoLuoIdx := fixIndex(luCunIdx-1, 12)
-	gongIdx = fixIndex(tuoLuoIdx-1, 12)
-	chart.FuXing[Gongs[gongIdx]] = append(chart.FuXing[Gongs[gongIdx]], "陀罗")
+	place(luCunIdx, "禄存")
+	place(luCunIdx+1, "擎羊")
+	place(luCunIdx-1, "陀罗")
 }
 
 // ============================================================
@@ -560,8 +568,8 @@ func AnalyzeZiwei(year, month, day, hour int, gender string) *ZiweiAnalysis {
 
 	chart := CalculateZiweiChart(year, month, day, hour, gender)
 
-	// 命宫主星
-	mingGongStar := chart.ZhuXing[chart.MingGong]
+	// 命宫主星（ZhuXing 以宫名为键；原实现误用干支串查宫名键，恒落空）
+	mingGongStar := chart.ZhuXing["命宫"]
 	if mingGongStar == "" {
 		mingGongStar = "无主星"
 	}
@@ -646,12 +654,12 @@ func getAllXingYao(chart *ZiweiChart) string {
 	var allStars []string
 
 	// 主星
-	if star, ok := chart.ZhuXing[chart.MingGong]; ok && star != "" {
+	if star, ok := chart.ZhuXing["命宫"]; ok && star != "" {
 		allStars = append(allStars, star)
 	}
 
 	// 辅星
-	if fuXing, ok := chart.FuXing[chart.MingGong]; ok {
+	if fuXing, ok := chart.FuXing["命宫"]; ok {
 		allStars = append(allStars, fuXing...)
 	}
 
@@ -695,7 +703,7 @@ func generateAnalysis(chart *ZiweiChart) string {
 		analysis += "无特殊辅星\n"
 	}
 
-	mingGongZhuXing := chart.ZhuXing[chart.MingGong]
+	mingGongZhuXing := chart.ZhuXing["命宫"]
 	analysis += "\n【命宫主星分析】\n"
 	analysis += getZhuXingAnalysis(mingGongZhuXing)
 

@@ -374,18 +374,29 @@ func TestAnalyzeHexagramWuxingCoverage(t *testing.T) {
 
 // TestCalculateDayanNumberCoverage tests CalculateDayanNumber
 func TestCalculateDayanNumberCoverage(t *testing.T) {
-	// Run multiple times to check range
+	// 大衍筮法三变成一爻，值域必须是 {6,7,8,9}（老阴/少阳/少阴/老阳）。
+	// 旧实现 sum%4 收敛后值域只有 {1,2,3,8}，老阴老阳永不可达、变爻恒 0，
+	// 该缺陷曾被这里的旧断言错误地固化（6/7 一出现就报错）。
 	results := make(map[int]int)
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 1000; i++ {
 		num := CalculateDayanNumber()
 		results[num]++
-		// Current implementation returns 1-3 or 8 due to modulo logic
-		if num < 1 || num > 8 || num == 4 || num == 5 || num == 6 || num == 7 {
-			t.Errorf("CalculateDayanNumber() = %d, unexpected value", num)
+		if num < 6 || num > 9 {
+			t.Errorf("CalculateDayanNumber() = %d, 值域必须是 6/7/8/9", num)
 		}
 	}
 	if len(results) == 0 {
-		t.Error("No results generated")
+		t.Fatal("No results generated")
+	}
+	// 四种爻值都必须可出现（概率最低的老阴约 1/16，1000 次抽样应命中）
+	for _, want := range []int{6, 7, 8, 9} {
+		if results[want] == 0 {
+			t.Errorf("1000 次抽样中爻值 %d 一次都未出现，筮法分布可疑", want)
+		}
+	}
+	// 少阴(8) 应为最高频（经典概率 7/16），老阴(6) 最低（1/16）
+	if results[8] <= results[6] {
+		t.Errorf("少阴(8)=%d 次应显著多于老阴(6)=%d 次", results[8], results[6])
 	}
 }
 
@@ -531,9 +542,9 @@ func TestCastHexagramByDayanCoverage(t *testing.T) {
 		}
 	}
 	for _, num := range r.DayanNumbers {
-		// Current CalculateDayanNumber returns 1-3 or 8
-		if num < 1 || num > 8 || num == 4 || num == 5 || num == 6 || num == 7 {
-			t.Errorf("DayanNumber = %d, unexpected value", num)
+		// 大衍筮法值域 {6,7,8,9}；旧实现 {1,2,3,8} 的错误口径已被旧断言固化过一次
+		if num < 6 || num > 9 {
+			t.Errorf("DayanNumber = %d, 值域必须是 6/7/8/9", num)
 		}
 	}
 	if r.ChangeYao < 0 || r.ChangeYao > 6 {

@@ -1320,8 +1320,12 @@ func (s *sessionImpl) generateDoubleName(
 		// 高并发下后来的 worker 在此排队，最多等 CPU 核数个在跑，杜绝
 		// 「并发请求数 × NumCPU」的超订放大。ctx 取消时直接放弃令牌占用，
 		// 避免积累无谓的排队位。
+		// 先捕获通道指针再收发：归还必须归还「获取时那一枚」令牌。
+		// 若归还时读全局变量，测试替换通道后，旧 worker 会从新通道
+		// 抽走令牌，导致新 worker 永远拿不到令牌而死锁。
+		limit := candidateWorkerLimit
 		select {
-		case candidateWorkerLimit <- struct{}{}:
+		case limit <- struct{}{}:
 		case <-ctx.Done():
 			return
 		}
@@ -1329,7 +1333,7 @@ func (s *sessionImpl) generateDoubleName(
 		wg.Add(1)
 		go func(start, end, w int) {
 			defer wg.Done()
-			defer func() { <-candidateWorkerLimit }()
+			defer func() { <-limit }()
 			// 并发钳制观测：本 worker 进入枚举前记录活跃计数与峰值，
 			// 退出时递减。生产为零开销的原子递增，仅峰值恒定供测试断言。
 			cur := candidateWorkerActive.Add(1)

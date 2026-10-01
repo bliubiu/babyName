@@ -421,14 +421,26 @@ func seasonFromMonthBranch(monthGanzhi string) string {
 	return ""
 }
 
+// seasonWuxing 季节 → 当令五行（春木夏火秋金冬水；土旺四季，辰戌丑未月
+// 未在此区分，土日主一律按不得季令处理）
+var seasonWuxing = map[string]string{
+	"春": "木",
+	"夏": "火",
+	"秋": "金",
+	"冬": "水",
+}
+
 func calculateBaziPattern(dayMasterStrength, rishouWuxing, season string) string {
+	// 日主五行与季节当令五行比较；原实现直接拿五行跟「春/夏/秋/冬」
+	// 字符串比较，恒为 false，格局分支沦为死代码。
+	seasonElement := seasonWuxing[season]
 	if dayMasterStrength == "身旺" || dayMasterStrength == "身中" {
-		if rishouWuxing == season {
+		if rishouWuxing == seasonElement {
 			return "正格-印比相生格"
 		}
 		return "正格-财官相生格"
 	} else if dayMasterStrength == "身弱" || dayMasterStrength == "身衰" {
-		if rishouWuxing == season {
+		if rishouWuxing == seasonElement {
 			return "从弱格-从印格"
 		}
 		return "从弱格-从财格"
@@ -490,10 +502,12 @@ func calculateYongshenScore(xiyongshen []string, yiyongshen []string, wuxing *Wu
 
 func calculateShengKeScore(xiyongshen []string, wuxing *WuxingResult) int {
 	shengKeScore := 0
+	// 五行相生：金生水、水生木、木生火、火生土、土生金（键生值）。
+	// 原表「土」误作生「火」，土生金才对，导致喜用神含土时加分算到火的计数上。
 	shengMap := map[string]string{
 		"金": "水",
 		"木": "火",
-		"土": "火",
+		"土": "金",
 		"水": "木",
 		"火": "土",
 	}

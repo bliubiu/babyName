@@ -158,19 +158,16 @@ func GetHexagramByPlumBlossom(surname, givenName1, givenName2 string) *PlumBloss
 		movingYao = 6
 	}
 
-	// 本卦
-	hexNumber := (upperTrigram-1)*8 + lowerTrigram
-	originalHex := GetHexagramByNumber(hexNumber)
+	// 本卦：按先天上下卦查表（上下卦组合码 ≠ 通行本卦序，不能互查）
+	originalHex := FindHexagramByTrigrams(upperTrigram, lowerTrigram)
 
 	// 变卦
 	changedUpper, changedLower := CalcChangedHexagram(upperTrigram, lowerTrigram, movingYao)
-	changedNumber := (changedUpper-1)*8 + changedLower
-	changedHex := GetHexagramByNumber(changedNumber)
+	changedHex := FindHexagramByTrigrams(changedUpper, changedLower)
 
 	// 互卦
 	interUpper, interLower := CalcInterHexagram(upperTrigram, lowerTrigram)
-	interNumber := (interUpper-1)*8 + interLower
-	interHex := GetHexagramByNumber(interNumber)
+	interHex := FindHexagramByTrigrams(interUpper, interLower)
 
 	// 六爻
 	originalLines := GenerateYaoLines(upperTrigram, lowerTrigram)

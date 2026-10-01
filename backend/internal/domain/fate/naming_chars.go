@@ -1,5 +1,7 @@
 package fate
 
+import "sync"
+
 // NamingCategory 起名用字分类信息
 type NamingCategory struct {
 	Name  string // 分类名称（如"品德""山水"）
@@ -41,14 +43,20 @@ var NamingCategories = []NamingCategory{
 }
 
 // namingCharIndex 字符 → 其起名分类信息索引
-// lazy-init，线程安全
+// lazy-init：namingOnce 保证索引只构建一次；构建后的增量写入（AddNamingChar）
+// 与并发读取由 namingMu 串行化。此前用无同步原语的布尔值模拟 Once，
+// 两个 goroutine 同时首次进入会并发构建并写同一 map，触发不可恢复的 fatal。
 var (
-	namingIdx   map[string]*NamingCharInfo
-	namingOnce  syncOnce
+	namingIdx  map[string]*NamingCharInfo
+	namingOnce sync.Once
+	namingMu   sync.RWMutex
 )
 
-// initNamingIndex 构建字符分类索引
+// initNamingIndex 构建字符分类索引（仅由 namingOnce 调用）
 func initNamingIndex() {
+	namingMu.Lock()
+	defer namingMu.Unlock()
+
 	namingIdx = make(map[string]*NamingCharInfo)
 
 	// 性别倾向集合（从 ai4naming 数据移植）
@@ -101,6 +109,8 @@ func charSet(s string) map[string]bool {
 // 如果该字不在精选库中，返回 nil
 func GetNamingCharInfo(char string) *NamingCharInfo {
 	namingOnce.Do(initNamingIndex)
+	namingMu.RLock()
+	defer namingMu.RUnlock()
 	return namingIdx[char]
 }
 
@@ -113,6 +123,8 @@ func IsNamingChar(char string) bool {
 // category 为空则返回所有分类的字
 func GetNamingCharsByCategory(category string) []string {
 	namingOnce.Do(initNamingIndex)
+	namingMu.RLock()
+	defer namingMu.RUnlock()
 
 	if category == "" {
 		chars := make([]string, 0, len(namingIdx))
@@ -137,6 +149,8 @@ func GetNamingCharsByCategory(category string) []string {
 // GetNamingCharsByGender 获取指定性别的起名用字
 func GetNamingCharsByGender(gender string) []string {
 	namingOnce.Do(initNamingIndex)
+	namingMu.RLock()
+	defer namingMu.RUnlock()
 
 	var chars []string
 	for ch, info := range namingIdx {
@@ -159,6 +173,8 @@ func GetNamingCategoryNames() []string {
 // CountNamingChars 获取精选起名库总字数和分类数
 func CountNamingChars() (total int, categories int) {
 	namingOnce.Do(initNamingIndex)
+	namingMu.RLock()
+	defer namingMu.RUnlock()
 	return len(namingIdx), len(NamingCategories)
 }
 
@@ -285,6 +301,8 @@ func GetCompatibleCategories(category string) []string {
 // maxCompat: 最多引入几个兼容分类（0 表示全部引入）
 func GetCompatibleCharsByCategory(category string, includeSelf bool, maxCompat int) []string {
 	namingOnce.Do(initNamingIndex)
+	namingMu.RLock()
+	defer namingMu.RUnlock()
 
 	// 收集要包含的分类
 	catSet := make(map[string]bool)
@@ -314,22 +332,13 @@ func GetCompatibleCharsByCategory(category string, includeSelf bool, maxCompat i
 	return chars
 }
 
-// syncOnce 简易 sync.Once 实现，避免导入 sync 包外的类型冲突
-type syncOnce struct {
-	done bool
-}
-
-func (o *syncOnce) Do(f func()) {
-	if !o.done {
-		o.done = true
-		f()
-	}
-}
-
 // AddNamingChar 向起名索引中添加或补充一个字的分类信息
 // 由适配层在加载汉字数据后调用，用于将 HanziData 的分类同步到 fate 层
 func AddNamingChar(char string, categories []string, gender string) {
 	namingOnce.Do(initNamingIndex)
+	namingMu.Lock()
+	defer namingMu.Unlock()
+
 	info, exists := namingIdx[char]
 	if !exists {
 		info = &NamingCharInfo{
