@@ -51,7 +51,8 @@ type GenerateOptions struct {
 	SourceClassic   string        // 诗词来源（shijing/chuci/poetry 等）
 	IncludePoetry   bool          // 包含诗词用字
 	IncludeClassic  bool          // 包含经典用字
-	MeaningKeywords []string      // 寓意关键词
+	MeaningKeywords []string      // 寓意关键词（用户「个性补充」输入）
+	RequiredChars   []string      // 用户显式点选的用字（前端「按偏旁选字」结果）
 	PinyinInitial   string        // 拼音首字母
 	ExtraChars      []*Character  // 外部注入的额外候选字（诗词/经典字库来源）
 }

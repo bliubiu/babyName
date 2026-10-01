@@ -28,6 +28,8 @@ type HistoryServiceInterface interface {
 // FavoriteServiceInterface 收藏服务接口
 type FavoriteServiceInterface interface {
 	GetFavorites(ctx context.Context) ([]*FavoriteRecord, error)
+	// GetFavoritesPage 分页获取收藏，返回当页记录与总数（HTTP 路径走这个）
+	GetFavoritesPage(ctx context.Context, page, limit int) ([]*FavoriteRecord, int, error)
 	SaveFavorite(ctx context.Context, record *FavoriteRecord) (string, error)
 	DeleteFavorite(ctx context.Context, id string) error
 }

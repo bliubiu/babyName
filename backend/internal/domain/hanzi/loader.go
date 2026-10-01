@@ -55,9 +55,16 @@ func LoadFromJSON(dataDir string) error {
 		return err
 	}
 
-	mu.Lock()
-	defer mu.Unlock()
-
+	// 先在局部 map 里构建完整数据，再一次性并入全局（docs/29 B9）
+	//
+	// 原来在整个构建循环期间持有 mu 写锁，且循环内调用 ApplyWuxingOverrides
+	// —— 后者会自行加锁，RWMutex 不可重入，加锁改造后这里必然自死锁。
+	// 改为「无锁构建 → 短临界区合并 → 锁外做五行覆盖」：
+	//   - 读侧看到的永远是完整的一代数据，不会看到写了一半的中间态；
+	//   - 任何一次失败（读文件/反序列化/构建）都发生在改动全局之前，
+	//     不再需要回滚 —— 原实现的回滚也不完整（只补回旧键，
+	//     不删除本轮新增的键），失败后会残留半截数据。
+	newData := make(map[string]Hanzi, len(jsonList))
 	for _, jh := range jsonList {
 		// 五行判定优先级：覆盖表(字义法) > 部首映射(字形法) > JSON原始值(兜底)
 		wuxing := jh.Wuxing
@@ -73,7 +80,7 @@ func LoadFromJSON(dataDir string) error {
 			namingCats = ClassifyNaming(jh.Char, jh.Radical, jh.Meaning, wuxing)
 		}
 
-		HanziData[jh.Char] = Hanzi{
+		newData[jh.Char] = Hanzi{
 			Char:    jh.Char,
 			Pinyin:  jh.Pinyin,
 			Strokes: jh.Strokes,
@@ -101,27 +108,27 @@ func LoadFromJSON(dataDir string) error {
 		}
 	}
 
-	// 五行覆盖表和部首兜底（必须在 HanziData 填充完毕后运行）
+	mu.Lock()
+	for k, v := range newData {
+		HanziData[k] = v
+	}
+	mu.Unlock()
+
+	// 五行覆盖表和部首兜底（必须在 HanziData 填充完毕后运行，内部自行加锁）
 	ApplyWuxingOverrides()
 
 	return nil
 }
 
 // ReloadFromJSON 重新加载 JSON 数据（热更新）
+//
+// 旧实现先快照 HanziData、失败后再回滚，但回滚只补回旧键、不删除本轮
+// 新增的键，失败后会残留半截数据；且快照与回滚全程无锁，与读侧并发即
+// fatal error: concurrent map read and map write（docs/29 B9）。
+// 现依赖 LoadFromJSON 的「构建成功才合并」保证原子性：所有可能失败的步骤
+// 都在改动全局之前完成，无需回滚。
 func ReloadFromJSON(dataDir string) error {
-	baseData := make(map[string]Hanzi)
-	for k, v := range HanziData {
-		baseData[k] = v
-	}
-
-	if err := LoadFromJSON(dataDir); err != nil {
-		for k, v := range baseData {
-			HanziData[k] = v
-		}
-		return err
-	}
-
-	return nil
+	return LoadFromJSON(dataDir)
 }
 
 var mu sync.RWMutex

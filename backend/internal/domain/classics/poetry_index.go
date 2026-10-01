@@ -32,29 +32,29 @@ func buildPoetryIndex() {
 	}
 
 	// 索引所有经典文本提取数据，按来源分组
-	indexExtracted(ShijingExtracted)
-	indexExtracted(ChuciExtracted)
-	indexExtracted(GuwenGuanzhiExtracted)
+	indexExtracted(copyExtracted(&ShijingExtracted))
+	indexExtracted(copyExtracted(&ChuciExtracted))
+	indexExtracted(copyExtracted(&GuwenGuanzhiExtracted))
 
 	// shici.json 可能尚未加载完毕，惰性等待
 	ensureShiCiLoaded()
-	indexExtracted(ShiCiExtracted)
+	indexExtracted(copyExtracted(&ShiCiExtracted))
 
 	// P2/P3 经典
-	indexExtracted(LunyuExtracted)
-	indexExtracted(MengziExtracted)
-	indexExtracted(DaxueExtracted)
-	indexExtracted(ZhongyongExtracted)
-	indexExtracted(SanzijingExtracted)
-	indexExtracted(QianziwenExtracted)
-	indexExtracted(DiziguiExtracted)
-	indexExtracted(YouxueqionglinExtracted)
-	indexExtracted(ZengguangxianwenExtracted)
-	indexExtracted(ShenglvqimengExtracted)
-	indexExtracted(ZhuzijiaxunExtracted)
-	indexExtracted(QianjiashiExtracted)
-	indexExtracted(WenzimengqiuExtracted)
-	indexExtracted(BaijiaxingExtracted)
+	indexExtracted(copyExtracted(&LunyuExtracted))
+	indexExtracted(copyExtracted(&MengziExtracted))
+	indexExtracted(copyExtracted(&DaxueExtracted))
+	indexExtracted(copyExtracted(&ZhongyongExtracted))
+	indexExtracted(copyExtracted(&SanzijingExtracted))
+	indexExtracted(copyExtracted(&QianziwenExtracted))
+	indexExtracted(copyExtracted(&DiziguiExtracted))
+	indexExtracted(copyExtracted(&YouxueqionglinExtracted))
+	indexExtracted(copyExtracted(&ZengguangxianwenExtracted))
+	indexExtracted(copyExtracted(&ShenglvqimengExtracted))
+	indexExtracted(copyExtracted(&ZhuzijiaxunExtracted))
+	indexExtracted(copyExtracted(&QianjiashiExtracted))
+	indexExtracted(copyExtracted(&WenzimengqiuExtracted))
+	indexExtracted(copyExtracted(&BaijiaxingExtracted))
 }
 
 // indexExtracted 将提取结果集追加到全局索引

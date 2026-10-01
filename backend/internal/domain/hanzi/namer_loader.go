@@ -187,6 +187,18 @@ func normalizeGender(g string) string {
 	}
 }
 
+// GetNamerChar 线程安全获取 namer 字数据（持 namerMu 读锁）
+//
+// 直接读 NamerCharMap 的写法在热更新接通后会与写侧并发，触发
+// fatal error: concurrent map read and map write（docs/29 B9）。
+// 需要 NamerChar 完整字段的调用方一律走本函数。
+func GetNamerChar(char string) (NamerChar, bool) {
+	namerMu.RLock()
+	defer namerMu.RUnlock()
+	nc, ok := NamerCharMap[char]
+	return nc, ok
+}
+
 // GetNamerLevel 获取汉字等级（1/2/3），不含时返回 0
 func GetNamerLevel(char string) int {
 	namerMu.RLock()
@@ -224,7 +236,12 @@ func GetCharRadicalFromNamer(char string) string {
 //   - NamerCharMap[char].KangxiStrokes 同样覆盖（不持久到 namer.json）。
 //
 // 调用方：LoadNamerFromJSON 末尾（在频率数据合并前，确保 NamerCharMap 已建立）。
-// **锁约定**：调用方已持有 namerMu 写锁与 mu 写锁，本函数不得再 Lock（否则死锁）。
+//
+// 锁约定（docs/29 B9）：本函数会写 HanziData 与 NamerCharMap 两个全局 map，
+// 故调用方必须已持有 namerMu 写锁，且本函数自行获取 mu 写锁。
+// 此前注释声称「调用方已持有 namerMu 与 mu 写锁」，但实际调用点在
+// mu.Unlock() 之后 —— HanziData 处于无锁写状态。热更新一旦接通，
+// 与读侧（IsCommonChar / HetuWuxingOfChar 等无锁读）并发即 fatal error。
 func mergeKangxiStrokes() {
 	if !IsKangxiStrokesLoaded() {
 		return
@@ -242,6 +259,11 @@ func mergeKangxiStrokes() {
 		strokesSnapshot[k] = v
 	}
 	kangxiMu.RUnlock()
+
+	// HanziData 的写锁。namerMu 由调用方持有（写 NamerCharMap），
+	// 两把锁的获取顺序为 namerMu → mu，与 LoadNamerFromJSON 一致，无交叉。
+	mu.Lock()
+	defer mu.Unlock()
 
 	for char, nc := range NamerCharMap {
 		if ks, ok := strokesSnapshot[char]; ok && ks > 0 {

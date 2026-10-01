@@ -40,23 +40,47 @@ type FavoriteRecord struct {
 	Notes    string `json:"notes"`
 }
 
-// GetFavorites 获取收藏列表
+// GetFavorites 获取收藏列表（全量，仅供内部/兼容调用）
+//
+// 注意：HTTP 路径请走 GetFavoritesPage —— 本方法无分页，收藏累积后会
+// 一次性返回全量（docs/29 B6）。
 func (s *FavoriteService) GetFavorites(ctx context.Context) ([]*FavoriteRecord, error) {
 	records := s.store.GetFavorites()
 	result := make([]*FavoriteRecord, len(records))
 	for i, r := range records {
-		result[i] = &FavoriteRecord{
-			ID:        r.ID,
-			Surname:   r.Surname,
-			GivenName: r.GivenName,
-			Pinyin:   r.Pinyin,
-			Gender:   r.Gender,
-			Score:    r.Score,
-			Source:   r.Source,
-			Notes:    r.Notes,
-		}
+		result[i] = toFavoriteRecord(r)
 	}
 	return result, nil
+}
+
+// GetFavoritesPage 分页获取收藏列表，返回当页记录与总数。
+//
+// 底层 database.FavoriteStore 早已提供 GetFavoritesPage，此前服务层与
+// handler 都没走它，导致 /favorites 永远全量返回。
+func (s *FavoriteService) GetFavoritesPage(ctx context.Context, page, limit int) ([]*FavoriteRecord, int, error) {
+	records, total, err := s.store.GetFavoritesPage(page, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	result := make([]*FavoriteRecord, len(records))
+	for i, r := range records {
+		result[i] = toFavoriteRecord(r)
+	}
+	return result, total, nil
+}
+
+// toFavoriteRecord 存储层记录 → 应用层 DTO
+func toFavoriteRecord(r *database.FavoriteRecord) *FavoriteRecord {
+	return &FavoriteRecord{
+		ID:        r.ID,
+		Surname:   r.Surname,
+		GivenName: r.GivenName,
+		Pinyin:   r.Pinyin,
+		Gender:   r.Gender,
+		Score:    r.Score,
+		Source:   r.Source,
+		Notes:    r.Notes,
+	}
 }
 
 // SaveFavorite 保存收藏（评分≥80 自动加入精选库）

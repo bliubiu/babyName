@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -102,8 +103,13 @@ func Load(configPath string) (*AppConfig, error) {
 	v.SetDefault("redis.password", "")
 	v.SetDefault("redis.db", 0)
 
-	// 自动绑定环境变量（前缀 NAME_）
+	// 自动绑定环境变量（前缀 NAME_）。
+	// 必须配 SetEnvKeyReplacer 把嵌套键的「.」映射为「_」：AutomaticEnv 对
+	// server.port 查找的环境变量名是 NAME_SERVER.PORT（保留点号），任何
+	// shell 都设不出来，覆盖静默无效（docs/29 B13）。替换后 NAME_SERVER_PORT
+	// 即可覆盖 server.port。
 	v.SetEnvPrefix("NAME")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
 	// 加载配置文件
@@ -112,12 +118,25 @@ func Load(configPath string) (*AppConfig, error) {
 		v.SetConfigName("application")
 		v.SetConfigType("yml")
 
-		// 搜索路径：当前目录、可执行文件目录、项目根目录
+		// 搜索路径：当前目录、可执行文件目录、项目根目录、config 子目录、
+		// 以及 CONFIG_DIR 指定目录。
+		//
+		// 最后两项是容器部署的必需项（docs/29 B12）：compose 把宿主机配置目录
+		// 挂到 /app/config，而进程 cwd 是 /app —— 原搜索路径（"." / exe 目录 /
+		// "../"）全部落不到 /app/config，于是配置文件被静默跳过、整套默认值生效：
+		// 监听 localhost（容器外不可达）、日志写到容器内相对路径（重启即丢）、
+		// 数据库写到非挂载目录（重建容器数据全丢）。这类故障没有任何报错，
+		// 只会表现为「服务起来了但什么都不对」。
 		v.AddConfigPath(".")
 		if exe, err := os.Executable(); err == nil {
 			v.AddConfigPath(filepath.Dir(exe))
 		}
 		v.AddConfigPath("../")
+		v.AddConfigPath("config")
+		// CONFIG_DIR 优先，便于自定义镜像布局；为空则忽略
+		if dir := os.Getenv("CONFIG_DIR"); dir != "" {
+			v.AddConfigPath(dir)
+		}
 	} else {
 		v.SetConfigFile(configPath)
 	}

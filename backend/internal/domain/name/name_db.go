@@ -117,13 +117,25 @@ func (db *NameDB) Load() error {
 }
 
 // Reload 热更新所有数据
+//
+// ⚠ 锁约定（docs/29 B11）：本方法**不得**在持有 db.mu 的情况下调用 Load()。
+// Load() 的子加载器（loadCuratedNames / loadCuratedFromPersister /
+// loadShiYunNames / loadStandardChars）各自独立获取 db.mu 写锁，
+// 而 sync.RWMutex 不可重入 —— 原实现「Reload 持锁 → Load → 子加载器再加锁」
+// 会永久阻塞在第二次 Lock 上，热更新接口表现为请求超时而非报错，
+// 且没有任何 panic 或日志线索，排查成本极高。
+//
+// 现在把「清空索引」收敛成一个自持锁的临界区，随即释放锁再调用 Load()。
+//
+// 语义说明：清空与重建之间存在一个极短的窗口（仅 Reload 期间），
+// 期间并发读请求会查到空索引。这是有意的取舍 —— 相比热更新永久挂死，
+// 一次维护窗口内的空结果是可接受且可自愈的（随后的子加载器会重新填充）。
 func (db *NameDB) Reload() error {
+	// 清空索引：热更新必须丢弃旧索引，避免残留已删除的字/名
 	db.mu.Lock()
-	defer db.mu.Unlock()
-
-	// 清空索引
 	db.charIndex = make(map[string]string)
 	db.nameIndex = make(map[string]bool)
+	db.mu.Unlock()
 
 	return db.Load()
 }

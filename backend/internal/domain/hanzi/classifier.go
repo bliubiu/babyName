@@ -271,7 +271,9 @@ func ClassifyNaming(char, radical, meaning, wuxing string) []string {
 
 // GetNamingCategories 获取汉字的所有起名分类标签
 func GetNamingCategories(char string) []string {
-	h, ok := HanziData[char]
+	// 走 GetHanzi（持读锁）而非直接读全局 map：热更新会写 HanziData，
+	// 无锁读会与写并发触发 fatal error（docs/29 B9）
+	h, ok := GetHanzi(char)
 	if !ok {
 		return nil
 	}

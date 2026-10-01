@@ -32,6 +32,47 @@ type Holiday struct {
 
 type HolidayService struct {
 	mu sync.RWMutex
+
+	// cacheMu 保护按日期缓存（docs/29 B4）。
+	// 农历↔公历换算结果是纯函数（同一日期恒等），可安全长期缓存。
+	cacheMu      sync.RWMutex
+	holidayCache map[string]*Holiday
+}
+
+// holidayCacheMax 单日缓存条目上限。
+// 日期键空间有界（365 天 × 20 年 ≈ 7300 条），超限后整体重建即可，
+// 不需要引入 LRU 这种额外结构。
+const holidayCacheMax = 8192
+
+// dateKey 统一日期键格式，避免各处 Sprintf 口径不一致
+func dateKey(year, month, day int) string {
+	return fmt.Sprintf("%04d-%02d-%02d", year, month, day)
+}
+
+// cachedHoliday 读取单日缓存（返回副本，避免调用方改写缓存内容）
+func (hs *HolidayService) cachedHoliday(key string) (*Holiday, bool) {
+	hs.cacheMu.RLock()
+	cached, ok := hs.holidayCache[key]
+	hs.cacheMu.RUnlock()
+	if !ok {
+		return nil, false
+	}
+	clone := *cached
+	return &clone, true
+}
+
+// storeHoliday 写入单日缓存
+func (hs *HolidayService) storeHoliday(key string, holiday *Holiday) {
+	hs.cacheMu.Lock()
+	defer hs.cacheMu.Unlock()
+	if hs.holidayCache == nil {
+		hs.holidayCache = make(map[string]*Holiday)
+	}
+	if len(hs.holidayCache) >= holidayCacheMax {
+		hs.holidayCache = make(map[string]*Holiday)
+	}
+	snapshot := *holiday
+	hs.holidayCache[key] = &snapshot
 }
 
 var (
@@ -47,6 +88,12 @@ func GetHolidayService() *HolidayService {
 }
 
 func (hs *HolidayService) GetHoliday(year, month, day int) (*Holiday, error) {
+	// 命中缓存直接返回：农历换算是本函数的主要开销（docs/29 B4）
+	key := dateKey(year, month, day)
+	if cached, ok := hs.cachedHoliday(key); ok {
+		return cached, nil
+	}
+
 	hs.mu.RLock()
 	defer hs.mu.RUnlock()
 
@@ -60,16 +107,14 @@ func (hs *HolidayService) GetHoliday(year, month, day int) (*Holiday, error) {
 	}
 
 	lunarDay := solarDay.GetLunarDay()
-	lunarMonth := lunarDay.GetLunarMonth()
-	lunarDayNum := lunarDay.GetDay()
-	isLeapMonth := lunarMonth.IsLeap()
 
-	festivalName := hs.getTraditionalFestival(lunarMonth.GetMonth(), lunarDayNum, isLeapMonth, year)
+	festivalName := hs.getTraditionalFestival(lunarDay)
 	if festivalName != "" {
 		holiday.Name = festivalName
 		holiday.HolidayType = HolidayTypeTraditional
 		holiday.IsVacation = hs.isTraditionalFestivalVacation(festivalName)
 		holiday.Description = hs.getTraditionalFestivalDesc(festivalName)
+		hs.storeHoliday(key, holiday)
 		return holiday, nil
 	}
 
@@ -87,6 +132,7 @@ func (hs *HolidayService) GetHoliday(year, month, day int) (*Holiday, error) {
 		holiday.IsWorkDay = legalHoliday.IsWork()
 		holiday.Description = hs.getPublicHolidayDesc(holiday.Name, holiday.IsVacation)
 		holiday.DaysOff = hs.calculateDaysOff(year, month, day)
+		hs.storeHoliday(key, holiday)
 		return holiday, nil
 	}
 
@@ -94,6 +140,7 @@ func (hs *HolidayService) GetHoliday(year, month, day int) (*Holiday, error) {
 		weekday := hs.getWeekday(year, month, day)
 		holiday.HolidayType = HolidayTypeWeekend
 		holiday.Description = fmt.Sprintf("周末（第%d天）", weekday)
+		hs.storeHoliday(key, holiday)
 		return holiday, nil
 	}
 
@@ -110,6 +157,9 @@ func (hs *HolidayService) GetHolidayInfo(year, month, day int) (map[string]inter
 	lunarDay := solarDay.GetLunarDay()
 	lunarMonth := lunarDay.GetLunarMonth()
 
+	// 单次轮询同时得到天数与名称（docs/29 B4）
+	daysUntilHoliday, nextHoliday := hs.findNextHoliday(year, month, day)
+
 	result := map[string]interface{}{
 		"date":               holiday.Date,
 		"is_holiday":         holiday.Name != "",
@@ -121,8 +171,8 @@ func (hs *HolidayService) GetHolidayInfo(year, month, day int) (map[string]inter
 		"lunar_date":         fmt.Sprintf("农历%s月%s", hs.getLunarMonthName(lunarMonth.GetMonth()), hs.getLunarDayName(lunarDay.GetDay())),
 		"lunar_festival":     hs.getLunarFestival(lunarMonth.GetMonth(), lunarDay.GetDay()),
 		"solar_term":         hs.getSolarTerm(year, month, day),
-		"days_until_holiday": hs.getDaysUntilNextHoliday(year, month, day),
-		"next_holiday":       hs.getNextHoliday(year, month, day),
+		"days_until_holiday": daysUntilHoliday,
+		"next_holiday":       nextHoliday,
 	}
 
 	return result, nil
@@ -180,13 +230,10 @@ func (hs *HolidayService) IsVacationDay(year, month, day int) bool {
 		return !legalHoliday.IsWork()
 	}
 
-	lunarDay, _ := tyme.SolarDay{}.FromYmd(year, month, day)
-	lunar := lunarDay.GetLunarDay()
-	monthNum := lunar.GetLunarMonth().GetMonth()
-	dayNum := lunar.GetDay()
-	isLeapMonth := lunar.GetLunarMonth().IsLeap()
+	solarDay, _ := tyme.SolarDay{}.FromYmd(year, month, day)
+	lunar := solarDay.GetLunarDay()
 
-	festivalName := hs.getTraditionalFestival(monthNum, dayNum, isLeapMonth, year)
+	festivalName := hs.getTraditionalFestival(lunar)
 	if festivalName != "" {
 		return hs.isTraditionalFestivalVacation(festivalName)
 	}
@@ -212,9 +259,26 @@ func (hs *HolidayService) IsWorkDay(year, month, day int) bool {
 	return false
 }
 
-func (hs *HolidayService) getTraditionalFestival(month, day int, isLeapMonth bool, year int) string {
+// getTraditionalFestival 传统节日判定。
+//
+// 参数是具体的农历日，而非拆开的月/日：除夕判定需要「腊月共几天」，
+// 而腊月可能是 29 天也可能是 30 天（docs/29 B3）。原来固定匹配 {12, 30}，
+// 在腊月小月的年份里除夕会整年识别不到 —— 该年 12 月 29 日既不是腊八节
+// 也不是任何节日，直接落回「非节假日」，排盘结果按普通工作日处理。
+func (hs *HolidayService) getTraditionalFestival(lunarDay tyme.LunarDay) string {
+	month := lunarDay.GetLunarMonth()
+	monthNum := month.GetMonth()
+	dayNum := lunarDay.GetDay()
+	isLeapMonth := month.IsLeap()
+
+	// 闰月不算传统节日（与原实现一致）
 	if isLeapMonth {
 		return ""
+	}
+
+	// 除夕 = 腊月最后一天，大小月都算。先于下表判定，避免被固定日期表误伤。
+	if monthNum == 12 && dayNum == month.GetDayCount() {
+		return "除夕"
 	}
 
 	festivals := map[string]struct {
@@ -231,11 +295,10 @@ func (hs *HolidayService) getTraditionalFestival(month, day int, isLeapMonth boo
 		"中秋节": {8, 15},
 		"重阳节": {9, 9},
 		"腊八节": {12, 8},
-		"除夕":   {12, 30},
 	}
 
 	for name, info := range festivals {
-		if info.month == month && info.day == day {
+		if info.month == monthNum && info.day == dayNum {
 			return name
 		}
 	}
@@ -387,28 +450,28 @@ func (hs *HolidayService) getSolarTerm(year, month, day int) string {
 	return solarTime.GetTerm().GetName()
 }
 
-func (hs *HolidayService) getDaysUntilNextHoliday(year, month, day int) int {
+// findNextHoliday 从指定日期起向后查找最近的一个节假日（docs/29 B4）
+//
+// 此前 getDaysUntilNextHoliday 与 getNextHoliday 是两段逐字重复的 365 次
+// 逐日轮询，GetHolidayInfo 单次调用要跑满 730 次日期判定，而两者的答案
+// 必然来自同一个日期 —— 纯重复计算。
+//
+// 现合并为一次轮询同时产出「距今天数」与「名称 (日期)」，循环次数减半；
+// 叠加 GetHoliday 的按日期缓存后，重复查询退化为纯 map 查找。
+//
+// 返回值约定与原实现保持一致：一年内无节假日时返回 (-1, "")。
+func (hs *HolidayService) findNextHoliday(year, month, day int) (int, string) {
+	base := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.Local)
 	for offset := 1; offset <= 365; offset++ {
-		futureDate := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.Local).AddDate(0, 0, offset)
+		futureDate := base.AddDate(0, 0, offset)
 
-		if holiday, err := hs.GetHoliday(futureDate.Year(), int(futureDate.Month()), futureDate.Day()); err == nil {
-			if holiday.Name != "" {
-				return offset
-			}
+		holiday, err := hs.GetHoliday(futureDate.Year(), int(futureDate.Month()), futureDate.Day())
+		if err != nil {
+			continue
+		}
+		if holiday.Name != "" {
+			return offset, fmt.Sprintf("%s (%s)", holiday.Name, holiday.Date)
 		}
 	}
-	return -1
-}
-
-func (hs *HolidayService) getNextHoliday(year, month, day int) string {
-	for offset := 1; offset <= 365; offset++ {
-		futureDate := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.Local).AddDate(0, 0, offset)
-
-		if holiday, err := hs.GetHoliday(futureDate.Year(), int(futureDate.Month()), futureDate.Day()); err == nil {
-			if holiday.Name != "" {
-				return fmt.Sprintf("%s (%s)", holiday.Name, holiday.Date)
-			}
-		}
-	}
-	return ""
+	return -1, ""
 }

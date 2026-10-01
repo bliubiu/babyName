@@ -24,7 +24,7 @@ func IsCommonChar(char string) bool {
 	if _, ok := RareChars[char]; ok {
 		return false
 	}
-	if data, ok := HanziData[char]; ok {
+	if data, ok := GetHanzi(char); ok {
 		return data.Strokes <= 25
 	}
 	return true
@@ -135,7 +135,14 @@ func LoadWordData(dir string) error {
 //  3. 部首映射表计算 — 仅对空值兜底
 //
 // 必须在 HanziData 填充完毕（JSON 加载后）调用
+//
+// 锁约定（docs/29 B9）：本函数会写 HanziData，必须持有 mu 写锁。
+// 调用方在填充循环的 mu.Unlock() 之后调用，不得在持锁状态下调用，
+// 否则 RWMutex 不可重入会自死锁。
 func ApplyWuxingOverrides() {
+	mu.Lock()
+	defer mu.Unlock()
+
 	for char, data := range HanziData {
 		// 1. 覆盖表优先（字义法）
 		if wx, ok := CharacterWuxingOverride[char]; ok {

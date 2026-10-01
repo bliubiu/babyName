@@ -138,6 +138,7 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 			IncludePoetry:   req.IncludePoetry,
 			IncludeClassic:  req.IncludeClassic,
 			MeaningKeywords: req.MeaningKeywords,
+			RequiredChars:   req.SelectedChars,
 			PinyinInitial:   req.PinyinInitial,
 			ExtraChars:      s.resolveExtraChars(req),
 		},
@@ -501,7 +502,7 @@ func (s *FateNameService) resolveExtraChars(req *GenerateRequest) []*fate.Charac
 			continue
 		}
 		seen[cn] = true
-		h, ok := hanzi.HanziData[cn]
+		h, ok := hanzi.GetHanzi(cn)
 		if !ok {
 			continue
 		}

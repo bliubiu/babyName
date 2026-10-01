@@ -34,22 +34,37 @@ func NewFavoriteHandler(service services.FavoriteServiceInterface) *FavoriteHand
 
 // GetFavorites 获取收藏列表
 // @Summary 获取收藏列表
-// @Description 获取所有收藏记录
+// @Description 分页获取收藏记录（limit 上限 100）
 // @Tags 收藏
 // @Accept json
 // @Produce json
-// @Success 200 {array} services.FavoriteRecord "成功"
+// @Param page query int false "页码，默认1"
+// @Param limit query int false "每页数量，默认100，上限100"
+// @Success 200 {object} object "成功，包含 data/records、total、page、limit"
+// @Failure 400 {object} response.Response "请求参数错误"
 // @Failure 500 {object} response.Response "服务器内部错误"
 // @Router /favorites [get]
 func (h *FavoriteHandler) GetFavorites(c *gin.Context) {
-	result, err := h.service.GetFavorites(c.Request.Context())
+	page, limit, ok := parsePagination(c, maxPageSize)
+	if !ok {
+		return
+	}
+
+	records, total, err := h.service.GetFavoritesPage(c.Request.Context(), page, limit)
 	if err != nil {
 		logger.Error("GetFavorites: failed", zap.Error(err))
 		response.ErrorJSON(c, 500, "获取收藏列表失败")
 		return
 	}
 
-	response.SuccessJSON(c, result)
+	// data 字段保持为记录数组（与旧契约兼容），另附分页元信息
+	response.SuccessJSON(c, gin.H{
+		"data":    records,
+		"records": records,
+		"total":   total,
+		"page":    page,
+		"limit":   limit,
+	})
 }
 
 // SaveFavorite 保存收藏

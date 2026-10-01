@@ -674,7 +674,7 @@ func (s *Store) GetZodiacs() []zodiac.Zodiac {
 // --- HanziStore ---
 
 func (s *Store) GetHanziByChar(char string) *database.Hanzi {
-	if h, ok := hanzi.HanziData[char]; ok {
+	if h, ok := hanzi.GetHanzi(char); ok {
 		return &database.Hanzi{
 			Char:    h.Char,
 			Pinyin:  h.Pinyin,
@@ -1112,7 +1112,7 @@ func mustMarshalJSON(v interface{}) string {
 func (s *Store) SearchHanziByFilter(
 	wuxing string, minStrokes, maxStrokes int,
 	hasPositive, isRegular bool, chars []string, limit int,
-) []*database.Hanzi {
+) ([]*database.Hanzi, error) {
 	var conditions []string
 	var args []any
 
@@ -1156,8 +1156,10 @@ func (s *Store) SearchHanziByFilter(
 
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
+		// 必须上抛而不是返回 nil：nil 会被上层判成「无匹配」，
+		// 使注释承诺的「SQL 失败降级 Go 端全表过滤」路径永不可达（docs/29 B8）
 		logger.Error("SearchHanziByFilter 查询失败", logger.ErrField(err))
-		return nil
+		return nil, fmt.Errorf("SearchHanziByFilter 查询失败: %w", err)
 	}
 	defer rows.Close()
 
@@ -1171,7 +1173,12 @@ func (s *Store) SearchHanziByFilter(
 		}
 		result = append(result, &h)
 	}
-	return result
+	// rows.Err 覆盖迭代中途的 IO/解码错误：不查就等于把截断结果当正常取完
+	if err := rows.Err(); err != nil {
+		logger.Error("SearchHanziByFilter 迭代失败", logger.ErrField(err))
+		return nil, fmt.Errorf("SearchHanziByFilter 迭代失败: %w", err)
+	}
+	return result, nil
 }
 
 // --- NameStatStore 占位实现 ---

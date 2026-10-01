@@ -333,7 +333,7 @@ func (s *Store) GetZodiacs() []zodiac.Zodiac {
 // --- HanziStore (memory mode 使用内存汉字库) ---
 
 func (s *Store) GetHanziByChar(char string) *database.Hanzi {
-	if h, ok := hanzi.HanziData[char]; ok {
+	if h, ok := hanzi.GetHanzi(char); ok {
 		return &database.Hanzi{
 			Char:    h.Char,
 			Pinyin:  h.Pinyin,

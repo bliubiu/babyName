@@ -132,7 +132,11 @@ type GenerateRequest struct {
 	IncludePoetry   bool     `json:"include_poetry"`
 	IncludeClassic  bool     `json:"include_classic"`
 	MeaningKeywords []string `json:"meaning_keywords"`
-	PinyinInitial   string   `json:"pinyin_initial"`
+	// SelectedChars 前端「按偏旁选字」点选的用字（结构化通道）。
+	// 早前前端把它拼成 "包含字：木木" 混进 meaning_keywords 文本发送，
+	// 而后端从未读取任何偏旁信息 —— 该功能实际从未生效（docs/29 A9）。
+	SelectedChars  []string `json:"selected_chars"`
+	PinyinInitial  string   `json:"pinyin_initial"`
 
 	// 避讳长辈：父系/母系直系长辈姓名（建议往上两代）
 	// 生成名字时排除同形字与同音字，避免"压运"
@@ -351,6 +355,7 @@ func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateReq
 			IncludePoetry:   req.IncludePoetry,
 			IncludeClassic:  req.IncludeClassic,
 			MeaningKeywords: req.MeaningKeywords,
+			RequiredChars:   req.SelectedChars,
 			PinyinInitial:   req.PinyinInitial,
 			ExtraChars:      extraChars,
 		},

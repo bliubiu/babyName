@@ -181,7 +181,10 @@ func TestSQLiteHanziFilterBasicParams(t *testing.T) {
 	store := mustSetupStore(t)
 
 	t.Run("单条件-五行", func(t *testing.T) {
-		rows := store.SearchHanziByFilter("金", 0, 0, false, false, nil, 0)
+		rows, err := store.SearchHanziByFilter("金", 0, 0, false, false, nil, 0)
+		if err != nil {
+			t.Fatalf("查询失败: %v", err)
+		}
 		if len(rows) == 0 {
 			t.Fatal("金行 SQL 应返回字，实际 0")
 		}
@@ -193,7 +196,10 @@ func TestSQLiteHanziFilterBasicParams(t *testing.T) {
 	})
 
 	t.Run("组合条件-五行+笔画+常用字", func(t *testing.T) {
-		rows := store.SearchHanziByFilter("水", 5, 12, false, true, nil, 100)
+		rows, err := store.SearchHanziByFilter("水", 5, 12, false, true, nil, 100)
+		if err != nil {
+			t.Fatalf("查询失败: %v", err)
+		}
 		for _, h := range rows {
 			if h.Wuxing != "水" {
 				t.Errorf("字=%q 应属水行，实际 %q", h.Char, h.Wuxing)
@@ -208,8 +214,11 @@ func TestSQLiteHanziFilterBasicParams(t *testing.T) {
 	})
 
 	t.Run("限制字列表", func(t *testing.T) {
-		rows := store.SearchHanziByFilter("", 0, 0, false, false,
+		rows, err := store.SearchHanziByFilter("", 0, 0, false, false,
 			[]string{"王", "李", "张"}, 0)
+		if err != nil {
+			t.Fatalf("查询失败: %v", err)
+		}
 		if len(rows) != 3 {
 			t.Errorf("限制字列表应返回 3 条，实际 %d", len(rows))
 		}
@@ -225,7 +234,10 @@ func TestSQLiteHanziFilterBasicParams(t *testing.T) {
 	})
 
 	t.Run("positive_score 过滤", func(t *testing.T) {
-		rows := store.SearchHanziByFilter("", 0, 0, true, false, nil, 0)
+		rows, err := store.SearchHanziByFilter("", 0, 0, true, false, nil, 0)
+		if err != nil {
+			t.Fatalf("查询失败: %v", err)
+		}
 		if len(rows) == 0 {
 			t.Fatal("positive_score > 0 应有字，实际 0")
 		}
@@ -233,7 +245,10 @@ func TestSQLiteHanziFilterBasicParams(t *testing.T) {
 	})
 
 	t.Run("空条件返回全表（Limit 默认 10000）", func(t *testing.T) {
-		rows := store.SearchHanziByFilter("", 0, 0, false, false, nil, 0)
+		rows, err := store.SearchHanziByFilter("", 0, 0, false, false, nil, 0)
+		if err != nil {
+			t.Fatalf("查询失败: %v", err)
+		}
 		if len(rows) == 0 {
 			t.Fatal("空条件应返回全表，实际 0")
 		}

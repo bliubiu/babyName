@@ -170,6 +170,9 @@ type GenerateOptions struct {
 	IncludePoetry      bool
 	IncludeClassic     bool
 	MeaningKeywords    []string
+	// RequiredChars 用户显式点选的用字（前端「按偏旁选字」）。
+	// 与 MeaningKeywords 一并透传给 fate 引擎（docs/29 A9）。
+	RequiredChars      []string
 	PinyinInitial      string
 	GenerationPosition string
 	NameType           string
@@ -238,7 +241,7 @@ func GetPoetryNames(gender string, source string) []string {
 // 优先级：1. HanziData（JSON 数据源，覆盖 5000+ 汉字） 2. 硬编码常见字兜底
 func GetPinyin(char string) string {
 	// 1. 优先从 HanziData 查询（来自 hanzi.json，含完整拼音数据）
-	if h, ok := hanzi.HanziData[char]; ok && h.Pinyin != "" {
+	if h, ok := hanzi.GetHanzi(char); ok && h.Pinyin != "" {
 		return h.Pinyin
 	}
 

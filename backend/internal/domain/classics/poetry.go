@@ -320,11 +320,11 @@ func GetPoetryCharList(source string) []PoetryChar {
 			allChars = append(allChars, ps.Chars...)
 		}
 		// 追加从全文提取的数据
-		allChars = append(allChars, ShijingExtracted...)
-		allChars = append(allChars, ChuciExtracted...)
-		allChars = append(allChars, GuwenGuanzhiExtracted...)
+		allChars = append(allChars, copyExtracted(&ShijingExtracted)...)
+		allChars = append(allChars, copyExtracted(&ChuciExtracted)...)
+		allChars = append(allChars, copyExtracted(&GuwenGuanzhiExtracted)...)
 		ensureShiCiLoaded()
-		allChars = append(allChars, ShiCiExtracted...)
+		allChars = append(allChars, copyExtracted(&ShiCiExtracted)...)
 		allChars = appendAllExtracted(allChars)
 		return allChars
 	}
@@ -337,58 +337,61 @@ func GetPoetryCharList(source string) []PoetryChar {
 	// 再从提取数据获取
 	switch source {
 	case "诗经":
-		return ShijingExtracted
+		return copyExtracted(&ShijingExtracted)
 	case "楚辞":
-		return ChuciExtracted
+		return copyExtracted(&ChuciExtracted)
 	case "古文观止":
-		return GuwenGuanzhiExtracted
+		return copyExtracted(&GuwenGuanzhiExtracted)
 	case "唐诗宋词":
 		ensureShiCiLoaded()
-		return ShiCiExtracted
+		return copyExtracted(&ShiCiExtracted)
 	case "论语":
-		return LunyuExtracted
+		return copyExtracted(&LunyuExtracted)
 	case "孟子":
-		return MengziExtracted
+		return copyExtracted(&MengziExtracted)
 	case "大学":
-		return DaxueExtracted
+		return copyExtracted(&DaxueExtracted)
 	case "中庸":
-		return ZhongyongExtracted
+		return copyExtracted(&ZhongyongExtracted)
 	case "三字经":
-		return SanzijingExtracted
+		return copyExtracted(&SanzijingExtracted)
 	case "千字文":
-		return QianziwenExtracted
+		return copyExtracted(&QianziwenExtracted)
 	case "弟子规":
-		return DiziguiExtracted
+		return copyExtracted(&DiziguiExtracted)
 	case "幼学琼林":
-		return YouxueqionglinExtracted
+		return copyExtracted(&YouxueqionglinExtracted)
 	case "增广贤文":
-		return ZengguangxianwenExtracted
+		return copyExtracted(&ZengguangxianwenExtracted)
 	case "声律启蒙":
-		return ShenglvqimengExtracted
+		return copyExtracted(&ShenglvqimengExtracted)
 	case "朱子家训":
-		return ZhuzijiaxunExtracted
+		return copyExtracted(&ZhuzijiaxunExtracted)
 	case "千家诗":
-		return QianjiashiExtracted
+		return copyExtracted(&QianjiashiExtracted)
 	case "文字蒙求":
-		return WenzimengqiuExtracted
+		return copyExtracted(&WenzimengqiuExtracted)
 	case "百家姓":
-		return BaijiaxingExtracted
+		return copyExtracted(&BaijiaxingExtracted)
 	}
 
 	return nil
 }
 
 // appendAllExtracted 追加 P2/P3 全部经典提取数据
+//
+// 统一走 copyExtracted 取快照（docs/29 B10）：这些全局 slice 由 loader 在
+// 写锁下整体替换，读侧裸读会在替换瞬间与写侧并发。
 func appendAllExtracted(chars []PoetryChar) []PoetryChar {
-	allExtracted := [][]PoetryChar{
-		LunyuExtracted, MengziExtracted, DaxueExtracted, ZhongyongExtracted,
-		SanzijingExtracted, QianziwenExtracted, DiziguiExtracted,
-		YouxueqionglinExtracted, ZengguangxianwenExtracted, ShenglvqimengExtracted,
-		ZhuzijiaxunExtracted, QianjiashiExtracted, WenzimengqiuExtracted,
-		BaijiaxingExtracted,
+	allExtracted := []*[]PoetryChar{
+		&LunyuExtracted, &MengziExtracted, &DaxueExtracted, &ZhongyongExtracted,
+		&SanzijingExtracted, &QianziwenExtracted, &DiziguiExtracted,
+		&YouxueqionglinExtracted, &ZengguangxianwenExtracted, &ShenglvqimengExtracted,
+		&ZhuzijiaxunExtracted, &QianjiashiExtracted, &WenzimengqiuExtracted,
+		&BaijiaxingExtracted,
 	}
 	for _, extracted := range allExtracted {
-		chars = append(chars, extracted...)
+		chars = append(chars, copyExtracted(extracted)...)
 	}
 	return chars
 }

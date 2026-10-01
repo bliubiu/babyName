@@ -130,7 +130,7 @@ func GetHexagramByPlumBlossom(surname, givenName1, givenName2 string) *PlumBloss
 		if char == "" {
 			return 0
 		}
-		if h, ok := hanzi.HanziData[char]; ok {
+		if h, ok := hanzi.GetHanzi(char); ok {
 			return h.Strokes
 		}
 		return 0

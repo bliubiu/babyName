@@ -592,6 +592,24 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		}
 	}
 
+	// 7.2 用户显式偏好生效：寓意关键词 + 偏旁选字（docs/29 A9）
+	//
+	// 缺陷背景：MeaningKeywords 此前只在服务层被赋值，engine/generator 无任何
+	// 读取点 —— 字段一路传递后即被丢弃，用户输入关键词与完全不输入的结果
+	// 一模一样，而 UI 明确承诺「起名将优先从此来源选字」。前端更把偏旁选字
+	// 拼成 "包含字：木木" 混进 keywords 文本发送，结构化通道从未被读取。
+	//
+	// 修法：把用户的显式偏好落到**候选池**上——这既让偏好真正可见（枚举是
+	// 全量 N×N、结果表按分数取 TopN，仅调整枚举顺序不足以影响输出），又不
+	// 改动评分器权重与分数语义（RateNameScore 的权重和恒为 1.0，不能加维度）。
+	//
+	// 语义：命中关键词字义/起名分类的字，以及用户点选的字，组成「偏好集」；
+	// 偏好集非空时把候选池收窄到偏好集（这才是「优先从此来源选字」）；
+	// 偏好集为空（关键词全不命中任何字）时放弃收窄，保持原有行为。
+	if narrowed := narrowPoolByPreference(validChars, input.Options.MeaningKeywords, input.Options.RequiredChars); narrowed != nil {
+		validChars = narrowed
+	}
+
 	// 7.1 候选池按汉字去重
 	//
 	// 重复汉字会让 (i, j) 组合在「名字」层面重复——同一 Char1+Char2 被枚举多次。
@@ -963,6 +981,77 @@ func firstPinyinForSurname(surname string, provider CharacterProvider) string {
 		return ""
 	}
 	return char.Pinyin[0]
+}
+
+// narrowPoolByPreference 按用户显式偏好收窄候选池（docs/29 A9）。
+//
+// 输入：
+//   - chars：已完成全部安全/质量过滤的候选池
+//   - keywords：用户在「个性补充」输入的寓意关键词
+//   - required：用户在「按偏旁选字」点选的用字
+//
+// 偏好集 = 命中任一关键词的字 ∪ 点选的字。命中判据（三者任一即可，命中面
+// 尽量贴近用户直觉）：
+//  1. 字本身等于关键词（如用户直接填了「森」）
+//  2. 字义 Meaning 含关键词（如「苍」→ 苍茫、苍劲）
+//  3. 起名分类 NamingCategory 含关键词（如「品德」「山水」）
+//
+// 返回值语义：
+//   - 非 nil：收窄后的偏好集（按原池顺序保留，字符顺序稳定 → 结果可复现）
+//   - nil  ：偏好集为空，调用方应放弃收窄、保持原候选池
+//
+// 为什么用收窄而不是加分：引擎对双名做的是全量 N×N 枚举，结果表按分数取
+// TopN；调整枚举顺序只能省算力，改不了输出。加一个打分维度又会破坏
+// RateNameScore 的「权重和为 1.0」前提，把偏好变成隐性加分项。故收窄是
+// 唯一既能让偏好真正出现在结果里、又不污染分数语义的做法。
+func narrowPoolByPreference(chars []*Character, keywords, required []string) []*Character {
+	// 关键词归一：去空白、跳过空串，避免 "a, b" 切分后残留的空关键词
+	// 把候选池误收窄成空集。
+	terms := make([]string, 0, len(keywords))
+	for _, kw := range keywords {
+		if kw = strings.TrimSpace(kw); kw != "" {
+			terms = append(terms, kw)
+		}
+	}
+
+	requiredSet := make(map[string]bool, len(required))
+	for _, ch := range required {
+		if ch = strings.TrimSpace(ch); ch != "" {
+			requiredSet[ch] = true
+		}
+	}
+
+	if len(terms) == 0 && len(requiredSet) == 0 {
+		return nil
+	}
+
+	narrowed := make([]*Character, 0, len(chars))
+	for _, c := range chars {
+		if requiredSet[c.Char] || matchesMeaningTerms(c, terms) {
+			narrowed = append(narrowed, c)
+		}
+	}
+	if len(narrowed) == 0 {
+		// 一个都没命中：不能把候选池清空（否则必然零结果），
+		// 交回 nil 让调用方保持原池。
+		return nil
+	}
+	return narrowed
+}
+
+// matchesMeaningTerms 判断候选字是否命中任一关键词
+func matchesMeaningTerms(c *Character, terms []string) bool {
+	for _, term := range terms {
+		if c.Char == term || strings.Contains(c.Meaning, term) {
+			return true
+		}
+		for _, cat := range c.NamingCategory {
+			if strings.Contains(cat, term) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // dedupCharsByName 按汉字去重候选池，保留首次出现。

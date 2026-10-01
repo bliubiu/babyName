@@ -42,6 +42,18 @@ var (
 	configFile   = flag.String("config", "", "配置文件路径 (默认: application.yml)")
 )
 
+// cwdDataDir 解析传统文化数据的目录（docs/29 B12）
+//
+// 优先级：DATA_DIR 环境变量 > 工作目录下的 data/。
+// docker-entrypoint.sh 按 DATA_DIR 播种字库，本函数与之保持同源；
+// 分离成独立函数是为了可被测试直接覆盖。
+func cwdDataDir(cwd string) string {
+	if dir := strings.TrimSpace(os.Getenv("DATA_DIR")); dir != "" {
+		return dir
+	}
+	return filepath.Join(cwd, "data")
+}
+
 func main() {
 	flag.Parse()
 
@@ -105,7 +117,13 @@ func main() {
 	cache.Init()
 
 	// 加载传统文化数据（从 JSON 文件）
-	dataDir := filepath.Join(cwd, "data")
+	//
+	// ★ docs/29 B12：原先固定 `filepath.Join(cwd, "data")`，但 compose 与
+	// docker-entrypoint.sh 都按 DATA_DIR 环境变量播种字库。两者不一致时，
+	// 字库被播种到 A 目录、应用却去 B 目录读 —— 服务正常启动、healthz 通过，
+	// 生成接口全部返回空结果。故此处以 DATA_DIR 为准（缺省才回落到 cwd/data），
+	// 让入口脚本与进程读同一个目录。
+	dataDir := cwdDataDir(cwd)
 
 	// 1. 加载传统文化数据（hanzi.json → 易经 → 诗词 → 生肖）
 	if err := loadCulturalData(dataDir); err != nil {

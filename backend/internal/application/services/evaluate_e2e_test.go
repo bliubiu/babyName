@@ -224,7 +224,7 @@ func TestTaskService_E2E_SubmitAndPoll(t *testing.T) {
 	svc := setupNameServiceE2E(t)
 	ts := NewTaskService(svc)
 
-	taskID := ts.Submit(&GenerateRequest{
+	taskID, err := ts.Submit(&GenerateRequest{
 		Surname:    "王",
 		Gender:     "male",
 		BirthYear:  2024,
@@ -233,6 +233,9 @@ func TestTaskService_E2E_SubmitAndPoll(t *testing.T) {
 		BirthHour:  12,
 		NameLength: 2,
 	})
+	if err != nil {
+		t.Fatalf("提交任务失败: %v", err)
+	}
 	if taskID == "" {
 		t.Fatal("task_id 不应为空")
 	}

@@ -147,13 +147,19 @@ type HanziDataProvider struct {
 // 返回结果为 []database.Hanzi（只承载粗筛维度），FindCharacters 收到候选后
 // 以内存 hanzi.HanziData 回查补全完整属性。
 type SQLHanziFilter interface {
-	// SearchHanziByFilter 按过滤条件返回 SQL 查询结果
+	// SearchHanziByFilter 按过滤条件返回 SQL 查询结果。
+	//
+	// 必须返回 error（docs/29 B8）：此前签名只有返回值，SQL 查询出错时
+	// store 返回 nil，FindCharacters 判空后当成「SQL 正常但无匹配」，
+	// 于是注释里承诺的「SQL 失败降级 Go 端全表过滤」路径永远不可达 ——
+	// 基础设施故障被伪装成业务空结果（生成不出名字，却看不出是 DB 挂了）。
+	// 返回 nil slice + nil error 表示「查询成功且确实无匹配」，两者必须可区分。
 	SearchHanziByFilter(wuxing string, minStrokes, maxStrokes int,
-		hasPositive, isRegular bool, chars []string, limit int) []database.Hanzi
+		hasPositive, isRegular bool, chars []string, limit int) ([]database.Hanzi, error)
 }
 
 func (p *HanziDataProvider) GetCharacter(char string) (*fate.Character, error) {
-	h, ok := hanzi.HanziData[char]
+	h, ok := hanzi.GetHanzi(char)
 	if !ok {
 		return nil, nil
 	}
@@ -173,7 +179,7 @@ func (p *HanziDataProvider) FindCharacters(query fate.CharacterQuery) ([]*fate.C
 			// Radical/Meaning/Gender 等完整属性回查内存补全，避免 SQL 路径劣化评分质量。
 			result := make([]*fate.Character, 0, len(hanzis))
 			for i := range hanzis {
-				full, ok := hanzi.HanziData[hanzis[i].Char]
+				full, ok := hanzi.GetHanzi(hanzis[i].Char)
 				if !ok {
 					continue
 				}
@@ -357,7 +363,7 @@ type filterPattern struct {
 
 // getStroke 获取单字笔画
 func getStroke(char string) int {
-	if h, ok := hanzi.HanziData[char]; ok {
+	if h, ok := hanzi.GetHanzi(char); ok {
 		return h.Strokes
 	}
 	return 0
@@ -523,11 +529,15 @@ func (p *HanziDataProvider) queryViaSQL(pat filterPattern) ([]database.Hanzi, er
 	if len(pat.wuxingIn) == 1 {
 		wuxing = pat.wuxingIn[0]
 	}
-	hanzis := p.sqlFilter.SearchHanziByFilter(
+	hanzis, err := p.sqlFilter.SearchHanziByFilter(
 		wuxing, pat.strokeGTE, pat.strokeLTE,
 		false, false, pat.charIn, 10000,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("SQL 汉字筛选失败: %w", err)
+	}
 	if len(hanzis) == 0 {
+		// 查询成功且确实无匹配 —— 与上面的失败路径必须可区分（docs/29 B8）
 		return hanzis, nil
 	}
 
@@ -536,7 +546,7 @@ func (p *HanziDataProvider) queryViaSQL(pat filterPattern) ([]database.Hanzi, er
 	for i := range hanzis {
 		h := &hanzis[i]
 		// 字段以内存全量数据为准（SQL 表无 gender/categories/radical 等列）
-		full, ok := hanzi.HanziData[h.Char]
+		full, ok := hanzi.GetHanzi(h.Char)
 		if !ok {
 			continue
 		}
@@ -584,7 +594,7 @@ func (p *HanziDataProvider) queryViaSQL(pat filterPattern) ([]database.Hanzi, er
 // 桥接，使 services 包只需 database.Hanzi 数据 + 基础过滤条件。
 type SQLiteCharStore interface {
 	SearchHanziByFilter(wuxing string, minStrokes, maxStrokes int,
-		hasPositive, isRegular bool, chars []string, limit int) []*database.Hanzi
+		hasPositive, isRegular bool, chars []string, limit int) ([]*database.Hanzi, error)
 }
 
 // sqliteHanziFilterAdapter 桥接实现：把 SQLHanziFilter 调用转给 sqlite.Store
@@ -613,20 +623,24 @@ func NewSQLiteHanziFilter(store SQLiteCharStore) SQLHanziFilter {
 func (a *sqliteHanziFilterAdapter) SearchHanziByFilter(
 	wuxing string, minStrokes, maxStrokes int,
 	hasPositive, isRegular bool, chars []string, limit int,
-) []database.Hanzi {
+) ([]database.Hanzi, error) {
 	if a.store == nil {
-		return nil
+		return nil, fmt.Errorf("底层 store 未注入")
 	}
 	// 调底层 store 拿到 []*database.Hanzi，转 []database.Hanzi 返回
-	raw := a.store.SearchHanziByFilter(
+	raw, err := a.store.SearchHanziByFilter(
 		wuxing, minStrokes, maxStrokes,
 		hasPositive, isRegular, chars, limit,
 	)
+	if err != nil {
+		// 错误必须上抛，让 FindCharacters 走 Go 端降级路径（docs/29 B8）
+		return nil, err
+	}
 	result := make([]database.Hanzi, 0, len(raw))
 	for i := range raw {
 		result = append(result, *raw[i])
 	}
-	return result
+	return result, nil
 }
 
 // 接口守卫：sqliteHanziFilterAdapter 必须实现 SQLHanziFilter
