@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -163,8 +162,9 @@ func CORSMiddlewareWithConfig(config CORSConfig) gin.HandlerFunc {
 		allowOrigin := ""
 
 		// 计算允许的 Origin：
-		// - 配置包含 "*" 且未启用凭据：使用通配符 *
-		// - 配置包含 "*" 且启用凭据：必须回显具体 Origin（W3C CORS 规范禁止 * 与 credentials 同用）
+		// - 配置包含 "*"：一律使用通配符 *。通配 + 凭据本是 docs/28 W1 的
+		//   漏洞形态（任意源可带凭据跨域读写），此处不再为它开「回显任意
+		//   Origin」的口子——通配模式下凭据响应头一律不发送（下方 ACAC 分支）。
 		// - 配置为白名单：仅匹配时回显具体 Origin
 		wildcard := false
 		for _, o := range config.AllowOrigins {
@@ -174,15 +174,8 @@ func CORSMiddlewareWithConfig(config CORSConfig) gin.HandlerFunc {
 			}
 		}
 
-		if wildcard && !config.AllowCredentials {
+		if wildcard {
 			allowOrigin = "*"
-		} else if wildcard && config.AllowCredentials {
-			// 凭据模式下回显请求 Origin（浏览器要求）
-			if origin != "" {
-				allowOrigin = origin
-			} else {
-				allowOrigin = "*"
-			}
 		} else {
 			for _, o := range config.AllowOrigins {
 				if o == origin && origin != "" {
@@ -195,7 +188,14 @@ func CORSMiddlewareWithConfig(config CORSConfig) gin.HandlerFunc {
 		if allowOrigin != "" {
 			c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		}
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", fmt.Sprintf("%v", config.AllowCredentials))
+		// 仅在确实放行了具体 Origin 时才声明允许凭据：
+		// 无 ACAO 时发 ACAC 属规范不符；ACAO:* 与 ACAC:true 同发违反 W3C
+		// （浏览器会忽略，但会误导运维以为凭据跨域可用，docs/29 P3#7）
+		if allowOrigin != "" && allowOrigin != "*" && config.AllowCredentials {
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		} else {
+			c.Writer.Header().Del("Access-Control-Allow-Credentials")
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Headers", defaultAllowHeaders)
 		c.Writer.Header().Set("Access-Control-Allow-Methods", defaultAllowMethods)
 		// 配合 Allow-Credentials 时，Vary 必须包含 Origin，避免 CDN/代理缓存错乱

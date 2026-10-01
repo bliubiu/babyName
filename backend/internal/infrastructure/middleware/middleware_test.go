@@ -185,3 +185,48 @@ func TestCORSPreflightReturns204(t *testing.T) {
 		t.Errorf("OPTIONS 预检应返回 204，实际 %d", w.Code)
 	}
 }
+
+// TestCORSMismatchedOriginGetsNoCredentialsHeader docs/29 P3#7 回归：
+// Origin 未命中白名单时不得出现 Access-Control-Allow-Credentials，
+// 且不得回显 Access-Control-Allow-Origin。
+func TestCORSMismatchedOriginGetsNoCredentialsHeader(t *testing.T) {
+	r := setupGin(t)
+	r.Use(CORSMiddleware())
+	r.GET("/", func(c *gin.Context) { c.String(200, "ok") })
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Origin", "http://evil.example.com")
+	r.ServeHTTP(w, req)
+
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("非白名单 Origin 不应拿到 ACAO，实际 %q", got)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Credentials"); got != "" {
+		t.Errorf("未放行时不应下发 ACAC，实际 %q", got)
+	}
+}
+
+// TestCORSWildcardNeverEchoesOriginWithCredentials docs/29 A10 关联回归：
+// 通配 + 凭据的危险组合（docs/28 W1 的漏洞形态）不得再走「回显任意
+// Origin」路径——一律返回 *，且不发送凭据头。
+func TestCORSWildcardNeverEchoesOriginWithCredentials(t *testing.T) {
+	r := setupGin(t)
+	r.Use(CORSMiddlewareWithConfig(CORSConfig{
+		AllowOrigins:     []string{"*"},
+		AllowCredentials: true,
+	}))
+	r.GET("/", func(c *gin.Context) { c.String(200, "ok") })
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Origin", "http://evil.example.com")
+	r.ServeHTTP(w, req)
+
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Errorf("通配模式 ACAO 应为 *，实际 %q", got)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Credentials"); got != "" {
+		t.Errorf("通配模式下不得发送 ACAC，实际 %q", got)
+	}
+}

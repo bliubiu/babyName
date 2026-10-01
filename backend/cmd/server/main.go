@@ -308,6 +308,18 @@ func newHandlers(svc *appServices, dataDir string) *appHandlers {
 func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store, rateCapacity, rateRate float64) (*gin.Engine, *middleware.IPRateLimiter) {
 	router := gin.New()
 
+	// 可信代理（docs/29 A10）：gin 默认信任所有代理并从 X-Forwarded-For
+	// 最左侧取 ClientIP，攻击者可伪造该头让每个请求落入新令牌桶，完全绕过
+	// IP 限流并污染访问日志。这里仅信任回环与内网段（nginx/容器网络所在），
+	// gin 会从右向左取第一个不可信地址——nginx 追加的真实客户端 IP 位于链首
+	// 伪造值之后，伪造值永远不会被选中；直连（无代理）时取 TCP 对端地址。
+	if err := router.SetTrustedProxies([]string{
+		"127.0.0.0/8", "::1",
+		"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+	}); err != nil {
+		logger.Warn("设置可信代理失败，使用 gin 默认（信任所有代理）", logger.ErrField(err))
+	}
+
 	// 全局中间件
 	router.Use(middleware.ZapLogger())
 	router.Use(middleware.ZapRecovery())
