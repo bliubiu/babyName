@@ -21,6 +21,10 @@ FROM base AS deps
 
 # 复制包管理文件 (利用缓存层)
 COPY package.json pnpm-lock.yaml* ./
+# pnpm-workspace.yaml 携带 allowBuilds（sharp 构建脚本审批）：
+# 不复制的话 pnpm 11 strictDepBuilds 下 install 直接失败
+# （ERR_PNPM_IGNORED_BUILDS，docs/30 §六）
+COPY pnpm-workspace.yaml ./
 # package.json 的 postinstall 指向 scripts/hoist-deps.mjs：
 # 缺该文件时 pnpm install 直接失败（Cannot find module，docs/30 §六）
 COPY scripts ./scripts
