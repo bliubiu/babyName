@@ -8,7 +8,10 @@
 FROM node:20-alpine AS base
 
 # 启用 Corepack 管理 pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# 版本必须固定：pnpm@latest 漂移到 12 后 YAML/锁文件行为变化会突然打破构建
+# （2026.10.01 实测 12.4.2 拒绝锁文件外的配置变化）；固定为与开发机一致的
+# 11.0.9（lockfileVersion 9.0）
+RUN corepack enable && corepack prepare pnpm@11.0.9 --activate
 
 # 设置工作目录
 WORKDIR /app

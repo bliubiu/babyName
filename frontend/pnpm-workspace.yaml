@@ -1,12 +1,10 @@
-allowBuilds:
-  '0': c
-  '1': o
-  '2': r
-  '3': e
-  '4': '-'
-  '5': j
-  '6': s
-  core-js: set this to true or false
-  sharp: true
-onlyBuiltDependencies: '[]'
-onlyBuiltDependenciesFile: ''
+# 依赖构建脚本审批（pnpm ≥10 默认拦截依赖自带的构建脚本）
+#
+# ★ 2026.10.01 修复：原文件被某次 approve-builds 交互写坏——"core-js" 被
+# 逐字符序列化为 allowBuilds['0']..'6']（c/o/r/e/-/j/s），另有
+# onlyBuiltDependencies: '[]'（字符串冒充序列）。pnpm 12 的 YAML 解析器
+# 直接拒绝该文件，docker build 在 builder 阶段报
+# "Failed to parse pnpm-workspace.yaml ... expected sequence start"。
+# 正确格式即下方列表；core-js 的 postinstall 仅打印捐赠提示，无需放行。
+onlyBuiltDependencies:
+  - sharp
