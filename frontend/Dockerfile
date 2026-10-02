@@ -18,6 +18,9 @@ FROM base AS deps
 
 # 复制包管理文件 (利用缓存层)
 COPY package.json pnpm-lock.yaml* ./
+# package.json 的 postinstall 指向 scripts/hoist-deps.mjs：
+# 缺该文件时 pnpm install 直接失败（Cannot find module，docs/30 §六）
+COPY scripts ./scripts
 
 # 安装依赖 (包含 devDependencies 用于构建)
 # --frozen-lockfile: 确保锁文件不被修改
