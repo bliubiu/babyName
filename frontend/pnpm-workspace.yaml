@@ -1,10 +1,12 @@
-# 依赖构建脚本审批（pnpm ≥10 默认拦截依赖自带的构建脚本）
+# 依赖构建脚本审批（docs/30 §六）
 #
-# ★ 2026.10.01 修复：原文件被某次 approve-builds 交互写坏——"core-js" 被
-# 逐字符序列化为 allowBuilds['0']..'6']（c/o/r/e/-/j/s），另有
-# onlyBuiltDependencies: '[]'（字符串冒充序列）。pnpm 12 的 YAML 解析器
-# 直接拒绝该文件，docker build 在 builder 阶段报
-# "Failed to parse pnpm-workspace.yaml ... expected sequence start"。
-# 正确格式即下方列表；core-js 的 postinstall 仅打印捐赠提示，无需放行。
-onlyBuiltDependencies:
-  - sharp
+# ★ pnpm 11 起以 allowBuilds 映射取代 onlyBuiltDependencies/neverBuiltDependencies
+#   等旧键，且 strictDepBuilds 默认开启——依赖存在未审批的构建脚本时
+#   pnpm install 直接失败（ERR_PNPM_IGNORED_BUILDS）。
+# ★ 2026.10.01 修复：原文件曾被一次 approve-builds 交互写坏——"core-js" 被
+#   逐字符序列化为 allowBuilds['0'..'6']（c/o/r/e/-/j/s），pnpm 12 的解析器
+#   直接拒绝该文件；修复期间一度误改回 onlyBuiltDependencies 列表，
+#   在 pnpm 11 下同样无效。正确格式即下方映射。
+#   core-js 的 postinstall 仅打印捐赠提示，显式拒绝（不列或 false）。
+allowBuilds:
+  sharp: true
