@@ -28,8 +28,11 @@ COPY scripts ./scripts
 # 安装依赖 (包含 devDependencies 用于构建)
 # --frozen-lockfile: 确保锁文件不被修改
 # --prod=false: 安装 devDependencies (构建需要)
-# 允许 sharp 运行构建脚本 (编译原生模块)
-RUN pnpm install --frozen-lockfile --prod=false
+# registry 走 npmmirror：部署环境（国内网络）直连 registry.npmjs.org 实测
+# 仅 ~10KiB/s，471 个包要数小时（2026.10.01 容器实测）；与后端构建的
+# GOPROXY=goproxy.cn 同一问题的同一解法
+RUN pnpm install --frozen-lockfile --prod=false \
+    --registry=https://registry.npmmirror.com
 
 # ===== 构建阶段 =====
 FROM base AS builder
