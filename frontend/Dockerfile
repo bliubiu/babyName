@@ -5,7 +5,7 @@
 # ============================================================
 
 # ===== 基础镜像 =====
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 
 # 启用 Corepack 管理 pnpm
 # 版本必须固定：pnpm@latest 漂移到 12 后 YAML/锁文件行为变化会突然打破构建
@@ -29,7 +29,7 @@ COPY scripts ./scripts
 # --frozen-lockfile: 确保锁文件不被修改
 # --prod=false: 安装 devDependencies (构建需要)
 # 允许 sharp 运行构建脚本 (编译原生模块)
-RUN pnpm approve-builds sharp && pnpm install --frozen-lockfile --prod=false
+RUN pnpm install --frozen-lockfile --prod=false
 
 # ===== 构建阶段 =====
 FROM base AS builder
@@ -46,7 +46,7 @@ ENV NODE_ENV=production
 
 # 构建应用
 # 输出: .next/standalone (server.js + 最小依赖) + .next/static (静态资源)
-RUN pnpm approve-builds sharp && pnpm run build
+RUN pnpm run build
 
 # ===== 运行阶段 =====
 FROM base AS runner
