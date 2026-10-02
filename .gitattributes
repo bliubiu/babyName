@@ -1,0 +1,12 @@
+# 行尾规范（docs/30 §六）
+# Windows 开发机 core.autocrlf=true 会把工作区与 git archive 输出转成 CRLF；
+# shell 脚本以 CRLF 进入镜像后 exec 报 "no such file or directory"
+# （解释器被解析为 /bin/sh\r）。以下类型一律 LF 入库与导出。
+*.sh text eol=lf
+*.conf text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.csv text eol=lf
+*.md text eol=lf
