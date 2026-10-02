@@ -76,6 +76,16 @@ scripts/
 *.bat
 *.ps1
 
+# ============================================================
+# 容器构建必需项（B12 容器实测发现，2026.10.01）
+# ============================================================
+# 上面排除了 scripts/，但 package.json 的 postinstall 依赖
+# scripts/hoist-deps.mjs —— 脚本缺失时 pnpm install 直接失败
+# （ERR_PNPM_EXECUTABLE_LIFECYCLE_SCRIPT_FAILED / exit 1），
+# 前端镜像从干净构建上下文根本装不出依赖。
+# dockerignore 后出现的规则优先，故反向规则必须放在文件末尾。
+!scripts/
+
 # 临时文件
 tmp/
 temp/
