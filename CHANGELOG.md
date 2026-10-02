@@ -5,6 +5,45 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.02.0]
+
+`docs/30` §六：**B12 容器实测**（192.168.10.180 Docker 环境）。在干净构建
+上下文上实测出 **11 处容器构建/启动缺陷（C1-C9）并全部修复**——此前
+「pnpm build 通过」的验证全部发生在已装好依赖的开发机上，镜像构建路径
+从未真正跑通过。
+
+### 🐛 Bug Fixes 问题修复
+
+- 【frontend/构建链】**C1-C6**：`.dockerignore` 排除 `scripts/` 与 deps 阶段
+  COPY 清单缺 `scripts/`、`pnpm-workspace.yaml` → postinstall/构建审批在容器内
+  全部失效；`pnpm-workspace.yaml` 被交互写坏（"core-js" 逐字符序列化）；
+  pnpm 基座不符（pnpm 11 需 Node ≥22.13 的 `node:sqlite`，基座却是 node:20）；
+  `pnpm@latest` 漂移到 12 即拒绝解析。修复：反向规则、deps 清单补齐、
+  固定 `pnpm@11.0.9`、基座 node:22、npmmirror 镜像源（直连 npmjs 实测
+  ~10KiB/s 不可用）、`allowBuilds: {sharp: true}`（pnpm 11 新键 +
+  strictDepBuilds 默认开启）。提交 `0011b83`/`1c760b9`/`13a3e55`/`21a684e`/
+  `afb7a73`/`3103060`/`2d6611b`
+- 【frontend/运行时】**C7/C7.5**：运行时阶段仍是 standalone 模式旧写法
+  （复制 `.next/standalone` + node server.js），而前端早已静态导出——
+  该目录不存在，构建必失败。改为 nginx:alpine 服务 `out/` 静态产物
+  （新增 nginx-frontend.conf，双栈监听 + 路由 HTML 直达 + 静态资源长缓存），
+  镜像 187MB → 63.8MB。提交 `8c8b32f`/`5c3f730`
+- 【repo/行尾】**C8**：Windows `core.autocrlf=true` 使 `git archive` 导出 CRLF，
+  `docker-entrypoint.sh` 的解释器被读成 `/bin/sh\r` → 后端容器 exec 失败
+  崩溃循环。新增 `.gitattributes` 强制脚本/配置类文件 LF。提交 `6ba7e40`
+- 【deploy/播种】**C9**：busybox cp 对 `cp -rn 目录/. 目标/` 静默不复制
+  （exit 0、零文件），叠加吞错后日志照印「已就绪」——播种假成功 → 配置缺失
+  → 默认 mode=all → 容器内 Fatal 重启循环。entrypoint 改逐项复制+逐项报错；
+  compose 补 `NAME_MODE=api`。提交 `361571e`
+
+### ✅ 实测验证
+
+- `docker compose build`：backend（256MB）/ frontend（63.8MB）双双成功
+- fresh-volume `up -d`：**frontend 容器 healthy**
+- backend 播种验证因 192.168.10.180 主机掉线暂缓，续验步骤见 `docs/30` §六
+- 部署前置（实测必需）：宿主挂载目录 `chown -R 1000:1000`；无证书时 nginx
+  因 ssl_certificate 缺失拒绝启动，需先放置证书
+
 ## [2026.10.01.2]
 
 `docs/29` **P3 摘要项批量处置**（补齐 `docs/30` §四第 4 条遗留）。验证口径：
