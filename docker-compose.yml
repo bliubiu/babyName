@@ -63,6 +63,10 @@ services:
       # 容器外（含 nginx）根本连不上，表现为「容器 healthy 但 502」。
       - NAME_SERVER_HOST=0.0.0.0
       - NAME_SERVER_PORT=${PORT:-8080}
+      # mode=api：本拓扑下静态页面由 frontend 容器（nginx 静态服务）提供，
+      # 后端只出 API。application.yml 种子里 mode=all 会让后端在容器内
+      # mkdir 静态目录——非 root 必然失败 → Fatal 重启循环（docs/30 §六）。
+      - NAME_MODE=api
       # 日志文件必须落在挂载卷内，否则写容器可写层，重启/重建即丢
       - NAME_LOG_LEVEL=${LOG_LEVEL:-info}
       - NAME_LOG_OUTPUT_PATH=${LOG_DIR:-/app/logs}/namer.log
