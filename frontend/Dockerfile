@@ -1,6 +1,6 @@
 # frontend/Dockerfile
 # ============================================================
-# 起名项目前端 - Next.js 多阶段构建 (Standalone 模式)
+# 起名项目前端 - Next.js 静态导出构建（out/ → nginx 静态服务）
 # 产物: 精简运行时镜像 (~120MB)
 # ============================================================
 
@@ -52,42 +52,21 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
 # 构建应用
-# 输出: .next/standalone (server.js + 最小依赖) + .next/static (静态资源)
+# 输出: out/（静态导出：HTML + _next/static 资源）
 RUN pnpm run build
 
 # ===== 运行阶段 =====
-FROM base AS runner
+# ★ 项目前端是静态导出（next.config: output:'export', distDir:'out'），
+#   产物为 out/ 下的纯静态文件——不存在 .next/standalone/server.js。
+#   旧运行时阶段按 standalone 模式复制 /app/.next/standalone，构建必失败
+#   （docs/30 §六）。此处仅用 nginx 提供静态服务（健康检查打 :3000），
+#   API 请求由外层 nginx 反代到后端，前端走同源相对路径。
+FROM nginx:alpine AS runner
 
-WORKDIR /app
+COPY --from=builder /app/out /usr/share/nginx/html
+COPY nginx-frontend.conf /etc/nginx/conf.d/default.conf
 
-# 运行时环境变量
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
-
-# 创建非 root 用户 (UID 1001)
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nextjs -u 1001
-
-# 复制公共资源
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-
-# 复制独立输出 (包含 server.js 和精简 node_modules)
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-
-# 复制静态资源 (不可变，可长期缓存)
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-
-# 切换到非 root 用户
-USER nextjs
-
-# 暴露端口
 EXPOSE 3000
 
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
-
-# 启动 Next.js 服务器
-CMD ["node", "server.js"]
