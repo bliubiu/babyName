@@ -238,35 +238,6 @@ function safeParseInt(value: unknown, defaultValue: number = 0): number {
   return defaultValue;
 }
 
-export async function generateNames(data: GenerateRequest): Promise<GenerateResponse> {
-  const processedData = {
-    ...data,
-    birth_year: safeParseInt(data.birth_year),
-    birth_month: safeParseInt(data.birth_month),
-    birth_day: safeParseInt(data.birth_day),
-    birth_hour: safeParseInt(data.birth_hour),
-    birth_minute: safeParseInt(data.birth_minute),
-  };
-
-  if (!processedData.surname || processedData.surname.trim() === '') {
-    throw new ValidationError('姓氏不能为空');
-  }
-
-  if (processedData.birth_year < 1900 || processedData.birth_year > 2100) {
-    throw new ValidationError('出生年份必须在1900-2100之间');
-  }
-
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/names/generate`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-    },
-    body: JSON.stringify(processedData),
-  });
-
-  return await handleResponse(response);
-}
-
 // --- 异步生成任务（长任务体验） ---
 
 /** 提交异步生成任务，立即返回 task_id（不阻塞等待引擎完成） */

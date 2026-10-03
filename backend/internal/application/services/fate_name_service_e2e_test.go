@@ -29,7 +29,6 @@ import (
 
 	"name/internal/domain/fate"
 	"name/internal/domain/name"
-	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/data"
 )
 
@@ -69,7 +68,6 @@ func setupFateNameServiceE2E(t *testing.T) *FateNameService {
 		}
 
 		// 4. 装配 fate 引擎 + FateNameService
-		cache.Init()
 		fateEngine := fate.NewEngine(&HanziDataProvider{}, NewBaziAnalyzerAdapter(), fate.DefaultRaters())
 		fateServiceE2E = NewFateNameService(fateEngine,
 			WithFateBaziAnalyzer(&BaziAdapter{}),

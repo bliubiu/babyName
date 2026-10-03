@@ -130,6 +130,22 @@ func (a *ZodiacAdapter) FindByYear(year int) string {
 
 // --> fate 包适配器
 
+
+//
+
+
+
+
+// NewHanziDataProvider 汉字 CharacterProvider 的**唯一构造点**。
+//
+
+
+
+
+func NewHanziDataProvider() *HanziDataProvider {
+	return &HanziDataProvider{}
+}
+
 // HanziDataProvider 基于 hanzi.HanziData 的 CharacterProvider 实现
 //
 // FindCharacters 默认走 Go 端全表过滤；如配置了 WithSQLiteFilter，则优先走

@@ -5,6 +5,45 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.02.1]
+
+`docs/30` §七：**死代码专项与卫生收尾**（清偿 §五「仍余」与 §四遗留 2/4）。
+验证口径：后端 `go build`/`go vet`/`go test` **21 包全绿**（少 1 包系删除的
+namestatistics 自带测试）；前端 tsc 0 错误、vitest 45/45、lint 0 errors。
+
+### 🗑 Deprecated 废弃功能
+
+- 【hanzi/数据】`LoadFromJSON` 合并语义定案并注释固化（B9）：**按键覆盖合并
+  （upsert）、不删除旧键**——内存中还有非 JSON 来源注入数据（kangxi 回填/
+  分类同步/AddNamingChar），整体替换会冲掉它们；删除语义缺失仅影响无生产
+  调用方的热更新场景
+- 【config/依赖】I2 mongo-driver indirect 定案为良性：`go mod why` 证实不参与
+  构建，tidy 零改动，属依赖图一致性元数据
+
+### 📈 Improvements 性能/体验优化
+
+- 【fate/性能】FrequencyRater 补 `skipDetail` 支持：全部 8 个 Rater 中唯一
+  漏网者，此前双名 N² 枚举热路径无条件 `fmt.Sprintf`+`Join`，使
+  「枚举期跳过文案构造」的优化（省 22% CPU）对频率维度失效
+- 【frontend/筛选】NameFilter 笔画区间 min≤max 自愈（改 min 抬高 max、
+  改 max 压低 min），杜绝 min=20/max=5 的恒空矛盾筛选
+- 【fate/注释】6 处注释阈值漂移修正（>=85 → >=90，与代码实际一致）
+- 【bazi/取象】五行计数转字符改 `strconv.Itoa`：加权计数 >9 时旧写法
+  输出 `:` 等乱码
+
+### 🔧 Dependencies 依赖更新 / 清理
+
+- 【I1】删除 `domain/namestatistics` 整包（零外部引用，含测试）
+- 【I9】四处裸构造 `&HanziDataProvider{}` 收敛为 `services.NewHanziDataProvider()`
+  唯一构造点（测名/探索/卦象/笔画回查 + namer-cli 同步装配），SQL 字库下沉
+  时单点切换，杜绝「同一次生成两套数据口径」
+- 【cache】生产死装配移除（server/namer-cli 的 `cache.Init/GetCache/Close`、
+  `NameService.cache` 字段与 `WithCache` 选项、`newServices` 签名收窄）——
+  `s.cache` 零读取，每分钟清理协程纯空转；`cache` 包保留（单测有效，
+  测试辅助仍在用）
+- 【data】删除 `fileCache` 死代码（注释宣称的「热更新比对」从未实现）
+- 【frontend】删除零引用的 `types/api/zodiacs.ts` 与同步版 `generateNames`
+
 ## [2026.10.02.0]
 
 `docs/30` §六：**B12 容器实测**（192.168.10.180 Docker 环境）。在干净构建

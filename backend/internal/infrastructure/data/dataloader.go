@@ -7,7 +7,6 @@ package data
 
 import (
 	"fmt"
-	"sync"
 
 	"name/internal/domain/classics"
 	"name/internal/domain/fate"
@@ -15,14 +14,6 @@ import (
 	"name/internal/domain/yijing"
 	"name/internal/domain/zodiac"
 )
-
-// 全局缓存：文件名 → 原始字节（支持热更新比对）
-type fileCache struct {
-	mu   sync.RWMutex
-	data map[string][]byte
-}
-
-var cache = &fileCache{data: make(map[string][]byte)}
 
 // Init 统一加载所有JSON数据文件
 // 按依赖顺序加载：kangxi → namer → yijing → classic → zodiac → 门禁 → 禁忌组合

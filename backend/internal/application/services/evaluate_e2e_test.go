@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"name/internal/domain/fate"
-	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/data"
 )
 
@@ -39,7 +38,6 @@ func setupNameServiceE2E(t *testing.T) *NameService {
 		if curated := loadCuratedNamesForE2E(dataDir); len(curated) > 0 {
 			fate.SetCuratedNames(curated)
 		}
-		cache.Init()
 		fateEngine := fate.NewEngine(&HanziDataProvider{}, NewBaziAnalyzerAdapter(), fate.DefaultRaters())
 		fateSvc := NewFateNameService(fateEngine,
 			WithFateBaziAnalyzer(&BaziAdapter{}),
@@ -51,7 +49,6 @@ func setupNameServiceE2E(t *testing.T) *NameService {
 			WithHexagramFinder(&HexagramAdapter{}),
 			WithZiweiAnalyzer(&ZiweiAdapter{}),
 			WithZodiacFinder(&ZodiacAdapter{}),
-			WithCache(cache.GetCache()),
 			WithFateService(fateSvc),
 		)
 	})

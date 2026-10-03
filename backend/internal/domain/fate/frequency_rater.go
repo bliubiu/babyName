@@ -42,6 +42,11 @@ func (r *FrequencyRater) Rate(candidate *NameCandidate, _ *FateData) NameRating 
 		return NameRating{Score: 50, Detail: "人名频率数据未加载"}
 	}
 
+	// 热路径（skipDetail=true，双名 N² 枚举）跳过文案构造：
+	// 其余 Rater 均支持此优化，此处曾是唯一漏网者（docs/29 P3），
+	// 无条件 fmt.Sprintf+Join 使该优化对频率维度失效
+	wantDetails := !candidate.skipDetail
+
 	var details []string
 	var scores []float64
 
@@ -55,22 +60,24 @@ func (r *FrequencyRater) Rate(candidate *NameCandidate, _ *FateData) NameRating 
 	// 单名只看一个字
 	if candidate.Char2 == "" {
 		scores = append(scores, charScore1)
-		if tier1 > 0 {
+		switch {
+		case wantDetails && tier1 > 0:
 			details = append(details, fmt.Sprintf("「%s」频率Tier%d", candidate.Char1, tier1))
-		} else {
+		case wantDetails:
 			details = append(details, fmt.Sprintf("「%s」未收录", candidate.Char1))
 		}
 	} else {
 		// 双名取两字平均
 		avg := (charScore1 + charScore2) / 2
 		scores = append(scores, avg)
-		if tier1 > 0 && tier2 > 0 {
+		switch {
+		case wantDetails && tier1 > 0 && tier2 > 0:
 			details = append(details, fmt.Sprintf("「%s」Tier%d「%s」Tier%d", candidate.Char1, tier1, candidate.Char2, tier2))
-		} else if tier1 > 0 {
+		case wantDetails && tier1 > 0:
 			details = append(details, fmt.Sprintf("「%s」Tier%d「%s」未收录", candidate.Char1, tier1, candidate.Char2))
-		} else if tier2 > 0 {
+		case wantDetails && tier2 > 0:
 			details = append(details, fmt.Sprintf("「%s」未收录「%s」Tier%d", candidate.Char1, candidate.Char2, tier2))
-		} else {
+		case wantDetails:
 			details = append(details, fmt.Sprintf("「%s」「%s」均未收录", candidate.Char1, candidate.Char2))
 		}
 	}
@@ -81,8 +88,10 @@ func (r *FrequencyRater) Rate(candidate *NameCandidate, _ *FateData) NameRating 
 		if bigram != nil {
 			bigramScore := tierToScore(bigram.Tier)
 			scores = append(scores, bigramScore)
-			details = append(details, fmt.Sprintf("组合「%s%s」Tier%d(%d次)",
-				candidate.Char1, candidate.Char2, bigram.Tier, bigram.Count))
+			if wantDetails {
+				details = append(details, fmt.Sprintf("组合「%s%s」Tier%d(%d次)",
+					candidate.Char1, candidate.Char2, bigram.Tier, bigram.Count))
+			}
 		} else {
 			// 组合未收录 → 中性 50 分
 			scores = append(scores, 50)
@@ -92,6 +101,9 @@ func (r *FrequencyRater) Rate(candidate *NameCandidate, _ *FateData) NameRating 
 	// 3. 计算综合分
 	finalScore := averageScores(scores)
 
+	if !wantDetails {
+		return NameRating{Score: clampScore(finalScore)}
+	}
 	return NameRating{
 		Score:  clampScore(finalScore),
 		Detail: strings.Join(details, "；"),

@@ -308,7 +308,7 @@ func (s *FateNameService) hexagramForNames(names []*name.NameAnalysis, req *Gene
 		return nil
 	}
 	surnameStrokes := 0
-	if l1, l2, err := (&HanziDataProvider{}).GetSurnameStrokes(req.Surname); err == nil {
+	if l1, l2, err := NewHanziDataProvider().GetSurnameStrokes(req.Surname); err == nil {
 		surnameStrokes = l1 + l2
 	}
 	if surnameStrokes == 0 {

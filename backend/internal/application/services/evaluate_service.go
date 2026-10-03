@@ -103,7 +103,7 @@ func (s *NameService) Evaluate(ctx context.Context, req *EvaluateRequest) (*Eval
 		WithGenderFilter(req.Gender).
 		Build()
 
-	provider := &HanziDataProvider{}
+	provider := NewHanziDataProvider()
 	cand, score, err := fate.RateGivenName(provider, filter, req.Surname, given, fateData, fate.DefaultRaters())
 	if err != nil {
 		return nil, errors.NewError(errors.ErrCodeBadRequest, err.Error())

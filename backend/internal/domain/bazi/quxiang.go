@@ -1,5 +1,7 @@
 package bazi
 
+import "strconv"
+
 // QuxiangLayer 取象层级标识
 type QuxiangLayer string
 
@@ -122,7 +124,9 @@ func generateWuxingImage(analysis *BaziAnalysis) *LayerImage {
 		if !first {
 			content += "，"
 		}
-		content += e.wx + "=" + string(rune('0'+e.count))
+		// 计数可能因加权四舍五入超过 9（极端五行分布），
+		// '0'+count 直接转字符会输出 ':' 等乱码，按十进制数字串输出
+		content += e.wx + "=" + strconv.Itoa(e.count)
 		first = false
 	}
 	content += "。"

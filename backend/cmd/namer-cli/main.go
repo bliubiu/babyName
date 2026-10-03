@@ -29,7 +29,6 @@ import (
 	"name/internal/domain/fate"
 	"name/internal/domain/hanzi"
 	"name/internal/domain/name"
-	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/data"
 	"name/internal/infrastructure/logger"
 )
@@ -197,16 +196,13 @@ func generate(req *services.GenerateRequest, dataDir string) (*services.Generate
 	}
 
 	// 6. 装配服务（fate 引擎，与 server 一致）
-	cache.Init()
-
-	fateEngine := fate.NewEngine(&services.HanziDataProvider{}, services.NewBaziAnalyzerAdapter(), fate.DefaultRaters())
+	fateEngine := fate.NewEngine(services.NewHanziDataProvider(), services.NewBaziAnalyzerAdapter(), fate.DefaultRaters())
 	svc := services.NewNameService(
 		services.WithBaziAnalyzer(&services.BaziAdapter{}),
 		services.WithHexagramFinder(&services.HexagramAdapter{}),
 		services.WithZiweiAnalyzer(&services.ZiweiAdapter{}),
 		services.WithZodiacFinder(&services.ZodiacAdapter{}),
-		services.WithCache(cache.GetCache()),
-		services.WithFateService(services.NewFateNameService(fateEngine)), // fate 引擎（与 server 一致）
+		services.WithFateService(services.NewFateNameService(fateEngine)),
 	)
 
 	return svc.GenerateWithAnalysis(context.Background(), req)

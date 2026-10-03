@@ -18,7 +18,6 @@ import (
 	"name/internal/domain/fate"
 	"name/internal/domain/hanzi"
 	"name/internal/domain/name"
-	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/config"
 	"name/internal/infrastructure/data"
 	"name/internal/infrastructure/database"
@@ -114,7 +113,6 @@ func main() {
 	defer logger.Sync()
 
 	// 初始化缓存（SQLite + 内存缓存，不使用 Redis）
-	cache.Init()
 
 	// 加载传统文化数据（从 JSON 文件）
 	//
@@ -154,8 +152,7 @@ func main() {
 	store := initStore(cfg.Database.Path, dataDir)
 
 	// 创建服务层
-	cacheInst := cache.GetCache()
-	svc := newServices(store, cacheInst, dataDir)
+	svc := newServices(store, dataDir)
 
 	// 创建处理器
 	h := newHandlers(svc, dataDir)
@@ -236,7 +233,7 @@ type appServices struct {
 	report   *services.ReportService
 }
 
-func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *appServices {
+func newServices(store database.Store, dataDir string) *appServices {
 	baziAdapter := &services.BaziAdapter{}
 	hexagramAdapter := &services.HexagramAdapter{}
 	ziweiAdapter := &services.ZiweiAdapter{}
@@ -276,7 +273,6 @@ func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *a
 		services.WithZiweiAnalyzer(ziweiAdapter),
 		services.WithNameDB(ndb),
 		services.WithZodiacFinder(zodiacAdapter),
-		services.WithCache(cacheInst),
 		services.WithFateService(fateSvc), // fate 引擎优先（新引擎更完善）
 	)
 
@@ -496,13 +492,6 @@ func startServer(router *gin.Engine, addr, cwd string, store database.Store, rat
 	// 停止限流器清理协程
 	if rateLimiter != nil {
 		rateLimiter.Stop()
-	}
-
-	// 关闭缓存实例，释放后台清理协程
-	if cacheInst := cache.GetCache(); cacheInst != nil {
-		if closer, ok := cacheInst.(interface{ Close() }); ok {
-			closer.Close()
-		}
 	}
 
 	logger.Info("Server exited")

@@ -85,7 +85,7 @@ type NameCandidate struct {
 
 	// PositiveScore1/PositiveScore2 逐字寓意评分（namer.json positiveScore，0-100）
 	// 策展表是「分类字表」而非「精选好字表」，平庸字（软/际/映/耿等）也在表内拿到 +8 文化加分，
-	// 导致单名 Top5 被平庸字霸榜。结合 positiveScore>=85 可把策展加分收窄为「精选好字」专属。
+	// 导致单名 Top5 被平庸字霸榜。结合 positiveScore>=90 可把策展加分收窄为「精选好字」专属。
 	PositiveScore1 int
 	PositiveScore2 int
 
@@ -211,7 +211,7 @@ type Character struct {
 
 	// PositiveScore 寓意评分（namer.json positiveScore，0-100）
 	// 策展表是「分类字表」而非「精选好字表」，平庸字（软/际/映/耿 等）也在表内。
-	// 结合 PositiveScore>=85 可将策展文化加分收窄为精选好字专属（优质字 87-91，平庸/荒谬字空）。
+	// 结合 PositiveScore>=90 可将策展文化加分收窄为精选好字专属（优质字 87-91，平庸/荒谬字空）。
 	PositiveScore int `json:"positive_score,omitempty"`
 
 	// NameFreqTier 人名频率档位（1-5，5=最高频，0=未收录）

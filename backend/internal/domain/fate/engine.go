@@ -1244,7 +1244,7 @@ func doubleNameCandidate(
 		// 策展覆盖表标记：人工精选起名好字，供 WenHuaRater 文化加分（破荒谬字同分）
 		IsCurated1: a.ch.IsCurated,
 		IsCurated2: b.ch.IsCurated,
-		// 寓意评分：与 IsCurated 结合将策展加分收窄为「策展 ∩ positiveScore>=85」精选好字
+		// 寓意评分：与 IsCurated 结合将策展加分收窄为「策展 ∩ positiveScore>=90」精选好字
 		PositiveScore1: a.ch.PositiveScore,
 		PositiveScore2: b.ch.PositiveScore,
 		// 姓氏拼音取自 input，用于音韵评分器检测跨字谐音

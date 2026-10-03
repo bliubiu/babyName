@@ -16,7 +16,6 @@ import (
 	"name/internal/domain/yijing"
 	"name/internal/domain/ziwei"
 	"name/internal/domain/zodiac"
-	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/logger"
 
 	"go.uber.org/zap"
@@ -29,7 +28,6 @@ type NameService struct {
 	ziweiAnalyzer  ziwei.ZiweiAnalyzer
 	zodiacFinder   zodiac.ZodiacFinder
 	fateService    *FateNameService // fate 路径委托服务（可选）
-	cache          cache.Cache
 	nameDB         *name.NameDB // 候选名库管理器（API 层共享自学习精选名数据）
 
 	// 探索模式（换一批）候选表缓存：generation_id → 本轮生成的候选表与上下文。
@@ -84,11 +82,6 @@ func WithFateService(fs *FateNameService) NameServiceOption {
 // WithZodiacFinder 设置生肖查找器
 func WithZodiacFinder(f zodiac.ZodiacFinder) NameServiceOption {
 	return func(s *NameService) { s.zodiacFinder = f }
-}
-
-// WithCache 设置缓存
-func WithCache(c cache.Cache) NameServiceOption {
-	return func(s *NameService) { s.cache = c }
 }
 
 // NewNameService 创建名字服务
@@ -517,7 +510,7 @@ func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziA
 
 	// 姓氏笔画（康熙优先）
 	surnameStrokes := 0
-	if l1, l2, err := (&HanziDataProvider{}).GetSurnameStrokes(req.Surname); err == nil {
+	if l1, l2, err := NewHanziDataProvider().GetSurnameStrokes(req.Surname); err == nil {
 		surnameStrokes = l1 + l2
 	}
 	if surnameStrokes == 0 {

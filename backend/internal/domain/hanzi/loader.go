@@ -127,6 +127,13 @@ func LoadFromJSON(dataDir string) error {
 // fatal error: concurrent map read and map write（docs/29 B9）。
 // 现依赖 LoadFromJSON 的「构建成功才合并」保证原子性：所有可能失败的步骤
 // 都在改动全局之前完成，无需回滚。
+//
+// ★ 合并语义确认（docs/30 §四遗留 2）：LoadFromJSON 对 HanziData 是
+// 「按键覆盖合并（upsert），不删除旧键」——这是有意为之：内存里还有
+// 非 JSON 来源的注入数据（kangxi 笔画回填、naming 分类同步、AddNamingChar），
+// 整体替换会冲掉它们。代价是「热更新时从 JSON 删除某字」该字会残留，
+// 但热更新当前无生产调用方；若将来接通且需要删除语义，应在合并临界区
+// 先构建「本轮 JSON 键集 ∪ 注入来源键集」再做差集删除。
 func ReloadFromJSON(dataDir string) error {
 	return LoadFromJSON(dataDir)
 }
