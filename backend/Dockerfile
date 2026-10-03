@@ -5,7 +5,7 @@
 # ============================================================
 
 # ===== 构建阶段 =====
-FROM golang:1.25-alpine AS builder
+FROM golang:1.25.10-alpine AS builder
 
 # 配置 Go 代理（使用国内镜像加速下载）
 ENV GOPROXY=https://goproxy.cn,direct

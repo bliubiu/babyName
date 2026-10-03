@@ -5,7 +5,7 @@
 # ============================================================
 
 # ===== 基础镜像 =====
-FROM node:22-alpine AS base
+FROM node:22.22.3-alpine AS base
 
 # 启用 Corepack 管理 pnpm
 # 版本必须固定：pnpm@latest 漂移到 12 后 YAML/锁文件行为变化会突然打破构建
