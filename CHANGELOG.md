@@ -8,7 +8,7 @@
 ## [2026.10.02.0]
 
 `docs/30` §六：**B12 容器实测**（192.168.10.180 Docker 环境）。在干净构建
-上下文上实测出 **11 处容器构建/启动缺陷（C1-C9）并全部修复**——此前
+上下文上实测出 **13 处容器构建/启动缺陷（C1-C10.5）并全部修复**——此前
 「pnpm build 通过」的验证全部发生在已装好依赖的开发机上，镜像构建路径
 从未真正跑通过。
 
@@ -35,14 +35,31 @@
   （exit 0、零文件），叠加吞错后日志照印「已就绪」——播种假成功 → 配置缺失
   → 默认 mode=all → 容器内 Fatal 重启循环。entrypoint 改逐项复制+逐项报错；
   compose 补 `NAME_MODE=api`。提交 `361571e`
+- 【config/server】**C10**：viper `Unmarshal` 不解析 `AutomaticEnv`——
+  compose 传入的 `NAME_MODE=api`/`NAME_SERVER_HOST=0.0.0.0` 等对结构体字段
+  **静默失效**（而 logger 的 output_path 走 Get* getter 生效，同一次加载
+  两套行为），且 `ensureStaticDir` 无 mode 门控 → `mkdir /frontend` Fatal。
+  `Load()` 在 Unmarshal 后逐字段经 viper Get 重解析；静态目录检查仅
+  `mode==all` 执行。提交 `3667bd5`
+- 【deploy/镜像标签】**C10.5**：浮动基础镜像标签因 digest 漂移触发重新拉取
+  （部署环境拉 docker hub 仅 ~5KB/s）。固定 `golang:1.25.10-alpine` /
+  `node:22.22.3-alpine`。提交 `5720e2a`
 
-### ✅ 实测验证
+### ✅ 实测验证（2026.10.03 全新环境全流程复现）
 
-- `docker compose build`：backend（256MB）/ frontend（63.8MB）双双成功
-- fresh-volume `up -d`：**frontend 容器 healthy**
-- backend 播种验证因 192.168.10.180 主机掉线暂缓，续验步骤见 `docs/30` §六
-- 部署前置（实测必需）：宿主挂载目录 `chown -R 1000:1000`；无证书时 nginx
-  因 ssl_certificate 缺失拒绝启动，需先放置证书
+- `docker compose build`（全新上下文无缓存）：backend（256MB）/ frontend
+  （63.8MB）双双成功
+- fresh-volume `up -d`：**三容器全部 healthy**（backend / frontend / nginx）
+- ① 健康检查：`https://…/healthz` 经 nginx 返回 `{"status":"ok"}`
+- ② 字库播种：entrypoint「新增 36 项，失败 0」，二次启动「保留已有 36 项」
+  （no-clobber 正确）；生成 API 返回真实八字/五行/喜用神与名字
+  （瑞赟 82.4 / 湃信 77.8 / 嫦浩 76.8）
+- ③ 配置加载：启动日志 `Starting NameMaster server {"host": "0.0.0.0"}`
+  （C10 实证）；DB 落宿主数据卷、容器层无残留；无静态 Fatal
+- ④ 持久化：收藏（92.7 浮点）→ `restart backend` → 完整回读
+- 部署前置（实测必需）：宿主挂载目录 `chown -R 1000:1000`；证书须含
+  fullchain/chain/privkey 三件（certbot 正常签发即含）；nginx 80→443 301、
+  非配置域名 444 丢弃
 
 ## [2026.10.01.2]
 
