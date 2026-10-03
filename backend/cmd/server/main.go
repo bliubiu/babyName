@@ -139,8 +139,11 @@ func main() {
 		logger.Info("Word data loaded from word.json")
 	}
 
-	// 检查静态文件目录
-	ensureStaticDir(cfg.Static)
+	// 检查静态文件目录（仅 all 模式需要：api 模式下静态页由前端容器/nginx
+	// 提供，容器内对不存在的静态路径强制 mkdir 只会 Fatal——docs/30 §六 C10）
+	if cfg.Mode == "all" {
+		ensureStaticDir(cfg.Static)
+	}
 
 	logger.Info("Starting NameMaster server",
 		logger.String("host", cfg.Server.Host),

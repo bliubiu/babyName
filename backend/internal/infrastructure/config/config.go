@@ -163,6 +163,29 @@ func Load(configPath string) (*AppConfig, error) {
 		return nil, fmt.Errorf("解析配置失败: %w", err)
 	}
 
+	// ★ viper 的 Unmarshal 不解析 AutomaticEnv 环境变量：键已存在于 settings
+	// map（有默认值或配置文件提供）时按 map 值解码，NAME_* 环境变量覆盖对
+	// 结构体字段**静默失效**（docs/30 §六 C10——compose 传入的
+	// NAME_MODE=api / NAME_SERVER_HOST=0.0.0.0 等全部落空，mode 保持 "all"
+	// 使容器内静态目录 Fatal）。逐字段经 viper Get 重新解析：
+	// Get 走 AutomaticEnv + SetEnvKeyReplacer，环境变量优先，无 env 时
+	// 回落配置文件/默认值，语义不变。
+	cfg.Mode = v.GetString("mode")
+	cfg.Static = v.GetString("static")
+	cfg.Server.Host = v.GetString("server.host")
+	cfg.Server.Port = v.GetInt("server.port")
+	cfg.Log.Level = v.GetString("log.level")
+	cfg.Log.Format = v.GetString("log.format")
+	cfg.Log.OutputPath = v.GetString("log.output_path")
+	cfg.Database.Driver = v.GetString("database.driver")
+	cfg.Database.Path = v.GetString("database.path")
+	cfg.RateLimit.Capacity = v.GetFloat64("rate_limit.capacity")
+	cfg.RateLimit.Rate = v.GetFloat64("rate_limit.rate")
+	cfg.Redis.Enabled = v.GetBool("redis.enabled")
+	cfg.Redis.Addr = v.GetString("redis.addr")
+	cfg.Redis.Password = v.GetString("redis.password")
+	cfg.Redis.DB = v.GetInt("redis.db")
+
 	// 解析时间类型字段
 	if cfg.Server.ReadHeaderTimeout == 0 {
 		if d, err := time.ParseDuration(v.GetString("server.read_header_timeout")); err == nil {

@@ -264,3 +264,40 @@ func TestLoad_ConfigDirEnv(t *testing.T) {
 		t.Errorf("CONFIG_DIR 应生效，database.path=%q", cfg.Database.Path)
 	}
 }
+
+// TestEnvOverrideReachesStructFields 环境变量必须穿透到结构体字段
+// （docs/30 §六 C10 回归）：viper 的 Unmarshal 不解析 AutomaticEnv——
+// compose 传入的 NAME_MODE/NAME_SERVER_HOST 等此前对 cfg.Mode 等字段
+// 静默失效（mode 保持 "all" 使容器内静态目录 Fatal）。修复后逐字段
+// 经 viper Get 重解析。
+func TestEnvOverrideReachesStructFields(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "application.yml")
+	content := `
+mode: all
+server:
+  host: localhost
+  port: 8080
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("写配置失败: %v", err)
+	}
+
+	t.Setenv("NAME_MODE", "api")
+	t.Setenv("NAME_SERVER_HOST", "0.0.0.0")
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	if cfg.Mode != "api" {
+		t.Errorf("NAME_MODE 应覆盖 yml 的 all：got %q，want api", cfg.Mode)
+	}
+	if cfg.Server.Host != "0.0.0.0" {
+		t.Errorf("NAME_SERVER_HOST 应覆盖 yml 的 localhost：got %q，want 0.0.0.0", cfg.Server.Host)
+	}
+	// 未被 env 覆盖的键仍读文件值
+	if cfg.Server.Port != 8080 {
+		t.Errorf("未覆盖键应读文件值 8080，got %d", cfg.Server.Port)
+	}
+}
