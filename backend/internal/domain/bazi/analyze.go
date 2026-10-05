@@ -3,7 +3,6 @@ package bazi
 import (
 	"fmt"
 	"math"
-	"sync"
 	"time"
 
 	"name/internal/domain/bazi/tyme"
@@ -234,12 +233,12 @@ type BaziAnalysis struct {
 	LeapMonthAdvice     string                `json:"leap_month_advice,omitempty"`
 }
 
-var baziCalcMutex sync.Mutex
-
+// CalculateBazi 公历 → 八字四柱（tyme 库）。
+// 无锁：tyme 的两处 lazy-init（LunarYearLeap/RabByungMonthDays）均由
+// sync.Once 保护、初始化后只读，包内无其它可变共享状态——并发安全已由
+// TestCalculateBaziConcurrentDeterminism 压测固化（docs/29 P3#22：
+// 原全局锁把 8 并发的排盘串行化，纯计算被无谓地限流）。
 func CalculateBazi(year, month, day, hour, minute int) (*Bazi, error) {
-	baziCalcMutex.Lock()
-	defer baziCalcMutex.Unlock()
-
 	solarTime, err := tyme.SolarTime{}.FromYmdHms(year, month, day, hour, minute, 0)
 	if err != nil {
 		return nil, fmt.Errorf("创建SolarTime失败: %w", err)

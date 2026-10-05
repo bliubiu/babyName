@@ -2,12 +2,8 @@ package ziwei
 
 import (
 	"fmt"
-	"name/internal/domain/bazi/tyme"
-	"sync"
-)
 
-var (
-	ziweiMutex sync.Mutex
+	"name/internal/domain/bazi/tyme"
 )
 
 const (
@@ -95,11 +91,11 @@ var TianKuiTianYueTable = [10][2]int{
 }
 
 type ZiweiChart struct {
-	Year       int    `json:"year"`
-	Month      int    `json:"month"`
-	Day        int    `json:"day"`
-	Hour       int    `json:"hour"`
-	Gender     string `json:"gender"`
+	Year   int    `json:"year"`
+	Month  int    `json:"month"`
+	Day    int    `json:"day"`
+	Hour   int    `json:"hour"`
+	Gender string `json:"gender"`
 
 	NianZhu string `json:"nian_zhu"`
 	YueZhu  string `json:"yue_zhu"`
@@ -109,10 +105,10 @@ type ZiweiChart struct {
 	MingGong string `json:"ming_gong"`
 	ShenGong string `json:"shen_gong"`
 
-	FiveElements string                `json:"five_elements"` // 五行局，如"火六局"
-	Soul         string                `json:"soul"`          // 命主
-	Body         string                `json:"body"`          // 身主
-	DaXian       map[string]DaXianEntry `json:"da_xian"`     // 大限
+	FiveElements string                 `json:"five_elements"` // 五行局，如"火六局"
+	Soul         string                 `json:"soul"`          // 命主
+	Body         string                 `json:"body"`          // 身主
+	DaXian       map[string]DaXianEntry `json:"da_xian"`       // 大限
 
 	ZhuXing map[string]string   `json:"zhu_xing"`
 	FuXing  map[string][]string `json:"fu_xing"`
@@ -123,9 +119,9 @@ type ZiweiChart struct {
 
 // DaXianEntry 大限条目
 type DaXianEntry struct {
-	Range         [2]int  `json:"range"`          // 起运年龄范围
-	HeavenlyStem  string  `json:"heavenly_stem"`  // 天干
-	EarthlyBranch string  `json:"earthly_branch"` // 地支
+	Range         [2]int `json:"range"`          // 起运年龄范围
+	HeavenlyStem  string `json:"heavenly_stem"`  // 天干
+	EarthlyBranch string `json:"earthly_branch"` // 地支
 }
 
 type ZiweiAnalysis struct {
@@ -458,9 +454,9 @@ func getZiweiPosition(lunarDayNum int, fiveElementsClass string, lunarMonth int)
 	add := q*juShu - lunarDayNum
 
 	if add%2 == 0 {
-		return fixIndex(2 + q - 1 + add, 12)
+		return fixIndex(2+q-1+add, 12)
 	}
-	return fixIndex(2 + q - 1 - add, 12)
+	return fixIndex(2+q-1-add, 12)
 }
 
 // ============================================================
@@ -570,10 +566,10 @@ func distributeFuXing(chart *ZiweiChart, lunarMonth, timeIndex, yearGanIndex int
 // 主接口
 // ============================================================
 
+// AnalyzeZiwei 紫微斗数分析（无锁：tyme lazy-init 均 sync.Once 保护、
+// 排盘为纯计算，并发安全由 TestCalculateZiweiChartConcurrentDeterminism
+// 压测固化——原 ziweiMutex 把并发排盘串行化，docs/29 P3#22）
 func AnalyzeZiwei(year, month, day, hour int, gender string) *ZiweiAnalysis {
-	ziweiMutex.Lock()
-	defer ziweiMutex.Unlock()
-
 	chart := CalculateZiweiChart(year, month, day, hour, gender)
 
 	// 命宫主星（ZhuXing 以宫名为键；原实现误用干支串查宫名键，恒落空）
@@ -599,15 +595,15 @@ func AnalyzeZiwei(year, month, day, hour int, gender string) *ZiweiAnalysis {
 
 func CalculateZiweiChart(year, month, day, hour int, gender string) *ZiweiChart {
 	chart := &ZiweiChart{
-		Year:     year,
-		Month:    month,
-		Day:      day,
-		Hour:     hour,
-		Gender:   gender,
-		ZhuXing:  make(map[string]string),
-		FuXing:   make(map[string][]string),
-		SiHua:    make(map[string]string),
-		DaXian:   make(map[string]DaXianEntry),
+		Year:    year,
+		Month:   month,
+		Day:     day,
+		Hour:    hour,
+		Gender:  gender,
+		ZhuXing: make(map[string]string),
+		FuXing:  make(map[string][]string),
+		SiHua:   make(map[string]string),
+		DaXian:  make(map[string]DaXianEntry),
 	}
 
 	// 1. 计算四柱

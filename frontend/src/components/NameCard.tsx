@@ -50,13 +50,6 @@ function NameCard({
     }
   };
 
-  const handleCompareClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onToggleCompare && index !== undefined) {
-      onToggleCompare(index);
-    }
-  };
-
   const handleToggleDetail = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowDetail(!showDetail);
@@ -96,6 +89,9 @@ function NameCard({
   const hasDimScores = dims.some(d => d.value > 0);
 
   return (
+    // 容器仅保留鼠标点击的便捷路径；键盘/读屏用户走名字按钮（语义化选择控件），
+    // 故此处有意不补键盘监听——不是遗漏（docs/30 §五 NameCard 重构）
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       className={cn(
         'card cursor-pointer transition-all duration-300 animate-fade-in-up',
@@ -104,10 +100,6 @@ function NameCard({
       )}
       style={{ animationDelay: index !== undefined ? `${0.3 + index * 0.05}s` : undefined }}
       onClick={handleCardClick}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleCardClick(); } }}
-      tabIndex={0}
-      role="button"
-      aria-label={`${fullName}, 评分${score.toFixed(1)}分`}
     >
       {/* 头部：名字与操作 */}
       <div className="flex items-start justify-between gap-2">
@@ -123,12 +115,22 @@ function NameCard({
                     onToggleCompare(index);
                   }
                 }}
+                aria-label={isComparing ? `将 ${fullName} 移出对比` : `将 ${fullName} 加入对比`}
                 className="w-4 h-4 accent-crimson cursor-pointer flex-shrink-0"
               />
             )}
-            <p className="font-serif text-xl md:text-2xl text-ink truncate">
+            {/* 语义化选择控件：容器不再是 role=button（其内嵌 checkbox/按钮
+                违反 WAI-ARIA 嵌套交互规则，且容器的 onKeyDown 会 preventDefault
+                掉 Space，导致键盘用户无法勾选对比框——docs/30 §五） */}
+            <button
+              type="button"
+              onClick={handleCardClick}
+              aria-pressed={isSelected}
+              aria-label={`${fullName}，评分 ${score.toFixed(1)} 分`}
+              className="font-serif text-xl md:text-2xl text-ink truncate hover:text-crimson transition-colors text-left rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-crimson/40"
+            >
               {fullName}
-            </p>
+            </button>
           </div>
           <p className="text-xs text-jade/70 mt-0.5 ml-6">{name.pinyin}</p>
         </div>
@@ -137,6 +139,7 @@ function NameCard({
           {onToggleFavorite && (
             <button
               onClick={handleFavoriteClick}
+              aria-label={isFavorite ? `取消收藏 ${fullName}` : `收藏 ${fullName}`}
               className={`transition-all duration-200 p-1.5 rounded-full hover:scale-110 ${
                 isFavorite ? 'text-seal-red' : 'text-ink-light/30 hover:text-seal-red'
               }`}
@@ -147,6 +150,8 @@ function NameCard({
           )}
           <button
             onClick={handleToggleDetail}
+            aria-label={showDetail ? `收起 ${fullName} 详情` : `查看 ${fullName} 详情`}
+            aria-expanded={showDetail}
             className="transition-all duration-200 p-1.5 rounded-full text-ink-light/30 hover:text-crimson hover:scale-110"
             title={showDetail ? '收起详情' : '查看详情'}
           >

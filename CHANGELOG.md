@@ -5,6 +5,27 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.02.2]
+
+`docs/30` §八：**两项代办收尾——排盘并行化 + NameCard a11y 重构**。
+验证口径：后端 21 包全绿（新增并发确定性压测与基准）；前端 tsc 0 错、
+vitest 45/45、eslint NameCard 0 问题。
+
+### 📈 Improvements 性能/体验优化
+
+- 【bazi/ziwei/性能】★ **移除 `baziCalcMutex` / `ziweiMutex` 全局锁**：
+  逐一核查 tyme 包级可变状态——仅有的两处 lazy-init（`LunarYearLeap`/
+  `RabByungMonthDays`）均在 `sync.Once` 闭包内、初始化后只读；接口变量与
+  数据串无本项目写入方。新增 32 goroutine 并发**确定性**压测（同输入同输出）
+  与 `Benchmark*Parallel16` 基准固化。实测（8 核稳定值）：bazi 16 并发排盘
+  **56.36 → 14.27 ms/op（3.9×）**；ziwei 同时段 A/B 复测 16.60 → 12.78 ms/op
+  （~20%，并消除生产多请求下的全局串行点）
+- 【frontend/a11y】NameCard 重构：容器 `role="button"` 内嵌 checkbox/按钮
+  违反 WAI-ARIA 嵌套交互规则，且容器 onKeyDown 对 Space preventDefault
+  **导致键盘用户无法勾选对比框**。名字标题升级为语义化 button
+  （aria-pressed/aria-label/focus-visible 环）承担键盘选中路径；容器仅留
+  鼠标点击；checkbox/收藏/详情补 aria-label，详情按钮补 aria-expanded
+
 ## [2026.10.02.1]
 
 `docs/30` §七：**死代码专项与卫生收尾**（清偿 §五「仍余」与 §四遗留 2/4）。
