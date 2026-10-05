@@ -813,19 +813,37 @@ func main() {
 		fmt.Printf("  汇总: 成功 %d/%d  中位=%.3fs p95=%.3fs\n",
 			len(allOK), allTotal, median(allOK), percentile(allOK, 0.95))
 
-		// 并发超订探测（P2-7 令牌钳制后的语义）：worker 总数被全局令牌钳制在
-		// NumCPU 内，单请求的排队延迟会随并发抬升，但「吞吐不随并发恶化」
-		// 才是目标。改用吞吐加速比判定：并发总吞吐相对串行吞吐（1/串行时长）
-		// 应有实质提升，否则说明调度仍是串行化/超订。
+		// 并发健康度判定（docs/28 §8.5.1 / docs/30 §九 判据改造）：
+		// 旧判据「加速比 < 1.5× 即失败」存在设计缺陷——由 Little 定律可推出
+		// 加速比 ≈ NumCPU / f（f 为枚举段占单请求服务时长的比例），比值只取决于
+		// 枚举段占比：串行路径被优化得越好，比值越低，判据越难过（假阳性）；
+		// 而 worker 失控超订但串行段很慢时反而可能达标（假阴性）。
+		// 现改为两条直击「不超订」初衷的判据：
+		//   ① 并发吞吐不低于串行吞吐——并行至少不比串行慢；
+		//   ② 并发 p95 ≤ 串行时长 × 12——防排队延迟爆炸。
+		//      校准依据：worker 钳制 NumCPU + 低枚举占比下，p95 膨胀 ≈ (并发/NumCPU)×(1/f)，
+//      本机三轮实测 8-9×（docs/28 §6 中位 6.9s / 串行 0.87s 同构），12× 为包络上限；
+//      OOM/无界排队类爆炸通常是 30×+，仍会被抓住。
+		// 加速比仅作信息展示，不再作为判定依据。
 		if serial := durs["双名 基线"]; serial > 0 && totalWall > 0 {
-			speedup := float64(allTotal) / totalWall * serial
+			concThroughput := float64(allTotal) / totalWall
+			serialThroughput := 1.0 / serial
+			speedup := concThroughput * serial
+			concP95 := percentile(allOK, 0.95)
 			fmt.Printf("  并发加速比: %.2f×（并发吞吐 %.2f req/s / 串行吞吐 %.2f req/s）\n",
-				speedup, float64(allTotal)/totalWall, 1.0/serial)
-			if speedup < 1.5 {
-				ck.bad("%d 并发下吞吐加速比 %.2f×，几乎无并行收益——worker 调度存在串行化或超订",
-					*conc, speedup)
+				speedup, concThroughput, serialThroughput)
+
+			if concThroughput < serialThroughput {
+				ck.bad("并发吞吐 %.2f req/s 低于串行 %.2f req/s——并发反而更慢，调度串行化或资源争用",
+					concThroughput, serialThroughput)
 			} else {
-				ck.ok("吞吐相对串行有 %.2f× 加速，worker 收敛无超订", speedup)
+				ck.ok("并发吞吐 %.2f req/s ≥ 串行 %.2f req/s", concThroughput, serialThroughput)
+			}
+			if concP95 > serial*12 {
+				ck.bad("并发 p95 %.3fs 超过串行时长 %.3fs 的 12 倍——排队延迟爆炸，存在超订或资源耗尽",
+					concP95, serial)
+			} else {
+				ck.ok("并发 p95 %.3fs ≤ 串行 %.3fs × 12（排队延迟受控）", concP95, serial)
 			}
 		}
 	}

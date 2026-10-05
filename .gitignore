@@ -163,3 +163,6 @@ hs_err_pid*.log
 *.rej
 *.patch
 *.diff
+# go test 覆盖率输出产物
+go-coverage-*.txt
+go-test-result.txt
