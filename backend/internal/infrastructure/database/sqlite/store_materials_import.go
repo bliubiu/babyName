@@ -408,10 +408,17 @@ func (s *Store) importNamer(def schema.Definition, src string, res ImportResult,
 	//     curationLevel/genderTags/pairBlacklist/nameFreqTier（后者由频率物料合并）
 	words := make([]schema.Word, 0, len(nj.Chars))
 	for _, nc := range nj.Chars {
+		// 五行必须走与内存装载路径同一套解析规则（hanzi.ResolveWuxing）：
+		// 字义法覆盖表 > 已有值 > 部首字形法兜底。
+		// 此前此处直接落 nc.Wuxing 原值，漏掉了覆盖表与部首兜底，
+		// 实测有 14 字在 hanzi_data 中为空而内存侧有值，
+		// 导致「SQL 与内存结果等价」守护测试失败（docs/31 §11.9 第 2 项）。
+		wuxing := hanzi.ResolveWuxing(nc.Char, nc.Wuxing, nc.Radical)
+
 		w := normalize.Word(schema.Word{
 			Char: nc.Char, Pinyin: nc.Pinyin, Strokes: nc.Strokes,
 			KangxiStrokes: kangxi[nc.Char],
-			Radical:       nc.Radical, Meaning: nc.Meaning, Wuxing: nc.Wuxing,
+			Radical:       nc.Radical, Meaning: nc.Meaning, Wuxing: wuxing,
 			Level: nc.Level, Gender: normalize.Gender(nc.Gender),
 			Tone: nc.Tone, NameFreqTier: nc.NameFreqTier,
 			UsageLevel: nc.UsageLevel, PositiveScore: nc.PositiveScore,

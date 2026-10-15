@@ -5,6 +5,123 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.14.1]
+
+**P2：消除 `services` 层 Go 端回查**（ADR-003「SQL 与内存结果等价」）。
+SQL 下沉此前因 SQL 表缺列而形同虚设——`queryViaSQL` 与 `FindCharacters` **两处**
+逐字 `hanzi.GetHanzi` 回查内存补全字段，SQL 召回收益归零，且两路径结果可能不一致。
+
+### 🐛 Bug Fixes 问题修复
+
+- 【五行不一致】五行修正规则 `ApplyWuxingOverrides`（字义法覆盖表 > 已有值 > 部首字形法兜底）
+  **只在内存侧生效**，物料导入直接落 `namer.json` 原值。实测 **14 字** `hanzi_data.wuxing`
+  为空而内存有值，导致五行过滤结果不一致。已抽出无状态 `hanzi.ResolveWuxing` 作单一真源，
+  内存装载与物料导入**共用同一套规则**。
+- 【生僻字判定相反】`hanzi.Hanzi.IsRare`（namer.json 99 字）与 `hanzi.RareChars`
+  （编译期静态表，含 CJK 扩展区）**实测有 102 字不一致**。此前内存路径只信 `RareChars`、
+  SQL 路径只信 `is_rare`，同一字在两条路径下 `IsRegular` 得到**相反**结论。
+  已统一取**并集**（任一侧判生僻即生僻，取保守侧），符合「避开生僻字」安全策略。
+- 【重复回查】`FindCharacters` 在 `queryViaSQL` 已过滤并返回结果后，又逐字回查内存
+  重建 `Character` ——纯重复劳动，且丢弃 SQL 已返回的字段。
+
+### ⚡ Improvements 性能优化
+
+- 【SQL 下沉】`SearchHanziByFilter` 的 SELECT 补齐 `level / kangxi_strokes / gender /
+  radical / naming_categories / meaning / is_rare`，`database.Hanzi` 同步补 7 字段；
+  `naming_categories` 的 JSON 数组在驱动层解析，**解析失败按「无分类」处理而非丢弃整行**
+  （否则单条脏数据会连带丢掉该字全部候选属性）。
+- 【派生规则同源】抽出 `deriveCharacterFlags(level, strokes, isRare)` 作为 SQL 路径与
+  内存路径**唯一共有的派生规则**；两路径差别只在输入来源，判定规则必须同源。
+- 【净效果】每次 `FindCharacters` 的内存回查从 2 轮降为 0 轮。
+
+### 📚 Docs 文档更新
+
+- `docs/31` 新增 §11.10「P2 实施记录」（原病灶、实施步骤、实施中暴露的 2 个数据缺陷、
+  刻意保留的 1 处静态表查表及理由）；§11.9 剩余待办表剔除已完成的第 2 项，
+  补入 `name_freq_tier` / `name_penalty` / `pair_blacklist` 未落库 3 项。
+
+### 🧪 Tests 测试
+
+- 新增 `adapters_p2_test.go`（5 组）：以「stub SQL 返回内存中不存在的字」**反证回查已消除**
+  （若仍有回查必被 `if !ok { continue }` 丢弃）；派生规则表驱动；生僻字并集；SQL 失败降级。
+- `filter_integration_test.go` 的 SQL/内存集合等价断言在修复后由红转绿。
+
+### ⚠️ Known Issues 已知问题
+
+- `e2e_check -strict`（18/18）仍未复验：本机 8080 被其他项目占用。
+
+## [2026.10.14.0]
+
+**物料管线落地实施**（commit `bbc9fa9`）：P-1 四项前置修复全部完成 + 物料统一导入器 + CLI +
+**运行时数据方向反转为「库 → 内存」**。依据 `docs/31 §五 P-1` 与 `docs/32` 实施计划。
+
+### ⚠️ Breaking Changes 破坏性变更
+
+- **运行时不再解析物料 JSON/CSV**：物料统一以 SQLite 为数据源，JSON/CSV 降级为 import 输入。
+  `NewStore` 不再 seed 物料（移除「启动即用内存覆盖库」的回路）。
+- **改 `data/*.json` 必须重新执行 `materials import` 才生效**（归一化与校验已前移到导入期，运行时不再处理）。
+- **`normalizeGender("")` 由返回空串改为 `neutral`**：实测 8105 字中 6266 字（77%）无性别标注，
+  此前这类字在性别筛选下被整批误剔除。已加回退开关 `hanzi.GenderUnspecifiedAsNeutral`
+  （置 false 可立即回到旧行为）。此项会扩大候选池，影响起名排序。
+
+### ✨ New Features 新增功能
+
+- 【CLI】新增 `cmd/materials`：`import`（`--data/--db/--only/--lenient/--dry-run/--json`）与
+  `status` 子命令。实测全量导入 2.9s / 27.7MB，二次导入按指纹短路 63ms。
+- 【物料表】新增 11 张规范化物料表：`hanzi_data` / `kangxi_strokes` / `char_groups` / `words` /
+  `name_frequency` / `name_bigram` / `naming_gate` / `forbidden_combos` / `yijing_hexagrams` /
+  `zodiac` / `materials_state`，随库创建而就绪。实测行数：康熙 63696、字库 8105+29 组、
+  双字频率 124994、单字频率 2237、释义 14809、门禁 2990、禁忌 962、卦象 64、生肖 12。
+- 【导入器】拓扑排序 + 依赖闭包自动补齐 + 归一化 + 分字段校验（即拒，错误带「物料/字段/值/规则」
+  四元组）+ 单事务写入 + 指纹登记。`--only` 指定物料时自动补齐依赖（如 `--only naming_gate`
+  会带出 `namer` 与 `kangxi`）。
+
+### 🐛 Bug Fixes 问题修复
+
+- 【P-1.1 写入语义】`seedHanziData` 原为「表非空即 return + `INSERT OR IGNORE`」，**物料字段修订与
+  删字永不传导到 SQLite**，SQL 与内存双读长期静默不一致。改为单事务 DELETE+INSERT 全量重建，
+  并按 checksum 门控短路；空字库拒绝重建以免清空既有表。
+- 【P-1.2 字段投影】`namer.json` 自带 `isPolyphonic`（实测 1279 字，15.8%）但 `NamerChar` 未声明该字段而
+  **被静默丢弃**，导致多音字标记在内存与 SQL 侧恒为 false。已补齐。
+- 【降级反模式】`classics.LoadFromJSON` 失败会 `return error`，把前面已成功从库装载的字库一并作废
+  ——「语料缺失拖垮全局」。改为 warn 降级，`yijing`/门禁/禁忌同理。
+- 【主键映射】`importNamer` 误引 `nc.CurationLevel`/`nc.GenderTags`/`nc.PairBlacklist`
+  （`NamerChar` 无这些字段），导致编译失败；已按「源无真值」显式置零。
+- 【测试污染】`pendingErrors` 曾是包级全局，跨物料/跨测试互相污染；已改为局部传递。
+
+### 📈 Improvements 性能/架构优化
+
+- 【P-1.4 门控】新增 `internal/materials/checksum`（sha256 + `size+mtime` 快速路径）；
+  物料指纹登记新表 `materials_state`，`version` 降级为可读标识（实测 `namer.json` 的 `version`
+  是静态 `"1.0"`，不随内容变化，无法驱动任何 diff）。
+- 【P-1.3 康熙落点】新增 `kangxi_strokes` 表，消除「运行时只读 SQLite」下康熙笔画无来源的
+  设计空洞；CSV 解析抽为 `hanzi.ParseKangxiCSVFile` 供运行时与导入复用；旧库缺表按简体笔画兜底。
+- 【运行时】各域补 DB 装载 setter（`ReplaceHanziData`/`SetWordMeanings`/`SetFrequencyFromData`/
+  `SetBigramFromData`/`SetHexagrams`/`SetZodiacs`/`SetNonNamingChars`/`SetForbiddenCombos`/
+  `SetNamerGroups`）；实测**数据目录 0 文件、仅靠 SQLite 物料库启动成功**，日志「来源: sqlite」
+  且 9 项物料全部装载。
+- 【工程】`.gitattributes` 补 `*.go text eol=lf`；`.gitignore` 忽略 `cover-func.txt`。
+
+### 📚 Docs 文档更新
+
+- `docs/31` 新增**实施状态表**与**与设计文档的 5 处实施偏差**记录（表名 `char_groups`、
+  指纹表 `materials_state`、写入语义改全量重建、`usage_level` 默认值、独立 CLI），
+  并更新 §2.1 现状表、§八 8.5 持久化策略、§九 9.9 字段真值裁定、§十一 11.9 实施遗留。
+- `docs/32` 落地实施计划已建立 M0~M9 里程碑。
+
+### 🧪 Tests 测试
+
+新增 40+ 例守护测试：字段修订/删字传导、schema 三向漂移（Hanzi ↔ 表列 ↔ INSERT ↔ 行值 ↔ 补列清单）、
+康熙落表与旧库降级、checksum 门控（增/删/改字段/表空/无记录）、物料导入全流程（脏数据即拒、
+幂等、删字传导、依赖闭包、dry-run）、运行时库装载与 JSON 路径**等价性**。
+`gofmt`/`go build`/`go vet` 全绿，**23 个包测试全绿**。
+
+### ⚠️ Known Issues 已知问题
+
+- **`e2e_check -strict`（18/18）未完成复验**：本机 8080 端口被其他项目（`dbMetrics`）占用，
+  e2e 打到错误进程返回 403。需释放端口或改用空闲端口后重跑两种运行模式。
+- `classics` / `curated_names` 尚未接入统一导入器（import 报告显式标注跳过）。
+
 ## [2026.10.13.8]
 
 **审查修正 + 实施计划立项**：`docs/31` 依同日逐行复核修正，新增 `docs/32` 落地实施计划。纯文档，未改动运行时代码。

@@ -194,6 +194,26 @@ type Hanzi struct {
 	UsageLevel int `json:"usage_level,omitempty"`
 	// PositiveScore 寓意评分（0-100），与 namer.json 同源
 	PositiveScore int `json:"positive_score,omitempty"`
+
+	// 以下字段为 P2（ADR-003「SQL 与内存结果等价」）补齐：
+	// 原先这些维度只存在于内存 hanzi.HanziData，SQL 查询必须回查内存二次过滤，
+	// 导致 SQL 成为「粗筛 + Go 端精筛」的两段式实现。现全部下沉到 hanzi_data，
+	// 使 services 层可只依赖 SQL 结果构造 Character（docs/31 §11.9 第 2 项）。
+	//
+	// Level 通用规范汉字表分级（1=一级 3500 / 2=二级 3000 / 3=三级 1605 / 0=表外）
+	Level int `json:"level,omitempty"`
+	// KangxiStrokes 康熙笔画（0 表示未收录，回落简体笔画）
+	KangxiStrokes int `json:"kangxi_strokes,omitempty"`
+	// Gender 性别倾向（male/female/neutral），与 namer.json 同源
+	Gender string `json:"gender,omitempty"`
+	// Radical 偏旁部首，与 namer.json 同源
+	Radical string `json:"radical,omitempty"`
+	// NamingCategories 该字所属候选分类（namer.json namingCategories，JSON 数组）
+	NamingCategories []string `json:"naming_categories,omitempty"`
+	// Meaning 词典释义（word.json 首字释义）
+	Meaning string `json:"meaning,omitempty"`
+	// IsRare 生僻字标记（namer.json is_rare）
+	IsRare bool `json:"is_rare,omitempty"`
 }
 
 // NameRequest 名字生成请求记录

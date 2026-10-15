@@ -1292,6 +1292,13 @@ func mustMarshalJSON(v interface{}) string {
 //
 // 实现内联 SQL 查询（避免依赖 HanziFilter 类型）：动态构建 WHERE 子句，
 // 命中 idx_hanzi_data_wuxing / idx_hanzi_data_strokes 索引。
+//
+// P2（ADR-003「SQL 与内存结果等价」）：本方法原先只返回 6 列
+// （char/pinyin/wuxing/strokes/usage_level/positive_score）。services 层拿不到
+// gender / naming_categories / radical / level / kangxi_strokes / meaning / is_rare，
+// 只能在拿到结果后逐字 `hanzi.GetHanzi` 回查内存做二次过滤 —— SQL 沦为「粗筛」，
+// 且 SQL 路径与内存路径的过滤结果无法保证一致（docs/31 §11.9 第 2 项）。
+// 现已将全部过滤与构造所需列下沉到 hanzi_data 并一并返回，services 层不再回查。
 func (s *Store) SearchHanziByFilter(
 	wuxing string, minStrokes, maxStrokes int,
 	hasPositive, isRegular bool, chars []string, limit int,
@@ -1330,7 +1337,14 @@ func (s *Store) SearchHanziByFilter(
 		limit = 10000
 	}
 
-	query := "SELECT char, pinyin, wuxing, strokes, usage_level, positive_score FROM hanzi_data"
+	// P2：返回构造 Character 与过滤所需的全部列，避免调用方回查内存补字段。
+	// 列顺序与下方 Scan 顺序严格一一对应，改任一侧都必须同步。
+	const selectColumns = `char, pinyin, wuxing, strokes, usage_level, positive_score,
+		COALESCE(level, 0), COALESCE(kangxi_strokes, 0), COALESCE(gender, ''),
+		COALESCE(radical, ''), COALESCE(naming_categories, '[]'), COALESCE(meaning, ''),
+		COALESCE(is_rare, 0)`
+
+	query := "SELECT " + selectColumns + " FROM hanzi_data"
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
@@ -1349,10 +1363,26 @@ func (s *Store) SearchHanziByFilter(
 	var result []*database.Hanzi
 	for rows.Next() {
 		var h database.Hanzi
+		var namingCategories string
+		var isRare int
 		if err := rows.Scan(&h.Char, &h.Pinyin, &h.Wuxing, &h.Strokes,
-			&h.UsageLevel, &h.PositiveScore); err != nil {
+			&h.UsageLevel, &h.PositiveScore,
+			&h.Level, &h.KangxiStrokes, &h.Gender, &h.Radical,
+			&namingCategories, &h.Meaning, &isRare); err != nil {
 			logger.Error("SearchHanziByFilter scan 失败", logger.ErrField(err))
 			continue
+		}
+		h.IsRare = isRare != 0
+		if namingCategories != "" && namingCategories != "[]" {
+			// naming_categories 落库形态为 JSON 数组文本；解析失败按「无分类」处理，
+			// 不丢弃整行 —— 否则单条脏数据会连带丢掉该字的全部候选属性。
+			var categories []string
+			if err := json.Unmarshal([]byte(namingCategories), &categories); err != nil {
+				logger.Error("SearchHanziByFilter naming_categories 解析失败",
+					logger.ErrField(err), logger.String("char", h.Char))
+			} else {
+				h.NamingCategories = categories
+			}
 		}
 		result = append(result, &h)
 	}

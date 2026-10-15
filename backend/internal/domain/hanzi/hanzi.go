@@ -158,12 +158,35 @@ func LoadWordData(dir string) error {
 	return nil
 }
 
-// ApplyWuxingOverrides 为 HanziData 中所有汉字标注五行
+// ResolveWuxing 按统一优先级解析单字的五行（字形法/字义法修正规则）
 //
 // 优先级：
 //  1. CharacterWuxingOverride（字义法覆盖表）— 无条件应用
 //  2. 已有五行值 — 保留（人工校正值）
 //  3. 部首映射表计算 — 仅对空值兜底
+//
+// 抽为无状态函数的原因：物料导入（sqlite.Store.Import）必须与内存装载路径
+// 使用**同一套**五行解析规则。原先规则只内嵌在 ApplyWuxingOverrides 里作用于
+// 内存 HanziData，导致 hanzi_data.wuxing 落了 namer.json 原值（实测 14 字为空），
+// SQL 路径与内存路径五行判定不一致（filter_integration_test 守护）。
+//
+// 本函数不读写全局状态，可安全并发调用。
+func ResolveWuxing(char, current, radical string) string {
+	// 1. 覆盖表优先（字义法）
+	if wx, ok := CharacterWuxingOverride[char]; ok {
+		return wx
+	}
+	// 2. 已有五行 → 保留（已人工校正）
+	if current != "" {
+		return current
+	}
+	// 3. 部首映射兜底（字形法）
+	return GetWuxingByRadical(radical)
+}
+
+// ApplyWuxingOverrides 为 HanziData 中所有汉字标注五行
+//
+// 优先级见 ResolveWuxing（单一真源，本函数仅为批量应用）。
 //
 // 必须在 HanziData 填充完毕（JSON 加载后）调用
 //
@@ -175,20 +198,8 @@ func ApplyWuxingOverrides() {
 	defer mu.Unlock()
 
 	for char, data := range HanziData {
-		// 1. 覆盖表优先（字义法）
-		if wx, ok := CharacterWuxingOverride[char]; ok {
-			if wx != data.Wuxing {
-				data.Wuxing = wx
-				HanziData[char] = data
-			}
-			continue
-		}
-		// 2. 已有五行 → 保留（已人工校正）
-		if data.Wuxing != "" {
-			continue
-		}
-		// 3. 部首映射兜底
-		if wx := GetWuxingByRadical(data.Radical); wx != "" {
+		wx := ResolveWuxing(char, data.Wuxing, data.Radical)
+		if wx != data.Wuxing {
 			data.Wuxing = wx
 			HanziData[char] = data
 		}
