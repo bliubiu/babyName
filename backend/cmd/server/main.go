@@ -255,10 +255,25 @@ func newServices(store database.Store, dataDir string) *appServices {
 	// SQLite 下沉（P3 方案6 装配）：构造 HanziDataProvider 引用，
 	// 若底层 store 支持 SQL 过滤则注入到 provider，fate 引擎沿用同一 provider。
 	// 失败/不支持时降级到 Go 端全表过滤（向后兼容）。
+	//
+	// ★ 库空甄别（docs/29 B8 孪生陷阱，空库回落实测修复）：hanzi_data 为
+	// 0 行（未执行 materials import，或物料被清空）时 SQL 过滤「成功且
+	// 零行」——与「有数据但无匹配」不可区分。若照样注入，回落场景
+	// （dataloader 已把 JSON 字库装进内存）候选池恒空，全部生成请求
+	// 失败且看不出是库没导入。故库空时不注入，让 provider 走 Go 端
+	// 全表过滤，与 dataloader 的「逐物料回落」策略同口径。
 	hanziProvider := &services.HanziDataProvider{}
 	if store != nil && services.HasSQLiteCharStore(store) {
-		hanziProvider.SetSQLFilter(services.NewSQLiteHanziFilter(services.AsSQLiteCharStore(store)))
-		logger.Info("SQLite 汉字过滤已启用", logger.String("store", "sqlite"))
+		charStore := services.AsSQLiteCharStore(store)
+		switch rows, err := charStore.HanziRowCount(); {
+		case err != nil:
+			logger.Warn("查询 SQLite 字库行数失败，SQLite 汉字过滤未启用（走 Go 端过滤）", logger.ErrField(err))
+		case rows == 0:
+			logger.Warn("SQLite 字库为空（未执行 materials import？），SQLite 汉字过滤未启用，回退 Go 端全表过滤")
+		default:
+			hanziProvider.SetSQLFilter(services.NewSQLiteHanziFilter(charStore))
+			logger.Info("SQLite 汉字过滤已启用", logger.String("store", "sqlite"), logger.Int("字库行数", rows))
+		}
 	}
 	fateEngine := fate.NewEngine(hanziProvider, services.NewBaziAnalyzerAdapter(), fate.DefaultRaters())
 	fateSvc := services.NewFateNameService(fateEngine,
