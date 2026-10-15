@@ -1083,6 +1083,20 @@ func boolToInt(b bool) int {
 	return 0
 }
 
+// HanziRowCount 返回 hanzi_data 行数
+//
+// 供 services 层 SQLHanziFilter.HasData 甄别「库无数据（未导入物料，
+// 应降级 Go 端过滤）」与「有数据但查询无匹配（如实返回空）」——
+// 空库回落场景下两者在 SQL 查询返回值上完全一致，是 docs/29 B8
+// 修复（失败与无匹配可区分）之后新暴露的孪生陷阱。
+func (s *Store) HanziRowCount() (int, error) {
+	var n int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM hanzi_data").Scan(&n); err != nil {
+		return 0, fmt.Errorf("查询 hanzi_data 行数失败: %w", err)
+	}
+	return n, nil
+}
+
 // seedHanziData 将 hanzi.HanziData 投影到 hanzi_data 表
 //
 // 语义（docs/31 ADR-011）：同输入多次执行结果等价，且物料的字段修订与删字都能传导到 SQLite。
@@ -1342,7 +1356,8 @@ func (s *Store) SearchHanziByFilter(
 	const selectColumns = `char, pinyin, wuxing, strokes, usage_level, positive_score,
 		COALESCE(level, 0), COALESCE(kangxi_strokes, 0), COALESCE(gender, ''),
 		COALESCE(radical, ''), COALESCE(naming_categories, '[]'), COALESCE(meaning, ''),
-		COALESCE(is_rare, 0)`
+		COALESCE(is_rare, 0), COALESCE(is_negative, 0), COALESCE(name_penalty, 0),
+		COALESCE(name_freq_tier, 0)`
 
 	query := "SELECT " + selectColumns + " FROM hanzi_data"
 	if len(conditions) > 0 {
@@ -1364,15 +1379,17 @@ func (s *Store) SearchHanziByFilter(
 	for rows.Next() {
 		var h database.Hanzi
 		var namingCategories string
-		var isRare int
+		var isRare, isNegative int
 		if err := rows.Scan(&h.Char, &h.Pinyin, &h.Wuxing, &h.Strokes,
 			&h.UsageLevel, &h.PositiveScore,
 			&h.Level, &h.KangxiStrokes, &h.Gender, &h.Radical,
-			&namingCategories, &h.Meaning, &isRare); err != nil {
+			&namingCategories, &h.Meaning, &isRare,
+			&isNegative, &h.NamePenalty, &h.NameFreqTier); err != nil {
 			logger.Error("SearchHanziByFilter scan 失败", logger.ErrField(err))
 			continue
 		}
 		h.IsRare = isRare != 0
+		h.IsNegative = isNegative != 0
 		if namingCategories != "" && namingCategories != "[]" {
 			// naming_categories 落库形态为 JSON 数组文本；解析失败按「无分类」处理，
 			// 不丢弃整行 —— 否则单条脏数据会连带丢掉该字的全部候选属性。

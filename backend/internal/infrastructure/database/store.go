@@ -214,6 +214,13 @@ type Hanzi struct {
 	Meaning string `json:"meaning,omitempty"`
 	// IsRare 生僻字标记（namer.json is_rare）
 	IsRare bool `json:"is_rare,omitempty"`
+	// IsNegative 不宜入名标记（namer.json isNegative，实测 14 字为真）
+	IsNegative bool `json:"is_negative,omitempty"`
+	// NamePenalty 起名扣分（namer.json namePenalty，0-100，实测 54 字为真）
+	NamePenalty int `json:"name_penalty,omitempty"`
+	// NameFreqTier 人名频率档位（1-5，由 name_frequency 语料合并进 namer_loader，
+	// 实测 1118 字有值；注意其上游是语料合并而非 namer.json 字段）
+	NameFreqTier int `json:"name_freq_tier,omitempty"`
 }
 
 // NameRequest 名字生成请求记录

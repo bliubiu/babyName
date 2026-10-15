@@ -5,6 +5,96 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.16.0]
+
+**物料管线模式一/模式二双链路验证 + 空库回落修复**（`docs/31` ADR-008/ADR-013、
+`docs/32` §6.2）。工作区存量未提交改动（P-1.1~P-1.4 与 P0 主体）经本轮全量验证
+后交付；验证过程实测并修复两个真缺陷。
+
+### ✨ New Features 新增功能
+
+- **golden names 快照设施**（`docs/32 §6.2`）：3 组固定生辰（男/女 + 不同喜用神）
+  Top10 快照存 `internal/application/services/testdata/golden_names.json`，
+  `TestGoldenNames_快照比对` 同进程生成比对，`UPDATE_GOLDEN=1` 更新基线。
+- `materials` CLI 双模式验证：`import --dry-run` / `import` / `status` 全部跑通，
+  9 项物料入库（康熙 63696、namer 8134、门禁 2990、频率 2237、双字 124994、
+  词典 14809、禁忌 962、卦象 64、生肖 12）。
+
+### 🐛 Bug Fixes 问题修复
+
+- 【Top-N 同进程不确定】golden 快照首次接入即实测复现「同一请求两次生成
+  Top10 不同」（同分 74.1 首位在王金/王春间波动）。根因：`ExcellentTable`
+  堆比较与 `Finalize` 只按分数，同分次序由并发推入次序决定；双名路径预排序
+  `infos` 只按潜力分、同分字的相对顺序随机 → 分片边界随机 → 早停阈值随机
+  → 入选集合随机。修复：引入全序 `betterEntry`（分数降序 + 同分 Char1+Char2
+  字典序），堆比较、容量替换、Finalize 排序三处统一；`infos` 预排序补
+  char 字典序 tiebreak。`TestExcellentTable_*` 与 e2e 第 5 项（6 连发一致）守护。
+- 【错误码吞没】`writeGenerateError` 把非超时错误一律映射为 500 并替换成
+  通用文案，业务层明确的 `[Code: 400] 无法生成符合条件的名字，请调整筛选条件`
+  被吞——前端拿不到可行动提示，监控多了一批假 500。修复：识别 `*AppError`
+  透传 Code 与 Message；超时仍 503、未知错误仍 500。5 个映射守护测试锁定。
+- 【空库回落全失败（B8 孪生陷阱）】库未执行 `materials import`（hanzi_data
+  0 行）时 SQL 过滤「成功且零行」，与「有数据但无匹配」不可区分：`FindCharacters`
+  按无匹配直接返回空候选池，dataloader 已回落装载的 JSON 字库被完全绕过
+  （实测空库场景全部生成请求失败）。修复双保险：① `SQLHanziFilter` 增加
+  `HasData()`，`FindCharacters` 在 SQL 空结果且库无数据时降级 Go 端过滤；
+  ② `cmd/server` 装配期以 `HanziRowCount()` 甄别，库空不注入 SQL 过滤并
+  warn 引导 import。`TestFindCharacters_NoDataFallsBack` 守护。
+
+### 📈 Improvements 性能/体验优化
+
+- `materials import` 指纹未变的物料短路跳过（实测重灌 234ms 全跳过）；
+  运行时装载日志补「字库行数」，空库场景有明确 warn。
+
+### 🧪 Tests 测试
+
+- `internal/materials/{schema,normalize,validate}` 三包从零测试补到 **100%
+  覆盖**（守护测试 + 删除两个 0 覆盖死函数 `MetaChecksumKey/MetaVersionKey`）。
+- 新增 `table_determinism_test.go`（Top-N 全序确定性）、
+  `name_handler_error_mapping_test.go`（错误分级）、
+  `golden_names_test.go`（快照比对 + 同进程可复现）。
+- 全量回归：`go build` / `go vet` / `go test ./...` **25 包全绿**；
+  `e2e_check -strict` **模式一（空库回落）与模式二（DB 优先）均 18/18**。
+
+### 📚 Docs 文档更新
+
+- `docs/32` 实施状态：P-1.1~P-1.4 与 P0 主体完成并验证；剩余项登记
+  （`seedHanziData` 与 `importNamer` 双口径收敛、`docs/28 §8.5` 遗留项）。
+
+## [2026.10.14.2]
+
+**物料管线 §11.9 第 11/12 项：`name_freq_tier` / `name_penalty` / `is_negative` 全链路落库**
+（`docs/31 §9.6`、ADR-009/ADR-012）。此前这三列虽已建表并由导入器写入，但 **SQL 读路径
+（`SearchHanziByFilter`）未返回**，导致生成链路（走 SQL）与测名链路（走内存）对同一字算出
+不同总分（实测 80.10 vs 80.60）；且频率档位在「仅 namer.json 变更」时会被静默清零。
+
+### ✨ New Features 新增功能
+
+- `database.Hanzi` 补 `IsNegative / NamePenalty / NameFreqTier` 三字段；`SearchHanziByFilter`
+  的 SELECT 与 Scan 同步补齐；`databaseHanziToCharacter` 全量透传（不再默认置零）。
+
+### 🐛 Bug Fixes 问题修复
+
+- 【同源同分】`is_negative / name_penalty / name_freq_tier` 此前在 SQL 路径恒为 `false/0/0`，
+  分别参与 `fate` 的硬负面剔除（`engine.go`）、起名扣分（`rater.go`）、频率评分
+  （`frequency_rater.go`）→ 生成与测名总分不一致。补齐读路径后两条链路同源同分。
+- 【派生列静默清零】频率档位此前只在 `importCharFreq` 内 `UPDATE hanzi_data`。当**仅
+  `namer.json` 变更**（频率源不变）时，`importNamer` 重写全表 `name_freq_tier=0`，而
+  `importCharFreq` 因指纹未变被短路跳过 → 档位丢失。改为 `importNamer` 从 `name_frequency`
+  表回读合并（与康熙合并同构），派生链不再因部分重导而断。
+
+### 🧪 Tests 测试
+
+- 新增 `store_materials_projection_test.go`：评分字段落库、频率档位落库、**仅 namer 变更
+  时保留频率档位**（该例在修复前必红）。
+- 扩充 `adapters_p2_test.go`：`TestSQLAndMemoryScoringFieldsIdentical` 锁定 SQL 行评分字段
+  全透传、不得出现默认零值。
+
+### 📚 Docs 文档更新
+
+- `docs/31 §11.9` 第 11/12 项状态更新为已完成（第 12 项 `pair_blacklist` 明确「源无真值、
+  不落库」，两侧一致置空）。
+
 ## [2026.10.14.1]
 
 **P2：消除 `services` 层 Go 端回查**（ADR-003「SQL 与内存结果等价」）。

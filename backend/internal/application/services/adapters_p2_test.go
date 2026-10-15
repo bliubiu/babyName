@@ -36,6 +36,15 @@ func (s *stubSQLStore) SearchHanziByFilter(wuxing string, minStrokes, maxStrokes
 	return out, nil
 }
 
+// HanziRowCount 有数据（返回行数大于 0），保证 FindCharacters 的 SQL 空结果
+// 不会被误判为「库无数据」而降级（本用例锁的正是 SQL 有结果的主路径）
+func (s *stubSQLStore) HanziRowCount() (int, error) {
+	if s.err != nil {
+		return 0, s.err
+	}
+	return len(s.rows), nil
+}
+
 // TestSQLPathNoMemoryFallback 验证 SQL 路径不再回查内存
 //
 // 手法：构造一个只含 2 行的 stub SQL store，返回的字（"沄"、"汀"）都不在
@@ -186,6 +195,41 @@ func TestRareCharUnionAcrossPaths(t *testing.T) {
 	c2 := databaseHanziToCharacter(h2)
 	if c2.IsRegular {
 		t.Error("表外字笔画 48 超过 25 阈值，不应判为常用字")
+	}
+}
+
+// TestSQLAndMemoryScoringFieldsIdentical 守护「评分字段两路径同源」
+//
+// 回归背景：P2 初次实现把 is_negative / name_penalty / name_freq_tier 在 SQL 路径
+// 误置为 false/0/0（误以为上游无真值）。但内存侧实测这 3 个字段均有真值
+// （isNegative 14 字、namePenalty 54 字、nameFreqTier 1118 字），且都会参与
+// fate 评分 —— 于是生成链路（SQL）与测名链路（内存）算出不同总分，
+// 违反「测名与生成同源同分」契约（e2e_check 第 7 项报 80.10 vs 80.60）。
+//
+// 本测试锁定：SQL 路径构造的 Character，其全部评分相关字段必须取自 SQL 行，
+// 不得出现「默认零值」。
+func TestSQLAndMemoryScoringFieldsIdentical(t *testing.T) {
+	h := &database.Hanzi{
+		Char: "珀", Pinyin: "po", Wuxing: "水", Strokes: 10,
+		Level: 1, PositiveScore: 72, NameFreqTier: 4,
+		IsNegative: true, NamePenalty: 30,
+	}
+	c := databaseHanziToCharacter(h)
+
+	if !c.IsNegative {
+		t.Error("IsNegative 应透传 SQL 行的 true，不得置 false")
+	}
+	if c.NamePenalty != 30 {
+		t.Errorf("NamePenalty 应透传 SQL 行的 30，实际 %d", c.NamePenalty)
+	}
+	if c.NameFreqTier != 4 {
+		t.Errorf("NameFreqTier 应透传 SQL 行的 4，实际 %d", c.NameFreqTier)
+	}
+	if c.PositiveScore != 72 {
+		t.Errorf("PositiveScore 应透传 SQL 行的 72，实际 %d", c.PositiveScore)
+	}
+	if c.CommonLevel != 1 {
+		t.Errorf("CommonLevel 应透传 SQL 行的 1，实际 %d", c.CommonLevel)
 	}
 }
 

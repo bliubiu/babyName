@@ -13,6 +13,7 @@ import (
 	"name/internal/domain/ziwei"
 	"name/internal/domain/zodiac"
 	"name/internal/infrastructure/database"
+	"name/internal/infrastructure/logger"
 )
 
 var (
@@ -165,6 +166,17 @@ type SQLHanziFilter interface {
 	// 返回 nil slice + nil error 表示「查询成功且确实无匹配」，两者必须可区分。
 	SearchHanziByFilter(wuxing string, minStrokes, maxStrokes int,
 		hasPositive, isRegular bool, chars []string, limit int) ([]database.Hanzi, error)
+	// HasData 报告底层字库是否载有数据。
+	//
+	// B8 的孪生陷阱（本次修复，空库回落场景实测）：库未执行
+	// `materials import`（或物料被清空）时，SQL 查询**成功且零行**，
+	// 与「查询成功、确实无匹配」在返回值上完全一致。若一律按无匹配
+	// 处理，回落场景（DB 缺料 → 内存已装 JSON 字库）会拿到空候选池，
+	// 表现为全部生成请求失败，且看不出是库没导入。
+	//
+	// 因此 FindCharacters 在 SQL 返回空结果时调用本方法甄别：
+	// 无数据 → 降级 Go 端全表过滤；有数据 → 如实返回空。
+	HasData() bool
 }
 
 func (p *HanziDataProvider) GetCharacter(char string) (*fate.Character, error) {
@@ -183,15 +195,23 @@ func (p *HanziDataProvider) FindCharacters(query fate.CharacterQuery) ([]*fate.C
 	if p.sqlFilter != nil {
 		hanzis, err := p.queryViaSQL(pattern)
 		if err == nil {
-			// P2（ADR-003）：queryViaSQL 已完成召回 + 二次过滤，且 hanzi_data 已落齐
-			// 构造 Character 所需的全部列，故直接由 SQL 行构造，不再逐字
-			// `hanzi.GetHanzi` 回查内存（原先此处是第二处回查，且会丢弃 SQL 返回的
-			// level/gender/radical/meaning 等字段，使 SQL 下沉收益归零）。
-			result := make([]*fate.Character, 0, len(hanzis))
-			for i := range hanzis {
-				result = append(result, databaseHanziToCharacter(&hanzis[i]))
+			// 空库甄别（B8 孪生陷阱修复）：库未导入物料时 SQL「成功且零行」，
+			// 与「有数据但确实无匹配」不可区分。HasData()=false 时内存已由
+			// dataloader 回落装上 JSON 字库，必须降级 Go 端过滤，否则回落
+			// 场景候选池恒空、生成全失败（空库实测：每次请求 400/500）。
+			if len(hanzis) == 0 && !p.sqlFilter.HasData() {
+				logger.Warn("SQLite 字库无数据（未执行 materials import？），降级 Go 端全表过滤")
+			} else {
+				// P2（ADR-003）：queryViaSQL 已完成召回 + 二次过滤，且 hanzi_data 已落齐
+				// 构造 Character 所需的全部列，故直接由 SQL 行构造，不再逐字
+				// `hanzi.GetHanzi` 回查内存（原先此处是第二处回查，且会丢弃 SQL 返回的
+				// level/gender/radical/meaning 等字段，使 SQL 下沉收益归零）。
+				result := make([]*fate.Character, 0, len(hanzis))
+				for i := range hanzis {
+					result = append(result, databaseHanziToCharacter(&hanzis[i]))
+				}
+				return result, nil
 			}
-			return result, nil
 		}
 		// SQL 失败 → 降级 Go 过滤（不阻断服务）
 	}
@@ -389,11 +409,14 @@ func databaseHanziToCharacter(h *database.Hanzi) *fate.Character {
 		GenderHint:        h.Gender,
 		HasPoetry:         false,
 
-		// 策展标注与评分：hanzi_data 未落 name_penalty / pair_blacklist，
-		// 依 ADR-012「源无真值则显式置零、不臆造」置默认值。
-		IsNegative:  false,
-		NamePenalty: 0,
-		// pairBlacklist 字段名为 nil（等价「无禁忌搭配」），与内存路径的空切片语义一致
+		// 策展标注与评分：全部取自 SQL 行。
+		// 这些字段不是「装饰」——is_negative / name_penalty / name_freq_tier 会实打实
+		// 参与 fate 评分；一旦在 SQL 路径置零，生成链路（走 FindCharacters/SQL）与
+		// 测名链路（走 GetCharacter/内存）就会算出不同总分，
+		// 违反「测名与生成同源同分」契约（e2e_check 第 7 项 / evaluate_e2e_test.go）。
+		IsNegative:  h.IsNegative,
+		NamePenalty: h.NamePenalty,
+		// pair_blacklist 上游无真值（内存侧实测 0 字有值），两路径同为「无禁忌搭配」
 		PairBlacklist: nil,
 
 		// 策展覆盖表：curated_names 属运行时自学习数据，未纳入统一 import，
@@ -401,9 +424,8 @@ func databaseHanziToCharacter(h *database.Hanzi) *fate.Character {
 		IsCurated: hanzi.IsCuratedNamingChar(h.Char),
 
 		PositiveScore: h.PositiveScore,
-		// 人名频率档位未落 hanzi_data（现由 name_frequency 物料按字合并，
-		// 但尚未合并进本表），故 SQL 路径此处置 0。
-		NameFreqTier: 0,
+		// 人名频率档位（1-5），由 name_frequency 语料合并而来，已随 import 落库
+		NameFreqTier: h.NameFreqTier,
 	}
 
 	// 起名分类：SQL 已返回 naming_categories，优先使用；为空时 fallback 到 fate 精选库
@@ -683,6 +705,9 @@ func (p *HanziDataProvider) queryViaSQL(pat filterPattern) ([]database.Hanzi, er
 type SQLiteCharStore interface {
 	SearchHanziByFilter(wuxing string, minStrokes, maxStrokes int,
 		hasPositive, isRegular bool, chars []string, limit int) ([]*database.Hanzi, error)
+	// HanziRowCount 返回 hanzi_data 行数，供 HasData 甄别「库无数据」
+	// 与「有数据但无匹配」（空库回落降级的判据）
+	HanziRowCount() (int, error)
 }
 
 // sqliteHanziFilterAdapter 桥接实现：把 SQLHanziFilter 调用转给 sqlite.Store
@@ -729,6 +754,23 @@ func (a *sqliteHanziFilterAdapter) SearchHanziByFilter(
 		result = append(result, *raw[i])
 	}
 	return result, nil
+}
+
+// HasData 底层 hanzi_data 是否有行
+//
+// 探测失败（如库损坏）时保守返回 true：让调用方把空结果当作
+// 「确实无匹配」如实返回，而不是借一次探测失败就降级 —— 探测本身
+// 不应成为新的故障面。真正的查询失败仍由 SearchHanziByFilter 的
+// error 路径负责降级（docs/29 B8）。
+func (a *sqliteHanziFilterAdapter) HasData() bool {
+	if a.store == nil {
+		return false
+	}
+	n, err := a.store.HanziRowCount()
+	if err != nil {
+		return true
+	}
+	return n > 0
 }
 
 // 接口守卫：sqliteHanziFilterAdapter 必须实现 SQLHanziFilter

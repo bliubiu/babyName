@@ -400,6 +400,29 @@ func (s *Store) importNamer(def schema.Definition, src string, res ImportResult,
 		}
 	}
 
+	// 人名频率档位合并（docs/31 §9.6 步骤 4 / ADR-009）。
+	//
+	// 必须在此处从 name_frequency 表回读合并，而不能只依赖「频率物料导入时
+	// UPDATE hanzi_data」：若仅 namer.json 变更（频率源不变），本函数会重写全表
+	// name_freq_tier 为 namer 原值（namer.json 无该字段=0），而频率物料因指纹未变
+	// 被短路跳过、其 UPDATE 不再执行 → 档位被静默清零。回读合并后，无论哪一侧变更，
+	// 「库内频率表 → hanzi_data.name_freq_tier」这条派生链都不会断。
+	// 口径与 JSON 运行时路径一致：仅 Tier ≥ 2（LoadFrequencyDB 过滤口径）。
+	freqTier := map[string]int{}
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM name_frequency").Scan(new(int)); err == nil {
+		rows, qerr := s.db.Query("SELECT char, tier FROM name_frequency")
+		if qerr == nil {
+			for rows.Next() {
+				var c string
+				var t int
+				if err := rows.Scan(&c, &t); err == nil && t >= 2 {
+					freqTier[c] = t
+				}
+			}
+			_ = rows.Close()
+		}
+	}
+
 	// 逐字归一：namer.json 实测仅 17 个字段
 	//   - 有真值：char/pinyin/strokes/radical/meaning/wuxing/gender/level/tone/
 	//     styleTags/usageLevel/positiveScore/isRare/isNegative/isPolyphonic/namePenalty/
@@ -420,7 +443,7 @@ func (s *Store) importNamer(def schema.Definition, src string, res ImportResult,
 			KangxiStrokes: kangxi[nc.Char],
 			Radical:       nc.Radical, Meaning: nc.Meaning, Wuxing: wuxing,
 			Level: nc.Level, Gender: normalize.Gender(nc.Gender),
-			Tone: nc.Tone, NameFreqTier: nc.NameFreqTier,
+			Tone: nc.Tone, NameFreqTier: freqTier[nc.Char],
 			UsageLevel: nc.UsageLevel, PositiveScore: nc.PositiveScore,
 			NamePenalty:  nc.NamePenalty,
 			IsPolyphonic: nc.IsPolyphonic, IsRare: nc.IsRare, IsNegative: nc.IsNegative,
