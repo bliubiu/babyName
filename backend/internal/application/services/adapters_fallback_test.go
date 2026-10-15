@@ -28,13 +28,30 @@ func (s *errStore) SearchHanziByFilter(wuxing string, minStrokes, maxStrokes int
 	return nil, s.err
 }
 
-// emptyStore 模拟一个查询成功但无匹配的 store
+func (s *errStore) HanziRowCount() (int, error) { return 0, s.err }
+
+// emptyStore 模拟一个查询成功但无匹配的 store（库有数据）
 type emptyStore struct{}
 
 func (s *emptyStore) SearchHanziByFilter(wuxing string, minStrokes, maxStrokes int,
 	hasPositive, isRegular bool, chars []string, limit int) ([]*database.Hanzi, error) {
 	return nil, nil
 }
+
+func (s *emptyStore) HanziRowCount() (int, error) { return 100, nil }
+
+// noDataStore 模拟库无数据的 store（未执行 materials import）
+//
+// 查询同样「成功且零行」，但 HanziRowCount=0 —— 调用方必须据此降级，
+// 而不是把库空当作业务无匹配（空库回落实测：生成请求全失败）。
+type noDataStore struct{}
+
+func (s *noDataStore) SearchHanziByFilter(wuxing string, minStrokes, maxStrokes int,
+	hasPositive, isRegular bool, chars []string, limit int) ([]*database.Hanzi, error) {
+	return nil, nil
+}
+
+func (s *noDataStore) HanziRowCount() (int, error) { return 0, nil }
 
 // TestSQLiteHanziFilter_PropagatesError store 的错误必须上抛，不能被适配层吞掉
 func TestSQLiteHanziFilter_PropagatesError(t *testing.T) {
@@ -95,6 +112,31 @@ func TestFindCharacters_EmptyResultIsNotError(t *testing.T) {
 	}
 	if len(chars) != 0 {
 		t.Errorf("SQL 返回无匹配时应如实返回空，实际 %d 条", len(chars))
+	}
+}
+
+// TestFindCharacters_NoDataFallsBack 库无数据时必须降级 Go 端过滤
+//
+// B8 的孪生陷阱（空库回落实测修复）：库未导入物料时 SQL 查询同样
+// 「成功且零行」，若按无匹配处理，回落场景（内存已装 JSON 字库）
+// 候选池恒空、生成全失败。判据是 HasData()=false。
+func TestFindCharacters_NoDataFallsBack(t *testing.T) {
+	setupNameServiceE2E(t)
+
+	p := &HanziDataProvider{}
+	p.SetSQLFilter(NewSQLiteHanziFilter(&noDataStore{}))
+
+	chars, err := p.FindCharacters(&fate.BasicCharacterQuery{WuxingIn: []string{"金"}, StrokeGTE: 8, StrokeLTE: 12})
+	if err != nil {
+		t.Fatalf("库无数据不应向上返回错误，应降级: %v", err)
+	}
+	if len(chars) == 0 {
+		t.Fatal("库无数据后 Go 端降级仍应返回候选字，实际 0 —— 空库回落路径不可达")
+	}
+	for _, c := range chars {
+		if c.WuXing != "金" {
+			t.Errorf("降级结果混入非金行字 %q(%s)", c.Char, c.WuXing)
+		}
 	}
 }
 
