@@ -80,7 +80,7 @@ func RateName(candidate *NameCandidate, fateData *FateData, raters []Rater) Name
 	// 方案B+：非策展双名（单名无策展概念，不封顶）
 	//
 	// 豁免条件扩展：除策展好名白名单外，「含精选好字」的组合
-	// （IsCuratedN && PositiveScoreN>=85，与 WenHuaRater +8 加分同条件）同样豁免。
+	// （IsCuratedN && PositiveScoreN>=90，与 WenHuaRater +8 加分同条件）同样豁免。
 	// 否则 WenHuaRater 给精选好字的文化加分会被本封顶截回 75，策展加分机制被架空——
 	// 实测喜用神收窄到单五行后白名单组合全部出局，「已谦」（谦=策展∩ps87）与荒谬
 	// 组合同聚封顶基准分 69.3（=五行56×0.30+75×0.70），Top50 平均分断言失败。
@@ -449,8 +449,8 @@ func (r *WenHuaRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 	// 注意：不可用 NamingCategory 非空替代（自动分类的五行兜底会让荒谬字"贪"水→"清新水韵"
 	// 也获分类），必须精确使用人工策展覆盖表（IsCurated1/IsCurated2）。
 	// 二轮收紧：策展表是「分类字表」而非「精选好字表」，平庸字（软/际/映/耿/宝/念/畅/章/好/典）
-	// 也在表内拿到 +8，导致 Top5 被平庸字霸榜。结合 PositiveScore>=85（namer.json 寓意评分，
-	// 优质字 87-91 有值、平庸/荒谬字为空）把加分收窄为「策展 ∩ positiveScore>=85」精选好字专属。
+	// 也在表内拿到 +8，导致 Top5 被平庸字霸榜。结合 PositiveScore>=90（namer.json 寓意评分，
+	// 优质字 87-91 有值、平庸/荒谬字为空）把加分收窄为「策展 ∩ positiveScore>=90」精选好字专属。
 	curatedCount := 0
 	curatedChars := make([]string, 0, 2)
 	if candidate.Char1 != "" && candidate.IsCurated1 && candidate.PositiveScore1 >= 90 {

@@ -29,8 +29,11 @@ type HistoryStore interface {
 
 // FavoriteStore 收藏存储接口
 type FavoriteStore interface {
-	SaveFavorite(record *FavoriteRecord) string
-	BatchSaveFavorite(records []*FavoriteRecord) []string
+	// SaveFavorite 保存收藏；写入失败返回空 ID 与错误（此前吞错返回假 ID，
+	// 服务层误判为成功，收藏静默丢失——docs/29 A6）
+	SaveFavorite(record *FavoriteRecord) (string, error)
+	// BatchSaveFavorite 批量保存；返回各记录 ID（失败位为空串）与首个错误
+	BatchSaveFavorite(records []*FavoriteRecord) ([]string, error)
 	GetFavorites() []*FavoriteRecord
 	GetFavoritesPage(page, limit int) ([]*FavoriteRecord, int, error)
 	DeleteFavorite(id string) error
@@ -77,11 +80,11 @@ type CuratedStore interface {
 
 // CuratedNameEntry 精选名条目
 type CuratedNameEntry struct {
-	Name    string  `json:"name"`
-	Pinyin  string  `json:"pinyin,omitempty"`
-	Gender  string  `json:"gender,omitempty"`
-	Score   float64 `json:"score"`
-	Source  string  `json:"source,omitempty"`
+	Name   string  `json:"name"`
+	Pinyin string  `json:"pinyin,omitempty"`
+	Gender string  `json:"gender,omitempty"`
+	Score  float64 `json:"score"`
+	Source string  `json:"source,omitempty"`
 }
 
 // NameStatStore 姓名统计存储接口
@@ -98,23 +101,23 @@ type NameStatStore interface {
 
 // SurnameStat 姓氏统计
 type SurnameStat struct {
-	Surname      string  `json:"surname"`
-	Count        int     `json:"count"`
-	Ratio        float64 `json:"ratio"`
-	Rank         int     `json:"rank"`
-	MaleRatio    float64 `json:"male_ratio"`
-	FemaleRatio  float64 `json:"female_ratio"`
+	Surname     string  `json:"surname"`
+	Count       int     `json:"count"`
+	Ratio       float64 `json:"ratio"`
+	Rank        int     `json:"rank"`
+	MaleRatio   float64 `json:"male_ratio"`
+	FemaleRatio float64 `json:"female_ratio"`
 }
 
 // GivenNameStat 名字部分统计（按姓氏分组）
 type GivenNameStat struct {
-	Surname      string  `json:"surname"`
-	GivenName    string  `json:"given_name"`
-	Count        int     `json:"count"`
-	Rank         int     `json:"rank"`
-	MaleCount    int     `json:"male_count"`
-	FemaleCount  int     `json:"female_count"`
-	UnknownCount int     `json:"unknown_count"`
+	Surname      string `json:"surname"`
+	GivenName    string `json:"given_name"`
+	Count        int    `json:"count"`
+	Rank         int    `json:"rank"`
+	MaleCount    int    `json:"male_count"`
+	FemaleCount  int    `json:"female_count"`
+	UnknownCount int    `json:"unknown_count"`
 }
 
 // FullNameStat 全名统计
@@ -210,18 +213,18 @@ type NameRequest struct {
 
 // NameFeedback 名字反馈记录
 type NameFeedback struct {
-	ID            int64     `json:"id"`
-	RequestID     int64     `json:"request_id"`
-	FullName      string    `json:"full_name"`
-	GivenName     string    `json:"given_name"`
-	IsLiked       bool      `json:"is_liked"`
-	IsSelected    bool      `json:"is_selected"`
-	UserRating    *int      `json:"user_rating,omitempty"`
-	FeedbackText  string    `json:"feedback_text,omitempty"`
-	AlgorithmScore float64  `json:"algorithm_score"`
-	WuxingMatch   string    `json:"wuxing_match,omitempty"`
-	DeviceInfo    string    `json:"device_info,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID             int64     `json:"id"`
+	RequestID      int64     `json:"request_id"`
+	FullName       string    `json:"full_name"`
+	GivenName      string    `json:"given_name"`
+	IsLiked        bool      `json:"is_liked"`
+	IsSelected     bool      `json:"is_selected"`
+	UserRating     *int      `json:"user_rating,omitempty"`
+	FeedbackText   string    `json:"feedback_text,omitempty"`
+	AlgorithmScore float64   `json:"algorithm_score"`
+	WuxingMatch    string    `json:"wuxing_match,omitempty"`
+	DeviceInfo     string    `json:"device_info,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // AlgorithmPerformance 算法性能统计

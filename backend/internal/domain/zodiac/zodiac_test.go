@@ -81,9 +81,9 @@ func TestZodiacList_WuxingIsValid(t *testing.T) {
 
 func TestZodiacList_SpecificValues(t *testing.T) {
 	tests := []struct {
-		id       int
-		name     string
-		wuxing   string
+		id         int
+		name       string
+		wuxing     string
 		compatible []string
 	}{
 		{1, "鼠", "水", []string{"牛", "龙", "猴"}},

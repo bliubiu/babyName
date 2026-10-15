@@ -30,33 +30,57 @@ func (s *FavoriteService) SetNameDB(db *name.NameDB) {
 
 // FavoriteRecord 收藏记录
 type FavoriteRecord struct {
-	ID        string `json:"id"`
-	Surname   string `json:"surname"`
-	GivenName string `json:"given_name"`
-	Pinyin   string  `json:"pinyin"`
-	Gender   string  `json:"gender"`
-	Score    float64 `json:"score"` // 与 name.Name.TotalScore 同口径（浮点）
-	Source   string  `json:"source"`
-	Notes    string `json:"notes"`
+	ID        string  `json:"id"`
+	Surname   string  `json:"surname"`
+	GivenName string  `json:"given_name"`
+	Pinyin    string  `json:"pinyin"`
+	Gender    string  `json:"gender"`
+	Score     float64 `json:"score"` // 与 name.Name.TotalScore 同口径（浮点）
+	Source    string  `json:"source"`
+	Notes     string  `json:"notes"`
 }
 
-// GetFavorites 获取收藏列表
+// GetFavorites 获取收藏列表（全量，仅供内部/兼容调用）
+//
+// 注意：HTTP 路径请走 GetFavoritesPage —— 本方法无分页，收藏累积后会
+// 一次性返回全量（docs/29 B6）。
 func (s *FavoriteService) GetFavorites(ctx context.Context) ([]*FavoriteRecord, error) {
 	records := s.store.GetFavorites()
 	result := make([]*FavoriteRecord, len(records))
 	for i, r := range records {
-		result[i] = &FavoriteRecord{
-			ID:        r.ID,
-			Surname:   r.Surname,
-			GivenName: r.GivenName,
-			Pinyin:   r.Pinyin,
-			Gender:   r.Gender,
-			Score:    r.Score,
-			Source:   r.Source,
-			Notes:    r.Notes,
-		}
+		result[i] = toFavoriteRecord(r)
 	}
 	return result, nil
+}
+
+// GetFavoritesPage 分页获取收藏列表，返回当页记录与总数。
+//
+// 底层 database.FavoriteStore 早已提供 GetFavoritesPage，此前服务层与
+// handler 都没走它，导致 /favorites 永远全量返回。
+func (s *FavoriteService) GetFavoritesPage(ctx context.Context, page, limit int) ([]*FavoriteRecord, int, error) {
+	records, total, err := s.store.GetFavoritesPage(page, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	result := make([]*FavoriteRecord, len(records))
+	for i, r := range records {
+		result[i] = toFavoriteRecord(r)
+	}
+	return result, total, nil
+}
+
+// toFavoriteRecord 存储层记录 → 应用层 DTO
+func toFavoriteRecord(r *database.FavoriteRecord) *FavoriteRecord {
+	return &FavoriteRecord{
+		ID:        r.ID,
+		Surname:   r.Surname,
+		GivenName: r.GivenName,
+		Pinyin:    r.Pinyin,
+		Gender:    r.Gender,
+		Score:     r.Score,
+		Source:    r.Source,
+		Notes:     r.Notes,
+	}
 }
 
 // SaveFavorite 保存收藏（评分≥80 自动加入精选库）
@@ -65,18 +89,25 @@ func (s *FavoriteService) SaveFavorite(ctx context.Context, record *FavoriteReco
 	if existing != nil {
 		return existing.ID, nil
 	}
-	id := s.store.SaveFavorite(&database.FavoriteRecord{
+	id, err := s.store.SaveFavorite(&database.FavoriteRecord{
 		ID:        record.ID,
 		Surname:   record.Surname,
 		GivenName: record.GivenName,
-		Pinyin:   record.Pinyin,
-		Gender:   record.Gender,
-		Score:    record.Score,
-		Source:   record.Source,
-		Notes:    record.Notes,
+		Pinyin:    record.Pinyin,
+		Gender:    record.Gender,
+		Score:     record.Score,
+		Source:    record.Source,
+		Notes:     record.Notes,
 	})
+	if err != nil {
+		// 写库失败必须上抛（docs/29 A6）：此前吞错后仍返回 ID + nil error，
+		// 用户看到「收藏成功」实际没存上，且自学习照常把名字塞进精选库，
+		// 形成「收藏失败但进了精选库」的不一致
+		return "", err
+	}
 
-	// 自学习：评分≥80 自动加入精选库（实时更新内存 + 持久化）
+	// 自学习：评分≥80 自动加入精选库（实时更新内存 + 持久化）。
+	// 仅在收藏确实落库后执行。
 	if record.Score >= 80 {
 		fullName := record.Surname + record.GivenName
 		if s.nameDB != nil {
@@ -111,14 +142,18 @@ func (s *FavoriteService) BatchSaveFavorite(ctx context.Context, records []*Favo
 			ID:        record.ID,
 			Surname:   record.Surname,
 			GivenName: record.GivenName,
-			Pinyin:   record.Pinyin,
-			Gender:   record.Gender,
-			Score:    record.Score,
-			Source:   record.Source,
-			Notes:    record.Notes,
+			Pinyin:    record.Pinyin,
+			Gender:    record.Gender,
+			Score:     record.Score,
+			Source:    record.Source,
+			Notes:     record.Notes,
 		}
 	}
-	return s.store.BatchSaveFavorite(storeRecords), nil
+	ids, err := s.store.BatchSaveFavorite(storeRecords)
+	if err != nil {
+		return ids, err
+	}
+	return ids, nil
 }
 
 // BatchDeleteFavorite 批量删除收藏

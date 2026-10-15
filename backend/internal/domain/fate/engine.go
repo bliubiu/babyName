@@ -103,16 +103,16 @@ type charInfo struct {
 
 // sessionStage 会话进度阶段（供异步任务的进度查询）
 const (
-	sessionStageBazi     int32 = iota // 八字排盘
-	sessionStageLoadChars             // 加载字库
-	sessionStagePool                  // 构建候选池
-	sessionStageScore                 // 评分筛选（笛卡尔积枚举）
-	sessionStageRank                  // 汇总排序
+	sessionStageBazi      int32 = iota // 八字排盘
+	sessionStageLoadChars              // 加载字库
+	sessionStagePool                   // 构建候选池
+	sessionStageScore                  // 评分筛选（笛卡尔积枚举）
+	sessionStageRank                   // 汇总排序
 )
 
 // sessionStageNames 阶段中文名（对外展示用）
 var sessionStageNames = map[int32]string{
-	sessionStageBazi:     "八字排盘",
+	sessionStageBazi:      "八字排盘",
 	sessionStageLoadChars: "加载字库",
 	sessionStagePool:      "构建候选池",
 	sessionStageScore:     "评分筛选",
@@ -373,15 +373,16 @@ func (s *sessionImpl) ExcludedChars() []string {
 // sessionImpl 上的负反馈查询：**全链路无锁**。
 //
 // ★ 历史缺陷（docs/28 W4）三连：
-//   ① 这两处曾不加锁直接读 map，并附注释声称「并发安全由 s.mu 守护
-//      （generate 与 ExcludeChar 互斥）」——该论断是错的：generate() 全程
-//      并不持有 s.mu（见 generate 入口），因此「生成进行中调用 ExcludeChar」
-//      会与这里的读形成 concurrent map read and map write，Go 运行时直接抛
-//      不可 recover 的 fatal error 终止整个进程。
-//   ② 首版修复改为逐次 RLock，正确但代价高：这两个函数位于 N×N 笛卡尔积的
-//      最内层循环，调用数百万次，读锁的原子计数开销实测拖慢串行吞吐约 20%。
-//   ③ 现改为读取不可变快照（atomic.Pointer），读路径无锁无竞争，
-//      写路径 copy-on-write 重建快照——既消除数据竞争，又比 RLock 更快。
+//
+//	① 这两处曾不加锁直接读 map，并附注释声称「并发安全由 s.mu 守护
+//	   （generate 与 ExcludeChar 互斥）」——该论断是错的：generate() 全程
+//	   并不持有 s.mu（见 generate 入口），因此「生成进行中调用 ExcludeChar」
+//	   会与这里的读形成 concurrent map read and map write，Go 运行时直接抛
+//	   不可 recover 的 fatal error 终止整个进程。
+//	② 首版修复改为逐次 RLock，正确但代价高：这两个函数位于 N×N 笛卡尔积的
+//	   最内层循环，调用数百万次，读锁的原子计数开销实测拖慢串行吞吐约 20%。
+//	③ 现改为读取不可变快照（atomic.Pointer），读路径无锁无竞争，
+//	   写路径 copy-on-write 重建快照——既消除数据竞争，又比 RLock 更快。
 //
 // 时序语义：指针加载发生在**本次调用**，因此生成进行中调用 ExcludeChar 后，
 // 尚未评估的组合会立刻看到新的排除集（比 RLock 版本更及时）。
@@ -592,6 +593,24 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		}
 	}
 
+	// 7.2 用户显式偏好生效：寓意关键词 + 偏旁选字（docs/29 A9）
+	//
+	// 缺陷背景：MeaningKeywords 此前只在服务层被赋值，engine/generator 无任何
+	// 读取点 —— 字段一路传递后即被丢弃，用户输入关键词与完全不输入的结果
+	// 一模一样，而 UI 明确承诺「起名将优先从此来源选字」。前端更把偏旁选字
+	// 拼成 "包含字：木木" 混进 keywords 文本发送，结构化通道从未被读取。
+	//
+	// 修法：把用户的显式偏好落到**候选池**上——这既让偏好真正可见（枚举是
+	// 全量 N×N、结果表按分数取 TopN，仅调整枚举顺序不足以影响输出），又不
+	// 改动评分器权重与分数语义（RateNameScore 的权重和恒为 1.0，不能加维度）。
+	//
+	// 语义：命中关键词字义/起名分类的字，以及用户点选的字，组成「偏好集」；
+	// 偏好集非空时把候选池收窄到偏好集（这才是「优先从此来源选字」）；
+	// 偏好集为空（关键词全不命中任何字）时放弃收窄，保持原有行为。
+	if narrowed := narrowPoolByPreference(validChars, input.Options.MeaningKeywords, input.Options.RequiredChars); narrowed != nil {
+		validChars = narrowed
+	}
+
 	// 7.1 候选池按汉字去重
 	//
 	// 重复汉字会让 (i, j) 组合在「名字」层面重复——同一 Char1+Char2 被枚举多次。
@@ -624,16 +643,25 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	// 潜力分 = 五行匹配(0-24) + 策展好字(0-16) + 寓意评分(0-9) + 诗词出典(0-5)
 	// 高潜力字排在前面，使笛卡尔积循环中高分组合优先进入 ExcellentTable，
 	// 后续低潜力组合在早停检查中被跳过，减少无效评分计算。
+	//
+	// ★ 同潜力分必须按字典序决胜（不能只用稳定排序）：infos 源自候选池的
+	// map 遍历（顺序随机），稳定排序会把这份随机性带进同分段的相对次序，
+	// 进而随机化 worker 分片边界与早停阈值 —— 实测同请求两次生成的 Top-N
+	// 连分数都不同（77.1 vs 77）。全序后整条枚举链路（分片、早停、合并、
+	// 入榜）对候选池遍历顺序完全不敏感。
 	xiSet := make(map[string]bool)
 	if fateData != nil {
 		for _, wx := range fateData.WuXingXiji.XiYongShen {
 			xiSet[wx] = true
 		}
 	}
-	sort.SliceStable(infos, func(i, j int) bool {
+	sort.Slice(infos, func(i, j int) bool {
 		pi := charPotentialScore(infos[i].ch.WuXing, infos[i].ch.IsCurated, infos[i].ch.PositiveScore, infos[i].poetryFound, xiSet)
 		pj := charPotentialScore(infos[j].ch.WuXing, infos[j].ch.IsCurated, infos[j].ch.PositiveScore, infos[j].poetryFound, xiSet)
-		return pi > pj
+		if pi != pj {
+			return pi > pj
+		}
+		return infos[i].ch.Char < infos[j].ch.Char
 	})
 
 	surnamePinyin := firstPinyinForSurname(input.Surname, s.engine.provider)
@@ -965,6 +993,77 @@ func firstPinyinForSurname(surname string, provider CharacterProvider) string {
 	return char.Pinyin[0]
 }
 
+// narrowPoolByPreference 按用户显式偏好收窄候选池（docs/29 A9）。
+//
+// 输入：
+//   - chars：已完成全部安全/质量过滤的候选池
+//   - keywords：用户在「个性补充」输入的寓意关键词
+//   - required：用户在「按偏旁选字」点选的用字
+//
+// 偏好集 = 命中任一关键词的字 ∪ 点选的字。命中判据（三者任一即可，命中面
+// 尽量贴近用户直觉）：
+//  1. 字本身等于关键词（如用户直接填了「森」）
+//  2. 字义 Meaning 含关键词（如「苍」→ 苍茫、苍劲）
+//  3. 起名分类 NamingCategory 含关键词（如「品德」「山水」）
+//
+// 返回值语义：
+//   - 非 nil：收窄后的偏好集（按原池顺序保留，字符顺序稳定 → 结果可复现）
+//   - nil  ：偏好集为空，调用方应放弃收窄、保持原候选池
+//
+// 为什么用收窄而不是加分：引擎对双名做的是全量 N×N 枚举，结果表按分数取
+// TopN；调整枚举顺序只能省算力，改不了输出。加一个打分维度又会破坏
+// RateNameScore 的「权重和为 1.0」前提，把偏好变成隐性加分项。故收窄是
+// 唯一既能让偏好真正出现在结果里、又不污染分数语义的做法。
+func narrowPoolByPreference(chars []*Character, keywords, required []string) []*Character {
+	// 关键词归一：去空白、跳过空串，避免 "a, b" 切分后残留的空关键词
+	// 把候选池误收窄成空集。
+	terms := make([]string, 0, len(keywords))
+	for _, kw := range keywords {
+		if kw = strings.TrimSpace(kw); kw != "" {
+			terms = append(terms, kw)
+		}
+	}
+
+	requiredSet := make(map[string]bool, len(required))
+	for _, ch := range required {
+		if ch = strings.TrimSpace(ch); ch != "" {
+			requiredSet[ch] = true
+		}
+	}
+
+	if len(terms) == 0 && len(requiredSet) == 0 {
+		return nil
+	}
+
+	narrowed := make([]*Character, 0, len(chars))
+	for _, c := range chars {
+		if requiredSet[c.Char] || matchesMeaningTerms(c, terms) {
+			narrowed = append(narrowed, c)
+		}
+	}
+	if len(narrowed) == 0 {
+		// 一个都没命中：不能把候选池清空（否则必然零结果），
+		// 交回 nil 让调用方保持原池。
+		return nil
+	}
+	return narrowed
+}
+
+// matchesMeaningTerms 判断候选字是否命中任一关键词
+func matchesMeaningTerms(c *Character, terms []string) bool {
+	for _, term := range terms {
+		if c.Char == term || strings.Contains(c.Meaning, term) {
+			return true
+		}
+		for _, cat := range c.NamingCategory {
+			if strings.Contains(cat, term) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // dedupCharsByName 按汉字去重候选池，保留首次出现。
 //
 // 保证 (i, j) 枚举出来的组合在「名字」层面唯一，使 worker 局部表可以
@@ -1155,7 +1254,7 @@ func doubleNameCandidate(
 		// 策展覆盖表标记：人工精选起名好字，供 WenHuaRater 文化加分（破荒谬字同分）
 		IsCurated1: a.ch.IsCurated,
 		IsCurated2: b.ch.IsCurated,
-		// 寓意评分：与 IsCurated 结合将策展加分收窄为「策展 ∩ positiveScore>=85」精选好字
+		// 寓意评分：与 IsCurated 结合将策展加分收窄为「策展 ∩ positiveScore>=90」精选好字
 		PositiveScore1: a.ch.PositiveScore,
 		PositiveScore2: b.ch.PositiveScore,
 		// 姓氏拼音取自 input，用于音韵评分器检测跨字谐音
@@ -1320,8 +1419,12 @@ func (s *sessionImpl) generateDoubleName(
 		// 高并发下后来的 worker 在此排队，最多等 CPU 核数个在跑，杜绝
 		// 「并发请求数 × NumCPU」的超订放大。ctx 取消时直接放弃令牌占用，
 		// 避免积累无谓的排队位。
+		// 先捕获通道指针再收发：归还必须归还「获取时那一枚」令牌。
+		// 若归还时读全局变量，测试替换通道后，旧 worker 会从新通道
+		// 抽走令牌，导致新 worker 永远拿不到令牌而死锁。
+		limit := candidateWorkerLimit
 		select {
-		case candidateWorkerLimit <- struct{}{}:
+		case limit <- struct{}{}:
 		case <-ctx.Done():
 			return
 		}
@@ -1329,7 +1432,7 @@ func (s *sessionImpl) generateDoubleName(
 		wg.Add(1)
 		go func(start, end, w int) {
 			defer wg.Done()
-			defer func() { <-candidateWorkerLimit }()
+			defer func() { <-limit }()
 			// 并发钳制观测：本 worker 进入枚举前记录活跃计数与峰值，
 			// 退出时递减。生产为零开销的原子递增，仅峰值恒定供测试断言。
 			cur := candidateWorkerActive.Add(1)

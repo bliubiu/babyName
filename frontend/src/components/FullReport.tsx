@@ -73,7 +73,7 @@ export default function FullReport({ data, onClose, selectedNameIndex }: FullRep
       .map(([k, v]) => `${wuxingNameMap[k]}${v}`)
       .join('、');
 
-    let balanceAnalysis = '';
+    let balanceAnalysis: string;
     if (total === 0) {
       balanceAnalysis = '八字五行数据缺失，建议核对出生时间后重新生成。';
     } else {
@@ -89,7 +89,7 @@ export default function FullReport({ data, onClose, selectedNameIndex }: FullRep
     }
 
     // 3. 喜用神补益分析
-    let xiyongshenAnalysis = '';
+    let xiyongshenAnalysis: string;
     if (bazi.xiyongshen?.length) {
       const xy = bazi.xiyongshen.join('、');
       const weakestName = total > 0 ? wuxingNameMap[weakest[0]] : '';
@@ -107,7 +107,7 @@ export default function FullReport({ data, onClose, selectedNameIndex }: FullRep
     const zodiacNayin = `生肖属${zodiac || '未知'}，纳音为${nayin || '未知'}。`;
 
     // 5. 推荐名字质量分析（基于真实评分）
-    let namesAnalysis = '';
+    let namesAnalysis: string;
     if (names.length === 0) {
       namesAnalysis = '本次未生成推荐名字，建议调整筛选条件后重试。';
     } else {

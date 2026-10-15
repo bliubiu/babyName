@@ -27,6 +27,12 @@ type NamerChar struct {
 	IsNegative bool `json:"isNegative,omitempty"` // 是否消极含义
 	IsRare     bool `json:"isRare,omitempty"`     // 是否生僻字
 
+	// IsPolyphonic 是否多音字
+	//
+	// namer.json 自带该字段（实测 8105 字中 1279 字为多音字），此前结构体未声明而静默丢弃，
+	// 导致 Hanzi.IsPolyphonic 与 hanzi_data.is_polyphonic 恒为 false（docs/31 ADR-012）
+	IsPolyphonic bool `json:"isPolyphonic,omitempty"`
+
 	// P1 — 评分 / 音韵
 	NamePenalty int `json:"namePenalty,omitempty"` // 起名扣分（0-100）
 	Tone        int `json:"tone,omitempty"`        // 声调（1-4）
@@ -105,28 +111,9 @@ func LoadNamerFromJSON(dataDir string) error {
 	// 同步到 HanziData — 以 namer 数据为准
 	mu.Lock()
 	for _, nc := range nd.Chars {
-		nc.Gender = normalizeGender(nc.Gender)
 		// 全量覆盖：namer.json 是《通用规范汉字表》8105 字的权威数据源
-		HanziData[nc.Char] = Hanzi{
-			Char:    nc.Char,
-			Pinyin:  nc.Pinyin,
-			Strokes: nc.Strokes,
-			Radical: nc.Radical,
-			Meaning: nc.Meaning,
-			Wuxing:  nc.Wuxing,
-			Gender:  nc.Gender,
-
-			Tone:          nc.Tone,
-			StyleTags:     nc.StyleTags,
-			UsageLevel:    nc.UsageLevel,
-			PositiveScore: nc.PositiveScore,
-			IsRare:        nc.IsRare,
-			IsNegative:    nc.IsNegative,
-			NamePenalty:   nc.NamePenalty,
-
-			// 来自 namer 的起名分类
-			NamingCategories: nc.NamingCategories,
-		}
+		// 字段映射统一走 ToHanzi，避免与 loader.go 各写一份而漂移（docs/31 ADR-012）
+		HanziData[nc.Char] = ToHanzi(nc)
 	}
 	mu.Unlock()
 
@@ -148,6 +135,14 @@ func LoadNamerFromJSON(dataDir string) error {
 			}
 		}
 		mu.Unlock()
+		// 同步合并到 NamerCharMap：库路径经 ToNamerChar 逆向投影会带上回填的档位，
+		// 两条路径的 namer 投影必须一致（本函数已持有 namerMu，直接改写）
+		for char, nc := range NamerCharMap {
+			if tier := GetCharTier(char); tier > 0 {
+				nc.NameFreqTier = tier
+				NamerCharMap[char] = nc
+			}
+		}
 	}
 	// 频率文件不存在时静默跳过（非强制依赖）
 
@@ -170,21 +165,62 @@ func ReloadNamerFromJSON(dataDir string) error {
 	return nil
 }
 
+// ReplaceNamerCharMap 整体替换 NamerCharMap（SQLite 物料装载路径，ADR-008）
+//
+// JSON 路径由 LoadNamerFromJSON 直接构建本映射；库路径经 loadHanziFromDB
+// 依 ToNamerChar 逆向投影重建，两条路径最终落到同一份内存状态。
+// 修复点：此前库路径漏建本映射，GetNamerLevel 恒返 0，等级闸门失效，
+// 三级/表外字得以进入推荐榜（docs/31 ADR-012 / e2e 门禁暴露）。
+func ReplaceNamerCharMap(m map[string]NamerChar) {
+	namerMu.Lock()
+	defer namerMu.Unlock()
+	NamerCharMap = m
+}
+
+// GenderUnspecifiedAsNeutral 空性别是否归一为 neutral
+//
+// 行为变更开关（docs/31 ADR-014 / docs/32 P-1.4）。开启后，gender 为空的字
+// 统一归为 neutral：fate 的性别筛选（adapters.go 的 genderHint 判定）只识别
+// male/female/neutral，未归一时空值会被整批误剔除 —— 实测 namer.json 8105 字中
+// 有 6266 字无性别，占 77%，关闭该开关会让这些字在任何性别场景下都不可选。
+//
+// 置 false 可立即回退到旧行为，用于评估该行为变更对候选池与评分的影响。
+var GenderUnspecifiedAsNeutral = true
+
 // normalizeGender 把 namer.json 中混用的性别枚举归一化
 //
 // 历史数据里 gender 字段同时存在中文（男/女）与英文（male/female）两种枚举，
 // 而 fate filter 的性别判定（filter.go）只识别 male/female/neutral，导致
 // 标"男"/"女"的整批好字（如 风94/玄94/玉94）在对应性别的场景被误剔除，
 // 候选池被无谓砍掉约 155 个评分好字。
+//
+// 空值处理：受 GenderUnspecifiedAsNeutral 开关控制，归一为 neutral（见上）。
 func normalizeGender(g string) string {
 	switch g {
 	case "男":
 		return "male"
 	case "女":
 		return "female"
+	case "":
+		if GenderUnspecifiedAsNeutral {
+			return "neutral"
+		}
+		return ""
 	default:
 		return g
 	}
+}
+
+// GetNamerChar 线程安全获取 namer 字数据（持 namerMu 读锁）
+//
+// 直接读 NamerCharMap 的写法在热更新接通后会与写侧并发，触发
+// fatal error: concurrent map read and map write（docs/29 B9）。
+// 需要 NamerChar 完整字段的调用方一律走本函数。
+func GetNamerChar(char string) (NamerChar, bool) {
+	namerMu.RLock()
+	defer namerMu.RUnlock()
+	nc, ok := NamerCharMap[char]
+	return nc, ok
 }
 
 // GetNamerLevel 获取汉字等级（1/2/3），不含时返回 0
@@ -196,6 +232,16 @@ func GetNamerLevel(char string) int {
 		return 0
 	}
 	return nc.Level
+}
+
+// SetNamerGroups 直接以分组集合设置精选用字分组（SQLite 物料装载路径，ADR-008）
+func SetNamerGroups(groups []StandardCharGroup) {
+	namerMu.Lock()
+	defer namerMu.Unlock()
+	if groups == nil {
+		groups = []StandardCharGroup{}
+	}
+	NamerGroups = groups
 }
 
 // GetNamerGroups 获取精选起名用字的分偏旁分组（namer.json 顶层 charGroups）
@@ -224,7 +270,12 @@ func GetCharRadicalFromNamer(char string) string {
 //   - NamerCharMap[char].KangxiStrokes 同样覆盖（不持久到 namer.json）。
 //
 // 调用方：LoadNamerFromJSON 末尾（在频率数据合并前，确保 NamerCharMap 已建立）。
-// **锁约定**：调用方已持有 namerMu 写锁与 mu 写锁，本函数不得再 Lock（否则死锁）。
+//
+// 锁约定（docs/29 B9）：本函数会写 HanziData 与 NamerCharMap 两个全局 map，
+// 故调用方必须已持有 namerMu 写锁，且本函数自行获取 mu 写锁。
+// 此前注释声称「调用方已持有 namerMu 与 mu 写锁」，但实际调用点在
+// mu.Unlock() 之后 —— HanziData 处于无锁写状态。热更新一旦接通，
+// 与读侧（IsCommonChar / HetuWuxingOfChar 等无锁读）并发即 fatal error。
 func mergeKangxiStrokes() {
 	if !IsKangxiStrokesLoaded() {
 		return
@@ -242,6 +293,11 @@ func mergeKangxiStrokes() {
 		strokesSnapshot[k] = v
 	}
 	kangxiMu.RUnlock()
+
+	// HanziData 的写锁。namerMu 由调用方持有（写 NamerCharMap），
+	// 两把锁的获取顺序为 namerMu → mu，与 LoadNamerFromJSON 一致，无交叉。
+	mu.Lock()
+	defer mu.Unlock()
 
 	for char, nc := range NamerCharMap {
 		if ks, ok := strokesSnapshot[char]; ok && ks > 0 {

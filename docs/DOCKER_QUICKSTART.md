@@ -20,15 +20,23 @@ cd name
 # 复制示例配置
 cp .env.example .env.production
 
-# 编辑配置 (必须修改 JWT_SECRET、域名等)
+# 编辑配置 (必须修改域名等)
 vim .env.production
 ```
 
 **必须修改的关键配置：**
-- `JWT_SECRET`: 使用 `openssl rand -base64 32` 生成强随机密钥
 - `NGINX_DOMAIN`: 您的域名
 - `NGINX_SSL_EMAIL`: Let's Encrypt 证书申请邮箱
 - `NEXT_PUBLIC_API_BASE`: 前端调用的 API 地址
+
+> ⚠️ **安全提示（docs/29 B14）**：当前版本后端**没有任何鉴权**（无 JWT、无
+> Session、无 API Key），`/api/*` 全部接口公开可读写。`JWT_SECRET` /
+> `JWT_EXPIRE` 是历史遗留的死配置，代码里没有任何引用，设置它们**不会**产生
+> 任何保护作用。
+>
+> 因此：**请勿将后端端口直接暴露到公网**。如需公网访问，必须在 Nginx 层
+> （`nginx/conf.d/`）或云网关/WAF 上自行加访问控制（IP 白名单、Basic Auth、
+> mTLS 等）。若要把鉴权做进应用，请先确认需求范围。
 
 ### 3. 申请 SSL 证书 (首次部署)
 ```bash

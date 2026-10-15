@@ -24,6 +24,8 @@ export interface GenerateRequest {
   include_poetry?: boolean;
   include_classic?: boolean;
   meaning_keywords?: string[];
+  // 前端「按偏旁选字」点选的用字（结构化通道，不与关键词混用）
+  selected_chars?: string[];
   pinyin_initial?: string;
   // 避讳长辈姓名列表（父系/母系直系长辈，建议往上两代）
   avoid_elder_names?: string[];

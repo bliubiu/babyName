@@ -6,19 +6,19 @@ import (
 
 // PlumBlossomResult 梅花易数起卦结果
 type PlumBlossomResult struct {
-	OriginalHexagram   *Hexagram `json:"original_hexagram"`    // 本卦
-	ChangedHexagram    *Hexagram `json:"changed_hexagram"`     // 变卦
-	InterHexagram      *Hexagram `json:"inter_hexagram"`       // 互卦
-	UpperTrigramID     int       `json:"upper_trigram_id"`     // 上卦ID (1-8)
-	LowerTrigramID     int       `json:"lower_trigram_id"`     // 下卦ID (1-8)
-	UpperTrigramName   string    `json:"upper_trigram_name"`   // 上卦名
-	LowerTrigramName   string    `json:"lower_trigram_name"`   // 下卦名
-	MovingYao          int       `json:"moving_yao"`           // 动爻位置 (1-6)
-	OriginalYaoLines   [6]int    `json:"original_yao_lines"`   // 本卦六爻 (7少阳/8少阴)
-	ChangedYaoLines    [6]int    `json:"changed_yao_lines"`    // 变卦六爻
-	InterUpperTrigram  int       `json:"inter_upper"`          // 互卦上卦ID
-	InterLowerTrigram  int       `json:"inter_lower"`          // 互卦下卦ID
-	Interpretation     string    `json:"interpretation"`       // 综合解读
+	OriginalHexagram  *Hexagram `json:"original_hexagram"`  // 本卦
+	ChangedHexagram   *Hexagram `json:"changed_hexagram"`   // 变卦
+	InterHexagram     *Hexagram `json:"inter_hexagram"`     // 互卦
+	UpperTrigramID    int       `json:"upper_trigram_id"`   // 上卦ID (1-8)
+	LowerTrigramID    int       `json:"lower_trigram_id"`   // 下卦ID (1-8)
+	UpperTrigramName  string    `json:"upper_trigram_name"` // 上卦名
+	LowerTrigramName  string    `json:"lower_trigram_name"` // 下卦名
+	MovingYao         int       `json:"moving_yao"`         // 动爻位置 (1-6)
+	OriginalYaoLines  [6]int    `json:"original_yao_lines"` // 本卦六爻 (7少阳/8少阴)
+	ChangedYaoLines   [6]int    `json:"changed_yao_lines"`  // 变卦六爻
+	InterUpperTrigram int       `json:"inter_upper"`        // 互卦上卦ID
+	InterLowerTrigram int       `json:"inter_lower"`        // 互卦下卦ID
+	Interpretation    string    `json:"interpretation"`     // 综合解读
 }
 
 // trigramYaoMaps 八卦对应的三爻值（从下到上，7=少阳，8=少阴）
@@ -130,7 +130,7 @@ func GetHexagramByPlumBlossom(surname, givenName1, givenName2 string) *PlumBloss
 		if char == "" {
 			return 0
 		}
-		if h, ok := hanzi.HanziData[char]; ok {
+		if h, ok := hanzi.GetHanzi(char); ok {
 			return h.Strokes
 		}
 		return 0
@@ -158,19 +158,16 @@ func GetHexagramByPlumBlossom(surname, givenName1, givenName2 string) *PlumBloss
 		movingYao = 6
 	}
 
-	// 本卦
-	hexNumber := (upperTrigram-1)*8 + lowerTrigram
-	originalHex := GetHexagramByNumber(hexNumber)
+	// 本卦：按先天上下卦查表（上下卦组合码 ≠ 通行本卦序，不能互查）
+	originalHex := FindHexagramByTrigrams(upperTrigram, lowerTrigram)
 
 	// 变卦
 	changedUpper, changedLower := CalcChangedHexagram(upperTrigram, lowerTrigram, movingYao)
-	changedNumber := (changedUpper-1)*8 + changedLower
-	changedHex := GetHexagramByNumber(changedNumber)
+	changedHex := FindHexagramByTrigrams(changedUpper, changedLower)
 
 	// 互卦
 	interUpper, interLower := CalcInterHexagram(upperTrigram, lowerTrigram)
-	interNumber := (interUpper-1)*8 + interLower
-	interHex := GetHexagramByNumber(interNumber)
+	interHex := FindHexagramByTrigrams(interUpper, interLower)
 
 	// 六爻
 	originalLines := GenerateYaoLines(upperTrigram, lowerTrigram)
@@ -184,19 +181,19 @@ func GetHexagramByPlumBlossom(surname, givenName1, givenName2 string) *PlumBloss
 	)
 
 	return &PlumBlossomResult{
-		OriginalHexagram:   originalHex,
-		ChangedHexagram:    changedHex,
-		InterHexagram:      interHex,
-		UpperTrigramID:     upperTrigram,
-		LowerTrigramID:     lowerTrigram,
-		UpperTrigramName:   TrigramNameMap[upperTrigram],
-		LowerTrigramName:   TrigramNameMap[lowerTrigram],
-		MovingYao:          movingYao,
-		OriginalYaoLines:   originalLines,
-		ChangedYaoLines:    changedLines,
-		InterUpperTrigram:  interUpper,
-		InterLowerTrigram:  interLower,
-		Interpretation:     interpretation,
+		OriginalHexagram:  originalHex,
+		ChangedHexagram:   changedHex,
+		InterHexagram:     interHex,
+		UpperTrigramID:    upperTrigram,
+		LowerTrigramID:    lowerTrigram,
+		UpperTrigramName:  TrigramNameMap[upperTrigram],
+		LowerTrigramName:  TrigramNameMap[lowerTrigram],
+		MovingYao:         movingYao,
+		OriginalYaoLines:  originalLines,
+		ChangedYaoLines:   changedLines,
+		InterUpperTrigram: interUpper,
+		InterLowerTrigram: interLower,
+		Interpretation:    interpretation,
 	}
 }
 

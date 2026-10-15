@@ -5,14 +5,14 @@ import "sort"
 // NamePoetryResult 名字的诗词出处查询结果
 type NamePoetryResult struct {
 	// 名字信息
-	Name string // 完整名字
+	Name  string   // 完整名字
 	Chars []string // 名字中的每个字
 
 	// 匹配的诗词
 	Matches []PoetryMatch // 匹配结果列表
 
 	// 统计信息
-	TotalMatches int // 总匹配数
+	TotalMatches int          // 总匹配数
 	BestMatch    *PoetryMatch // 最佳匹配（优先级最高的）
 }
 

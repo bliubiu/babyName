@@ -3,8 +3,8 @@ package classics
 import (
 	"fmt"
 
-	"name/internal/infrastructure/logger"
 	"go.uber.org/zap"
+	"name/internal/infrastructure/logger"
 )
 
 // LoadFromJSON 从 JSON 文件加载诗词数据
@@ -71,32 +71,22 @@ func ReloadFromJSON(dataDir string) error {
 // ============================================================
 
 func GetShijingPoetryChars() []PoetryChar {
-	result := make([]PoetryChar, len(ShijingExtracted))
-	copy(result, ShijingExtracted)
-	return result
+	return copyExtracted(&ShijingExtracted)
 }
 
 func GetChuciPoetryChars() []PoetryChar {
-	result := make([]PoetryChar, len(ChuciExtracted))
-	copy(result, ChuciExtracted)
-	return result
+	return copyExtracted(&ChuciExtracted)
 }
 
 func GetGuwenGuanzhiPoetryChars() []PoetryChar {
-	result := make([]PoetryChar, len(GuwenGuanzhiExtracted))
-	copy(result, GuwenGuanzhiExtracted)
-	return result
+	return copyExtracted(&GuwenGuanzhiExtracted)
 }
 
 func GetShiCiPoetryChars() []PoetryChar {
 	ensureShiCiLoaded()
-	result := make([]PoetryChar, len(ShiCiExtracted))
-	copy(result, ShiCiExtracted)
-	return result
+	return copyExtracted(&ShiCiExtracted)
 }
 
 func GetLunyuPoetryChars() []PoetryChar {
-	result := make([]PoetryChar, len(LunyuExtracted))
-	copy(result, LunyuExtracted)
-	return result
+	return copyExtracted(&LunyuExtracted)
 }

@@ -9,7 +9,8 @@
 //   - namer.json    （结构化汉字数据，包含五行自动校正、起名分类标注）
 //
 // 用法：
-//   go run cmd/export_namer/main.go -data ../../data -out ../../data/namer.json
+//
+//	go run cmd/export_namer/main.go -data ../../data -out ../../data/namer.json
 package main
 
 import (
@@ -56,11 +57,11 @@ type NamerChar struct {
 
 // NamerData 顶层容器
 type NamerData struct {
-	Version     string      `json:"version"`
-	Generated   string      `json:"generated"`
-	Description string      `json:"description"`
-	TotalChars  int         `json:"totalChars"`
-	Chars       []NamerChar `json:"chars"`
+	Version     string              `json:"version"`
+	Generated   string              `json:"generated"`
+	Description string              `json:"description"`
+	TotalChars  int                 `json:"totalChars"`
+	Chars       []NamerChar         `json:"chars"`
 	CharGroups  []standardCharGroup `json:"charGroups,omitempty"` // 精选起名用字分偏旁分组
 }
 
@@ -410,29 +411,39 @@ func buildChars(records [][]string, hzMap map[string]hanziJSON, wdMap map[string
 			Level:            level,
 			Gender:           gender,
 			NamingCategories: cats,
-			IsPolyphonic: isPoly,
+			IsPolyphonic:     isPoly,
 
 			// 从 hanzi.json 传入补充字段（P0-P2）
 			IsNegative: hasHz && hz.IsNegative,
 			IsRare:     hasHz && hz.IsRare,
 			NamePenalty: func() int {
-				if hasHz { return hz.NamePenalty }
+				if hasHz {
+					return hz.NamePenalty
+				}
 				return 0
 			}(),
 			Tone: func() int {
-				if hasHz { return hz.Tone }
+				if hasHz {
+					return hz.Tone
+				}
 				return 0
 			}(),
 			StyleTags: func() []string {
-				if hasHz { return hz.StyleTags }
+				if hasHz {
+					return hz.StyleTags
+				}
 				return nil
 			}(),
 			UsageLevel: func() int {
-				if hasHz { return hz.UsageLevel }
+				if hasHz {
+					return hz.UsageLevel
+				}
 				return 0
 			}(),
 			PositiveScore: func() int {
-				if hasHz { return hz.PositiveScore }
+				if hasHz {
+					return hz.PositiveScore
+				}
 				return 0
 			}(),
 		}

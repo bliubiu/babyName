@@ -77,6 +77,22 @@ func LoadNamingQualityFromJSON(dataDir string) error {
 	return nil
 }
 
+// SetNonNamingChars 直接以字表设置门禁字集合（SQLite 物料装载路径，ADR-008）
+//
+// 空字符串与重复项会被忽略，避免污染集合
+func SetNonNamingChars(chars []string) {
+	nonNamingCharsMu.Lock()
+	defer nonNamingCharsMu.Unlock()
+	m := make(map[string]bool, len(chars))
+	for _, c := range chars {
+		if c == "" {
+			continue
+		}
+		m[c] = true
+	}
+	nonNamingChars = m
+}
+
 // NonNamingCharCount 返回门禁字数（诊断/测试用）
 func NonNamingCharCount() int {
 	nonNamingCharsMu.RLock()

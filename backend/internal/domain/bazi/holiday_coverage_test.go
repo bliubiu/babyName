@@ -156,9 +156,9 @@ func TestIsWorkDayCoverage(t *testing.T) {
 	// Test work day - note: IsWorkDay only returns true for adjusted work days (补班)
 	// Regular work days return false (this is the current implementation behavior)
 	isWork := hs.IsWorkDay(2024, 1, 9) // 周二
-	_ = isWork // May be false for regular work days
+	_ = isWork                         // May be false for regular work days
 
 	// Test holiday work day (adjusted)
 	isWork2 := hs.IsWorkDay(2024, 2, 17) // 春节调休上班
-	_ = isWork2 // May be true or false depending on year
+	_ = isWork2                          // May be true or false depending on year
 }

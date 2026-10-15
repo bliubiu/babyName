@@ -11,7 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"name/internal/application/services"
 	"name/internal/domain/fate"
-	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/data"
 )
 
@@ -58,14 +57,12 @@ func setupFateNameService(t *testing.T) (*services.NameService, error) {
 		}
 
 		// 4. 装配服务（fate 引擎，与 cmd/server 一致）
-		cache.Init()
 		fateEngine := fate.NewEngine(&services.HanziDataProvider{}, services.NewBaziAnalyzerAdapter(), fate.DefaultRaters())
 		fateService = services.NewNameService(
 			services.WithBaziAnalyzer(&services.BaziAdapter{}),
 			services.WithHexagramFinder(&services.HexagramAdapter{}),
 			services.WithZiweiAnalyzer(&services.ZiweiAdapter{}),
 			services.WithZodiacFinder(&services.ZodiacAdapter{}),
-			services.WithCache(cache.GetCache()),
 			services.WithFateService(services.NewFateNameService(fateEngine)),
 		)
 	})

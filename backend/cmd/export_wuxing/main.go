@@ -12,14 +12,14 @@ import (
 )
 
 type WuxingEntry struct {
-	Char     string
-	Pinyin   string
-	Radical  string
-	Strokes  int
-	Wuxing   string
-	Source   string // 字义法特例 / 部首映射 / JSON兜底
-	Meaning  string
-	UsageLv  int
+	Char    string
+	Pinyin  string
+	Radical string
+	Strokes int
+	Wuxing  string
+	Source  string // 字义法特例 / 部首映射 / JSON兜底
+	Meaning string
+	UsageLv int
 }
 
 func main() {

@@ -5,8 +5,8 @@ import "sync"
 // poetryCharIndex 字符 → 诗词条目快速索引
 // 构建自 PoetrySources 硬编码数据，避免每次搜索都遍历全集
 var (
-	poetryIdx   map[string][]PoetryChar // char → []PoetryChar
-	poetryIdxMu sync.RWMutex
+	poetryIdx     map[string][]PoetryChar // char → []PoetryChar
+	poetryIdxMu   sync.RWMutex
 	poetryIdxOnce sync.Once
 )
 
@@ -32,29 +32,29 @@ func buildPoetryIndex() {
 	}
 
 	// 索引所有经典文本提取数据，按来源分组
-	indexExtracted(ShijingExtracted)
-	indexExtracted(ChuciExtracted)
-	indexExtracted(GuwenGuanzhiExtracted)
+	indexExtracted(copyExtracted(&ShijingExtracted))
+	indexExtracted(copyExtracted(&ChuciExtracted))
+	indexExtracted(copyExtracted(&GuwenGuanzhiExtracted))
 
 	// shici.json 可能尚未加载完毕，惰性等待
 	ensureShiCiLoaded()
-	indexExtracted(ShiCiExtracted)
+	indexExtracted(copyExtracted(&ShiCiExtracted))
 
 	// P2/P3 经典
-	indexExtracted(LunyuExtracted)
-	indexExtracted(MengziExtracted)
-	indexExtracted(DaxueExtracted)
-	indexExtracted(ZhongyongExtracted)
-	indexExtracted(SanzijingExtracted)
-	indexExtracted(QianziwenExtracted)
-	indexExtracted(DiziguiExtracted)
-	indexExtracted(YouxueqionglinExtracted)
-	indexExtracted(ZengguangxianwenExtracted)
-	indexExtracted(ShenglvqimengExtracted)
-	indexExtracted(ZhuzijiaxunExtracted)
-	indexExtracted(QianjiashiExtracted)
-	indexExtracted(WenzimengqiuExtracted)
-	indexExtracted(BaijiaxingExtracted)
+	indexExtracted(copyExtracted(&LunyuExtracted))
+	indexExtracted(copyExtracted(&MengziExtracted))
+	indexExtracted(copyExtracted(&DaxueExtracted))
+	indexExtracted(copyExtracted(&ZhongyongExtracted))
+	indexExtracted(copyExtracted(&SanzijingExtracted))
+	indexExtracted(copyExtracted(&QianziwenExtracted))
+	indexExtracted(copyExtracted(&DiziguiExtracted))
+	indexExtracted(copyExtracted(&YouxueqionglinExtracted))
+	indexExtracted(copyExtracted(&ZengguangxianwenExtracted))
+	indexExtracted(copyExtracted(&ShenglvqimengExtracted))
+	indexExtracted(copyExtracted(&ZhuzijiaxunExtracted))
+	indexExtracted(copyExtracted(&QianjiashiExtracted))
+	indexExtracted(copyExtracted(&WenzimengqiuExtracted))
+	indexExtracted(copyExtracted(&BaijiaxingExtracted))
 }
 
 // indexExtracted 将提取结果集追加到全局索引
@@ -138,9 +138,9 @@ func GetSemanticBigramMatch(char string) (string, string, string, bool) {
 //   - matchedChars: 匹配到的字符列表
 func FindPoetryByChars(chars ...string) (found bool, sourceDesc string, matchedChars []string) {
 	var (
-		bestSentence   string
-		bestSource     string
-		matchCount     int
+		bestSentence string
+		bestSource   string
+		matchCount   int
 	)
 
 	for _, ch := range chars {

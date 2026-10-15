@@ -1,0 +1,251 @@
+{
+  "version": "2026.10.14.1",
+  "cases": [
+    {
+      "id": "male-2024-spring-single",
+      "surname": "王",
+      "gender": "male",
+      "birth_year": 2024,
+      "birth_month": 1,
+      "birth_day": 15,
+      "birth_hour": 12,
+      "name_length": 1,
+      "names": [
+        {
+          "given_name": "春",
+          "full_name": "王春",
+          "pinyin": "chūn",
+          "total_score": 74.1,
+          "gate_hit": false
+        },
+        {
+          "given_name": "海",
+          "full_name": "王海",
+          "pinyin": "hǎi",
+          "total_score": 70.6,
+          "gate_hit": false
+        },
+        {
+          "given_name": "金",
+          "full_name": "王金",
+          "pinyin": "jīn",
+          "total_score": 74.1,
+          "gate_hit": false
+        },
+        {
+          "given_name": "瑞",
+          "full_name": "王瑞",
+          "pinyin": "ruì",
+          "total_score": 74,
+          "gate_hit": false
+        },
+        {
+          "given_name": "正",
+          "full_name": "王正",
+          "pinyin": "zhèng,zhēng",
+          "total_score": 73.5,
+          "gate_hit": false
+        },
+        {
+          "given_name": "刚",
+          "full_name": "王刚",
+          "pinyin": "gāng",
+          "total_score": 72.9,
+          "gate_hit": false
+        },
+        {
+          "given_name": "新",
+          "full_name": "王新",
+          "pinyin": "xīn",
+          "total_score": 72.9,
+          "gate_hit": false
+        },
+        {
+          "given_name": "秀",
+          "full_name": "王秀",
+          "pinyin": "xiù",
+          "total_score": 72.9,
+          "gate_hit": false
+        },
+        {
+          "given_name": "秋",
+          "full_name": "王秋",
+          "pinyin": "qiū",
+          "total_score": 72.9,
+          "gate_hit": false
+        },
+        {
+          "given_name": "胜",
+          "full_name": "王胜",
+          "pinyin": "shèng,shēng",
+          "total_score": 72.9,
+          "gate_hit": false
+        }
+      ]
+    },
+    {
+      "id": "female-2024-summer-double",
+      "surname": "林",
+      "gender": "female",
+      "birth_year": 2024,
+      "birth_month": 6,
+      "birth_day": 20,
+      "birth_hour": 8,
+      "name_length": 2,
+      "names": [
+        {
+          "given_name": "珞安",
+          "full_name": "林珞安",
+          "pinyin": "luò ān",
+          "total_score": 78.2,
+          "gate_hit": false
+        },
+        {
+          "given_name": "珞昕",
+          "full_name": "林珞昕",
+          "pinyin": "luò xīn",
+          "total_score": 77,
+          "gate_hit": false
+        },
+        {
+          "given_name": "玥思",
+          "full_name": "林玥思",
+          "pinyin": "yuè sī,sāi",
+          "total_score": 76.6,
+          "gate_hit": false
+        },
+        {
+          "given_name": "艳璟",
+          "full_name": "林艳璟",
+          "pinyin": "yàn jǐng",
+          "total_score": 76.4,
+          "gate_hit": false
+        },
+        {
+          "given_name": "思玥",
+          "full_name": "林思玥",
+          "pinyin": "sī,sāi yuè",
+          "total_score": 75.7,
+          "gate_hit": false
+        },
+        {
+          "given_name": "珞思",
+          "full_name": "林珞思",
+          "pinyin": "luò sī,sāi",
+          "total_score": 72,
+          "gate_hit": false
+        },
+        {
+          "given_name": "思珞",
+          "full_name": "林思珞",
+          "pinyin": "sī,sāi luò",
+          "total_score": 71.6,
+          "gate_hit": false
+        },
+        {
+          "given_name": "岫玥",
+          "full_name": "林岫玥",
+          "pinyin": "xiù yuè",
+          "total_score": 71.2,
+          "gate_hit": false
+        },
+        {
+          "given_name": "悦瑄",
+          "full_name": "林悦瑄",
+          "pinyin": "yuè xuān",
+          "total_score": 70.9,
+          "gate_hit": false
+        },
+        {
+          "given_name": "珞婉",
+          "full_name": "林珞婉",
+          "pinyin": "luò wǎn",
+          "total_score": 77.9,
+          "gate_hit": false
+        }
+      ]
+    },
+    {
+      "id": "male-2023-winter-double",
+      "surname": "陈",
+      "gender": "male",
+      "birth_year": 2023,
+      "birth_month": 11,
+      "birth_day": 2,
+      "birth_hour": 14,
+      "name_length": 2,
+      "names": [
+        {
+          "given_name": "炜珏",
+          "full_name": "陈炜珏",
+          "pinyin": "wěi jué",
+          "total_score": 82.7,
+          "gate_hit": false
+        },
+        {
+          "given_name": "珞辰",
+          "full_name": "陈珞辰",
+          "pinyin": "luò chén",
+          "total_score": 82.3,
+          "gate_hit": false
+        },
+        {
+          "given_name": "辰珞",
+          "full_name": "陈辰珞",
+          "pinyin": "chén luò",
+          "total_score": 81.9,
+          "gate_hit": false
+        },
+        {
+          "given_name": "正祎",
+          "full_name": "陈正祎",
+          "pinyin": "zhèng,zhēng yī",
+          "total_score": 81.1,
+          "gate_hit": false
+        },
+        {
+          "given_name": "祎正",
+          "full_name": "陈祎正",
+          "pinyin": "yī zhèng,zhēng",
+          "total_score": 80.7,
+          "gate_hit": false
+        },
+        {
+          "given_name": "赟瑞",
+          "full_name": "陈赟瑞",
+          "pinyin": "yūn ruì",
+          "total_score": 79.3,
+          "gate_hit": false
+        },
+        {
+          "given_name": "锟炜",
+          "full_name": "陈锟炜",
+          "pinyin": "kūn wěi",
+          "total_score": 78.2,
+          "gate_hit": false
+        },
+        {
+          "given_name": "旸正",
+          "full_name": "陈旸正",
+          "pinyin": "yáng zhèng,zhēng",
+          "total_score": 77.8,
+          "gate_hit": false
+        },
+        {
+          "given_name": "玠逸",
+          "full_name": "陈玠逸",
+          "pinyin": "jiè yì",
+          "total_score": 77,
+          "gate_hit": false
+        },
+        {
+          "given_name": "宝旸",
+          "full_name": "陈宝旸",
+          "pinyin": "bǎo yáng",
+          "total_score": 82.6,
+          "gate_hit": false
+        }
+      ]
+    }
+  ]
+}

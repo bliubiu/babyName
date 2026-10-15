@@ -138,6 +138,7 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 			IncludePoetry:   req.IncludePoetry,
 			IncludeClassic:  req.IncludeClassic,
 			MeaningKeywords: req.MeaningKeywords,
+			RequiredChars:   req.SelectedChars,
 			PinyinInitial:   req.PinyinInitial,
 			ExtraChars:      s.resolveExtraChars(req),
 		},
@@ -307,7 +308,7 @@ func (s *FateNameService) hexagramForNames(names []*name.NameAnalysis, req *Gene
 		return nil
 	}
 	surnameStrokes := 0
-	if l1, l2, err := (&HanziDataProvider{}).GetSurnameStrokes(req.Surname); err == nil {
+	if l1, l2, err := NewHanziDataProvider().GetSurnameStrokes(req.Surname); err == nil {
 		surnameStrokes = l1 + l2
 	}
 	if surnameStrokes == 0 {
@@ -501,7 +502,7 @@ func (s *FateNameService) resolveExtraChars(req *GenerateRequest) []*fate.Charac
 			continue
 		}
 		seen[cn] = true
-		h, ok := hanzi.HanziData[cn]
+		h, ok := hanzi.GetHanzi(cn)
 		if !ok {
 			continue
 		}

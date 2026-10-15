@@ -149,8 +149,31 @@ func GetHexagramByStrokes(strokes int) *Hexagram {
 		upperTrigram = 1
 	}
 
-	number := (upperTrigram-1)*8 + lowerTrigram
-	return GetHexagramByNumber(number)
+	// 上下卦组合码与通行本卦序是两套编号，不能互查
+	// （例：上兑下兑组合码 10 ≠ 第 10 卦「履」），按先天上下卦查本表
+	return FindHexagramByTrigrams(upperTrigram, lowerTrigram)
+}
+
+// isYangYao 阳爻判定：7 少阳 / 9 老阳为阳，6 老阴 / 8 少阴为阴
+func isYangYao(yao int) bool {
+	return yao == 7 || yao == 9
+}
+
+// trigramFromYaoLines 由三爻的阴阳排定卦：lines 自下而上。
+// 阳爻记 1 阴爻记 0，初爻为最高位（乾=111b），返回先天八卦序
+// （乾1 兑2 离3 震4 巽5 坎6 艮7 坤8）。
+func trigramFromYaoLines(lines []int) int {
+	v := 0
+	if isYangYao(lines[0]) {
+		v += 4
+	}
+	if isYangYao(lines[1]) {
+		v += 2
+	}
+	if isYangYao(lines[2]) {
+		v += 1
+	}
+	return 8 - v
 }
 
 // TrigramFromStrokes 笔画数 → 八卦序号（1-8）；余数 0 取 8
@@ -213,11 +236,11 @@ func GetHexagramByName(name string) *Hexagram {
 	return nil
 }
 
-// GetHexagramSymbol 获取卦象符号
+// GetHexagramSymbol 获取卦象符号：上卦符号在前，与 HexagramList.Symbol 同口径
 func GetHexagramSymbol(upper, lower int) string {
 	upperSymbol := TrigramMap[upper]
 	lowerSymbol := TrigramMap[lower]
-	return lowerSymbol + upperSymbol
+	return upperSymbol + lowerSymbol
 }
 
 // GetAllHexagrams 获取所有卦象
@@ -365,38 +388,38 @@ type DayanResult struct {
 	Interpretation string `json:"interpretation"`
 }
 
+// CalculateDayanNumber 大衍筮法：三变成一爻。
+// 每变「分二、挂一、揲四、归奇」，三变后剩余策数除以四得 6/7/8/9
+// （老阴/少阳/少阴/老阳）。原实现以 sum%4 收敛，值域只有 {1,2,3,8}，
+// 老阴(6)/老阳(9) 永不可达，导致变爻恒为 0。
 func CalculateDayanNumber() int {
-	total := 49
-
-	sum := 0
+	sticks := 49
 	for i := 0; i < 3; i++ {
-		part1 := randInt(1, total-1)
-		part2 := total - part1
+		// 分二：任分两堆，两堆各至少一策（保证挂一后左手仍有策可揲）
+		left := randInt(2, sticks-2)
+		right := sticks - left
 
-		part1 = part1 - 1
+		// 挂一：从左手取一策置于一旁
+		left--
 
-		remainder := part2 % 4
-		if remainder == 0 {
-			remainder = 4
+		// 揲四归奇：两堆各以四数之，余数（整除记 4）归奇
+		leftRem := left % 4
+		if leftRem == 0 {
+			leftRem = 4
+		}
+		rightRem := right % 4
+		if rightRem == 0 {
+			rightRem = 4
 		}
 
-		sum += remainder
+		sticks -= 1 + leftRem + rightRem
 	}
-
-	result := sum
-	if result == 0 {
-		result = 8
-	}
-	result = result % 4
-	if result == 0 {
-		result = 8
-	}
-
-	return result
+	return sticks / 4
 }
 
 func randInt(min, max int) int {
-	rand.Seed(time.Now().UnixNano())
+	// 顶层 rand 自 Go 1.20 起自动播种且并发安全；旧实现每次调用
+	// rand.Seed(time.Now().UnixNano())（已废弃），并发同纳秒会得到相同序列
 	return min + rand.Intn(max-min+1)
 }
 
@@ -470,10 +493,11 @@ func CastHexagramByTime(year, month, day, hour int) *DayanResult {
 		}
 	}
 
-	lowerTrigram := ((yaoLines[0] + yaoLines[1] + yaoLines[2]) % 8) + 1
-	upperTrigram := ((yaoLines[3] + yaoLines[4] + yaoLines[5]) % 8) + 1
+	// 上下卦由六爻阴阳直接排定，按先天上下卦查表（组合码 ≠ 通行本卦序）
+	lowerTrigram := trigramFromYaoLines(yaoLines[0:3])
+	upperTrigram := trigramFromYaoLines(yaoLines[3:6])
 
-	hexagram := GetHexagramByNumber((upperTrigram-1)*8 + lowerTrigram)
+	hexagram := FindHexagramByTrigrams(upperTrigram, lowerTrigram)
 
 	interpretation := ""
 	if hexagram != nil {
@@ -527,23 +551,12 @@ func CastHexagramByDayan() *DayanResult {
 		}
 	}
 
-	upperTrigram := 0
-	lowerTrigram := 0
+	// 本卦上下卦由六爻的阴阳直接排定（初二三爻为下卦，四五上爻为上卦）；
+	// 原实现把爻值数字求和取模，得到的卦与所摇之爻无关
+	lowerTrigram := trigramFromYaoLines(yaoLines[0:3])
+	upperTrigram := trigramFromYaoLines(yaoLines[3:6])
 
-	lowerNum := yaoLines[0]*100 + yaoLines[1]*10 + yaoLines[2]
-	upperNum := yaoLines[3]*100 + yaoLines[4]*10 + yaoLines[5]
-
-	lowerTrigram = (lowerNum % 8) + 1
-	upperTrigram = (upperNum % 8) + 1
-
-	if lowerTrigram < 1 {
-		lowerTrigram = 1
-	}
-	if upperTrigram < 1 {
-		upperTrigram = 1
-	}
-
-	hexagram := GetHexagramByNumber((upperTrigram-1)*8 + lowerTrigram)
+	hexagram := FindHexagramByTrigrams(upperTrigram, lowerTrigram)
 
 	var originalHex *Hexagram
 	if changeYao > 0 {

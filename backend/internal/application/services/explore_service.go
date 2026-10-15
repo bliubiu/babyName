@@ -70,7 +70,7 @@ func (s *NameService) ExploreNames(ctx context.Context, req *ExploreRequest) (*E
 		WithStrictness("moderate").
 		WithGenderFilter(ec.gender).
 		Build()
-	provider := &HanziDataProvider{}
+	provider := NewHanziDataProvider()
 
 	names := make([]name.Name, 0, len(entries))
 	for _, e := range entries {

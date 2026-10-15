@@ -7,14 +7,14 @@ import "sync"
 var classicsMu sync.RWMutex
 
 type ClassicName struct {
-	Char     string `json:"char"`
-	Pinyin   string `json:"pinyin"`
-	Meaning  string `json:"meaning"`
-	Source   string `json:"source"`
-	Work     string `json:"work"`
-	Chapter  string `json:"chapter"`
-	Wuxing   string `json:"wuxing"`
-	Gender   string `json:"gender"`
+	Char    string `json:"char"`
+	Pinyin  string `json:"pinyin"`
+	Meaning string `json:"meaning"`
+	Source  string `json:"source"`
+	Work    string `json:"work"`
+	Chapter string `json:"chapter"`
+	Wuxing  string `json:"wuxing"`
+	Gender  string `json:"gender"`
 }
 
 // ShijingNames 诗经用字列表，启动时由 LoadFromJSON 从 shijing.json 加载
@@ -82,4 +82,20 @@ func setExtracted(target *[]PoetryChar, val []PoetryChar) {
 	classicsMu.Lock()
 	*target = val
 	classicsMu.Unlock()
+}
+
+// copyExtracted 在读锁下复制提取结果（docs/29 B10）
+//
+// 所有 *Extracted 都是「写侧加锁（setExtracted）、读侧裸读」的不对称结构。
+// 其中 ShiCiExtracted 尤其危险：shici.json（6.7MB）在后台 goroutine 里加载，
+// 加载完成瞬间与并发 HTTP 读请求构成 slice 的并发读写，
+// 轻则读到半个 slice，重则 fatal error: concurrent map read and map write。
+//
+// 读侧一律走本函数：加读锁 + 复制，调用方拿到的是快照而非底层数组。
+func copyExtracted(src *[]PoetryChar) []PoetryChar {
+	classicsMu.RLock()
+	defer classicsMu.RUnlock()
+	result := make([]PoetryChar, len(*src))
+	copy(result, *src)
+	return result
 }

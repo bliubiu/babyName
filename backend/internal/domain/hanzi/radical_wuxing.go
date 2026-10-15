@@ -374,8 +374,8 @@ func GetCharacterWuxing(char string) string {
 		return wx
 	}
 
-	// 2. 查部首映射表
-	if data, ok := HanziData[char]; ok {
+	// 2. 查部首映射表（走 GetHanzi 持读锁，避免与热更新写并发，docs/29 B9）
+	if data, ok := GetHanzi(char); ok {
 		if wx := GetWuxingByRadical(data.Radical); wx != "" {
 			return wx
 		}

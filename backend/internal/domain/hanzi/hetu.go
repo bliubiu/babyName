@@ -28,7 +28,8 @@ func HetuWuxing(strokes int) string {
 
 // HetuWuxingOfChar 获取单个汉字的河图数理五行
 func HetuWuxingOfChar(char string) string {
-	h, ok := HanziData[char]
+	// 走 GetHanzi（持读锁）：HanziData 会被热更新写入（docs/29 B9）
+	h, ok := GetHanzi(char)
 	if !ok {
 		return ""
 	}
@@ -54,11 +55,11 @@ func HetuWuxingOfName(surname string, givenNames ...string) []string {
 // HetuTotalWuxing 计算姓名总笔画的河图五行
 func HetuTotalWuxing(surname string, givenNames ...string) string {
 	total := 0
-	if h, ok := HanziData[surname]; ok {
+	if h, ok := GetHanzi(surname); ok {
 		total += h.Strokes
 	}
 	for _, g := range givenNames {
-		if h, ok := HanziData[g]; ok {
+		if h, ok := GetHanzi(g); ok {
 			total += h.Strokes
 		}
 	}

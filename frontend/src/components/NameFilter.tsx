@@ -42,7 +42,18 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
   };
 
   const handleStrokeChange = (min?: number, max?: number) => {
-    const newFilters = { ...filters, minStrokes: min, maxStrokes: max };
+    // min ≤ max 防护：用户先填大值再调另一端时避免产生恒空的矛盾区间
+    // （此前 min=20、max=5 可同时存在，筛选结果恒空且无提示）
+    let safeMin = min;
+    let safeMax = max;
+    if (safeMin !== undefined && safeMax !== undefined && safeMin > safeMax) {
+      if (min !== filters.minStrokes) {
+        safeMax = safeMin; // 改动的是 min → 抬高 max
+      } else {
+        safeMin = safeMax; // 改动的是 max → 压低 min
+      }
+    }
+    const newFilters = { ...filters, minStrokes: safeMin, maxStrokes: safeMax };
     setFilters(newFilters);
     onFilterChange(newFilters);
   };

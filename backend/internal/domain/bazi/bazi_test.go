@@ -50,7 +50,7 @@ func TestWuxingMap_AllTianganCovered(t *testing.T) {
 
 func TestWuxingMap_CorrectValues(t *testing.T) {
 	tests := []struct {
-		gan   string
+		gan    string
 		wuxing string
 	}{
 		{"甲", "木"}, {"乙", "木"},
@@ -154,8 +154,8 @@ func TestNayinMap_KeyFormat(t *testing.T) {
 
 func TestNayinMap_SampleValues(t *testing.T) {
 	tests := []struct {
-		key    string
-		want   string
+		key  string
+		want string
 	}{
 		{"甲子", "海中金"},
 		{"丙寅", "炉中火"},

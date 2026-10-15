@@ -2,11 +2,11 @@ package handlers
 
 import (
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 	"name/internal/application/response"
 	"name/internal/domain/hanzi"
 	"name/internal/domain/name"
 	"name/internal/infrastructure/logger"
-	"go.uber.org/zap"
 )
 
 // StandardCharGroup 标准起名用字分组

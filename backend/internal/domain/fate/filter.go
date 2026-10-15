@@ -23,7 +23,7 @@ func (c CharacterFilterType) HasType(t CharacterFilterType) bool {
 type StrokeMode int
 
 const (
-	StrokeModeScience    StrokeMode = iota // 科学笔画（默认）
+	StrokeModeScience     StrokeMode = iota // 科学笔画（默认）
 	StrokeModeSimplified                    // 简体笔画
 	StrokeModeTraditional                   // 繁体笔画
 	StrokeModeKangxi                        // 康熙笔画

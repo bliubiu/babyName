@@ -29,7 +29,6 @@ import (
 	"name/internal/domain/fate"
 	"name/internal/domain/hanzi"
 	"name/internal/domain/name"
-	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/data"
 	"name/internal/infrastructure/logger"
 )
@@ -130,30 +129,30 @@ func main() {
 // buildFlagOverrides 将命令行 flag 值收集为覆盖参数对象
 func buildFlagOverrides() *Params {
 	return &Params{
-		Surname:         strings.TrimSpace(*fSurname),
-		Generation:      strings.TrimSpace(*fGeneration),
+		Surname:            strings.TrimSpace(*fSurname),
+		Generation:         strings.TrimSpace(*fGeneration),
 		GenerationPosition: strings.TrimSpace(*fGenPosition),
-		Gender:          strings.TrimSpace(*fGender),
-		BirthYear:       *fBirthYear,
-		BirthMonth:      *fBirthMonth,
-		BirthDay:        *fBirthDay,
-		BirthHour:       *fBirthHour,
-		BirthMinute:     *fBirthMin,
-		BirthLocation:   strings.TrimSpace(*fBirthLoc),
-		NameType:        strings.TrimSpace(*fNameType),
-		NameLength:      *fNameLength,
-		ExcludeRare:     *fExcludeRare,
-		WuxingMatch:     ParseCSVList(*fWuxingMatch),
-		SourceClassic:   strings.TrimSpace(*fSource),
-		MinStrokes:      *fMinStrokes,
-		MaxStrokes:      *fMaxStrokes,
-		IncludePoetry:   *fPoetry,
-		IncludeClassic:  *fClassic,
-		MeaningKeywords: ParseCSVList(*fKeywords),
-		PinyinInitial:   strings.TrimSpace(*fPinyinInit),
-		AvoidElderNames: ParseCSVList(*fAvoidElder),
-		Count:           *fCount,
-		Format:          strings.TrimSpace(*fFormat),
+		Gender:             strings.TrimSpace(*fGender),
+		BirthYear:          *fBirthYear,
+		BirthMonth:         *fBirthMonth,
+		BirthDay:           *fBirthDay,
+		BirthHour:          *fBirthHour,
+		BirthMinute:        *fBirthMin,
+		BirthLocation:      strings.TrimSpace(*fBirthLoc),
+		NameType:           strings.TrimSpace(*fNameType),
+		NameLength:         *fNameLength,
+		ExcludeRare:        *fExcludeRare,
+		WuxingMatch:        ParseCSVList(*fWuxingMatch),
+		SourceClassic:      strings.TrimSpace(*fSource),
+		MinStrokes:         *fMinStrokes,
+		MaxStrokes:         *fMaxStrokes,
+		IncludePoetry:      *fPoetry,
+		IncludeClassic:     *fClassic,
+		MeaningKeywords:    ParseCSVList(*fKeywords),
+		PinyinInitial:      strings.TrimSpace(*fPinyinInit),
+		AvoidElderNames:    ParseCSVList(*fAvoidElder),
+		Count:              *fCount,
+		Format:             strings.TrimSpace(*fFormat),
 	}
 }
 
@@ -197,16 +196,13 @@ func generate(req *services.GenerateRequest, dataDir string) (*services.Generate
 	}
 
 	// 6. 装配服务（fate 引擎，与 server 一致）
-	cache.Init()
-
-	fateEngine := fate.NewEngine(&services.HanziDataProvider{}, services.NewBaziAnalyzerAdapter(), fate.DefaultRaters())
+	fateEngine := fate.NewEngine(services.NewHanziDataProvider(), services.NewBaziAnalyzerAdapter(), fate.DefaultRaters())
 	svc := services.NewNameService(
 		services.WithBaziAnalyzer(&services.BaziAdapter{}),
 		services.WithHexagramFinder(&services.HexagramAdapter{}),
 		services.WithZiweiAnalyzer(&services.ZiweiAdapter{}),
 		services.WithZodiacFinder(&services.ZodiacAdapter{}),
-		services.WithCache(cache.GetCache()),
-		services.WithFateService(services.NewFateNameService(fateEngine)), // fate 引擎（与 server 一致）
+		services.WithFateService(services.NewFateNameService(fateEngine)),
 	)
 
 	return svc.GenerateWithAnalysis(context.Background(), req)

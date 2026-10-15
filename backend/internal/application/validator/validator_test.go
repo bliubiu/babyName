@@ -8,10 +8,10 @@ import (
 // TestValidateDate 覆盖日期校验的边界与合法性
 func TestValidateDate(t *testing.T) {
 	tests := []struct {
-		name               string
-		year, month, day   int
-		wantErr            bool
-		wantField          string
+		name             string
+		year, month, day int
+		wantErr          bool
+		wantField        string
 	}{
 		{"合法日期", 2000, 6, 15, false, ""},
 		{"闰年2月29合法", 2020, 2, 29, false, ""},

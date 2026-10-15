@@ -34,6 +34,13 @@ func ReloadFromJSON(dataDir string) error {
 	return LoadFromJSON(dataDir)
 }
 
+// SetZodiacs 直接以内存结构设置生肖列表（SQLite 物料装载路径，ADR-008）
+func SetZodiacs(list []Zodiac) {
+	zoMu.Lock()
+	defer zoMu.Unlock()
+	ZodiacList = list
+}
+
 // GetZodiac 线程安全获取生肖数据
 func GetZodiac(name string) (Zodiac, bool) {
 	zoMu.RLock()

@@ -43,7 +43,7 @@ type charFrequencyOutput struct {
 
 // bigramFrequencyOutput 双字频率 JSON 顶层结构
 type bigramFrequencyOutput struct {
-	Meta      frequencyMeta       `json:"meta"`
+	Meta      frequencyMeta      `json:"meta"`
 	Frequency []*BigramFrequency `json:"frequency"`
 }
 
@@ -53,11 +53,11 @@ type bigramFrequencyOutput struct {
 //
 // 数据来源：Chinese-Names-Corpus（wainshine），120万中文人名语料。
 // 用于两个场景：
-//   1. 评分维度：FrequencyRater 基于单字频率 + 双字组合频率打分
-//   2. 候选池排序：高频字优先进入组合，提高生成效率
+//  1. 评分维度：FrequencyRater 基于单字频率 + 双字组合频率打分
+//  2. 候选池排序：高频字优先进入组合，提高生成效率
 type FrequencyDB struct {
 	charMap    map[string]*CharFrequency   // 单字 → 频率
-	bigramMap  map[string]*BigramFrequency  // "AB" → 频率
+	bigramMap  map[string]*BigramFrequency // "AB" → 频率
 	charRank   []*CharFrequency            // 按频率降序（用于 TopN 查询）
 	bigramRank []*BigramFrequency          // 按频率降序
 	totalNames int                         // 语料库总人数（meta.total_names）
@@ -142,6 +142,61 @@ func LoadFrequencyDB(dataDir string) error {
 	}
 
 	return nil
+}
+
+// SetFrequencyFromData 以单字频率数据整体设置频率库（SQLite 物料装载路径，ADR-008）
+//
+// 与 LoadFrequencyDB 采用同一过滤口径（Tier < 2 不入内存），确保两条来源行为一致；
+// 双字部分由 SetBigramFromData 单独设置，两条路径互相保留对方已载入的内容。
+func SetFrequencyFromData(freqs []CharFrequency) {
+	freqDBMu.Lock()
+	defer freqDBMu.Unlock()
+
+	charMap := make(map[string]*CharFrequency, len(freqs))
+	charRank := make([]*CharFrequency, 0, len(freqs))
+	for i := range freqs {
+		f := freqs[i]
+		if f.Tier < 2 {
+			continue
+		}
+		cp := f
+		charMap[f.Char] = &cp
+		charRank = append(charRank, &cp)
+	}
+
+	freqDB.charMap = charMap
+	freqDB.charRank = charRank
+	freqDB.loaded = true
+}
+
+// SetBigramFromData 以双字频率数据整体设置双字频率（SQLite 物料装载路径，ADR-008）
+func SetBigramFromData(bigrams []BigramFrequency) {
+	freqDBMu.Lock()
+	defer freqDBMu.Unlock()
+
+	bigramMap := make(map[string]*BigramFrequency, len(bigrams))
+	bigramRank := make([]*BigramFrequency, 0, len(bigrams))
+	for i := range bigrams {
+		b := bigrams[i]
+		if b.Tier < 2 {
+			continue
+		}
+		cp := b
+		key := b.Char1 + b.Char2
+		bigramMap[key] = &cp
+		bigramRank = append(bigramRank, &cp)
+	}
+
+	freqDB.bigramMap = bigramMap
+	freqDB.bigramRank = bigramRank
+	freqDB.loaded = true
+}
+
+// SetFrequencyTotalNames 记录语料总量（导入路径从 meta 带入）
+func SetFrequencyTotalNames(n int) {
+	freqDBMu.Lock()
+	defer freqDBMu.Unlock()
+	freqDB.totalNames = n
 }
 
 // GetCharFrequency 获取单字人名频率，未收录时返回 nil

@@ -20,13 +20,13 @@ func NewHistoryService(store database.HistoryStore) *HistoryService {
 
 // HistoryRecord 历史记录
 type HistoryRecord struct {
-	ID             string          `json:"id"`
-	Surname        string          `json:"surname"`
-	Gender         string          `json:"gender"`
-	BirthDate      string          `json:"birth_date"`
-	BirthTime      string          `json:"birth_time"`
-	BirthLocation  string          `json:"birth_location"`
-	Results        json.RawMessage `json:"results"`
+	ID            string          `json:"id"`
+	Surname       string          `json:"surname"`
+	Gender        string          `json:"gender"`
+	BirthDate     string          `json:"birth_date"`
+	BirthTime     string          `json:"birth_time"`
+	BirthLocation string          `json:"birth_location"`
+	Results       json.RawMessage `json:"results"`
 }
 
 // SaveHistory 保存历史记录

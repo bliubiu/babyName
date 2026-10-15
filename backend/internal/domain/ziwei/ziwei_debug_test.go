@@ -53,7 +53,7 @@ func TestDebugRawPillars(t *testing.T) {
 			// Try all combos of year gan + formula
 			fmt.Printf("  --- 命宫 combos ---\n")
 			for _, yg := range []struct {
-				label string
+				label  string
 				ganIdx int
 			}{
 				{"节令年干", oldYearGan},

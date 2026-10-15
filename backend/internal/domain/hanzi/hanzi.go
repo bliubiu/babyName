@@ -24,7 +24,7 @@ func IsCommonChar(char string) bool {
 	if _, ok := RareChars[char]; ok {
 		return false
 	}
-	if data, ok := HanziData[char]; ok {
+	if data, ok := GetHanzi(char); ok {
 		return data.Strokes <= 25
 	}
 	return true
@@ -62,12 +62,37 @@ type Hanzi struct {
 	// P3 — 人名频率（来自 Chinese-Names-Corpus 语料统计）
 	NameFreqTier int // 人名频率档位（1-5，5=最高频，0=未收录）
 
+	// Level 《通用规范汉字表》等级（1=一级常用字，2=二级通用字，3=三级专用字，0=表外）
+	//
+	// 此前该字段只存在于 NamerChar，导致 SQLite 侧无法按等级过滤（docs/31 ADR-012）
+	Level int
+
 	// NamingCategories 起名分类标签列表（0~N 个分类）
 	// 由 classifier 自动标注 + 策展覆盖表修正
 	NamingCategories []string
 }
 
 var HanziData = map[string]Hanzi{}
+
+// ReplaceHanziData 以一份完整字库整体替换 HanziData（SQLite 物料装载路径，ADR-008）
+//
+// 整体替换而非逐键合并：物料修订与删字都必须生效，逐键合并会留下已删除的残留字。
+// 读侧看不到中间态 —— 替换在写锁内一次完成。
+func ReplaceHanziData(data map[string]Hanzi) {
+	mu.Lock()
+	defer mu.Unlock()
+	if data == nil {
+		data = map[string]Hanzi{}
+	}
+	HanziData = data
+}
+
+// HanziCount 返回字库条数（诊断/测试用）
+func HanziCount() int {
+	mu.RLock()
+	defer mu.RUnlock()
+	return len(HanziData)
+}
 
 // ForEachHanzi 遍历 HanziData 中的每个汉字（只读、线程安全）
 func ForEachHanzi(fn func(Hanzi)) {
@@ -90,6 +115,12 @@ var (
 type wordEntry struct {
 	Word        string `json:"word"`
 	Explanation string `json:"explanation"`
+}
+
+// WordEntry 词条结构（对外，供 SQLite 物料装载路径传入）
+type WordEntry struct {
+	Word        string
+	Explanation string
 }
 
 // LoadWordData 从 data/word.json 加载词语释义，用于非精选字的含义回退
@@ -135,7 +166,14 @@ func LoadWordData(dir string) error {
 //  3. 部首映射表计算 — 仅对空值兜底
 //
 // 必须在 HanziData 填充完毕（JSON 加载后）调用
+//
+// 锁约定（docs/29 B9）：本函数会写 HanziData，必须持有 mu 写锁。
+// 调用方在填充循环的 mu.Unlock() 之后调用，不得在持锁状态下调用，
+// 否则 RWMutex 不可重入会自死锁。
 func ApplyWuxingOverrides() {
+	mu.Lock()
+	defer mu.Unlock()
+
 	for char, data := range HanziData {
 		// 1. 覆盖表优先（字义法）
 		if wx, ok := CharacterWuxingOverride[char]; ok {
@@ -155,6 +193,33 @@ func ApplyWuxingOverrides() {
 			HanziData[char] = data
 		}
 	}
+}
+
+// SetWordMeanings 以词条集合设置首字释义（SQLite 物料装载路径，ADR-008）
+//
+// 语义与 LoadWordData 一致：多字词取首字为键，首见即锁；
+// 与 JSON 路径的差别只在于「首见」的顺序由库表主键序（char 升序）给出，
+// 因此库内数据已是定稿结果，运行时不再重排。
+func SetWordMeanings(entries []WordEntry) {
+	wordMu.Lock()
+	defer wordMu.Unlock()
+
+	m := make(map[string]string, len(entries))
+	for _, e := range entries {
+		if e.Word == "" || e.Explanation == "" {
+			continue
+		}
+		r := []rune(e.Word)
+		if len(r) == 0 {
+			continue
+		}
+		char := string(r[0])
+		if _, exists := m[char]; !exists {
+			m[char] = e.Explanation
+		}
+	}
+	wordMeanings = m
+	wordLoaded = true
 }
 
 // WordMeaning 返回汉字的词语级释义（来自 word.json），空字符串表示无数据

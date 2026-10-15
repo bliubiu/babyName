@@ -8,8 +8,8 @@ import (
 	"sync"
 	"unicode"
 
-	"name/internal/infrastructure/logger"
 	"go.uber.org/zap"
+	"name/internal/infrastructure/logger"
 )
 
 // GlobalPoemIndex 全局诗词索引，启动时构建
@@ -260,15 +260,15 @@ func categorizeShijing(title string) string {
 func categorizeByTitle(title string) string {
 	// 简单分类逻辑
 	keywords := map[string]string{
-		"登": "山水",
-		"望": "山水",
-		"春": "写景",
-		"秋": "写景",
-		"送": "送别",
-		"别": "送别",
-		"思": "思乡",
-		"忆": "思乡",
-		"闺": "闺怨",
+		"登":  "山水",
+		"望":  "山水",
+		"春":  "写景",
+		"秋":  "写景",
+		"送":  "送别",
+		"别":  "送别",
+		"思":  "思乡",
+		"忆":  "思乡",
+		"闺":  "闺怨",
 		"从军": "边塞",
 		"出塞": "边塞",
 	}

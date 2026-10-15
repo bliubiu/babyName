@@ -144,16 +144,16 @@ func IsBadCombo(c1, c2 string) bool {
 	forward := c1 + c2
 	reverse := c2 + c1
 	// 1. 优先查动态加载的 962 条清洗组合（data/forbidden_combos.json）
-		forbiddenCombosExtraMu.RLock()
-		if _, hit := forbiddenCombosExtra[forward]; hit {
-			forbiddenCombosExtraMu.RUnlock()
-			return true
-		}
-		if _, hit := forbiddenCombosExtra[reverse]; hit {
-			forbiddenCombosExtraMu.RUnlock()
-			return true
-		}
+	forbiddenCombosExtraMu.RLock()
+	if _, hit := forbiddenCombosExtra[forward]; hit {
 		forbiddenCombosExtraMu.RUnlock()
+		return true
+	}
+	if _, hit := forbiddenCombosExtra[reverse]; hit {
+		forbiddenCombosExtraMu.RUnlock()
+		return true
+	}
+	forbiddenCombosExtraMu.RUnlock()
 	// 2. 未命中再查硬编码常量（向后兼容 + 兜底）
 	if forbiddenCombos[forward] {
 		return true
@@ -203,6 +203,20 @@ func LoadForbiddenCombosFromJSON(dataDir string) error {
 		forbiddenCombosExtra[c] = true
 	}
 	return nil
+}
+
+// SetForbiddenCombos 直接以组合表设置动态禁忌集合（SQLite 物料装载路径，ADR-008）
+func SetForbiddenCombos(combos []string) {
+	forbiddenCombosExtraMu.Lock()
+	defer forbiddenCombosExtraMu.Unlock()
+	m := make(map[string]bool, len(combos))
+	for _, c := range combos {
+		if c == "" {
+			continue
+		}
+		m[c] = true
+	}
+	forbiddenCombosExtra = m
 }
 
 // ForbiddenComboCount 返回动态禁忌组合数量（诊断/测试用）

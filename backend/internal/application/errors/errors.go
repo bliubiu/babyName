@@ -5,13 +5,13 @@ import "fmt"
 type Code int
 
 const (
-	ErrCodeSuccess          Code = 200
-	ErrCodeBadRequest       Code = 400
-	ErrCodeUnauthorized     Code = 401
-	ErrCodeForbidden        Code = 403
-	ErrCodeNotFound         Code = 404
-	ErrCodeValidationFailed Code = 422
-	ErrCodeInternalError    Code = 500
+	ErrCodeSuccess            Code = 200
+	ErrCodeBadRequest         Code = 400
+	ErrCodeUnauthorized       Code = 401
+	ErrCodeForbidden          Code = 403
+	ErrCodeNotFound           Code = 404
+	ErrCodeValidationFailed   Code = 422
+	ErrCodeInternalError      Code = 500
 	ErrCodeServiceUnavailable Code = 503
 )
 
@@ -48,10 +48,10 @@ func NotFound(resource string) *AppError {
 }
 
 var (
-	ErrInvalidDate    = BadRequest("日期参数不合法")
-	ErrInvalidTime    = BadRequest("时间参数不合法")
-	ErrInvalidSurname = BadRequest("姓氏参数不合法")
-	ErrInvalidGender = BadRequest("性别参数不合法")
-	ErrNameNotFound   = NotFound("名字")
+	ErrInvalidDate     = BadRequest("日期参数不合法")
+	ErrInvalidTime     = BadRequest("时间参数不合法")
+	ErrInvalidSurname  = BadRequest("姓氏参数不合法")
+	ErrInvalidGender   = BadRequest("性别参数不合法")
+	ErrNameNotFound    = NotFound("名字")
 	ErrHistoryNotFound = NotFound("历史记录")
 )

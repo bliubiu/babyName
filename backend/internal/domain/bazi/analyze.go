@@ -3,7 +3,6 @@ package bazi
 import (
 	"fmt"
 	"math"
-	"sync"
 	"time"
 
 	"name/internal/domain/bazi/tyme"
@@ -234,12 +233,12 @@ type BaziAnalysis struct {
 	LeapMonthAdvice     string                `json:"leap_month_advice,omitempty"`
 }
 
-var baziCalcMutex sync.Mutex
-
+// CalculateBazi 公历 → 八字四柱（tyme 库）。
+// 无锁：tyme 的两处 lazy-init（LunarYearLeap/RabByungMonthDays）均由
+// sync.Once 保护、初始化后只读，包内无其它可变共享状态——并发安全已由
+// TestCalculateBaziConcurrentDeterminism 压测固化（docs/29 P3#22：
+// 原全局锁把 8 并发的排盘串行化，纯计算被无谓地限流）。
 func CalculateBazi(year, month, day, hour, minute int) (*Bazi, error) {
-	baziCalcMutex.Lock()
-	defer baziCalcMutex.Unlock()
-
 	solarTime, err := tyme.SolarTime{}.FromYmdHms(year, month, day, hour, minute, 0)
 	if err != nil {
 		return nil, fmt.Errorf("创建SolarTime失败: %w", err)
@@ -421,14 +420,26 @@ func seasonFromMonthBranch(monthGanzhi string) string {
 	return ""
 }
 
+// seasonWuxing 季节 → 当令五行（春木夏火秋金冬水；土旺四季，辰戌丑未月
+// 未在此区分，土日主一律按不得季令处理）
+var seasonWuxing = map[string]string{
+	"春": "木",
+	"夏": "火",
+	"秋": "金",
+	"冬": "水",
+}
+
 func calculateBaziPattern(dayMasterStrength, rishouWuxing, season string) string {
+	// 日主五行与季节当令五行比较；原实现直接拿五行跟「春/夏/秋/冬」
+	// 字符串比较，恒为 false，格局分支沦为死代码。
+	seasonElement := seasonWuxing[season]
 	if dayMasterStrength == "身旺" || dayMasterStrength == "身中" {
-		if rishouWuxing == season {
+		if rishouWuxing == seasonElement {
 			return "正格-印比相生格"
 		}
 		return "正格-财官相生格"
 	} else if dayMasterStrength == "身弱" || dayMasterStrength == "身衰" {
-		if rishouWuxing == season {
+		if rishouWuxing == seasonElement {
 			return "从弱格-从印格"
 		}
 		return "从弱格-从财格"
@@ -490,10 +501,12 @@ func calculateYongshenScore(xiyongshen []string, yiyongshen []string, wuxing *Wu
 
 func calculateShengKeScore(xiyongshen []string, wuxing *WuxingResult) int {
 	shengKeScore := 0
+	// 五行相生：金生水、水生木、木生火、火生土、土生金（键生值）。
+	// 原表「土」误作生「火」，土生金才对，导致喜用神含土时加分算到火的计数上。
 	shengMap := map[string]string{
 		"金": "水",
 		"木": "火",
-		"土": "火",
+		"土": "金",
 		"水": "木",
 		"火": "土",
 	}

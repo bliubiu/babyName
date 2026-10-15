@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "起名项目 · 物料资源管线 (Materials Pipeline)",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1360, 430],
+    "output": "docs/assets/31-materials-pipeline.html",
+    "repository": {
+      "url": "https://github.com/bliubiu/babyName.git",
+      "revision": "b7207f5e7a987ab5475bf545e36286e735070176"
+    }
+  },
+  "components": [
+    { "id": "offline", "type": "external", "label": "离线批处理", "sublabel": "cmd/build_* · scripts/*.py", "pos": [24, 150], "size": [150, 64], "sources": [
+      { "path": "backend/cmd/build_frequency/main.go", "line": 290, "label": "countCharFrequency" },
+      { "path": "backend/scripts/convert_poetry.py", "label": "诗词清洗" }
+    ] },
+    { "id": "sources", "type": "cloud", "label": "物料数据源", "sublabel": "data/*.json · kangxi.csv", "pos": [24, 300], "size": [150, 64] },
+    { "id": "manifest", "type": "backend", "label": "L1 物料清单", "sublabel": "version · dependsOn", "pos": [230, 300], "size": [140, 64] },
+    { "id": "normalize", "type": "backend", "label": "L2 规范化", "sublabel": "解析 → 归一化 Steps", "pos": [420, 300], "size": [140, 64], "sources": [
+      { "path": "backend/internal/domain/hanzi/namer_loader.go", "line": 179, "label": "normalizeGender" }
+    ] },
+    { "id": "validate", "type": "security", "label": "装载期强校验", "sublabel": "schema · 取值范围", "pos": [610, 300], "size": [140, 64], "sources": [
+      { "path": "backend/internal/application/services/adapters.go", "line": 538, "label": "queryViaSQL 二次过滤" }
+    ] },
+    { "id": "store", "type": "backend", "label": "L3 物料仓储", "sublabel": "内存索引+版本戳+原子swap", "pos": [800, 300], "size": [150, 64], "sources": [
+      { "path": "backend/internal/infrastructure/data/dataloader.go", "line": 20, "label": "data.Init 编排" }
+    ] },
+    { "id": "sqlite", "type": "database", "label": "SQLite (WAL)", "sublabel": "hanzi_data · classics_*", "pos": [800, 150], "size": [150, 64], "sources": [
+      { "path": "backend/internal/infrastructure/database/sqlite/store.go", "line": 246, "label": "hanzi_data 表" }
+    ] },
+    { "id": "engines", "type": "backend", "label": "域消费层", "sublabel": "fate · name · hanzi", "pos": [1000, 300], "size": [140, 64] },
+    { "id": "frontend", "type": "frontend", "label": "Next.js 前端", "sublabel": "生成 / 测名 / 报告", "pos": [1190, 300], "size": [130, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "起名后端 · 物料资源管线 MRP（运行时）", "wraps": ["manifest", "normalize", "validate", "store", "sqlite"] },
+    { "kind": "security-group", "label": "脏数据即拒（装载期 gate）", "wraps": ["validate"] }
+  ],
+  "connections": [
+    { "id": "offline-gen", "from": "offline", "to": "sources", "label": "生成数据束", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelDy": 44 },
+    { "id": "sources-register", "from": "sources", "to": "manifest", "label": "登记+拓扑排序", "labelDy": 56 },
+    { "id": "manifest-load", "from": "manifest", "to": "normalize", "label": "按依赖加载", "labelDy": 56 },
+    { "id": "normalize-steps", "from": "normalize", "to": "validate", "label": "性别/五行/拼音/康熙/tier", "labelDy": 56 },
+    { "id": "validate-gate", "from": "validate", "to": "store", "label": "强校验", "variant": "security", "labelDy": 56 },
+    { "id": "store-sqlite", "from": "store", "to": "sqlite", "label": "双写镜像 WAL", "fromSide": "top", "toSide": "bottom", "labelDy": -40 },
+    { "id": "store-engines", "from": "store", "to": "engines", "label": "读索引", "labelDy": 56 },
+    { "id": "engines-api", "from": "engines", "to": "frontend", "label": "API / JSON", "labelDy": 56 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "L1 源 / 清单", "items": [
+      "manifest 集中声明 source · version · checksum · dependsOn",
+      "离线 build_*/scripts 与在线 normalize/validate 共用同一 Go schema，单一校验真相源"
+    ] },
+    { "dot": "emerald", "title": "L2 规范化 / 校验", "items": [
+      "可组合 Steps：性别 / 五行(字义>部首) / 拼音声调 / 康熙 / 频率 tier",
+      "脏数据在装载期即报错，取代运行时补丁（如 normalizeGender 事后补救）"
+    ] },
+    { "dot": "violet", "title": "L3 物料仓储", "items": [
+      "拓扑加载替代 data.Init 硬编码顺序；内存索引带版本戳，原子 swap",
+      "SQLite(WAL) 双写镜像；ReloadAll → 逐物料 diff 版本重载 + 删除语义"
+    ] },
+    { "dot": "slate", "title": "域消费不变", "items": [
+      "fate/name/hanzi 经现有 getter 读取，不破坏 21 包测试基线",
+      "SQL 字库过滤走装载层统一投影，消除 queryViaSQL 的 Go 端回查"
+    ] }
+  ]
+}

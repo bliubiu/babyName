@@ -144,13 +144,20 @@ func TestGetPinyin(t *testing.T) {
 				baseG := g
 				if baseG >= 'ā' && baseG <= 'ǖ' {
 					switch baseG {
-					case 'ā', 'á', 'ǎ', 'à': baseG = 'a'
-					case 'ē', 'é', 'ě', 'è': baseG = 'e'
-					case 'ī', 'í', 'ǐ', 'ì': baseG = 'i'
-					case 'ō', 'ó', 'ǒ', 'ò': baseG = 'o'
-					case 'ū', 'ú', 'ǔ', 'ù', 'ǖ', 'ǘ', 'ǚ', 'ǜ': baseG = 'u'
-					case 'ń', 'ň', 'ǹ': baseG = 'n'
-					case 'ḿ': baseG = 'm'
+					case 'ā', 'á', 'ǎ', 'à':
+						baseG = 'a'
+					case 'ē', 'é', 'ě', 'è':
+						baseG = 'e'
+					case 'ī', 'í', 'ǐ', 'ì':
+						baseG = 'i'
+					case 'ō', 'ó', 'ǒ', 'ò':
+						baseG = 'o'
+					case 'ū', 'ú', 'ǔ', 'ù', 'ǖ', 'ǘ', 'ǚ', 'ǜ':
+						baseG = 'u'
+					case 'ń', 'ň', 'ǹ':
+						baseG = 'n'
+					case 'ḿ':
+						baseG = 'm'
 					}
 				}
 				if baseG == baseR {
@@ -436,21 +443,21 @@ func TestNameDBOptions(t *testing.T) {
 
 func TestNameAnalysisStruct(t *testing.T) {
 	analysis := NameAnalysis{
-		Surname:   "王",
-		GivenName: "伟强",
-		FullName:  "王伟强",
-		Pinyin:    "wang wei qiang",
-		Strokes:   20,
-		Gender:    "男",
-		TotalScore: 85.5,
-		WuxingScore: 90.0,
-		YinyunScore: 85.0,
-		MeaningScore: 80.0,
-		SancaiScore: 88.0,
-		ZodiacScore: 92.0,
-		NayinScore: 75.0,
-		NoveltyScore: 70.0,
-		BigramScore: 85.0,
+		Surname:        "王",
+		GivenName:      "伟强",
+		FullName:       "王伟强",
+		Pinyin:         "wang wei qiang",
+		Strokes:        20,
+		Gender:         "男",
+		TotalScore:     85.5,
+		WuxingScore:    90.0,
+		YinyunScore:    85.0,
+		MeaningScore:   80.0,
+		SancaiScore:    88.0,
+		ZodiacScore:    92.0,
+		NayinScore:     75.0,
+		NoveltyScore:   70.0,
+		BigramScore:    85.0,
 		FrequencyScore: 78.0,
 		ScoreDetail: []ScoreDetailItem{
 			{Name: "五行八字", Score: 90.0, Detail: "五行补益喜用神"},

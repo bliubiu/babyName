@@ -36,50 +36,57 @@ var (
 // 加载是幂等的：重复调用覆盖既有集合，可用于热更新。
 func LoadKangxiStrokesFromCSV(dataDir string) error {
 	// 优先 raw 路径（生产约定），其次 dataDir 根（旧兼容）
+	path := resolveKangxiCSVPath(dataDir)
+	if path == "" {
+		SetKangxiStrokes(map[string]int{})
+		fmt.Fprintf(os.Stderr, "警告: 康熙笔画表不存在，已降级为简体笔画兜底\n")
+		return nil
+	}
+
+	newMap, err := ParseKangxiCSVFile(path)
+	if err != nil {
+		return err
+	}
+	SetKangxiStrokes(newMap)
+	return nil
+}
+
+// resolveKangxiCSVPath 在 raw 目录与 dataDir 根中查找康熙笔画 CSV
+func resolveKangxiCSVPath(dataDir string) string {
 	candidates := []string{
 		filepath.Join(dataDir, "raw", "kangxi-strokecount.csv"),
 		filepath.Join(dataDir, "kangxi-strokecount.csv"),
 	}
-	var path string
 	for _, p := range candidates {
 		if _, err := os.Stat(p); err == nil {
-			path = p
-			break
+			return p
 		}
 	}
-	if path == "" {
-		kangxiMu.Lock()
-		kangxiStrokesMap = make(map[string]int)
-		kangxiStrokesLoaded = true
-		kangxiMu.Unlock()
-		fmt.Fprintf(os.Stderr, "警告: 康熙笔画表 %s 不存在，已降级为简体笔画兜底\n", candidates[0])
-		return nil
-	}
+	return ""
+}
+
+// ParseKangxiCSVFile 解析康熙笔画 CSV 文件，返回 汉字→笔画 映射
+//
+// 与运行时载入解耦，便于 SQLite 导入（docs/31 ADR-013）复用同一解析实现，
+// 避免「CSV 解析写两份而漂移」
+func ParseKangxiCSVFile(path string) (map[string]int, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("打开康熙笔画表失败: %w", err)
+		return nil, fmt.Errorf("打开康熙笔画表失败: %w", err)
 	}
 	defer f.Close()
 
-	// 跳过 BOM（如果存在）+ 前 4 行 MIT License 注释
-	// 注释行形如 "MIT License" / "Copyright..." / URL / 空行
 	br := bufio.NewReader(f)
-	// 简化策略：交给 csv.Reader 直接处理，它会读到第一个合法 header 即开始解析。
-	// 我们的实现：手动吃掉前 4 行注释，再交给 csv.Reader。
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("seek 康熙笔画表失败: %w", err)
-	}
-	br = bufio.NewReader(f)
 
-	// 跳过 BOM
+	// 跳过 BOM（如果存在）
 	if b, _ := br.Peek(3); len(b) >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF {
-		br.Discard(3)
+		_, _ = br.Discard(3)
 	}
 
 	// 跳过 4 行注释（MIT License 头）
 	for i := 0; i < 4; i++ {
 		if _, err := readLine(br); err != nil && err != io.EOF {
-			return fmt.Errorf("跳过康熙笔画表注释行 %d 失败: %w", i+1, err)
+			return nil, fmt.Errorf("跳过康熙笔画表注释行 %d 失败: %w", i+1, err)
 		}
 	}
 
@@ -95,7 +102,7 @@ func LoadKangxiStrokesFromCSV(dataDir string) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("解析康熙笔画表失败: %w", err)
+			return nil, fmt.Errorf("解析康熙笔画表失败: %w", err)
 		}
 		if len(record) < 4 {
 			continue
@@ -114,12 +121,18 @@ func LoadKangxiStrokesFromCSV(dataDir string) error {
 			newMap[char] = strokes
 		}
 	}
+	return newMap, nil
+}
 
+// SetKangxiStrokes 整体替换康熙笔画集合（供 SQLite 载入路径与测试使用）
+func SetKangxiStrokes(m map[string]int) {
 	kangxiMu.Lock()
-	kangxiStrokesMap = newMap
+	defer kangxiMu.Unlock()
+	if m == nil {
+		m = make(map[string]int)
+	}
+	kangxiStrokesMap = m
 	kangxiStrokesLoaded = true
-	kangxiMu.Unlock()
-	return nil
 }
 
 // readLine 读取一行（含 \r\n 或 \n），返回字节切片

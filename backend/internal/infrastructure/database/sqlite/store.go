@@ -1,10 +1,13 @@
 package sqlite
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,6 +20,12 @@ import (
 	"name/internal/infrastructure/database"
 	"name/internal/infrastructure/logger"
 )
+
+// metaKeyHanziChecksum data_meta 中记录 hanzi_data 物料指纹的 key（ADR-014）
+//
+// data_meta 是 key/value/updated_at 结构（无独立 checksum 列），
+// 故按约定 key 存放每物料的版本与指纹
+const metaKeyHanziChecksum = "materials.hanzi.checksum"
 
 type Store struct {
 	db        *sql.DB // 读连接池（WAL 模式下可并发读）
@@ -33,6 +42,19 @@ func NewStore(dbPath string, dataDir string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite write connection: %w", err)
 	}
+	// 任一后续步骤失败都必须关闭写连接（docs/29 P3）：否则进程内残留
+	// 持有 namer.db 句柄的连接，Windows 上锁住库文件，且上层回退内存
+	// 存储后服务照常运行，泄漏不可见。
+	var readDB *sql.DB
+	success := false
+	defer func() {
+		if !success {
+			_ = writeDB.Close()
+			if readDB != nil {
+				_ = readDB.Close()
+			}
+		}
+	}()
 	writeDB.SetMaxOpenConns(1) // 写必须串行
 	writeDB.SetMaxIdleConns(1)
 	writeDB.SetConnMaxLifetime(0)
@@ -56,7 +78,7 @@ func NewStore(dbPath string, dataDir string) (*Store, error) {
 	}
 
 	// 读连接池：WAL 模式下读不阻塞写，可并发
-	readDB, err := sql.Open("sqlite", dbPath+"?mode=ro")
+	readDB, err = sql.Open("sqlite", dbPath+"?mode=ro")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite read connection: %w", err)
 	}
@@ -98,6 +120,14 @@ func NewStore(dbPath string, dataDir string) (*Store, error) {
 		return nil, fmt.Errorf("failed to create tables: %w", err)
 	}
 
+	// 物料表结构随库创建而就绪（表空；数据由 `materials import` 填充）
+	//
+	// 与 createTables 分开：物料表是「导入器的产物」，集中在 store_materials_schema.go 定义，
+	// 避免建表语句散落在两个文件里。
+	if err := createMaterialTables(writeDB); err != nil {
+		return nil, err
+	}
+
 	store := &Store{
 		db:        readDB,
 		writeDB:   writeDB,
@@ -113,9 +143,13 @@ func NewStore(dbPath string, dataDir string) (*Store, error) {
 	// 导入精选名库种子数据（仅在表为空时）
 	store.seedCuratedNames(dataDir)
 
-	// 导入汉字字库缓存（仅在表为空时）
-	store.seedHanziData()
+	// 注意：字库与康熙笔画**不再**在此处 seed。
+	//
+	// 数据方向已由「内存 → 库」反转为「库 → 内存」（docs/31 ADR-008）：
+	// 物料由 `materials import` 显式写入，运行时装载时只从库读出 typed 结构。
+	// 保留旧的 seed 会造成「启动即用内存覆盖库」的回路，使物料修订被静默回滚。
 
+	success = true
 	return store, nil
 }
 
@@ -233,11 +267,14 @@ func createTables(db *sql.DB) error {
 			char       TEXT PRIMARY KEY,
 			pinyin     TEXT NOT NULL DEFAULT '',
 			strokes    INTEGER NOT NULL DEFAULT 0,
+			kangxi_strokes INTEGER NOT NULL DEFAULT 0,
 			radical    TEXT NOT NULL DEFAULT '',
 			meaning    TEXT NOT NULL DEFAULT '',
 			wuxing     TEXT NOT NULL DEFAULT '',
 			gender     TEXT NOT NULL DEFAULT '',
+			level      INTEGER NOT NULL DEFAULT 0,
 			tone       INTEGER NOT NULL DEFAULT 0,
+			name_freq_tier INTEGER NOT NULL DEFAULT 0,
 			gender_tags     TEXT NOT NULL DEFAULT '[]',
 			style_tags      TEXT NOT NULL DEFAULT '[]',
 			usage_level     INTEGER NOT NULL DEFAULT 3,
@@ -257,12 +294,71 @@ func createTables(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_hanzi_data_wuxing ON hanzi_data(wuxing)`,
 		`CREATE INDEX IF NOT EXISTS idx_hanzi_data_strokes ON hanzi_data(strokes)`,
 		`CREATE INDEX IF NOT EXISTS idx_hanzi_data_pinyin ON hanzi_data(pinyin)`,
+		`CREATE INDEX IF NOT EXISTS idx_hanzi_data_level ON hanzi_data(level)`,
 	}
 
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
 			return fmt.Errorf("failed to execute query: %w", err)
 		}
+	}
+
+	// 存量库补列：CREATE TABLE IF NOT EXISTS 不会给已存在的表加列（docs/31 ADR-012）
+	if err := migrateHanziDataColumns(db); err != nil {
+		return err
+	}
+	return nil
+}
+
+// hanziDataColumnMigrations hanzi_data 的增量补列清单：列名 → 完整列定义
+//
+// 新增列必须同时登记到本表，否则旧库升级后读写不一致（schema 漂移的护栏）
+var hanziDataColumnMigrations = []struct{ column, definition string }{
+	{"kangxi_strokes", "INTEGER NOT NULL DEFAULT 0"},
+	{"level", "INTEGER NOT NULL DEFAULT 0"},
+	{"name_freq_tier", "INTEGER NOT NULL DEFAULT 0"},
+}
+
+// migrateHanziDataColumns 给已存在的 hanzi_data 表补齐缺失的新列
+//
+// 先读 PRAGMA table_info 判断列是否已存在再 ALTER，
+// 避免「重复加列」直接报错导致启动失败
+func migrateHanziDataColumns(db *sql.DB) error {
+	rows, err := db.Query("PRAGMA table_info(hanzi_data)")
+	if err != nil {
+		return fmt.Errorf("读取 hanzi_data 表结构失败: %w", err)
+	}
+	existing := make(map[string]bool)
+	for rows.Next() {
+		var (
+			cid       int
+			name      string
+			ctype     sql.NullString
+			notNull   sql.NullInt64
+			dfltValue sql.NullString
+			pk        sql.NullInt64
+		)
+		if err := rows.Scan(&cid, &name, &ctype, &notNull, &dfltValue, &pk); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("解析 hanzi_data 表结构失败: %w", err)
+		}
+		existing[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("遍历 hanzi_data 表结构失败: %w", err)
+	}
+	_ = rows.Close()
+
+	for _, m := range hanziDataColumnMigrations {
+		if existing[m.column] {
+			continue
+		}
+		stmt := fmt.Sprintf("ALTER TABLE hanzi_data ADD COLUMN %s %s", m.column, m.definition)
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("hanzi_data 补列 %s 失败: %w", m.column, err)
+		}
+		logger.Info("sqlite: hanzi_data 已补列", logger.String("列", m.column))
 	}
 	return nil
 }
@@ -385,6 +481,11 @@ func (s *Store) GetHistoryPageWithLimit(page, limit int) []*database.HistoryReco
 		}
 		records = append(records, &r)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return records
 }
 
@@ -410,6 +511,11 @@ func (s *Store) GetHistoryPage(page, limit int) ([]*database.HistoryRecord, int,
 		}
 		records = append(records, &r)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return records, total, nil
 }
 
@@ -458,7 +564,7 @@ func (s *Store) BatchDeleteHistory(ids []string) error {
 
 // --- FavoriteStore ---
 
-func (s *Store) SaveFavorite(record *database.FavoriteRecord) string {
+func (s *Store) SaveFavorite(record *database.FavoriteRecord) (string, error) {
 	if record.ID == "" {
 		record.ID = uuid.New().String()
 	}
@@ -477,16 +583,19 @@ func (s *Store) SaveFavorite(record *database.FavoriteRecord) string {
 	)
 	if err != nil {
 		logger.Error("sqlite: SaveFavorite failed", logger.ErrField(err))
+		// 写入失败必须把错误上抛（docs/29 A6）：此前吞错仍返回 ID，
+		// 服务层据此返回成功，收藏静默丢失且自学习照常入精选库
+		return "", err
 	}
-	return record.ID
+	return record.ID, nil
 }
 
-func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) []string {
+func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string, error) {
 	ids := make([]string, len(records))
 	tx, err := s.writeDB.Begin()
 	if err != nil {
 		logger.Error("sqlite: BatchSaveFavorite begin tx failed", logger.ErrField(err))
-		return ids
+		return ids, err
 	}
 
 	stmt, err := tx.Prepare(
@@ -497,9 +606,10 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) []string {
 	if err != nil {
 		logger.Error("sqlite: BatchSaveFavorite prepare failed", logger.ErrField(err))
 		_ = tx.Rollback()
-		return ids
+		return ids, err
 	}
 
+	var firstErr error
 	var failedIndexes []int
 	for i, record := range records {
 		if record.ID == "" {
@@ -512,6 +622,9 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) []string {
 			record.Gender, record.Score, record.Source, record.Notes, record.CreatedAt)
 		if err != nil {
 			logger.Error("sqlite: BatchSaveFavorite exec failed", logger.ErrField(err))
+			if firstErr == nil {
+				firstErr = err
+			}
 			failedIndexes = append(failedIndexes, i)
 			continue
 		}
@@ -521,14 +634,21 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) []string {
 
 	if err := tx.Commit(); err != nil {
 		logger.Error("sqlite: BatchSaveFavorite commit failed", logger.ErrField(err))
-		return ids
+		return ids, err
 	}
 
 	// 事务提交成功后，对失败记录通过单独连接重试（避免单连接死锁）
 	for _, i := range failedIndexes {
-		ids[i] = s.SaveFavorite(records[i])
+		id, err := s.SaveFavorite(records[i])
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		ids[i] = id
 	}
-	return ids
+	return ids, firstErr
 }
 
 func (s *Store) GetFavorites() []*database.FavoriteRecord {
@@ -548,6 +668,11 @@ func (s *Store) GetFavorites() []*database.FavoriteRecord {
 		}
 		records = append(records, &r)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return records
 }
 
@@ -573,6 +698,11 @@ func (s *Store) GetFavoritesPage(page, limit int) ([]*database.FavoriteRecord, i
 		}
 		records = append(records, &r)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return records, total, nil
 }
 
@@ -660,7 +790,7 @@ func (s *Store) GetZodiacs() []zodiac.Zodiac {
 // --- HanziStore ---
 
 func (s *Store) GetHanziByChar(char string) *database.Hanzi {
-	if h, ok := hanzi.HanziData[char]; ok {
+	if h, ok := hanzi.GetHanzi(char); ok {
 		return &database.Hanzi{
 			Char:    h.Char,
 			Pinyin:  h.Pinyin,
@@ -782,6 +912,11 @@ func (s *Store) GetNameFeedbackByRequestID(requestID int64) []*database.NameFeed
 		}
 		result = append(result, &f)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return result
 }
 
@@ -808,6 +943,11 @@ func (s *Store) GetAlgorithmPerformance() ([]*database.AlgorithmPerformance, err
 		}
 		result = append(result, &p)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return result, nil
 }
 
@@ -882,6 +1022,11 @@ func (s *Store) LoadAllCuratedNames() ([]database.CuratedNameEntry, error) {
 		}
 		result = append(result, e)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return result, nil
 }
 
@@ -898,136 +1043,178 @@ func (s *Store) DeleteCuratedName(name string) error {
 
 // --- Hanzi 字库缓存 ---
 
-// seedHanziData 将 hanzi.HanziData 导入到 hanzi_data 表
-// 仅在表为空时导入，避免覆盖用户数据
+// maxHanziRowFailures 汉字字库重建时允许跳过的最大失败行数
+//
+// 少量脏行跳过并记录，物料整体损坏（失败率超阈值）则回滚报错（docs/31 ADR-004）
+const maxHanziRowFailures = 8
+
+// hanziDataInsertSQL hanzi_data 的插入语句，seed 与 reload 共用唯一真源
+//
+// 写入列顺序与 hanziDataValues() 的返回值顺序严格对应，改动必须同步
+// （hanzi_data 表列、hanziDataColumnMigrations、hanziDataValues 三处须一致）
+const hanziDataInsertSQL = `INSERT INTO hanzi_data(
+	char, pinyin, strokes, kangxi_strokes, radical, meaning, wuxing, gender,
+	level, tone, name_freq_tier, gender_tags, style_tags, usage_level,
+	positive_score, phonetic_score, modern_score, classical_score,
+	is_polyphonic, is_rare, is_negative,
+	pair_blacklist, curation_level, name_penalty, naming_categories
+) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+
+// hanziDataValues 把 hanzi.Hanzi 投影为 hanzi_data 的行值
+//
+// 列为 seed/reload 共用的唯一映射真源（docs/31 ADR-012），避免两处各写一遍而漂移
+func hanziDataValues(char string, h hanzi.Hanzi) []any {
+	return []any{
+		char, h.Pinyin, h.Strokes, h.KangxiStrokes, h.Radical, h.Meaning, h.Wuxing, h.Gender,
+		h.Level, h.Tone, h.NameFreqTier,
+		mustMarshalJSON(h.GenderTags), mustMarshalJSON(h.StyleTags), h.UsageLevel,
+		h.PositiveScore, h.PhoneticScore, h.ModernScore, h.ClassicalScore,
+		boolToInt(h.IsPolyphonic), boolToInt(h.IsRare), boolToInt(h.IsNegative),
+		mustMarshalJSON(h.PairBlacklist), h.CurationLevel, h.NamePenalty,
+		mustMarshalJSON(h.NamingCategories),
+	}
+}
+
+// boolToInt 把布尔转成 SQLite 存储用的 0/1
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// seedHanziData 将 hanzi.HanziData 投影到 hanzi_data 表
+//
+// 语义（docs/31 ADR-011）：同输入多次执行结果等价，且物料的字段修订与删字都能传导到 SQLite。
+// 实现为「单事务 DELETE + INSERT 全量重建」，不再使用 INSERT OR IGNORE ——
+// 冲突即跳过会让字段修订与删字静默失效，SQL 与内存双读由此长期不一致。
+//
+// 同时带 checksum 门控（ADR-014）：物料指纹未变且表非空时整段跳过，
+// 避免每次启动都对 8105 字做无谓的全量重建。
 func (s *Store) seedHanziData() {
-	var count int
-	if err := s.db.QueryRow("SELECT COUNT(*) FROM hanzi_data").Scan(&count); err != nil || count > 0 {
+	if s.hanziUnchanged() {
+		logger.Info("sqlite: 汉字物料未变更，跳过 hanzi_data 重建",
+			logger.String("指纹", s.storedHanziChecksum()))
 		return
 	}
+	s.rebuildHanziData("seedHanziData")
+}
 
-	tx, err := s.writeDB.Begin()
+// storedHanziChecksum 读出库内记录的汉字物料指纹（未记录返回空串）
+func (s *Store) storedHanziChecksum() string {
+	var v string
+	err := s.db.QueryRow("SELECT value FROM data_meta WHERE key = ?", metaKeyHanziChecksum).Scan(&v)
 	if err != nil {
-		logger.Error("sqlite: seedHanziData begin tx failed", logger.ErrField(err))
-		return
+		return ""
 	}
-	defer func() { _ = tx.Rollback() }()
+	return v
+}
 
-	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO hanzi_data(
-		char, pinyin, strokes, radical, meaning, wuxing, gender,
-		tone, gender_tags, style_tags, usage_level,
-		positive_score, phonetic_score, modern_score, classical_score,
-		is_polyphonic, is_rare, is_negative,
-		pair_blacklist, curation_level, name_penalty, naming_categories
-	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-	if err != nil {
-		logger.Error("sqlite: seedHanziData prepare failed", logger.ErrField(err))
-		return
+// currentHanziChecksum 计算当前内存字库的指纹
+//
+// 指纹取自「字集 + 关键字段」的稳定序列化：内容不变则指纹不变，
+// 任一字被增删改都会导致指纹变化，从而触发重建（ADR-014 的门控依据）。
+func currentHanziChecksum() string {
+	chars := make([]string, 0, len(hanzi.HanziData))
+	for c := range hanzi.HanziData {
+		chars = append(chars, c)
 	}
-	defer stmt.Close()
+	sort.Strings(chars)
 
-	imported := 0
-	for char, h := range hanzi.HanziData {
-		genderTags := mustMarshalJSON(h.GenderTags)
-		styleTags := mustMarshalJSON(h.StyleTags)
-		pairBlacklist := mustMarshalJSON(h.PairBlacklist)
-		namingCats := mustMarshalJSON(h.NamingCategories)
-
-		polyphonic := 0
-		if h.IsPolyphonic {
-			polyphonic = 1
-		}
-		rare := 0
-		if h.IsRare {
-			rare = 1
-		}
-		negative := 0
-		if h.IsNegative {
-			negative = 1
-		}
-
-		if _, err := stmt.Exec(
-			char, h.Pinyin, h.Strokes, h.Radical, h.Meaning, h.Wuxing, h.Gender,
-			h.Tone, genderTags, styleTags, h.UsageLevel,
-			h.PositiveScore, h.PhoneticScore, h.ModernScore, h.ClassicalScore,
-			polyphonic, rare, negative,
-			pairBlacklist, h.CurationLevel, h.NamePenalty, namingCats,
-		); err != nil {
-			continue
-		}
-		imported++
+	h := sha256.New()
+	for _, c := range chars {
+		hv := hanzi.HanziData[c]
+		fmt.Fprintf(h, "%s|%s|%d|%d|%s|%s|%s|%s|%d|%d|%d|%t|%t|%t|%d|%s\n",
+			c, hv.Pinyin, hv.Strokes, hv.KangxiStrokes, hv.Radical, hv.Meaning,
+			hv.Wuxing, hv.Gender, hv.Level, hv.Tone, hv.NameFreqTier,
+			hv.IsPolyphonic, hv.IsRare, hv.IsNegative, hv.PositiveScore,
+			strings.Join(hv.NamingCategories, ","))
 	}
-	if err := tx.Commit(); err != nil {
-		logger.Error("sqlite: seedHanziData commit failed", logger.ErrField(err))
-		return
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// hanziUnchanged 判断是否可跳过重建：指纹一致且表非空
+func (s *Store) hanziUnchanged() bool {
+	stored := s.storedHanziChecksum()
+	if stored == "" {
+		return false
 	}
-	logger.Info("sqlite: hanzi_data seeded", logger.Int("count", imported))
+	var n int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM hanzi_data").Scan(&n); err != nil || n == 0 {
+		return false
+	}
+	return stored == currentHanziChecksum()
 }
 
 // ReloadHanziData 热重载汉字字库数据
 // 从 hanzi.HanziData 重新同步到 SQLite，用于 JSON 文件热更新后调用
 func (s *Store) ReloadHanziData() {
+	s.rebuildHanziData("ReloadHanziData")
+}
+
+// rebuildHanziData 在单个事务内重建 hanzi_data 表
+//
+// 事务保证中途失败时表内容回滚到原状，不会留下半截数据；
+// HanziData 为空时拒绝重建，避免数据尚未装载就把既有表清空
+func (s *Store) rebuildHanziData(op string) {
+	if len(hanzi.HanziData) == 0 {
+		logger.Warn("sqlite: 汉字数据为空，跳过 hanzi_data 重建以免清空既有数据",
+			logger.String("操作", op))
+		return
+	}
+
 	tx, err := s.writeDB.Begin()
 	if err != nil {
-		logger.Error("sqlite: ReloadHanziData begin tx failed", logger.ErrField(err))
+		logger.Error("sqlite: 汉字字库重建事务开启失败", logger.String("操作", op), logger.ErrField(err))
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.Exec("DELETE FROM hanzi_data"); err != nil {
-		logger.Error("sqlite: ReloadHanziData delete failed", logger.ErrField(err))
+		logger.Error("sqlite: 汉字字库清空失败", logger.String("操作", op), logger.ErrField(err))
 		return
 	}
 
-	stmt, err := tx.Prepare(`INSERT INTO hanzi_data(
-		char, pinyin, strokes, radical, meaning, wuxing, gender,
-		tone, gender_tags, style_tags, usage_level,
-		positive_score, phonetic_score, modern_score, classical_score,
-		is_polyphonic, is_rare, is_negative,
-		pair_blacklist, curation_level, name_penalty, naming_categories
-	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+	stmt, err := tx.Prepare(hanziDataInsertSQL)
 	if err != nil {
-		logger.Error("sqlite: ReloadHanziData prepare failed", logger.ErrField(err))
+		logger.Error("sqlite: 汉字字库插入语句准备失败", logger.String("操作", op), logger.ErrField(err))
 		return
 	}
 	defer stmt.Close()
 
-	reloaded := 0
+	written, failed := 0, 0
 	for char, h := range hanzi.HanziData {
-		genderTags := mustMarshalJSON(h.GenderTags)
-		styleTags := mustMarshalJSON(h.StyleTags)
-		pairBlacklist := mustMarshalJSON(h.PairBlacklist)
-		namingCats := mustMarshalJSON(h.NamingCategories)
-
-		polyphonic := 0
-		if h.IsPolyphonic {
-			polyphonic = 1
-		}
-		rare := 0
-		if h.IsRare {
-			rare = 1
-		}
-		negative := 0
-		if h.IsNegative {
-			negative = 1
-		}
-
-		if _, err := stmt.Exec(
-			char, h.Pinyin, h.Strokes, h.Radical, h.Meaning, h.Wuxing, h.Gender,
-			h.Tone, genderTags, styleTags, h.UsageLevel,
-			h.PositiveScore, h.PhoneticScore, h.ModernScore, h.ClassicalScore,
-			polyphonic, rare, negative,
-			pairBlacklist, h.CurationLevel, h.NamePenalty, namingCats,
-		); err != nil {
+		if _, err := stmt.Exec(hanziDataValues(char, h)...); err != nil {
+			// 个别脏数据不拖垮整表，但失败率超阈值即视为物料损坏，整体回滚报错
+			failed++
+			if failed > maxHanziRowFailures {
+				logger.Error("sqlite: 汉字字库写入失败率超阈值，已回滚",
+					logger.String("操作", op), logger.Int("失败数", failed),
+					logger.Int("阈值", maxHanziRowFailures), logger.String("字", char),
+					logger.ErrField(err))
+				return
+			}
+			logger.Warn("sqlite: 单个字写入失败已跳过", logger.String("操作", op),
+				logger.String("字", char), logger.ErrField(err))
 			continue
 		}
-		reloaded++
+		written++
 	}
+
 	if err := tx.Commit(); err != nil {
-		logger.Error("sqlite: ReloadHanziData commit failed", logger.ErrField(err))
+		logger.Error("sqlite: 汉字字库重建提交失败", logger.String("操作", op), logger.ErrField(err))
 		return
 	}
-	logger.Info("sqlite: hanzi_data reloaded", logger.Int("count", reloaded))
+
+	// 记录物料指纹，供下次启动的门控比对（ADR-014）
+	if failed == 0 {
+		if err := s.saveMeta(metaKeyHanziChecksum, currentHanziChecksum()); err != nil {
+			logger.Warn("sqlite: 汉字物料指纹写入失败，下次启动将重建", logger.ErrField(err))
+		}
+	}
+
+	logger.Info("sqlite: 汉字字库已重建", logger.String("操作", op),
+		logger.Int("条数", written), logger.Int("跳过", failed))
 }
 
 // QueryHanziByWuxing 从 SQLite 按五行查询汉字
@@ -1049,6 +1236,11 @@ func (s *Store) QueryHanziByWuxing(wuxing string) ([]database.Hanzi, error) {
 		}
 		result = append(result, h)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return result, nil
 }
 
@@ -1071,6 +1263,11 @@ func (s *Store) QueryHanziByStrokes(min, max int) ([]database.Hanzi, error) {
 		}
 		result = append(result, h)
 	}
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
 	return result, nil
 }
 
@@ -1098,7 +1295,7 @@ func mustMarshalJSON(v interface{}) string {
 func (s *Store) SearchHanziByFilter(
 	wuxing string, minStrokes, maxStrokes int,
 	hasPositive, isRegular bool, chars []string, limit int,
-) []*database.Hanzi {
+) ([]*database.Hanzi, error) {
 	var conditions []string
 	var args []any
 
@@ -1142,8 +1339,10 @@ func (s *Store) SearchHanziByFilter(
 
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
+		// 必须上抛而不是返回 nil：nil 会被上层判成「无匹配」，
+		// 使注释承诺的「SQL 失败降级 Go 端全表过滤」路径永不可达（docs/29 B8）
 		logger.Error("SearchHanziByFilter 查询失败", logger.ErrField(err))
-		return nil
+		return nil, fmt.Errorf("SearchHanziByFilter 查询失败: %w", err)
 	}
 	defer rows.Close()
 
@@ -1157,7 +1356,17 @@ func (s *Store) SearchHanziByFilter(
 		}
 		result = append(result, &h)
 	}
-	return result
+	if err := rows.Err(); err != nil {
+		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
+		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+	}
+
+	// rows.Err 覆盖迭代中途的 IO/解码错误：不查就等于把截断结果当正常取完
+	if err := rows.Err(); err != nil {
+		logger.Error("SearchHanziByFilter 迭代失败", logger.ErrField(err))
+		return nil, fmt.Errorf("SearchHanziByFilter 迭代失败: %w", err)
+	}
+	return result, nil
 }
 
 // --- NameStatStore 占位实现 ---

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"name/internal/infrastructure/database"
@@ -14,20 +15,28 @@ type mockFavoriteStore struct {
 	curatedNames     []database.CuratedNameEntry
 	curatedCalls     int     // 记录 SaveCuratedName 调用次数
 	lastCuratedScore float64 // 记录最后一次精选名评分
+	saveErr          error   // 非 nil 时模拟写库失败（docs/29 A6 回归）
 }
 
-func (m *mockFavoriteStore) SaveFavorite(record *database.FavoriteRecord) string {
+func (m *mockFavoriteStore) SaveFavorite(record *database.FavoriteRecord) (string, error) {
+	if m.saveErr != nil {
+		return "", m.saveErr
+	}
 	record.ID = "fav-" + record.Surname + record.GivenName
 	m.favorites = append(m.favorites, record)
-	return record.ID
+	return record.ID, nil
 }
 
-func (m *mockFavoriteStore) BatchSaveFavorite(records []*database.FavoriteRecord) []string {
+func (m *mockFavoriteStore) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string, error) {
 	ids := make([]string, len(records))
 	for i, r := range records {
-		ids[i] = m.SaveFavorite(r)
+		id, err := m.SaveFavorite(r)
+		if err != nil {
+			return ids, err
+		}
+		ids[i] = id
 	}
-	return ids
+	return ids, nil
 }
 
 func (m *mockFavoriteStore) GetFavorites() []*database.FavoriteRecord {
@@ -252,5 +261,36 @@ func TestSaveFavorite_DecimalScore(t *testing.T) {
 	}
 	if store.lastCuratedScore != 92.7 {
 		t.Errorf("精选名评分应为 92.7，实际 %v", store.lastCuratedScore)
+	}
+}
+
+// TestSaveFavorite_WriteFailurePropagates 写库失败必须上抛且不进自学习
+// （docs/29 A6 回归：此前吞错仍返回 ID + nil error，收藏静默丢失、
+// 精选库却被污染，形成「收藏失败但进了精选库」的不一致）
+func TestSaveFavorite_WriteFailurePropagates(t *testing.T) {
+	store := &mockFavoriteStore{
+		saveErr: errors.New("disk I/O error"),
+	}
+	svc := NewFavoriteService(store)
+
+	id, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
+		Surname:   "李",
+		GivenName: "明轩",
+		Pinyin:    "li mingxuan",
+		Gender:    "male",
+		Score:     95.0,
+	})
+	if err == nil {
+		t.Fatal("写库失败时应返回错误，实际返回 nil")
+	}
+	if id != "" {
+		t.Errorf("写库失败时不应返回有效 ID，实际 %q", id)
+	}
+	if len(store.favorites) != 0 {
+		t.Errorf("失败的收藏不应进入存储，实际 %d 条", len(store.favorites))
+	}
+	// 关键：收藏失败不得触发自学习
+	if store.curatedCalls != 0 {
+		t.Errorf("收藏失败时不应调用精选库保存，实际 %d 次", store.curatedCalls)
 	}
 }

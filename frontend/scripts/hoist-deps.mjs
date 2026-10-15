@@ -112,3 +112,134 @@ for (const [name, list] of [...candidates.entries()].sort((a, b) => a[0].localeC
 }
 
 console.log(`[hoist] 平铺完成：新建 ${created} 个，已存在 ${skipped} 个，多版本 ${multi} 个`);
+
+// --- 第二步：按 semver 就近补链 ---
+//
+// 背景：pnpm 正常装配时，会在 .pnpm/<pkg>@<ver>/node_modules/<dep> 建依赖链接。
+// 本机符号链接建不起来（见文件头），这些链接全部缺失；包只能靠向上查找
+// 兜底，而向上找到的顶层 node_modules 里同名包只有**一个**版本（上面取最高版本）。
+// 于是「同名多版本」的需求直接爆掉，例如：
+//   - eslint-plugin-jsx-a11y@6.10.2 依赖 minimatch ^3.1.2（用 default 导出当函数）
+//   - @eslint/config-array@0.23.5 依赖 minimatch ^10.2.4（用 braceExpand 具名导出）
+// 顶层只有 10.2.5，两者必有一个被喂错版本：
+//   - 喂 3 给 config-array → `TypeError: expand is not a function`（ESLint 启动即崩）
+//   - 喂 10 给 jsx-a11y    → `TypeError: (0 , _minimatch.default) is not a function`
+//
+// 修法：为每个包按其 package.json 里声明的依赖范围，就近补上指向**满足该范围**
+// 的已安装版本的 junction。范围判断只取主版本（`^3.1.2` → 3、`~4.0.1` → 4），
+// 同一主版本内取已安装的最高版本：对真实依赖范围足够，且不引入 semver 依赖。
+
+/** 从范围串里取主版本：`^10.2.4` → 10；`>=3` → 3；解析不出返回 null */
+function majorFromRange(range) {
+  const m = /(\d+)/.exec(range);
+  return m ? Number(m[1]) : null;
+}
+
+// 按包名索引所有已安装版本（来源为顶层平铺目录）
+const installed = new Map(); // name → [{ version, source }]
+for (const name of candidates.keys()) {
+  const dest = path.join(root, name);
+  if (!fs.existsSync(dest)) continue;
+  let real;
+  try {
+    real = fs.realpathSync(dest);
+  } catch {
+    continue;
+  }
+  let version = '0.0.0';
+  try {
+    version = JSON.parse(fs.readFileSync(path.join(real, 'package.json'), 'utf8')).version ?? '0.0.0';
+  } catch {
+    // 读不到 package.json 就退回目录名推断
+  }
+  installed.set(name, [{ version, source: real }]);
+}
+
+// 直接从 .pnpm 目录名重建多版本索引（顶层只留了一个版本，这里要全量）
+for (const dirName of fs.readdirSync(store)) {
+  const pkgRoot = path.join(store, dirName, 'node_modules');
+  if (!fs.existsSync(pkgRoot)) continue;
+  for (const entry of fs.readdirSync(pkgRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === '.bin') continue;
+    if (entry.name.startsWith('@')) {
+      for (const sub of fs.readdirSync(path.join(pkgRoot, entry.name), { withFileTypes: true })) {
+        if (!sub.isDirectory()) continue;
+        record(`${entry.name}/${sub.name}`, versionFromDirName(dirName), path.join(pkgRoot, entry.name, sub.name));
+      }
+    } else {
+      record(entry.name, versionFromDirName(dirName), path.join(pkgRoot, entry.name));
+    }
+  }
+}
+
+function record(name, version, source) {
+  if (!installed.has(name)) installed.set(name, []);
+  const list = installed.get(name);
+  // 同一版本只留第一个（顶层平铺那份优先，realpath 更短更稳）
+  if (!list.some(c => c.version === version)) list.push({ version, source });
+}
+
+/** 选出满足范围的最高版本；主版本对不上则返回 null */
+function pickVersion(list, range) {
+  if (!range || range === '*' || range === 'latest') {
+    return list.reduce((a, b) => (compareVersion(b.version, a.version) > 0 ? b : a));
+  }
+  const wantMajor = majorFromRange(range);
+  if (wantMajor === null) return null;
+  const sameMajor = list.filter(c => c.version.split('.')[0] === String(wantMajor));
+  if (sameMajor.length === 0) return null;
+  return sameMajor.reduce((a, b) => (compareVersion(b.version, a.version) > 0 ? b : a));
+}
+
+let linked = 0;
+let conflict = 0;
+
+for (const dirName of fs.readdirSync(store)) {
+  const pkgRoot = path.join(store, dirName, 'node_modules');
+  if (!fs.existsSync(pkgRoot)) continue;
+
+  // 找出这个 .pnpm 条目代表的那个包（目录里只有一个真实包目录）
+  let selfDir = null;
+  for (const entry of fs.readdirSync(pkgRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith('@')) {
+      for (const sub of fs.readdirSync(path.join(pkgRoot, entry.name), { withFileTypes: true })) {
+        if (sub.isDirectory()) selfDir = path.join(pkgRoot, entry.name, sub.name);
+      }
+    } else if (entry.name !== '.bin') {
+      selfDir = path.join(pkgRoot, entry.name);
+    }
+  }
+  if (!selfDir) continue;
+
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(path.join(selfDir, 'package.json'), 'utf8'));
+  } catch {
+    continue;
+  }
+  const deps = { ...manifest.dependencies };
+  if (!deps || Object.keys(deps).length === 0) continue;
+
+  for (const [depName, range] of Object.entries(deps)) {
+    const dest = path.join(pkgRoot, depName);
+    if (fs.existsSync(dest)) continue; // pnpm 建成（或上一轮已补）
+
+    const list = installed.get(depName);
+    if (!list) continue; // 该依赖压根没装（可选依赖等），不管
+    const pick = pickVersion(list, range);
+    if (!pick) {
+      conflict++;
+      continue;
+    }
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    try {
+      fs.symlinkSync(pick.source, dest, 'junction');
+      linked++;
+    } catch (err) {
+      console.warn(`[hoist] 补链失败 ${depName}@${range} → ${dirName}: ${err.message}`);
+    }
+  }
+}
+
+console.log(`[hoist] 就近补链完成：新建 ${linked} 个 junction，主版本无匹配跳过 ${conflict} 个`);

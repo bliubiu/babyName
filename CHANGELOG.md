@@ -5,6 +5,377 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.13.8]
+
+**审查修正 + 实施计划立项**：`docs/31` 依同日逐行复核修正，新增 `docs/32` 落地实施计划。纯文档，未改动运行时代码。
+
+### 📚 Docs 文档更新
+
+- 【docs/31 §五 新增 **P-1 前置修复**】四项**正确性前置**（不先做，P2 校验上移与 ADR-008 必返工）：
+  ① `INSERT OR IGNORE` → upsert（现状字段更新与删字均不传导，「双读一致」当前已不成立）；
+  ② `namer_loader.go:110-129` 未注入 8 字段 + `Hanzi` 无 `Level` → `hanzi_data` 8 列为**空壳列**；
+  ③ 康熙笔画在「运行时只读 SQLite」下**无落点**（无表且声明不落库）；
+  ④ `namer.json` `version="1.0"` 静态 → 版本 diff 永不触发，须以 sha256 checksum 为门控依据。
+- 【docs/31 新增 ADR-011~014】upsert 语义 / 单一 mapper 三目标投影（`Hanzi`+`NamerChar`+`hanzi_data`）/
+  康熙落 `kangxi_strokes` 表 / checksum 为唯一 diff 依据；修订 ADR-001/003/006/007/008/009/010。
+- 【docs/31 事实校准】`namer_loader.go` 行号系统性偏移（`:179`→`:152`、`:245` 越界→`:231`、`:53`→`:68`）；
+  `NamerCategories` 为不存在符号（→ `NamerCharMap[char].NamingCategories`/`NamerGroups`）；
+  `adapters.go:535`→实为 `:564`（回查代码在 `:560-601`）；康熙 CSV 实际在 `data/raw/`；
+  loader 复制「4 处」→ 实测 **≥10 处**；测试包 21→**22**；`data_meta` 为 KV 表（不新增列）。
+- 【docs/31 实测值订正】tone **562**/8105（原文 563）；多音字 **1279（15.8%）** → 声调回填上限约 84.2%
+  而非 ~100%，且**多音字不得编造声调**；gender 空值 **6266** → `""→neutral` 属**行为变更**需 golden 回归；
+  未提交项 94→**127**；ADR-007 收益按 T1/T3 分档列（常驻内存仅 T3 降为≈0）。
+- 【docs/31 新增冲突记录】词典「首见即锁」（依赖文件顺序）与 SQL「按主键排序」互斥（ADR-010 确定性前提）；
+  WAL 只读交付缺 `-shm`（`?mode=ro` 需要）；`cp -n` no-clobber 与 checksum 门控错配致「版本新、数据旧」。
+- 【docs/32 新增】《物料资源管线落地改造实施计划》：P-1 四子项逐项改动清单 + TDD 用例 + 字段真值裁定表、
+  P0~P4 进入条件、6 项并行低风险项、批次门禁与 golden names 快照、7 项风险登记、M0~M9 里程碑、DoD 清单。
+
+### ⚠️ Breaking Changes 破坏性变更（文档层面）
+
+- `docs/31 §5.1` 迁移序列改为 **P-1 → P0~P4**；ADR-010 的幂等定义由「`INSERT OR IGNORE` 冲突即跳过」
+  改为「主键 upsert」（ADR-011），ADR-010 §10.4 同步修订；ADR-007 收益口径按定档分列。
+- `docs/31 §11` 新增 P3「仓库与编码卫生」，并将 schema 漂移守护测试上提为 P-1.2 交付物。
+
+## [2026.10.13.7]
+
+设计定稿：`docs/31` §十二 增补 **§12.8 外部订阅数据源** 与 **§12.9 回流闭环**。纯文档，未改动运行时代码。
+
+### 📚 Docs 文档更新
+
+- 【§12.8 外部订阅数据源】三类来源：通用敏感词（开源词库 Sensitive-lexicon/textfilter/ToolGood.Words + 商业审核服务阿里云/易盾/数美/顶象/天御/百度——后者为长文本调、短名误报高，仅离线兜底）、命名专用（通用规范汉字表等级/机关地名负面人物 curated+法务/不雅谐音自建）；订阅机制接 §11.4 `materials.lock`（pull→差分→gate_patch→版本化→灰度）。
+- 【§12.9 回流闭环】触发（warn/fail 命中 + 「warn 却仍被收藏」误报候选）→ `gate_review` 三态人审 → append-only `gate_patch.jsonl` → 复用车 `materials import` 合入 forbidden/gate/allowlist；命中脱敏、度量（命中/误报/漏报/回流时长）。
+
+## [2026.10.13.6]
+
+设计定稿：`docs/31` 新增 **§十二 门禁层落地实践**（业界最佳实践 + 本项目差距清单）。纯文档，未改动运行时代码。
+
+### 📚 Docs 文档更新
+
+- 【§十二 门禁层落地】结论（线上普遍设门禁；生成式做**输出侧门禁**，责任更重）；六层纵深防御分层表
+  （词元/组合/语音形近/模型分级/合规法务）及本项目对应；数据源治理（内置/外部订阅/bad case 回流/白名单豁免）；
+  匹配技术（归一化前置 + Aho-Corasick/trie + 谐音形近）；分级处置（block/downrank/warn/人审/allow，本项目 pass/warn/fail）；
+  工程与运营七要点（独立发布/版本化回滚/审计/灰度/指标/误伤治理/评测回归）；**本项目差距清单**。
+- 结论：门禁层四件套，项目已覆盖前三者大半，短板在外部回流、审计指标、灰度、合规红线运营闭环（对应 §十一 gate 物料治理）。
+
+## [2026.10.13.5]
+
+设计定稿：`docs/31` 新增 **§十一 改进路线图**，并核实「门禁层为多层级」写为前置事实。纯文档，未改动运行时代码。
+
+### 📚 Docs 文档更新
+
+- 【§十一 改进路线图】7 个方面 + P0-P3 路线图：数据质量（声调回填 6.9%→~100%、寓意补全、完整度门禁）、
+  可观测（启动物料报告、`/readyz` 版本探针、checksum 校验）、领域建模（全局态 → `CharacterRepository`
+  注入 + ACL，中间态先做 schema 漂移守护测试）、供应链（surnames 归一、`materials.lock`）、CI（物料刷新 +
+  golden names + 归一化属性测试）、字符集（CJK 扩展/繁简）、仓库卫生（`*.go eol=lf`）。
+- 【前置事实】核实并写入门禁层粒度为多层级：① 字级硬剔除 `IsNonNamingChar` ② 组合级 `IsBadCombo`/
+  历史人物/`PairBlacklist` ③ 音韵连读 `CheckBadPinyinCombo` ④ 风险分级 `AssessNameRisks`(pass/warn/fail)。
+
+## [2026.10.13.4]
+
+设计定稿：`docs/31` 新增 **§十 SQL 初始化数据与上线交付** 与 **ADR-010**。纯文档，未改动运行时代码。
+
+### 📚 Docs 文档更新
+
+- 【§十 SQL 初始化与上线】`materials import` 归一化后同时 `--emit-sql`（可 diff/可审计的可移植初始化脚本）
+  与 `--emit-db`（预构建二进制库）；entrypoint `cp -n` 预构建库 + `data_meta` 版本 diff 才 `sqlite3` 兜底；
+  运行时只读开库。含 6 项确定性要求（排序稳定 / `INSERT OR IGNORE` 幂等 / UTF-8 无 BOM / 转义 helper /
+  版本门控 / journal 模式）与三种上线场景（Docker / 单机 / 开发者）。
+- 【ADR-010】SQL 初始化数据 + 预构建 DB 作为上线交付物：上线从「烘 87MB JSON + 启动 seed」降为「烘一个库 + 只读」；
+  闭合 ADR-008+§9 的运维终局。
+
+## [2026.10.13.3]
+
+设计定稿：`docs/31` 新增 **§九 物料字段归一化设计** 与 **ADR-009**，把规范化/校验落到字段级。
+纯文档，未改动运行时代码。
+
+### 📚 Docs 文档更新
+
+- 【§九 字段归一化】单一规范基座 `CanonicalChar`（合并 `NamerChar`∪`Hanzi` 去冗余）+ 10 类物料的
+  Canonical schema；枚举规范化表（gender 男/male、wuxing、level、tone、dynasty、分类词表）；
+  9 步可组合归一化管线（Pinyin→Enum→StrokeDual→WuxingDerive→CategoryInfer→MergeKangxi→MergeFreqTier→
+  Clamp→Validate）；跨物料合并优先级写死；单位标度隔离铁律（score≠tier≠count≠strokes）；
+  单一 mapper 投影到 typed 结构 + `hanzi_data`（补 level/kangxi_strokes/name_freq_tier）。
+- 【ADR-009】字段归一化「单一规范基座 + 导入期可组合 Steps + 即拒校验」：将运行时补丁
+  （normalizeGender 等）前移为导入期字段级、可 golden 回归、单一真相源；是 ADR-004/005/008 的字段级展开。
+- 包结构 `internal/materials/{schema,normalize,validate}` + `cmd/materials import`；含 round-trip/脏数据/
+  合并优先级/投影一致四类 TDD 验收。
+
+## [2026.10.13.2]
+
+设计定稿：`docs/31` 采纳「SQLite 为物料运行时唯一源」方向，新增 **ADR-008** 并据此修订 §八.5。
+纯文档，未改动运行时代码。
+
+### 📚 Docs 文档更新
+
+- 【ADR-008】SQLite 成为物料运行时唯一源（显式 import，运行时不再解析 JSON）：热数据启动从库载入
+  typed 结构、冷点查按需查库、全程不碰 JSON；归一化/校验上移到 import；`hanzi_data` 补列
+  `level/kangxiStrokes/nameFreqTier` + 新增 `charGroups`/`words` 表；**触发=显式 `namer materials import`
+  CLI + entrypoint「库缺失或 `data_meta` 版本过期」才导入一次**；移除启动 seeding 与运行时 JSON 解析。
+- 【§八.5】改为「单一源 + 何时入库 + 触发方式 + 补齐缺口 + fail-fast」；订正 `adapters.go:535`
+  「SQL 表无 gender/categories/radical」的过时注释（`store.go:979-1017` 实为全列写入）。
+- 行为变更明示：改 `data/*.json` 后须 re-import 方生效（须写入 CLI 帮助与部署文档）。
+
+## [2026.10.13.1]
+
+架构设计补充：`docs/31` 新增「§八 加载与持久化策略」与「ADR-007」，细化**相对稳定物料**的
+加载时机、懒加载技术、JSONL 与 SQLite 持久化选型。纯文档，未改动运行时代码。
+
+### 📚 Docs 文档更新
+
+- 【架构设计】`docs/31` §八：按「变更频率 × 访问特征」分 A 权威稳定 / B 周期重建 / C 追加 /
+  D 纯离线 / E 用户数据；提出**四档加载策略**（T0 急载阻塞 / T1 异步预热+有界等待+降级 /
+  T2 懒载 / T3 DB 按需查询）、懒加载「四件套」内建于 `Material.Warm()/Ensure()`、
+  **JSONL 选型**（行型大语料用 JSONL，结构化小文档留 JSON）、**SQLite「导入一次·为源」**
+  （离线 build→JSONL→`materials import` 单事务入库一次，运行时按 `data_meta` 版本 diff 才重导），
+  附「物料 × 策略」决策大表与 5 项按收益排序的改造点。
+- 【ADR-007】稳定物料「导入一次 · SQLite 为源 · 四档加载」：启动阻塞段 ≈38MB→≈5MB
+  （`word.json` 26MB 急载 → T1/T3）；复用 `classic_loader.go` 既有 Once/ready/recover/有界等待范式。
+- 核实结论存档：`full/given/gender_stats`(9.2/1.9/20MB) 为 `build_namestats` 离线产物、运行时不加载。
+
+## [2026.10.13.0]
+
+架构设计：新增「物料资源管线（Materials Pipeline, MRP）」三层化设计方案与交互式架构图，作为后续
+物料加载/校验/持久化重构蓝本。本版为**纯设计文档**，未改动运行时代码，21 包 Go 测试与两种运行模式
+`e2e_check -strict`（18/18）维持不变。
+
+### 📚 Docs 文档更新
+
+- 【架构设计】新增 `docs/31-物料资源管线架构设计.md`：盘点 9 类物料（通用规范汉字表 / 候选字 /
+  拼音声韵 / 偏旁部首 / 笔画 / 词典 / 古典文学语料 / 人名频率 / 门禁）的现状与 7 项结构性问题
+  （loader 四处复制、加载顺序硬编码、运行时补丁、SQL 双真源、大文件整读、热更新不闭环、
+  声韵无独立物料），提出 L1 清单 / L2 规范化校验 / L3 仓储三层 + 统一 `Material` 接口的目标架构，
+  附迁移路径（P0-P4）与 TDD 验收标准。
+- 【ADR】内嵌 6 条架构决策记录：三层装载（ADR-001）、最小侵入适配现有域全局（ADR-002）、
+  SQLite 双写 + 统一投影（ADR-003）、装载期强校验（ADR-004）、离线/在线同构 schema（ADR-005）、
+  热更新 diff 闭环 + 删除语义（ADR-006）。
+- 【架构图】`docs/assets/31-materials-pipeline.html`（Archify 渲染，自包含交互式，支持明暗主题 /
+  缩放 / 检索 / 导出）；构件核验 9/9、0 告警，源码证据 6 处固定于 `b7207f5`。
+
+## [2026.10.02.3]
+
+`docs/30` §九：**E2E 吞吐判据改造实施**（docs/28 §8.5 遗留清偿）+ **B14 决策关闭**。
+验证口径：`-strict` **18/18 通过**（检查项 17 → 18）。
+
+### 🐛 Bug Fixes 问题修复
+
+- 【e2e_check】★ **吞吐判据改造**：旧判据「加速比 < 1.5× 即失败」由 Little 定律
+  可推出加速比 ≈ NumCPU/f——串行路径优化越好比值越低（假阳性，9.25 那轮
+  16/17 误报即此），超订+慢串行段反而可能达标（假阴性）。改为两条直击
+  「不超订」初衷的判据：① 并发吞吐 ≥ 串行吞吐；② 并发 p95 ≤ 串行时长 × 12
+  （阈值按本机三轮实测 8-9× 膨胀包络校准，OOM 级爆炸 30×+ 仍被抓住）。
+  加速比降级为信息展示。实测：吞吐 2.27 ≥ 1.35 ✓、p95 7.10 ≤ 0.741×12 ✓
+- 【repo】`git add -A` 误提交的 3 个 go test 覆盖率输出产物移除并加入 .gitignore
+
+### 📚 Docs 文档更新
+
+- docs/30 §九：判据改造实施记录 + Top10 一次性异常排查存档（污染库冷启动
+  组合，连续两轮复验稳定，未复现）+ B14 决策关闭；docs/28 §8.5 标记已处置
+- **B14 决策关闭**：本应用无公网访问需求（产品确认），不引入应用层鉴权；
+  nginx 444 默认丢弃与网关层准入声明维持现状
+- 本轮验证遗留项全部清偿
+- 【验证基线升级】本地安装 gcc 后 `-race` 竞态检测器可用：**全仓
+  `go test -race ./...` 21 包全绿、0 DATA RACE**——全部并发修复首次经
+  真正竞态检测器验证（docs/30 §九.4）
+
+## [2026.10.02.2]
+
+`docs/30` §八：**两项代办收尾——排盘并行化 + NameCard a11y 重构**。
+验证口径：后端 21 包全绿（新增并发确定性压测与基准）；前端 tsc 0 错、
+vitest 45/45、eslint NameCard 0 问题。
+
+### 📈 Improvements 性能/体验优化
+
+- 【bazi/ziwei/性能】★ **移除 `baziCalcMutex` / `ziweiMutex` 全局锁**：
+  逐一核查 tyme 包级可变状态——仅有的两处 lazy-init（`LunarYearLeap`/
+  `RabByungMonthDays`）均在 `sync.Once` 闭包内、初始化后只读；接口变量与
+  数据串无本项目写入方。新增 32 goroutine 并发**确定性**压测（同输入同输出）
+  与 `Benchmark*Parallel16` 基准固化。实测（8 核稳定值）：bazi 16 并发排盘
+  **56.36 → 14.27 ms/op（3.9×）**；ziwei 同时段 A/B 复测 16.60 → 12.78 ms/op
+  （~20%，并消除生产多请求下的全局串行点）
+- 【frontend/a11y】NameCard 重构：容器 `role="button"` 内嵌 checkbox/按钮
+  违反 WAI-ARIA 嵌套交互规则，且容器 onKeyDown 对 Space preventDefault
+  **导致键盘用户无法勾选对比框**。名字标题升级为语义化 button
+  （aria-pressed/aria-label/focus-visible 环）承担键盘选中路径；容器仅留
+  鼠标点击；checkbox/收藏/详情补 aria-label，详情按钮补 aria-expanded
+
+## [2026.10.02.1]
+
+`docs/30` §七：**死代码专项与卫生收尾**（清偿 §五「仍余」与 §四遗留 2/4）。
+验证口径：后端 `go build`/`go vet`/`go test` **21 包全绿**（少 1 包系删除的
+namestatistics 自带测试）；前端 tsc 0 错误、vitest 45/45、lint 0 errors。
+
+### 🗑 Deprecated 废弃功能
+
+- 【hanzi/数据】`LoadFromJSON` 合并语义定案并注释固化（B9）：**按键覆盖合并
+  （upsert）、不删除旧键**——内存中还有非 JSON 来源注入数据（kangxi 回填/
+  分类同步/AddNamingChar），整体替换会冲掉它们；删除语义缺失仅影响无生产
+  调用方的热更新场景
+- 【config/依赖】I2 mongo-driver indirect 定案为良性：`go mod why` 证实不参与
+  构建，tidy 零改动，属依赖图一致性元数据
+
+### 📈 Improvements 性能/体验优化
+
+- 【fate/性能】FrequencyRater 补 `skipDetail` 支持：全部 8 个 Rater 中唯一
+  漏网者，此前双名 N² 枚举热路径无条件 `fmt.Sprintf`+`Join`，使
+  「枚举期跳过文案构造」的优化（省 22% CPU）对频率维度失效
+- 【frontend/筛选】NameFilter 笔画区间 min≤max 自愈（改 min 抬高 max、
+  改 max 压低 min），杜绝 min=20/max=5 的恒空矛盾筛选
+- 【fate/注释】6 处注释阈值漂移修正（>=85 → >=90，与代码实际一致）
+- 【bazi/取象】五行计数转字符改 `strconv.Itoa`：加权计数 >9 时旧写法
+  输出 `:` 等乱码
+
+### 🔧 Dependencies 依赖更新 / 清理
+
+- 【I1】删除 `domain/namestatistics` 整包（零外部引用，含测试）
+- 【I9】四处裸构造 `&HanziDataProvider{}` 收敛为 `services.NewHanziDataProvider()`
+  唯一构造点（测名/探索/卦象/笔画回查 + namer-cli 同步装配），SQL 字库下沉
+  时单点切换，杜绝「同一次生成两套数据口径」
+- 【cache】生产死装配移除（server/namer-cli 的 `cache.Init/GetCache/Close`、
+  `NameService.cache` 字段与 `WithCache` 选项、`newServices` 签名收窄）——
+  `s.cache` 零读取，每分钟清理协程纯空转；`cache` 包保留（单测有效，
+  测试辅助仍在用）
+- 【data】删除 `fileCache` 死代码（注释宣称的「热更新比对」从未实现）
+- 【frontend】删除零引用的 `types/api/zodiacs.ts` 与同步版 `generateNames`
+
+## [2026.10.02.0]
+
+`docs/30` §六：**B12 容器实测**（192.168.10.180 Docker 环境）。在干净构建
+上下文上实测出 **13 处容器构建/启动缺陷（C1-C10.5）并全部修复**——此前
+「pnpm build 通过」的验证全部发生在已装好依赖的开发机上，镜像构建路径
+从未真正跑通过。
+
+### 🐛 Bug Fixes 问题修复
+
+- 【frontend/构建链】**C1-C6**：`.dockerignore` 排除 `scripts/` 与 deps 阶段
+  COPY 清单缺 `scripts/`、`pnpm-workspace.yaml` → postinstall/构建审批在容器内
+  全部失效；`pnpm-workspace.yaml` 被交互写坏（"core-js" 逐字符序列化）；
+  pnpm 基座不符（pnpm 11 需 Node ≥22.13 的 `node:sqlite`，基座却是 node:20）；
+  `pnpm@latest` 漂移到 12 即拒绝解析。修复：反向规则、deps 清单补齐、
+  固定 `pnpm@11.0.9`、基座 node:22、npmmirror 镜像源（直连 npmjs 实测
+  ~10KiB/s 不可用）、`allowBuilds: {sharp: true}`（pnpm 11 新键 +
+  strictDepBuilds 默认开启）。提交 `0011b83`/`1c760b9`/`13a3e55`/`21a684e`/
+  `afb7a73`/`3103060`/`2d6611b`
+- 【frontend/运行时】**C7/C7.5**：运行时阶段仍是 standalone 模式旧写法
+  （复制 `.next/standalone` + node server.js），而前端早已静态导出——
+  该目录不存在，构建必失败。改为 nginx:alpine 服务 `out/` 静态产物
+  （新增 nginx-frontend.conf，双栈监听 + 路由 HTML 直达 + 静态资源长缓存），
+  镜像 187MB → 63.8MB。提交 `8c8b32f`/`5c3f730`
+- 【repo/行尾】**C8**：Windows `core.autocrlf=true` 使 `git archive` 导出 CRLF，
+  `docker-entrypoint.sh` 的解释器被读成 `/bin/sh\r` → 后端容器 exec 失败
+  崩溃循环。新增 `.gitattributes` 强制脚本/配置类文件 LF。提交 `6ba7e40`
+- 【deploy/播种】**C9**：busybox cp 对 `cp -rn 目录/. 目标/` 静默不复制
+  （exit 0、零文件），叠加吞错后日志照印「已就绪」——播种假成功 → 配置缺失
+  → 默认 mode=all → 容器内 Fatal 重启循环。entrypoint 改逐项复制+逐项报错；
+  compose 补 `NAME_MODE=api`。提交 `361571e`
+- 【config/server】**C10**：viper `Unmarshal` 不解析 `AutomaticEnv`——
+  compose 传入的 `NAME_MODE=api`/`NAME_SERVER_HOST=0.0.0.0` 等对结构体字段
+  **静默失效**（而 logger 的 output_path 走 Get* getter 生效，同一次加载
+  两套行为），且 `ensureStaticDir` 无 mode 门控 → `mkdir /frontend` Fatal。
+  `Load()` 在 Unmarshal 后逐字段经 viper Get 重解析；静态目录检查仅
+  `mode==all` 执行。提交 `3667bd5`
+- 【deploy/镜像标签】**C10.5**：浮动基础镜像标签因 digest 漂移触发重新拉取
+  （部署环境拉 docker hub 仅 ~5KB/s）。固定 `golang:1.25.10-alpine` /
+  `node:22.22.3-alpine`。提交 `5720e2a`
+
+### ✅ 实测验证（2026.10.03 全新环境全流程复现）
+
+- `docker compose build`（全新上下文无缓存）：backend（256MB）/ frontend
+  （63.8MB）双双成功
+- fresh-volume `up -d`：**三容器全部 healthy**（backend / frontend / nginx）
+- ① 健康检查：`https://…/healthz` 经 nginx 返回 `{"status":"ok"}`
+- ② 字库播种：entrypoint「新增 36 项，失败 0」，二次启动「保留已有 36 项」
+  （no-clobber 正确）；生成 API 返回真实八字/五行/喜用神与名字
+  （瑞赟 82.4 / 湃信 77.8 / 嫦浩 76.8）
+- ③ 配置加载：启动日志 `Starting NameMaster server {"host": "0.0.0.0"}`
+  （C10 实证）；DB 落宿主数据卷、容器层无残留；无静态 Fatal
+- ④ 持久化：收藏（92.7 浮点）→ `restart backend` → 完整回读
+- 部署前置（实测必需）：宿主挂载目录 `chown -R 1000:1000`；证书须含
+  fullchain/chain/privkey 三件（certbot 正常签发即含）；nginx 80→443 301、
+  非配置域名 444 丢弃
+
+## [2026.10.01.2]
+
+`docs/29` **P3 摘要项批量处置**（补齐 `docs/30` §四第 4 条遗留）。验证口径：
+后端 22 包全绿、前端 tsc 0 错误、vitest 45/45、lint 0 errors。
+
+### 🐛 Bug Fixes 问题修复
+
+- 【sqlite】`rows.Err()` 补齐 10 处 `rows.Next()` 循环：迭代中途的 IO/解码
+  错误此前被当成「正常取完」，静默返回截断数据（历史列表缺后半页、
+  精选名库缺行）。无错误返回值的方法记录错误日志，可返错的保持原签名。
+- 【sqlite】`NewStore` 失败路径泄漏连接句柄：写连接打开成功后任一步骤
+  失败（含读连接打开/Ping、建表）直接 return，残留句柄在 Windows 上锁住
+  namer.db。改用 success 标记 + defer 统一关闭读/写两个连接。
+- 【server】关闭路径两缺口：启动失败分支跳过 store 关闭/限流器停止/
+  缓存释放（与信号分支不对称）；`signal.Notify` 注册晚于 ListenAndServe
+  启动，早期信号走默认处置直接杀进程。现注册前置、失败分支走完整清理。
+- 【middleware】访问日志补 `request_id` 字段：X-Request-ID 此前与日志行
+  无法关联，排查目标落空。
+- 【server】中间件顺序：CORS 移到 MaxBodyBytes(413)/RequestTimeout(503)
+  之前——此前跨源请求的错误响应不带 CORS 头，浏览器把真实状态误报为
+  CORS 错误。
+- 【前端 Toast】id 由 `Date.now()` 改自增序号（同毫秒双 toast 定时器互相
+  覆盖、误删）；容器补 `role="status"` + `aria-live="polite"`。
+- 【前端 history】删除按钮防双击（`deletingId` state）：此前双击第二次
+  DELETE 404 误报「删除失败」。
+
+### 📈 Improvements 性能/体验优化
+
+- 【前端 evaluate】测名提交前校验出生时间（复用 `validateBirthTime`）：
+  数值输入清空得到 0 此前直接打到后端靠 400 兜底；`validateBirthTime`
+  补真实日历校验（2 月 30 日这类范围检查拦不住的日期）。
+- 【前端】生产构建 `removeConsole` 保留 `error/warn`：ErrorBoundary 的
+  线上日志此前被整段剥除，前端故障无从排查。
+
+## [2026.10.01.1]
+
+`docs/29` 第二轮审查发现的 **P1×10 + P2×17** 修复实施。详细实施记录见
+`docs/30-第二轮审查修复实施记录.md`。
+
+### 🐛 Bug Fixes 问题修复
+
+- 【fate/domain】**A1/A3/A4/A5 与 fate 令牌配对死锁**：自制 `syncOnce` 并发首调 fatal、大衍筮法永无动爻、卦号矩阵码误当传统卦序、紫微禄存/擎羊/陀罗表全错，并修复 fate 令牌配对死锁（`646ba99`）。
+- 【bazi/handlers】**A2 非法日期 nil panic**：日期解析吞错后在领域层解引用 nil，用户侧 500；现返回 400（`0298379`）。
+- 【favorite/sqlite/memory】**A6 收藏写入失败伪装成功**：存储层错误被吞，接口返回成功但数据未落库（`5f7cac3`）。
+- 【fate】**B3 除夕硬编码腊月三十**：腊月为小月（29 天）的年份除夕识别失败；改用 `tyme.LunarDay.GetDayCount()` 判定当月最后一天。新增 `holiday_ny_eve_test.go` 覆盖大小月与放假日。
+- 【bazi】**B4 节假日查询 730 次全量推算**：`GetHolidayInfo` 内两段逐字重复的 365 次逐日轮询合并为单次轮询，并为 `GetHoliday` 增加按日期缓存（返回副本，附上界重建）。新增对拍测试确保与原算法逐字一致。
+- 【frontend】**B5 黄历年月切换日期溢出**：1 月 31 日切到 2 月被 `new Date` 自动进位为 3 月 3 日（跳过整月）；新增 `buildClampedDate` 将日钳制到目标月末，覆盖闰年/大小月/跨年。
+- 【classics】**B10 `ShiCiExtracted` 并发读写**：写侧有锁、读侧裸读；`shici.json`（6.7MB）后台加载完成瞬间与 HTTP 请求构成 slice 并发读写。所有 `*Extracted` 读取统一走加读锁的快照复制 `copyExtracted`。
+- 【name】**B11 `Reload()` 自死锁**：持 `db.mu` 调用 `Load()`，子加载器二次加锁导致永久阻塞（表现为超时而非报错）。改为「清空索引临界区」后释放锁再 `Load()`。新增带超时守护的回归测试，并实测在旧实现上 10s 未返回而失败。
+- 【hanzi】**B9 全局字库并发无锁写**：`ApplyWuxingOverrides`/`mergeKangxiStrokes` 对全局 `HanziData` 无锁写，读侧 `IsCommonChar`/`HetuWuxingOfChar` 等亦无锁，热更新接通即 `fatal error: concurrent map write`。写侧加 `mu` 写锁，所有直接读取迁移到线程安全访问器 `GetHanzi`/`GetNamerChar`。并发回归测试经实测可在旧实现上稳定触发 fatal。
+- 【services】**B7 异步任务无上限堆积 OOM**：`Submit` 无条件 `go ts.run`，淘汰只删 map 不终止 goroutine，稳态可堆积数千个 5 分钟枚举任务。新增容量 4 的运行信号量、满载 `ErrTooManyTasks`（handler → 503）、淘汰/TTL 取消运行中任务、取消后不回填结果并释放槽位。
+- 【services/sqlite】**B8 SQL 故障伪装成「无结果」**：`SearchHanziByFilter` 出错吞为 `nil`，注释承诺的 Go 降级路径永不可达。全链路改为返回 `error`，SQL 故障可降级 Go 过滤，成功空结果与基础设施故障可区分。
+- 【services/handlers】**B6 历史/收藏无分页上限**：`/history` 的 `limit` 无上限（内嵌完整结果 JSON，可一次拖走全库）且未使用已有的页大小钳制；`/favorites` 全量返回。统一走分页查询并钳制 `maxPageSize = 100`，非法分页返回 400。
+- 【config】**B13 环境变量覆盖静默失效**：`AutomaticEnv` 缺 `SetEnvKeyReplacer`，嵌套键名形如 `NAME_SERVER.PORT` 无法设置。补 replacer 并新增覆盖测试。
+- 【deploy】**B12 生产配置链断裂（补正）**：镜像原 `COPY config/` 路径不存在导致构建必失败；修正后仍有两处缺陷——① compose 用宿主目录挂载 `/app/config` 会遮蔽镜像内配置，新部署配置缺失、viper 全量回落默认值；② 进程固定读 `cwd/data` 而入口脚本按 `DATA_DIR` 播种。现改为「配置与字库同样烘焙 seed + 入口脚本 `cp -n` 播种」，并让 `main.go` 以 `DATA_DIR` 为准（缺省回落 `cwd/data`）。
+- 【deploy】**B15 dev Redis 无密码暴露**：`6379` 由 `0.0.0.0` 改为仅绑定 `127.0.0.1`。
+
+### ✨ New Features 新增功能
+
+- 【fate】**A9 寓意关键词 / 偏旁选字全链路生效**：`MeaningKeywords` 原被引擎丢弃，前端把点选字拼进文本关键词、结构化通道从未被读。现把偏好落到候选池（收窄而非打分，避免破坏 `RateNameScore` 权重和恒为 1.0 的语义）：命中字义/起名分类的字 ∪ 点选字；偏好集为空时回退原池，绝不产出零结果。
+- 【favorite】**B6 收藏分页 API**：`GET /favorites` 支持 `page`/`limit`，返回 `data`/`records`/`total`/`page`/`limit`。
+
+### 📈 Improvements 性能/体验优化
+
+- 【frontend】**A7/B16/B17 收藏稳定性与请求取消**：修复收藏 effect 临时数组导致的无限重渲染白屏；收藏态覆盖 `exploreBatch`；`fetchWithRetry`、异步生成/轮询/进度全链路接入 `AbortSignal`，防止过期响应覆盖。
+- 【frontend】**A8 lint 质量门禁恢复**：恢复 ESLint 10 配置、移除废弃 `--ext`，修复 Windows 扁平依赖树中的 minimatch 版本污染与 4 处 `no-useless-assignment`。门禁由「完全失效」恢复为 `0 errors / 34 warnings`。
+- 【holiday】节假日缓存将重复查询由 730 次换算降为一次 map 查找，月度视图收益最明显。
+
+### 📚 Docs 文档更新
+
+- 新增 `docs/30-第二轮审查修复实施记录.md`：逐项记录处置方式、验证命令与实测反证。
+- 【B14 安全】确认后端零鉴权、仓库无任何 JWT 实现；移除 compose 与 `.env` 中的 `JWT_SECRET`/`JWT_EXPIRE` 死配置，在 `DOCKER_QUICKSTART.md` 明确公网部署须在 Nginx/网关层做访问控制。应用层鉴权方案待产品决策。
+
+---
+
+## [2026.10.01.0]
+
+### 📚 Docs 文档更新
+
+- 【审查】第二轮全项目审查报告 `docs/29-项目全面审查报告第二轮.md`。基线 `2026.09.25.2`：后端 21 包全绿、前端 tsc 0 错误、`docs/28` 修复项抽查确认落地。新发现 **P1×10**（自制 syncOnce 并发 fatal、非法日期 nil panic 500、大衍筮法永无动爻、卦号矩阵码当传统卦序、紫微禄存表全错、收藏写失败伪装成功、收藏查询失败前端无限重渲染白屏、lint 门禁失效、寓意关键词全链路失效、XFF 伪造绕过限流）、**P2×17**（含五行相生「土→火」写反、/history limit 无上限、异步任务 goroutine 堆积、Docker 生产配置链断裂、viper 环境变量覆盖失效等）、**P3 若干**。全部 P1 均经人工读码复核，修复待后续迭代实施。
+
+---
+
 ## [2026.09.25] 当日总览
 
 前端测试环境修复专项 + 后端审查 Warning 处置，版本 `2026.09.25.0` 与 `2026.09.25.1`。

@@ -21,15 +21,15 @@ type HideHeavenGod struct {
 
 // PillarTenGods 完整十神（含地支藏干）
 type PillarTenGods struct {
-	YearStem   string           `json:"year_stem"`   // 年干
-	MonthStem  string           `json:"month_stem"`  // 月干
-	DayStem    string           `json:"day_stem"`    // 日干
-	HourStem   string           `json:"hour_stem"`   // 时干
-	YearGod    string           `json:"year_god"`    // 年干十神
-	MonthGod   string           `json:"month_god"`   // 月干十神
-	DayGod     string           `json:"day_god"`     // 日干十神
-	HourGod    string           `json:"hour_god"`    // 时干十神
-	HideHeaven []HideHeavenGod  `json:"hide_heaven"` // 地支藏干十神（四柱所有藏干）
+	YearStem   string          `json:"year_stem"`   // 年干
+	MonthStem  string          `json:"month_stem"`  // 月干
+	DayStem    string          `json:"day_stem"`    // 日干
+	HourStem   string          `json:"hour_stem"`   // 时干
+	YearGod    string          `json:"year_god"`    // 年干十神
+	MonthGod   string          `json:"month_god"`   // 月干十神
+	DayGod     string          `json:"day_god"`     // 日干十神
+	HourGod    string          `json:"hour_god"`    // 时干十神
+	HideHeaven []HideHeavenGod `json:"hide_heaven"` // 地支藏干十神（四柱所有藏干）
 }
 
 // GetTenGod 计算一个天干相对于日干的十神

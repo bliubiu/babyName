@@ -34,6 +34,15 @@ func ReloadFromJSON(dataDir string) error {
 	return LoadFromJSON(dataDir)
 }
 
+// SetHexagrams 直接以内存结构设置卦象列表（SQLite 物料装载路径，ADR-008）
+//
+// 与 LoadFromJSON 互为两条来源：运行时统一走 SQLite 后不再解析 JSON。
+func SetHexagrams(list []Hexagram) {
+	yjMu.Lock()
+	defer yjMu.Unlock()
+	HexagramList = list
+}
+
 // GetHexagram 线程安全获取卦象数据
 func GetHexagram(id int) (Hexagram, bool) {
 	yjMu.RLock()

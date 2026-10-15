@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"name/internal/domain/fate"
-	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/data"
 )
 
@@ -39,7 +38,6 @@ func setupNameServiceE2E(t *testing.T) *NameService {
 		if curated := loadCuratedNamesForE2E(dataDir); len(curated) > 0 {
 			fate.SetCuratedNames(curated)
 		}
-		cache.Init()
 		fateEngine := fate.NewEngine(&HanziDataProvider{}, NewBaziAnalyzerAdapter(), fate.DefaultRaters())
 		fateSvc := NewFateNameService(fateEngine,
 			WithFateBaziAnalyzer(&BaziAdapter{}),
@@ -51,7 +49,6 @@ func setupNameServiceE2E(t *testing.T) *NameService {
 			WithHexagramFinder(&HexagramAdapter{}),
 			WithZiweiAnalyzer(&ZiweiAdapter{}),
 			WithZodiacFinder(&ZodiacAdapter{}),
-			WithCache(cache.GetCache()),
 			WithFateService(fateSvc),
 		)
 	})
@@ -119,13 +116,13 @@ func TestEvaluate_E2E_SameScoreAsGenerate(t *testing.T) {
 	ctx := context.Background()
 
 	genResp, err := svc.Generate(ctx, &GenerateRequest{
-		Surname:     "王",
-		Gender:      "male",
-		BirthYear:   2024,
-		BirthMonth:  1,
-		BirthDay:    15,
-		BirthHour:   12,
-		NameLength:  2,
+		Surname:    "王",
+		Gender:     "male",
+		BirthYear:  2024,
+		BirthMonth: 1,
+		BirthDay:   15,
+		BirthHour:  12,
+		NameLength: 2,
 	})
 	if err != nil {
 		t.Fatalf("Generate 失败: %v", err)
@@ -224,7 +221,7 @@ func TestTaskService_E2E_SubmitAndPoll(t *testing.T) {
 	svc := setupNameServiceE2E(t)
 	ts := NewTaskService(svc)
 
-	taskID := ts.Submit(&GenerateRequest{
+	taskID, err := ts.Submit(&GenerateRequest{
 		Surname:    "王",
 		Gender:     "male",
 		BirthYear:  2024,
@@ -233,6 +230,9 @@ func TestTaskService_E2E_SubmitAndPoll(t *testing.T) {
 		BirthHour:  12,
 		NameLength: 2,
 	})
+	if err != nil {
+		t.Fatalf("提交任务失败: %v", err)
+	}
 	if taskID == "" {
 		t.Fatal("task_id 不应为空")
 	}

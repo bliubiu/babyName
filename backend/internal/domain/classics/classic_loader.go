@@ -388,7 +388,7 @@ func extractFromEntry(title string, content []string, source string, seen map[st
 			Chapter: title,
 		}
 
-		if h, ok := hanzi.HanziData[char]; ok {
+		if h, ok := hanzi.GetHanzi(char); ok {
 			pc.Pinyin = h.Pinyin
 			pc.Meaning = h.Meaning
 			pc.Wuxing = h.Wuxing

@@ -158,3 +158,146 @@ func TestGetReturnsLoadedConfig(t *testing.T) {
 		t.Error("Get() 应返回 Load() 的同一实例")
 	}
 }
+
+// TestEnvOverrideWithReplacer 环境变量覆盖嵌套键（docs/29 B13 回归）。
+// AutomaticEnv 对 server.port 默认查 NAME_SERVER.PORT（保留点号），任何
+// shell 都设不出来，覆盖静默无效；必须配 SetEnvKeyReplacer 把「.」映射
+// 为「_」，NAME_SERVER_PORT 才能生效。修复前本用例失败（读到文件值 9999）。
+func TestEnvOverrideWithReplacer(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "application.yml")
+	content := `
+server:
+  host: 0.0.0.0
+  port: 9999
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("写配置失败: %v", err)
+	}
+
+	t.Setenv("NAME_SERVER_PORT", "7777")
+
+	if _, err := Load(cfgPath); err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	if got := GetInt("server.port", 0); got != 7777 {
+		t.Errorf("环境变量 NAME_SERVER_PORT 应覆盖文件值：got %d，want 7777（文件值 9999）", got)
+	}
+	// 未被覆盖的键仍读文件值
+	if got := GetString("server.host", ""); got != "0.0.0.0" {
+		t.Errorf("未覆盖键应读文件值 0.0.0.0，got %q", got)
+	}
+}
+
+// TestLoad_SearchesConfigSubDir 配置文件放在 ./config/ 下时必须被找到
+//
+// docs/29 B12：compose 把宿主机配置目录挂到容器的 /app/config，而进程 cwd 是
+// /app。原搜索路径只有 "." / exe 目录 / "../"，全部落不到 /app/config，
+// 于是配置文件被静默跳过、整套默认值生效（监听 localhost、日志与数据库写到
+// 非挂载目录）。这类故障无任何报错，极难定位。
+func TestLoad_SearchesConfigSubDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "config"), 0755); err != nil {
+		t.Fatalf("建目录失败: %v", err)
+	}
+	cfgPath := filepath.Join(dir, "config", "application.yml")
+	content := "server:\n  host: 0.0.0.0\n  port: 9123\n"
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("写配置失败: %v", err)
+	}
+
+	// 在临时目录内执行，使 "." 指向不含配置的父目录
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("取工作目录失败: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("切换工作目录失败: %v", err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
+
+	// 清掉可能干扰的环境变量
+	t.Setenv("NAME_SERVER_HOST", "")
+	t.Setenv("NAME_SERVER_PORT", "")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	if cfg.Server.Port != 9123 {
+		t.Errorf("应从 ./config/application.yml 读到 port=9123，实际 %d（说明搜索路径漏了 config 子目录）", cfg.Server.Port)
+	}
+	if cfg.Server.Host != "0.0.0.0" {
+		t.Errorf("应从 ./config/application.yml 读到 host=0.0.0.0，实际 %q", cfg.Server.Host)
+	}
+}
+
+// TestLoad_ConfigDirEnv 自定义 CONFIG_DIR 必须生效
+func TestLoad_ConfigDirEnv(t *testing.T) {
+	base := t.TempDir()
+	cfgDir := filepath.Join(base, "custom-conf")
+	if err := os.MkdirAll(cfgDir, 0755); err != nil {
+		t.Fatalf("建目录失败: %v", err)
+	}
+	content := "database:\n  path: /app/storage/namer.db\n"
+	if err := os.WriteFile(filepath.Join(cfgDir, "application.yml"), []byte(content), 0644); err != nil {
+		t.Fatalf("写配置失败: %v", err)
+	}
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("取工作目录失败: %v", err)
+	}
+	if err := os.Chdir(base); err != nil {
+		t.Fatalf("切换工作目录失败: %v", err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
+
+	t.Setenv("CONFIG_DIR", cfgDir)
+	t.Setenv("NAME_DATABASE_PATH", "")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	if cfg.Database.Path != "/app/storage/namer.db" {
+		t.Errorf("CONFIG_DIR 应生效，database.path=%q", cfg.Database.Path)
+	}
+}
+
+// TestEnvOverrideReachesStructFields 环境变量必须穿透到结构体字段
+// （docs/30 §六 C10 回归）：viper 的 Unmarshal 不解析 AutomaticEnv——
+// compose 传入的 NAME_MODE/NAME_SERVER_HOST 等此前对 cfg.Mode 等字段
+// 静默失效（mode 保持 "all" 使容器内静态目录 Fatal）。修复后逐字段
+// 经 viper Get 重解析。
+func TestEnvOverrideReachesStructFields(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "application.yml")
+	content := `
+mode: all
+server:
+  host: localhost
+  port: 8080
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("写配置失败: %v", err)
+	}
+
+	t.Setenv("NAME_MODE", "api")
+	t.Setenv("NAME_SERVER_HOST", "0.0.0.0")
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	if cfg.Mode != "api" {
+		t.Errorf("NAME_MODE 应覆盖 yml 的 all：got %q，want api", cfg.Mode)
+	}
+	if cfg.Server.Host != "0.0.0.0" {
+		t.Errorf("NAME_SERVER_HOST 应覆盖 yml 的 localhost：got %q，want 0.0.0.0", cfg.Server.Host)
+	}
+	// 未被 env 覆盖的键仍读文件值
+	if cfg.Server.Port != 8080 {
+		t.Errorf("未覆盖键应读文件值 8080，got %d", cfg.Server.Port)
+	}
+}

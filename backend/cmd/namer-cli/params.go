@@ -1,10 +1,10 @@
 // namer-cli 命令行起名工具的参数模块
 //
 // 职责：
-//   1. 从 TOML 配置文件加载起名参数（字段与 Web API JSON 一致，snake_case）
-//   2. 应用命令行显式参数覆盖（优先级：命令行 > TOML > 默认值）
-//   3. 复用 Web 层 validator 进行参数校验
-//   4. 转换为服务层 GenerateRequest，确保 CLI 与 Web UI 走完全相同的领域链路
+//  1. 从 TOML 配置文件加载起名参数（字段与 Web API JSON 一致，snake_case）
+//  2. 应用命令行显式参数覆盖（优先级：命令行 > TOML > 默认值）
+//  3. 复用 Web 层 validator 进行参数校验
+//  4. 转换为服务层 GenerateRequest，确保 CLI 与 Web UI 走完全相同的领域链路
 package main
 
 import (
@@ -22,31 +22,31 @@ import (
 // 方便对照 API 文档与前端请求体进行测试验证。
 type Params struct {
 	// 核心输入（与 Web UI 表单一致）
-	Surname            string   `mapstructure:"surname"`             // 姓氏
-	Generation         string   `mapstructure:"generation"`          // 字辈
-	GenerationPosition string   `mapstructure:"generation_position"` // 字辈位置：middle（名中）/ tail（名尾）
-	Gender             string   `mapstructure:"gender"`              // 性别：male / female
-	BirthYear          int      `mapstructure:"birth_year"`          // 出生年
-	BirthMonth         int      `mapstructure:"birth_month"`         // 出生月
-	BirthDay           int      `mapstructure:"birth_day"`           // 出生日
-	BirthHour          int      `mapstructure:"birth_hour"`          // 出生时（24小时制）
-	BirthMinute        int      `mapstructure:"birth_minute"`        // 出生分
-	BirthLocation      string   `mapstructure:"birth_location"`      // 出生地
-	BirthType          string   `mapstructure:"birth_type"`          // 出生类型
+	Surname            string `mapstructure:"surname"`             // 姓氏
+	Generation         string `mapstructure:"generation"`          // 字辈
+	GenerationPosition string `mapstructure:"generation_position"` // 字辈位置：middle（名中）/ tail（名尾）
+	Gender             string `mapstructure:"gender"`              // 性别：male / female
+	BirthYear          int    `mapstructure:"birth_year"`          // 出生年
+	BirthMonth         int    `mapstructure:"birth_month"`         // 出生月
+	BirthDay           int    `mapstructure:"birth_day"`           // 出生日
+	BirthHour          int    `mapstructure:"birth_hour"`          // 出生时（24小时制）
+	BirthMinute        int    `mapstructure:"birth_minute"`        // 出生分
+	BirthLocation      string `mapstructure:"birth_location"`      // 出生地
+	BirthType          string `mapstructure:"birth_type"`          // 出生类型
 
 	// 筛选条件（可选）
-	NameType        string   `mapstructure:"name_type"`         // 名字类型：single / double
-	Preferences     []string `mapstructure:"preferences"`       // 偏好风格
-	NameLength      int      `mapstructure:"name_length"`       // 名字长度（不含姓）：1 单字 / 2 双字
-	ExcludeRare     bool     `mapstructure:"exclude_rare"`      // 排除生僻字
-	WuxingMatch     []string `mapstructure:"wuxing_match"`      // 五行偏好（如 ["水","木"]）
-	SourceClassic   string   `mapstructure:"source_classic"`    // 典籍来源（shijing/chuci 等）
-	MinStrokes      int      `mapstructure:"min_strokes"`       // 最小笔画
-	MaxStrokes      int      `mapstructure:"max_strokes"`       // 最大笔画
-	IncludePoetry   bool     `mapstructure:"include_poetry"`    // 包含诗词字库
-	IncludeClassic  bool     `mapstructure:"include_classic"`   // 包含经典字库
-	MeaningKeywords []string `mapstructure:"meaning_keywords"`  // 寓意关键词
-	PinyinInitial   string   `mapstructure:"pinyin_initial"`    // 拼音首字母
+	NameType        string   `mapstructure:"name_type"`        // 名字类型：single / double
+	Preferences     []string `mapstructure:"preferences"`      // 偏好风格
+	NameLength      int      `mapstructure:"name_length"`      // 名字长度（不含姓）：1 单字 / 2 双字
+	ExcludeRare     bool     `mapstructure:"exclude_rare"`     // 排除生僻字
+	WuxingMatch     []string `mapstructure:"wuxing_match"`     // 五行偏好（如 ["水","木"]）
+	SourceClassic   string   `mapstructure:"source_classic"`   // 典籍来源（shijing/chuci 等）
+	MinStrokes      int      `mapstructure:"min_strokes"`      // 最小笔画
+	MaxStrokes      int      `mapstructure:"max_strokes"`      // 最大笔画
+	IncludePoetry   bool     `mapstructure:"include_poetry"`   // 包含诗词字库
+	IncludeClassic  bool     `mapstructure:"include_classic"`  // 包含经典字库
+	MeaningKeywords []string `mapstructure:"meaning_keywords"` // 寓意关键词
+	PinyinInitial   string   `mapstructure:"pinyin_initial"`   // 拼音首字母
 
 	// 避讳长辈：父系/母系直系长辈姓名，生成时排除同形字与同音字
 	AvoidElderNames []string `mapstructure:"avoid_elder_names"`
@@ -149,30 +149,30 @@ func (p *Params) Validate() error {
 // ToRequest 转换为服务层生成请求（CLI 与 Web UI 共用同一领域入口）
 func (p *Params) ToRequest() *services.GenerateRequest {
 	return &services.GenerateRequest{
-		Surname:         p.Surname,
-		Generation:      p.Generation,
+		Surname:            p.Surname,
+		Generation:         p.Generation,
 		GenerationPosition: p.GenerationPosition,
-		Gender:          p.Gender,
-		BirthYear:       p.BirthYear,
-		BirthMonth:      p.BirthMonth,
-		BirthDay:        p.BirthDay,
-		BirthHour:       p.BirthHour,
-		BirthMinute:     p.BirthMinute,
-		BirthLocation:   p.BirthLocation,
-		BirthType:       p.BirthType,
-		NameType:        p.NameType,
-		Preferences:     p.Preferences,
-		NameLength:      p.NameLength,
-		ExcludeRare:     p.ExcludeRare,
-		WuxingMatch:     p.WuxingMatch,
-		SourceClassic:   p.SourceClassic,
-		MinStrokes:      p.MinStrokes,
-		MaxStrokes:      p.MaxStrokes,
-		IncludePoetry:   p.IncludePoetry,
-		IncludeClassic:  p.IncludeClassic,
-		MeaningKeywords: p.MeaningKeywords,
-		PinyinInitial:   p.PinyinInitial,
-		AvoidElderNames: p.AvoidElderNames,
+		Gender:             p.Gender,
+		BirthYear:          p.BirthYear,
+		BirthMonth:         p.BirthMonth,
+		BirthDay:           p.BirthDay,
+		BirthHour:          p.BirthHour,
+		BirthMinute:        p.BirthMinute,
+		BirthLocation:      p.BirthLocation,
+		BirthType:          p.BirthType,
+		NameType:           p.NameType,
+		Preferences:        p.Preferences,
+		NameLength:         p.NameLength,
+		ExcludeRare:        p.ExcludeRare,
+		WuxingMatch:        p.WuxingMatch,
+		SourceClassic:      p.SourceClassic,
+		MinStrokes:         p.MinStrokes,
+		MaxStrokes:         p.MaxStrokes,
+		IncludePoetry:      p.IncludePoetry,
+		IncludeClassic:     p.IncludeClassic,
+		MeaningKeywords:    p.MeaningKeywords,
+		PinyinInitial:      p.PinyinInitial,
+		AvoidElderNames:    p.AvoidElderNames,
 	}
 }
 

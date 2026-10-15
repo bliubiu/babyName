@@ -28,7 +28,11 @@ func TestDoubleNameWorkerLimitBoundsPeak(t *testing.T) {
 		candidateWorkerPeak.Store(origPeak)
 	}()
 
-	// 注入小容量令牌 + 清零峰值观测
+	// 注入小容量令牌 + 清零峰值观测。
+	// 全局峰值计数跨用例共享：若上一用例的在途 worker 尚在收尾（等待调度），
+	// 会把本次峰值抬高到注入容量之外，形成与被测行为无关的偶发失败。
+	// 故先等在途 worker 归零且短暂稳定后再注入测量。
+	waitWorkerQuiescence(t)
 	candidateWorkerLimit = make(chan struct{}, injectedLimit)
 	candidateWorkerPeak.Store(0)
 
@@ -90,6 +94,7 @@ func TestDoubleNameWorkerLimitCapsPerRequestWhileIdle(t *testing.T) {
 		candidateWorkerLimit = origWorkerLimit
 		candidateWorkerPeak.Store(origPeak)
 	}()
+	waitWorkerQuiescence(t)
 	candidateWorkerPeak.Store(0)
 
 	provider := newCuratedPoolProvider(0)
@@ -122,3 +127,26 @@ func TestDoubleNameWorkerLimitCapsPerRequestWhileIdle(t *testing.T) {
 type syncError struct{ msg string }
 
 func (e *syncError) Error() string { return e.msg }
+
+// waitWorkerQuiescence 等待全局在途 worker 计数归零且连续三次探测保持为 0。
+// worker 从获取令牌到计入 active 存在微小窗口，仅查一次归零不排除
+// 「刚查完就又有上一用例 worker 计入」的竞态，连续稳定才算安静。
+func waitWorkerQuiescence(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	stable := 0
+	for {
+		if candidateWorkerActive.Load() == 0 {
+			stable++
+			if stable >= 3 {
+				return
+			}
+		} else {
+			stable = 0
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("等待在途枚举 worker 归零超时（active=%d），存在跨用例泄漏", candidateWorkerActive.Load())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}

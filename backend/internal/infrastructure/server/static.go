@@ -112,14 +112,14 @@ type cacheRule func(*gin.Context)
 
 func getCacheRules() map[string]cacheRule {
 	return map[string]cacheRule{
-		"/":           noCache,
-		"/compare":    noCache,
-		"/favorites":  noCache,
-		"/history":    noCache,
-		"/result":     noCache,
-		"/huangli":    noCache,
-		"/evaluate":   noCache,
-		"/stat":       noCache,
+		"/":          noCache,
+		"/compare":   noCache,
+		"/favorites": noCache,
+		"/history":   noCache,
+		"/result":    noCache,
+		"/huangli":   noCache,
+		"/evaluate":  noCache,
+		"/stat":      noCache,
 	}
 }
 

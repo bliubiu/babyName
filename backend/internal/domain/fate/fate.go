@@ -86,11 +86,11 @@ type ProgressReporter interface {
 
 // Output 命名会话输出结果
 type Output struct {
-	Input          *Input           `json:"input"`           // 输入参数
-	FateData       *FateData        `json:"fate_data"`       // 八字分析数据
-	TopNames       []NameResult     `json:"top_names"`       // Top-N 完整分析
-	ExcellentTable *ExcellentTable  `json:"-"`               // 全部候选数据（流式 Top-N）
-	TotalCount     int              `json:"total_count"`     // 候选总数
+	Input          *Input          `json:"input"`       // 输入参数
+	FateData       *FateData       `json:"fate_data"`   // 八字分析数据
+	TopNames       []NameResult    `json:"top_names"`   // Top-N 完整分析
+	ExcellentTable *ExcellentTable `json:"-"`           // 全部候选数据（流式 Top-N）
+	TotalCount     int             `json:"total_count"` // 候选总数
 }
 
 // EngineFactory 引擎工厂，创建 Fate 实例

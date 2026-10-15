@@ -47,7 +47,14 @@ func TestGetCharRadicalFromNamer(t *testing.T) {
 // 中文（男/女）归一化为英文（male/female），fate filter 只识别英文枚举
 // （filter.go 性别判定），历史数据混用导致标"男"/"女"的好字（如 风94/玄94）
 // 在对应性别场景被误剔除、候选池被无谓砍掉约 155 个评分好字。
+//
+// 注：空值行为见 normalize_gender_test.go（受 GenderUnspecifiedAsNeutral 开关控制，
+// 本用例只覆盖开关关闭时的旧行为以固化回退路径）。
 func TestNormalizeGenderChineseEnums(t *testing.T) {
+	old := GenderUnspecifiedAsNeutral
+	GenderUnspecifiedAsNeutral = false
+	t.Cleanup(func() { GenderUnspecifiedAsNeutral = old })
+
 	cases := []struct {
 		in   string
 		want string

@@ -20,14 +20,14 @@ func TestGenerateQuxiang_WithAnalysis(t *testing.T) {
 			DayGanzhi:   "戊辰",
 			HourGanzhi:  "庚午",
 		},
-		Rishou:           "戊",
-		RishouWuxing:     "土",
-		DayMaster:        "土",
+		Rishou:            "戊",
+		RishouWuxing:      "土",
+		DayMaster:         "土",
 		DayMasterStrength: "身中",
-		Wuxing:           WuxingResult{Jin: 2, Mu: 1, Shui: 1, Huo: 2, Tu: 4},
-		Xiyongshen:       []string{"金", "水"},
-		Yiyongshen:       []string{"木", "火"},
-		Nayin:            "海中金",
+		Wuxing:            WuxingResult{Jin: 2, Mu: 1, Shui: 1, Huo: 2, Tu: 4},
+		Xiyongshen:        []string{"金", "水"},
+		Yiyongshen:        []string{"木", "火"},
+		Nayin:             "海中金",
 	}
 
 	result := GenerateQuxiang(analysis)
@@ -58,12 +58,12 @@ func TestGenerateQuxiang_WithAnalysis(t *testing.T) {
 
 func TestGenerateWuxingImage_Content(t *testing.T) {
 	analysis := &BaziAnalysis{
-		Rishou:           "甲",
-		RishouWuxing:     "木",
+		Rishou:            "甲",
+		RishouWuxing:      "木",
 		DayMasterStrength: "身弱",
-		Xiyongshen:       []string{"木", "水"},
-		Wuxing:           WuxingResult{Jin: 1, Mu: 3, Shui: 2, Huo: 2, Tu: 2},
-		Nayin:            "海中金",
+		Xiyongshen:        []string{"木", "水"},
+		Wuxing:            WuxingResult{Jin: 1, Mu: 3, Shui: 2, Huo: 2, Tu: 2},
+		Nayin:             "海中金",
 	}
 	img := generateWuxingImage(analysis)
 	if img == nil {
@@ -76,11 +76,11 @@ func TestGenerateWuxingImage_Content(t *testing.T) {
 
 func TestGenerateWuxingImage_NoNayin(t *testing.T) {
 	analysis := &BaziAnalysis{
-		Rishou:           "庚",
-		RishouWuxing:     "金",
+		Rishou:            "庚",
+		RishouWuxing:      "金",
 		DayMasterStrength: "身旺",
-		Xiyongshen:       []string{"火", "木"},
-		Wuxing:           WuxingResult{Jin: 4, Mu: 1, Shui: 1, Huo: 1, Tu: 3},
+		Xiyongshen:        []string{"火", "木"},
+		Wuxing:            WuxingResult{Jin: 4, Mu: 1, Shui: 1, Huo: 1, Tu: 3},
 	}
 	img := generateWuxingImage(analysis)
 	if img == nil {
@@ -316,10 +316,10 @@ func TestGenerateFullProfile_Basic(t *testing.T) {
 func TestGenerateFullProfile_Partial(t *testing.T) {
 	// 只有八字分析，没有十神/神煞/柱位
 	analysis := &BaziAnalysis{
-		Bazi: Bazi{YearGanzhi: "甲子"},
+		Bazi:   Bazi{YearGanzhi: "甲子"},
 		Rishou: "甲", RishouWuxing: "木",
 		DayMasterStrength: "身弱",
-		Wuxing: WuxingResult{Mu: 3},
+		Wuxing:            WuxingResult{Mu: 3},
 	}
 	profile := GenerateFullProfile(analysis, nil, nil, nil)
 	if profile == "" {

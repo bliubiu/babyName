@@ -57,7 +57,7 @@ func TestCalculateWuxingScoreCoverage(t *testing.T) {
 // TestCalculateDayMasterStrengthWeightedCoverage tests the weighted day master strength
 func TestCalculateDayMasterStrengthWeightedCoverage(t *testing.T) {
 	weighted := &WeightedWuxing{
-		Jin:  10, Mu: 10, Shui: 10, Huo: 10, Tu: 10,
+		Jin: 10, Mu: 10, Shui: 10, Huo: 10, Tu: 10,
 	}
 
 	// Just test that the function runs and returns a valid strength
@@ -85,7 +85,7 @@ func TestCalculateDayMasterStrengthWeightedCoverage(t *testing.T) {
 // TestCalculateXiyongshenWeightedCoverage tests the weighted xiyongshen calculation
 func TestCalculateXiyongshenWeightedCoverage(t *testing.T) {
 	weighted := &WeightedWuxing{
-		Jin:  10, Mu: 10, Shui: 10, Huo: 10, Tu: 10,
+		Jin: 10, Mu: 10, Shui: 10, Huo: 10, Tu: 10,
 	}
 
 	got := calculateXiyongshenWeighted(weighted, "木", "身旺", []string{"火", "土"})
@@ -107,7 +107,7 @@ func TestCalculateXiyongshenWeightedCoverage(t *testing.T) {
 // TestCalculateYiyongshenFromWeightedCoverage tests the weighted yiyongshen
 func TestCalculateYiyongshenFromWeightedCoverage(t *testing.T) {
 	weighted := &WeightedWuxing{
-		Jin:  10, Mu: 5, Shui: 10, Huo: 10, Tu: 10,
+		Jin: 10, Mu: 5, Shui: 10, Huo: 10, Tu: 10,
 	}
 
 	got := calculateYiyongshenFromWeighted(weighted, "木")
@@ -151,10 +151,10 @@ func TestCalculateBaziPatternCoverage(t *testing.T) {
 // TestCalculateYongshenScoreCoverage tests the yongshen score
 func TestCalculateYongshenScoreCoverage(t *testing.T) {
 	tests := []struct {
-		name         string
-		xiyongshen   []string
-		yiyongshen   []string
-		wuxing       *WuxingResult
+		name       string
+		xiyongshen []string
+		yiyongshen []string
+		wuxing     *WuxingResult
 	}{
 		{"有喜用神", []string{"木", "水"}, []string{"金"}, &WuxingResult{Jin: 2, Mu: 4, Shui: 3, Huo: 1, Tu: 2}},
 		{"无喜用神", []string{}, []string{"金"}, &WuxingResult{Jin: 2, Mu: 4, Shui: 3, Huo: 1, Tu: 2}},

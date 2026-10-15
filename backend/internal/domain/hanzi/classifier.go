@@ -117,11 +117,11 @@ var characterCategoryList = []struct {
 	chars string
 }{
 	// ===== 品德（~40字）=====
-	{"品德", "仁义德贤慧睿智信礼诚善谦恒毅勤敏达廉温良恭让忠恕厚正真朴"},  // 基础24字
+	{"品德", "仁义德贤慧睿智信礼诚善谦恒毅勤敏达廉温良恭让忠恕厚正真朴"}, // 基础24字
 	{"品德", "敦默"}, // 补充
 
 	// ===== 自然天象（~40字）=====
-	{"自然天象", "晨曦岚澜霖晗昊旭煜熙辰泽润霞晴朗旷朔皓皎晚暮天云虹雾霜露霓雯霄日月"},  // 含日用字
+	{"自然天象", "晨曦岚澜霖晗昊旭煜熙辰泽润霞晴朗旷朔皓皎晚暮天云虹雾霜露霓雯霄日月"}, // 含日用字
 
 	// ===== 山水（~40字）=====
 	{"山水", "山川峰岳峦岫岩峻峭溪涧渊源泉瀑潭"},
@@ -209,10 +209,10 @@ func buildOverrideMap() map[string][]string {
 // ClassifyNaming 对单个汉字进行起名分类标注
 //
 // 优先级：
-//   1. 策展覆盖表 characterCategoryOverride
-//   2. 部首映射 radicalCategoryMap
-//   3. 字义关键词匹配 meaningCategoryPatterns
-//   4. 五行兜底
+//  1. 策展覆盖表 characterCategoryOverride
+//  2. 部首映射 radicalCategoryMap
+//  3. 字义关键词匹配 meaningCategoryPatterns
+//  4. 五行兜底
 func ClassifyNaming(char, radical, meaning, wuxing string) []string {
 	// 优先级 1：策展覆盖表
 	if cats, ok := characterCategoryOverride[char]; ok {
@@ -271,7 +271,9 @@ func ClassifyNaming(char, radical, meaning, wuxing string) []string {
 
 // GetNamingCategories 获取汉字的所有起名分类标签
 func GetNamingCategories(char string) []string {
-	h, ok := HanziData[char]
+	// 走 GetHanzi（持读锁）而非直接读全局 map：热更新会写 HanziData，
+	// 无锁读会与写并发触发 fatal error（docs/29 B9）
+	h, ok := GetHanzi(char)
 	if !ok {
 		return nil
 	}

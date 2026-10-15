@@ -13,8 +13,8 @@ type Zodiac struct {
 	LuckyNumbers []int    `json:"lucky_number"`
 	LuckyColor   string   `json:"lucky_color"`
 	LuckyDir     string   `json:"lucky_direction"`
-	GoodPianpang string  `json:"good_pianpang"`
-	BadPianpang  string  `json:"bad_pianpang"`
+	GoodPianpang string   `json:"good_pianpang"`
+	BadPianpang  string   `json:"bad_pianpang"`
 }
 
 // ZodiacList 12生肖数据

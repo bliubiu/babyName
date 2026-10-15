@@ -4,10 +4,10 @@ package classics
 // 用于从名字反查诗词出处、按朝代/作者/分类筛选
 type PoemEntry struct {
 	// 基本信息
-	Title   string // 诗词标题
-	Author  string // 作者
-	Dynasty string // 朝代（唐/宋/元/先秦等）
-	Type    string // 类型（诗/词/曲/赋等）
+	Title    string // 诗词标题
+	Author   string // 作者
+	Dynasty  string // 朝代（唐/宋/元/先秦等）
+	Type     string // 类型（诗/词/曲/赋等）
 	Category string // 分类（山水/田园/思乡/送别等）
 
 	// 内容
@@ -193,7 +193,7 @@ func intersect(a, b []*PoemEntry) []*PoemEntry {
 
 // containsSubstring 检查字符串是否包含子串（简单实现）
 func containsSubstring(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || 
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > 0 && len(substr) > 0 && containsRunes([]rune(s), []rune(substr))))
 }
 

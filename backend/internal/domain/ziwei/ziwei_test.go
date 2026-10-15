@@ -9,12 +9,12 @@ import (
 
 // TestCase 定义紫微斗数测试用例
 type TestCase struct {
-	Name        string
-	Year        int
-	Month       int
-	Day         int
-	Hour        int // 24小时制，23代表晚子时
-	Gender      string
+	Name   string
+	Year   int
+	Month  int
+	Day    int
+	Hour   int // 24小时制，23代表晚子时
+	Gender string
 	// 四柱
 	ExpectedNianZhu string
 	ExpectedYueZhu  string
@@ -40,8 +40,8 @@ type TestCase struct {
 
 // DaXianExpected 大限期望值
 type DaXianExpected struct {
-	Range       [2]int
-	HeavenlyStem string
+	Range         [2]int
+	HeavenlyStem  string
 	EarthlyBranch string
 }
 
@@ -165,15 +165,15 @@ func getTestCases() []TestCase {
 		{
 			Name: "case1_2000_08_16_04h_female",
 			Year: 2000, Month: 8, Day: 16, Hour: 4, Gender: "女",
-			ExpectedNianZhu: "庚辰",
-			ExpectedYueZhu:  "甲申",
-			ExpectedRiZhu:   "丙午",
-			ExpectedShiZhu:  "庚寅",
-			ExpectedMingGong: "壬午",
-			ExpectedShenGong: "丙戌",
+			ExpectedNianZhu:      "庚辰",
+			ExpectedYueZhu:       "甲申",
+			ExpectedRiZhu:        "丙午",
+			ExpectedShiZhu:       "庚寅",
+			ExpectedMingGong:     "壬午",
+			ExpectedShenGong:     "丙戌",
 			ExpectedFiveElements: "木三局",
-			ExpectedSoul: "破军",
-			ExpectedBody: "文昌",
+			ExpectedSoul:         "破军",
+			ExpectedBody:         "文昌",
 			ExpectedSiHua: map[string]string{
 				"禄": "太阳",
 				"权": "武曲",
@@ -181,7 +181,7 @@ func getTestCases() []TestCase {
 				"忌": "天同",
 			},
 			ExpectedDaXian: map[string]DaXianExpected{
-				"命宫": {Range: [2]int{3, 12}, HeavenlyStem: "壬", EarthlyBranch: "午"},
+				"命宫":  {Range: [2]int{3, 12}, HeavenlyStem: "壬", EarthlyBranch: "午"},
 				"兄弟宫": {Range: [2]int{13, 22}, HeavenlyStem: "辛", EarthlyBranch: "巳"},
 				"夫妻宫": {Range: [2]int{23, 32}, HeavenlyStem: "庚", EarthlyBranch: "辰"},
 				"子女宫": {Range: [2]int{33, 42}, HeavenlyStem: "己", EarthlyBranch: "卯"},
@@ -193,15 +193,15 @@ func getTestCases() []TestCase {
 		{
 			Name: "case2_2000_08_16_04h_male",
 			Year: 2000, Month: 8, Day: 16, Hour: 4, Gender: "男",
-			ExpectedNianZhu: "庚辰",
-			ExpectedYueZhu:  "甲申",
-			ExpectedRiZhu:   "丙午",
-			ExpectedShiZhu:  "庚寅",
-			ExpectedMingGong: "壬午",
-			ExpectedShenGong: "丙戌",
+			ExpectedNianZhu:      "庚辰",
+			ExpectedYueZhu:       "甲申",
+			ExpectedRiZhu:        "丙午",
+			ExpectedShiZhu:       "庚寅",
+			ExpectedMingGong:     "壬午",
+			ExpectedShenGong:     "丙戌",
 			ExpectedFiveElements: "木三局",
-			ExpectedSoul: "破军",
-			ExpectedBody: "文昌",
+			ExpectedSoul:         "破军",
+			ExpectedBody:         "文昌",
 			ExpectedSiHua: map[string]string{
 				"禄": "太阳",
 				"权": "武曲",
@@ -209,7 +209,7 @@ func getTestCases() []TestCase {
 				"忌": "天同",
 			},
 			ExpectedDaXian: map[string]DaXianExpected{
-				"命宫": {Range: [2]int{3, 12}, HeavenlyStem: "壬", EarthlyBranch: "午"},
+				"命宫":  {Range: [2]int{3, 12}, HeavenlyStem: "壬", EarthlyBranch: "午"},
 				"兄弟宫": {Range: [2]int{113, 122}, HeavenlyStem: "辛", EarthlyBranch: "巳"},
 				"夫妻宫": {Range: [2]int{103, 112}, HeavenlyStem: "庚", EarthlyBranch: "辰"},
 				"子女宫": {Range: [2]int{93, 102}, HeavenlyStem: "己", EarthlyBranch: "卯"},
@@ -221,15 +221,15 @@ func getTestCases() []TestCase {
 		{
 			Name: "case3_2023_01_22_10h_female",
 			Year: 2023, Month: 1, Day: 22, Hour: 10, Gender: "女",
-			ExpectedNianZhu: "癸卯",
-			ExpectedYueZhu:  "甲寅",
-			ExpectedRiZhu:   "庚辰",
-			ExpectedShiZhu:  "辛巳",
-			ExpectedMingGong: "辛酉",
-			ExpectedShenGong: "己未",
+			ExpectedNianZhu:      "癸卯",
+			ExpectedYueZhu:       "甲寅",
+			ExpectedRiZhu:        "庚辰",
+			ExpectedShiZhu:       "辛巳",
+			ExpectedMingGong:     "辛酉",
+			ExpectedShenGong:     "己未",
 			ExpectedFiveElements: "木三局",
-			ExpectedSoul: "文曲",
-			ExpectedBody: "天同",
+			ExpectedSoul:         "文曲",
+			ExpectedBody:         "天同",
 			ExpectedSiHua: map[string]string{
 				"禄": "破军",
 				"权": "巨门",
@@ -241,15 +241,15 @@ func getTestCases() []TestCase {
 		{
 			Name: "case4_2023_02_19_23h_female",
 			Year: 2023, Month: 2, Day: 19, Hour: 23, Gender: "女",
-			ExpectedNianZhu: "癸卯",
-			ExpectedYueZhu:  "甲寅",
-			ExpectedRiZhu:   "己酉",
-			ExpectedShiZhu:  "甲子",
-			ExpectedMingGong: "甲寅",
-			ExpectedShenGong: "甲寅",
+			ExpectedNianZhu:      "癸卯",
+			ExpectedYueZhu:       "甲寅",
+			ExpectedRiZhu:        "己酉",
+			ExpectedShiZhu:       "甲子",
+			ExpectedMingGong:     "甲寅",
+			ExpectedShenGong:     "甲寅",
 			ExpectedFiveElements: "水二局",
-			ExpectedSoul: "禄存",
-			ExpectedBody: "天同",
+			ExpectedSoul:         "禄存",
+			ExpectedBody:         "天同",
 			ExpectedSiHua: map[string]string{
 				"禄": "破军",
 				"权": "巨门",
@@ -261,15 +261,15 @@ func getTestCases() []TestCase {
 		{
 			Name: "case5_1999_06_27_06h_male",
 			Year: 1999, Month: 6, Day: 27, Hour: 6, Gender: "男",
-			ExpectedNianZhu: "己卯",
-			ExpectedYueZhu:  "庚午",
-			ExpectedRiZhu:   "庚戌",
-			ExpectedShiZhu:  "己卯",
-			ExpectedMingGong: "丁卯",
-			ExpectedShenGong: "癸酉",
+			ExpectedNianZhu:      "己卯",
+			ExpectedYueZhu:       "庚午",
+			ExpectedRiZhu:        "庚戌",
+			ExpectedShiZhu:       "己卯",
+			ExpectedMingGong:     "丁卯",
+			ExpectedShenGong:     "癸酉",
 			ExpectedFiveElements: "火六局",
-			ExpectedSoul: "文曲",
-			ExpectedBody: "天同",
+			ExpectedSoul:         "文曲",
+			ExpectedBody:         "天同",
 			ExpectedSiHua: map[string]string{
 				"禄": "武曲",
 				"权": "贪狼",
@@ -281,15 +281,15 @@ func getTestCases() []TestCase {
 		{
 			Name: "case6_1985_05_13_12h_female",
 			Year: 1985, Month: 5, Day: 13, Hour: 12, Gender: "女",
-			ExpectedNianZhu: "乙丑",
-			ExpectedYueZhu:  "庚辰",
-			ExpectedRiZhu:   "壬子",
-			ExpectedShiZhu:  "丙午",
-			ExpectedMingGong: "丙戌",
-			ExpectedShenGong: "丙戌",
+			ExpectedNianZhu:      "乙丑",
+			ExpectedYueZhu:       "庚辰",
+			ExpectedRiZhu:        "壬子",
+			ExpectedShiZhu:       "丙午",
+			ExpectedMingGong:     "丙戌",
+			ExpectedShenGong:     "丙戌",
 			ExpectedFiveElements: "土五局",
-			ExpectedSoul: "禄存",
-			ExpectedBody: "天相",
+			ExpectedSoul:         "禄存",
+			ExpectedBody:         "天相",
 			ExpectedSiHua: map[string]string{
 				"禄": "天机",
 				"权": "天梁",
@@ -301,15 +301,15 @@ func getTestCases() []TestCase {
 		{
 			Name: "case7_1990_04_06_08h_male",
 			Year: 1990, Month: 4, Day: 6, Hour: 8, Gender: "男",
-			ExpectedNianZhu: "庚午",
-			ExpectedYueZhu:  "庚辰",
-			ExpectedRiZhu:   "辛丑",
-			ExpectedShiZhu:  "壬辰",
-			ExpectedMingGong: "戊子",
-			ExpectedShenGong: "甲申",
+			ExpectedNianZhu:      "庚午",
+			ExpectedYueZhu:       "庚辰",
+			ExpectedRiZhu:        "辛丑",
+			ExpectedShiZhu:       "壬辰",
+			ExpectedMingGong:     "戊子",
+			ExpectedShenGong:     "甲申",
 			ExpectedFiveElements: "火六局",
-			ExpectedSoul: "贪狼",
-			ExpectedBody: "火星",
+			ExpectedSoul:         "贪狼",
+			ExpectedBody:         "火星",
 			ExpectedSiHua: map[string]string{
 				"禄": "太阳",
 				"权": "武曲",
@@ -321,15 +321,15 @@ func getTestCases() []TestCase {
 		{
 			Name: "case8_2012_05_06_02h_female",
 			Year: 2012, Month: 5, Day: 6, Hour: 2, Gender: "女",
-			ExpectedNianZhu: "壬辰",
-			ExpectedYueZhu:  "乙巳",
-			ExpectedRiZhu:   "丁卯",
-			ExpectedShiZhu:  "辛丑",
-			ExpectedMingGong: "甲辰",
-			ExpectedShenGong: "丙午",
+			ExpectedNianZhu:      "壬辰",
+			ExpectedYueZhu:       "乙巳",
+			ExpectedRiZhu:        "丁卯",
+			ExpectedShiZhu:       "辛丑",
+			ExpectedMingGong:     "甲辰",
+			ExpectedShenGong:     "丙午",
 			ExpectedFiveElements: "火六局",
-			ExpectedSoul: "廉贞",
-			ExpectedBody: "文昌",
+			ExpectedSoul:         "廉贞",
+			ExpectedBody:         "文昌",
 			ExpectedSiHua: map[string]string{
 				"禄": "天梁",
 				"权": "紫微",
@@ -341,15 +341,15 @@ func getTestCases() []TestCase {
 		{
 			Name: "case9_1995_10_12_20h_male",
 			Year: 1995, Month: 10, Day: 12, Hour: 20, Gender: "男",
-			ExpectedNianZhu: "乙亥",
-			ExpectedYueZhu:  "丙戌",
-			ExpectedRiZhu:   "丙子",
-			ExpectedShiZhu:  "戊戌",
-			ExpectedMingGong: "戊子",
-			ExpectedShenGong: "甲申",
+			ExpectedNianZhu:      "乙亥",
+			ExpectedYueZhu:       "丙戌",
+			ExpectedRiZhu:        "丙子",
+			ExpectedShiZhu:       "戊戌",
+			ExpectedMingGong:     "戊子",
+			ExpectedShenGong:     "甲申",
 			ExpectedFiveElements: "火六局",
-			ExpectedSoul: "贪狼",
-			ExpectedBody: "天机",
+			ExpectedSoul:         "贪狼",
+			ExpectedBody:         "天机",
 			ExpectedSiHua: map[string]string{
 				"禄": "天机",
 				"权": "天梁",
@@ -357,7 +357,7 @@ func getTestCases() []TestCase {
 				"忌": "太阴",
 			},
 			ExpectedDaXian: map[string]DaXianExpected{
-				"命宫": {Range: [2]int{6, 15}, HeavenlyStem: "戊", EarthlyBranch: "子"},
+				"命宫":  {Range: [2]int{6, 15}, HeavenlyStem: "戊", EarthlyBranch: "子"},
 				"父母宫": {Range: [2]int{116, 125}, HeavenlyStem: "己", EarthlyBranch: "丑"},
 				"福德宫": {Range: [2]int{106, 115}, HeavenlyStem: "戊", EarthlyBranch: "寅"},
 				"田宅宫": {Range: [2]int{96, 105}, HeavenlyStem: "己", EarthlyBranch: "卯"},

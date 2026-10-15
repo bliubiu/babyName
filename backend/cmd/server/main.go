@@ -16,9 +16,7 @@ import (
 	"name/internal/application/handlers"
 	"name/internal/application/services"
 	"name/internal/domain/fate"
-	"name/internal/domain/hanzi"
 	"name/internal/domain/name"
-	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/config"
 	"name/internal/infrastructure/data"
 	"name/internal/infrastructure/database"
@@ -41,6 +39,18 @@ var (
 	rateRate     = flag.Float64("rate-rate", 0, "Rate limiter rate (覆盖配置文件)")
 	configFile   = flag.String("config", "", "配置文件路径 (默认: application.yml)")
 )
+
+// cwdDataDir 解析传统文化数据的目录（docs/29 B12）
+//
+// 优先级：DATA_DIR 环境变量 > 工作目录下的 data/。
+// docker-entrypoint.sh 按 DATA_DIR 播种字库，本函数与之保持同源；
+// 分离成独立函数是为了可被测试直接覆盖。
+func cwdDataDir(cwd string) string {
+	if dir := strings.TrimSpace(os.Getenv("DATA_DIR")); dir != "" {
+		return dir
+	}
+	return filepath.Join(cwd, "data")
+}
 
 func main() {
 	flag.Parse()
@@ -102,39 +112,47 @@ func main() {
 	defer logger.Sync()
 
 	// 初始化缓存（SQLite + 内存缓存，不使用 Redis）
-	cache.Init()
 
 	// 加载传统文化数据（从 JSON 文件）
-	dataDir := filepath.Join(cwd, "data")
+	//
+	// ★ docs/29 B12：原先固定 `filepath.Join(cwd, "data")`，但 compose 与
+	// docker-entrypoint.sh 都按 DATA_DIR 环境变量播种字库。两者不一致时，
+	// 字库被播种到 A 目录、应用却去 B 目录读 —— 服务正常启动、healthz 通过，
+	// 生成接口全部返回空结果。故此处以 DATA_DIR 为准（缺省才回落到 cwd/data），
+	// 让入口脚本与进程读同一个目录。
+	dataDir := cwdDataDir(cwd)
 
-	// 1. 加载传统文化数据（hanzi.json → 易经 → 诗词 → 生肖）
-	if err := loadCulturalData(dataDir); err != nil {
-		logger.Warn("Failed to load cultural data from JSON, using built-in data", logger.ErrField(err))
+	// 1. 初始化数据存储 — 优先 SQLite 持久化，回退到内存存储
+	//
+	// 顺序说明：物料统一从 SQLite 读取（docs/31 ADR-008），因此必须先开库，
+	// 再把库内物料灌进内存索引。initStore 不会写物料表（只建表与用户数据）。
+	store := initStore(cfg.Database.Path, dataDir)
+
+	// 2. 加载传统文化物料（优先读 SQLite 物料库，缺料回落 JSON/CSV 源文件）
+	//
+	// ★ docs/29 B12：原先固定 `filepath.Join(cwd, "data")`，但 compose 与
+	// docker-entrypoint.sh 都按 DATA_DIR 环境变量播种字库。两者不一致时，
+	// 字库被播种到 A 目录、应用却去 B 目录读 —— 服务正常启动、healthz 通过，
+	// 生成接口全部返回空结果。故此处以 DATA_DIR 为准（缺省才回落到 cwd/data）。
+	if err := loadCulturalData(dataDir, store); err != nil {
+		logger.Warn("加载传统文化物料失败，将使用内置降级数据", logger.ErrField(err))
 	} else {
-		logger.Info("Cultural data loaded from JSON files", logger.String("dataDir", dataDir))
+		logger.Info("传统文化物料已装载", logger.String("数据目录", dataDir))
 	}
 
-	// 2. 加载 word.json 释义（候选字未覆盖的 fallback 释义）
-	if err := hanzi.LoadWordData(dataDir); err != nil {
-		logger.Warn("Failed to load word.json, some character meanings may be unavailable", logger.ErrField(err))
-	} else {
-		logger.Info("Word data loaded from word.json")
+	// 3. 检查静态文件目录（仅 all 模式需要：api 模式下静态页由前端容器/nginx
+	// 提供，容器内对不存在的静态路径强制 mkdir 只会 Fatal——docs/30 §六 C10）
+	if cfg.Mode == "all" {
+		ensureStaticDir(cfg.Static)
 	}
-
-	// 检查静态文件目录
-	ensureStaticDir(cfg.Static)
 
 	logger.Info("Starting NameMaster server",
 		logger.String("host", cfg.Server.Host),
 		logger.Int("port", cfg.Server.Port),
 	)
 
-	// 初始化数据存储 — 优先 SQLite 持久化，回退到内存存储
-	store := initStore(cfg.Database.Path, dataDir)
-
 	// 创建服务层
-	cacheInst := cache.GetCache()
-	svc := newServices(store, cacheInst, dataDir)
+	svc := newServices(store, dataDir)
 
 	// 创建处理器
 	h := newHandlers(svc, dataDir)
@@ -215,7 +233,7 @@ type appServices struct {
 	report   *services.ReportService
 }
 
-func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *appServices {
+func newServices(store database.Store, dataDir string) *appServices {
 	baziAdapter := &services.BaziAdapter{}
 	hexagramAdapter := &services.HexagramAdapter{}
 	ziweiAdapter := &services.ZiweiAdapter{}
@@ -255,7 +273,6 @@ func newServices(store database.Store, cacheInst cache.Cache, dataDir string) *a
 		services.WithZiweiAnalyzer(ziweiAdapter),
 		services.WithNameDB(ndb),
 		services.WithZodiacFinder(zodiacAdapter),
-		services.WithCache(cacheInst),
 		services.WithFateService(fateSvc), // fate 引擎优先（新引擎更完善）
 	)
 
@@ -308,15 +325,30 @@ func newHandlers(svc *appServices, dataDir string) *appHandlers {
 func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store, rateCapacity, rateRate float64) (*gin.Engine, *middleware.IPRateLimiter) {
 	router := gin.New()
 
-	// 全局中间件
+	// 可信代理（docs/29 A10）：gin 默认信任所有代理并从 X-Forwarded-For
+	// 最左侧取 ClientIP，攻击者可伪造该头让每个请求落入新令牌桶，完全绕过
+	// IP 限流并污染访问日志。这里仅信任回环与内网段（nginx/容器网络所在），
+	// gin 会从右向左取第一个不可信地址——nginx 追加的真实客户端 IP 位于链首
+	// 伪造值之后，伪造值永远不会被选中；直连（无代理）时取 TCP 对端地址。
+	if err := router.SetTrustedProxies([]string{
+		"127.0.0.0/8", "::1",
+		"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+	}); err != nil {
+		logger.Warn("设置可信代理失败，使用 gin 默认（信任所有代理）", logger.ErrField(err))
+	}
+
+	// 全局中间件。
+	// CORS 必须位于所有可能自行中止响应的中间件（MaxBodyBytes 413 /
+	// RequestTimeout 503）之前：否则跨源请求的错误响应不带 CORS 头，
+	// 浏览器把 413/503 上报成含糊的 CORS 错误而非真实状态（docs/29 P3）。
 	router.Use(middleware.ZapLogger())
 	router.Use(middleware.ZapRecovery())
 	router.Use(middleware.RequestID())
+	router.Use(middleware.CORSMiddleware())
 	// 请求体上限：本站最大请求体是 /report/* 的报告数据（几十 KB 量级），
 	// 1 MiB 留足余量；超限直接 413，避免大 body 造成内存放大。
 	router.Use(middleware.MaxBodyBytes(1 << 20))
 	router.Use(middleware.RequestTimeout(30 * time.Second))
-	router.Use(middleware.CORSMiddleware())
 	rateLimitHandler, rateLimiter := middleware.IPRateLimitWithLimiter(rateCapacity, rateRate)
 	router.Use(rateLimitHandler)
 
@@ -404,6 +436,13 @@ func startServer(router *gin.Engine, addr, cwd string, store database.Store, rat
 
 	// errCh 用于将启动失败信号回传主流程，避免主流程在等信号时无法感知
 	errCh := make(chan error, 1)
+
+	// 信号注册必须先于 ListenAndServe 启动：否则启动早期到达的
+	// SIGINT/SIGTERM 走默认处置直接杀进程，跳过下方全部清理
+	// （Windows 上未关闭的 SQLite 句柄会锁住库文件，docs/29 P3）。
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
 	go func() {
 		certFile := filepath.Join(cwd, "cert.pem")
 		keyFile := filepath.Join(cwd, "key.pem")
@@ -424,14 +463,13 @@ func startServer(router *gin.Engine, addr, cwd string, store database.Store, rat
 	}()
 
 	// 等待中断信号或启动失败
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	select {
 	case sig := <-quit:
 		logger.Info("Shutting down server", logger.String("signal", sig.String()))
 	case err := <-errCh:
+		// 启动失败同样要走完整清理：此前直接 return，跳过 store 关闭、
+		// 限流器停止与缓存释放，Windows 下残留句柄锁住 namer.db
 		logger.Error("Failed to start server", logger.ErrField(err))
-		return
 	}
 
 	// 给予 10 秒时间完成正在处理的请求
@@ -456,18 +494,16 @@ func startServer(router *gin.Engine, addr, cwd string, store database.Store, rat
 		rateLimiter.Stop()
 	}
 
-	// 关闭缓存实例，释放后台清理协程
-	if cacheInst := cache.GetCache(); cacheInst != nil {
-		if closer, ok := cacheInst.(interface{ Close() }); ok {
-			closer.Close()
-		}
-	}
-
 	logger.Info("Server exited")
 }
 
-// loadCulturalData 从 JSON 文件加载传统文化数据
-func loadCulturalData(dataDir string) error {
+// loadCulturalData 装载传统文化物料
+//
+// db 为 nil 时走纯 JSON 路径；非 nil 时优先从 SQLite 物料库读（ADR-008）。
+func loadCulturalData(dataDir string, db database.Store) error {
+	if loader, ok := db.(data.DBLoader); ok {
+		return data.InitWithDB(dataDir, loader)
+	}
 	return data.Init(dataDir)
 }
 

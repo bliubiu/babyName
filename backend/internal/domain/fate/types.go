@@ -16,10 +16,10 @@ type SessionState int32
 
 const (
 	SessionStatePending    SessionState = iota // 等待开始
-	SessionStateGenerating                      // 生成中
-	SessionStateFinish                          // 生成完成
-	SessionStateFailed                          // 生成失败
-	SessionStateCanceled                        // 已取消
+	SessionStateGenerating                     // 生成中
+	SessionStateFinish                         // 生成完成
+	SessionStateFailed                         // 生成失败
+	SessionStateCanceled                       // 已取消
 )
 
 // Gender 性别
@@ -32,11 +32,11 @@ const (
 
 // Input 命名会话输入参数
 type Input struct {
-	Surname    string         `json:"surname"`     // 姓氏
-	Generation string         `json:"generation"`  // 字辈（可选）
-	Gender     Gender         `json:"gender"`      // 性别
-	Born       time.Time      `json:"born"`        // 出生时间
-	Options    GenerateOptions `json:"options"`     // 生成选项
+	Surname    string          `json:"surname"`    // 姓氏
+	Generation string          `json:"generation"` // 字辈（可选）
+	Gender     Gender          `json:"gender"`     // 性别
+	Born       time.Time       `json:"born"`       // 出生时间
+	Options    GenerateOptions `json:"options"`    // 生成选项
 
 	// 避讳长辈姓名列表（父系/母系直系长辈，建议往上两代）
 	// 引擎将排除这些姓名中的同形字与同音字
@@ -45,15 +45,16 @@ type Input struct {
 
 // GenerateOptions 名字生成选项
 type GenerateOptions struct {
-	NameLength      int           // 名字字数（1-4）
-	Count           int           // 生成数量
-	ExcludeRare     bool          // 排除生僻字
-	SourceClassic   string        // 诗词来源（shijing/chuci/poetry 等）
-	IncludePoetry   bool          // 包含诗词用字
-	IncludeClassic  bool          // 包含经典用字
-	MeaningKeywords []string      // 寓意关键词
-	PinyinInitial   string        // 拼音首字母
-	ExtraChars      []*Character  // 外部注入的额外候选字（诗词/经典字库来源）
+	NameLength      int          // 名字字数（1-4）
+	Count           int          // 生成数量
+	ExcludeRare     bool         // 排除生僻字
+	SourceClassic   string       // 诗词来源（shijing/chuci/poetry 等）
+	IncludePoetry   bool         // 包含诗词用字
+	IncludeClassic  bool         // 包含经典用字
+	MeaningKeywords []string     // 寓意关键词（用户「个性补充」输入）
+	RequiredChars   []string     // 用户显式点选的用字（前端「按偏旁选字」结果）
+	PinyinInitial   string       // 拼音首字母
+	ExtraChars      []*Character // 外部注入的额外候选字（诗词/经典字库来源）
 }
 
 // NameCandidate 名字候选（不含姓氏，仅名字部分）
@@ -71,9 +72,9 @@ type NameCandidate struct {
 	Radical1 string // 部首
 	Radical2 string
 
-	HasPoetry   bool   // 是否有诗词出处
-	PoetryFrom  string // 诗词来源
-	IsRegular   bool   // 是否为常用字
+	HasPoetry  bool   // 是否有诗词出处
+	PoetryFrom string // 诗词来源
+	IsRegular  bool   // 是否为常用字
 
 	// IsCurated1/IsCurated2 逐字是否在人工策展起名分类覆盖表中（由 hanzi 层经 Adapter 透传）
 	// 策展覆盖表（约 446 字）是荒谬字与好字的强区分信号：好字 8/12 在表内，
@@ -84,7 +85,7 @@ type NameCandidate struct {
 
 	// PositiveScore1/PositiveScore2 逐字寓意评分（namer.json positiveScore，0-100）
 	// 策展表是「分类字表」而非「精选好字表」，平庸字（软/际/映/耿等）也在表内拿到 +8 文化加分，
-	// 导致单名 Top5 被平庸字霸榜。结合 positiveScore>=85 可把策展加分收窄为「精选好字」专属。
+	// 导致单名 Top5 被平庸字霸榜。结合 positiveScore>=90 可把策展加分收窄为「精选好字」专属。
 	PositiveScore1 int
 	PositiveScore2 int
 
@@ -97,7 +98,7 @@ type NameCandidate struct {
 	// 来自 Chinese-Names-Corpus 120万人名语料统计，供 FrequencyRater 评分
 	NameFreqTier1 int
 	NameFreqTier2 int
-	GenderHint   string // 性别暗示
+	GenderHint    string // 性别暗示
 
 	// 数据层策展标注（来自 hanzi.json，由 Adapter 映射）
 	NamePenalty1 int // 字1 起名扣分（0=无）
@@ -151,9 +152,9 @@ type BaziInfo struct {
 
 // FateData 命运数据（八字分析结果）
 type FateData struct {
-	BaziInfo      BaziInfo    `json:"bazi_info"`
-	WuXingXiji    WuXingXiji  `json:"wu_xing_xiji"`
-	TiaoHouYongShen string   `json:"tiao_hou_yong_shen"` // 调候用神
+	BaziInfo        BaziInfo   `json:"bazi_info"`
+	WuXingXiji      WuXingXiji `json:"wu_xing_xiji"`
+	TiaoHouYongShen string     `json:"tiao_hou_yong_shen"` // 调候用神
 }
 
 // NameScore 名字评分
@@ -168,17 +169,17 @@ type NameScore struct {
 
 // NameResult 名字完整分析结果
 type NameResult struct {
-	Rank       int        `json:"rank"`
-	Surname    string     `json:"surname"`
-	GivenName  string     `json:"given_name"`
-	FullName   string     `json:"full_name"`
-	Pinyin     string     `json:"pinyin"`
-	Strokes    int        `json:"strokes"`
-	WuXing     string     `json:"wu_xing"`
-	Score      NameScore  `json:"score"`
-	Meaning    string     `json:"meaning,omitempty"`
-	PoetryFrom string     `json:"poetry_from,omitempty"`
-	Reasons    []string   `json:"reasons,omitempty"`
+	Rank       int       `json:"rank"`
+	Surname    string    `json:"surname"`
+	GivenName  string    `json:"given_name"`
+	FullName   string    `json:"full_name"`
+	Pinyin     string    `json:"pinyin"`
+	Strokes    int       `json:"strokes"`
+	WuXing     string    `json:"wu_xing"`
+	Score      NameScore `json:"score"`
+	Meaning    string    `json:"meaning,omitempty"`
+	PoetryFrom string    `json:"poetry_from,omitempty"`
+	Reasons    []string  `json:"reasons,omitempty"`
 }
 
 // Character 汉字简略信息（对外接口用，不绑定具体模型）
@@ -210,7 +211,7 @@ type Character struct {
 
 	// PositiveScore 寓意评分（namer.json positiveScore，0-100）
 	// 策展表是「分类字表」而非「精选好字表」，平庸字（软/际/映/耿 等）也在表内。
-	// 结合 PositiveScore>=85 可将策展文化加分收窄为精选好字专属（优质字 87-91，平庸/荒谬字空）。
+	// 结合 PositiveScore>=90 可将策展文化加分收窄为精选好字专属（优质字 87-91，平庸/荒谬字空）。
 	PositiveScore int `json:"positive_score,omitempty"`
 
 	// NameFreqTier 人名频率档位（1-5，5=最高频，0=未收录）

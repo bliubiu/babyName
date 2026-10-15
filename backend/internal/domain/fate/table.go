@@ -23,25 +23,25 @@ const (
 
 // ExcellentEntry 优秀名字条目
 type ExcellentEntry struct {
-	Char1     string             `json:"char1"`
-	Char2     string             `json:"char2"`
-	Pinyin1   string             `json:"pinyin1,omitempty"` // 首字读音（带声调，预计算自 Character.Pinyin）
-	Pinyin2   string             `json:"pinyin2,omitempty"` // 次字读音（单名为空）
-	Meaning1  string             `json:"meaning1,omitempty"` // 首字释义（预计算自 Character.Meaning）
-	Meaning2  string             `json:"meaning2,omitempty"` // 次字释义（单名为空）
-	Score     float64            `json:"score"`
-	Grade     string             `json:"grade"`
-	WuXing1   string             `json:"wu_xing1"`
-	WuXing2   string             `json:"wu_xing2"`
-	Stroke1   int                `json:"stroke1,omitempty"` // 名字笔画（filter 口径，按 StrokeMode 决定）
-	Stroke2   int                `json:"stroke2,omitempty"` // 次字笔画（单名为空）
+	Char1    string  `json:"char1"`
+	Char2    string  `json:"char2"`
+	Pinyin1  string  `json:"pinyin1,omitempty"`  // 首字读音（带声调，预计算自 Character.Pinyin）
+	Pinyin2  string  `json:"pinyin2,omitempty"`  // 次字读音（单名为空）
+	Meaning1 string  `json:"meaning1,omitempty"` // 首字释义（预计算自 Character.Meaning）
+	Meaning2 string  `json:"meaning2,omitempty"` // 次字释义（单名为空）
+	Score    float64 `json:"score"`
+	Grade    string  `json:"grade"`
+	WuXing1  string  `json:"wu_xing1"`
+	WuXing2  string  `json:"wu_xing2"`
+	Stroke1  int     `json:"stroke1,omitempty"` // 名字笔画（filter 口径，按 StrokeMode 决定）
+	Stroke2  int     `json:"stroke2,omitempty"` // 次字笔画（单名为空）
 	// KangxiStroke1/2 康熙字典笔画（统一用于总笔画回显，与姓氏口径一致）
 	// 0 表示未收录，输出回显时降级为 Stroke1/2。
-	KangxiStroke1 int `json:"kangxi_stroke1,omitempty"`
-	KangxiStroke2 int `json:"kangxi_stroke2,omitempty"`
+	KangxiStroke1 int                `json:"kangxi_stroke1,omitempty"`
+	KangxiStroke2 int                `json:"kangxi_stroke2,omitempty"`
 	HasPoetry     bool               `json:"has_poetry"`
 	PoetryFrom    string             `json:"poetry_from,omitempty"` // 诗词出处
-	Items         map[string]float64 `json:"items,omitempty"`      // 各维度评分明细
+	Items         map[string]float64 `json:"items,omitempty"`       // 各维度评分明细
 	// Details 各维度评分依据文字（维度名 → 文字解释），随流式 Top-N 透传给 NameResult
 	Details map[string]string `json:"details,omitempty"`
 
@@ -61,16 +61,38 @@ type ExcellentEntry struct {
 // excellentMinHeap 最小堆，用于维护 Top-N
 type excellentMinHeap []ExcellentEntry
 
-func (h excellentMinHeap) Len() int            { return len(h) }
-func (h excellentMinHeap) Less(i, j int) bool  { return h[i].Score < h[j].Score }
-func (h excellentMinHeap) Swap(i, j int)       { h[i], h[j] = h[j], h[i] }
-func (h *excellentMinHeap) Push(x any)         { *h = append(*h, x.(ExcellentEntry)) }
+func (h excellentMinHeap) Len() int { return len(h) }
+
+// Less 定义「更靠近堆顶」= 「更不优」。
+//
+// 优劣必须是全序（见 betterEntry）：同分条目按 (Char1+Char2) 字典序决胜，
+// 否则堆内同分次序由推入次序决定 —— 双名路径是多 worker 并发推入，
+// 同分名次会随 goroutine 调度波动，同一请求给出不同榜单（docs/32 §6.2
+// golden 回归实测复现：王金/王春同分 74.1，两次生成首位不同）。
+func (h excellentMinHeap) Less(i, j int) bool { return betterEntry(h[j], h[i]) }
+func (h excellentMinHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *excellentMinHeap) Push(x any)        { *h = append(*h, x.(ExcellentEntry)) }
 func (h *excellentMinHeap) Pop() any {
 	old := *h
 	n := len(old)
 	x := old[n-1]
 	*h = old[:n-1]
 	return x
+}
+
+// entryKey 条目的确定性标识（同分决胜用）
+func entryKey(e ExcellentEntry) string { return e.Char1 + e.Char2 }
+
+// betterEntry 判断 a 是否比 b 更优：分数高者优；同分时字典序小者优。
+//
+// 字典序决胜让 Top-N 对「推入次序」完全不敏感：并发调度只改变条目进堆的
+// 先后，不改变全序下的相对名次，也不改变容量满员时同分边界条目的入选
+// （更优者总能挤掉更劣者）。
+func betterEntry(a, b ExcellentEntry) bool {
+	if a.Score != b.Score {
+		return a.Score > b.Score
+	}
+	return entryKey(a) < entryKey(b)
 }
 
 // ExcellentTable 流式 Top-N 数据结构
@@ -175,7 +197,9 @@ func (t *ExcellentTable) TryPush(entry ExcellentEntry) {
 		return
 	}
 
-	if entry.Score > t.h[0].Score {
+	// 替换判断同样走全序：同分且字典序更小的条目必须能挤掉堆顶，
+	// 否则池边界处同分条目的入选取决于推入次序（并发下不确定）
+	if betterEntry(entry, t.h[0]) {
 		heap.Pop(&t.h)
 		heap.Push(&t.h, entry)
 	}
@@ -189,17 +213,15 @@ func (t *ExcellentTable) Finalize() {
 
 	t.entries = make([]ExcellentEntry, len(t.h))
 	copy(t.entries, t.h)
-	// 稳定排序：总分降序，同分时保持堆内既有次序。
+	// 全序排序：总分降序，同分按 (Char1+Char2) 字典序升序。
 	//
-	// 为什么必须稳定：原实现用 sort.Slice（非稳定），同分条目的先后由元素的
-	// 字节内容决定——连条目里是否携带 Items/Details（map 指针）都会改变结果。
-	// 这会让「枚举期是否构造明细」这类与排序无关的实现细节影响到 Top-N 的
-	// 边界入选（同分挤在 poolSize 截断处时尤甚），同一请求给出不同榜单。
-	//
-	// 堆内次序只由「得分比较结果 + 推入次序」决定（compare 只比 Score，
-	// 与载荷无关），因此稳定排序后同分次序对载荷不敏感、可复现。
+	// 为什么必须全序而非仅稳定排序：原实现用 sort.SliceStable 只保证
+	// 「同分保持堆内既有次序」，而堆内次序由推入次序决定 —— 双名路径是
+	// 多 worker 并发 TryPush，同分名次随 goroutine 调度波动（实测复现：
+	// 同一请求两次生成，同分 74.1 的首位分别是「王金」「王春」）。
+	// 同分按字典序决胜后，排序结果与推入次序、调度顺序完全无关。
 	sort.SliceStable(t.entries, func(i, j int) bool {
-		return t.entries[i].Score > t.entries[j].Score
+		return betterEntry(t.entries[i], t.entries[j])
 	})
 	t.index = make(map[string]int, len(t.entries))
 	for i, e := range t.entries {

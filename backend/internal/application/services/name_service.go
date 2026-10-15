@@ -16,7 +16,6 @@ import (
 	"name/internal/domain/yijing"
 	"name/internal/domain/ziwei"
 	"name/internal/domain/zodiac"
-	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/logger"
 
 	"go.uber.org/zap"
@@ -29,8 +28,7 @@ type NameService struct {
 	ziweiAnalyzer  ziwei.ZiweiAnalyzer
 	zodiacFinder   zodiac.ZodiacFinder
 	fateService    *FateNameService // fate 路径委托服务（可选）
-	cache          cache.Cache
-	nameDB         *name.NameDB // 候选名库管理器（API 层共享自学习精选名数据）
+	nameDB         *name.NameDB     // 候选名库管理器（API 层共享自学习精选名数据）
 
 	// 探索模式（换一批）候选表缓存：generation_id → 本轮生成的候选表与上下文。
 	// 容量受控（exploreStoreCapacity），FIFO 淘汰最旧。
@@ -86,11 +84,6 @@ func WithZodiacFinder(f zodiac.ZodiacFinder) NameServiceOption {
 	return func(s *NameService) { s.zodiacFinder = f }
 }
 
-// WithCache 设置缓存
-func WithCache(c cache.Cache) NameServiceOption {
-	return func(s *NameService) { s.cache = c }
-}
-
 // NewNameService 创建名字服务
 func NewNameService(opts ...NameServiceOption) *NameService {
 	s := &NameService{}
@@ -132,7 +125,11 @@ type GenerateRequest struct {
 	IncludePoetry   bool     `json:"include_poetry"`
 	IncludeClassic  bool     `json:"include_classic"`
 	MeaningKeywords []string `json:"meaning_keywords"`
-	PinyinInitial   string   `json:"pinyin_initial"`
+	// SelectedChars 前端「按偏旁选字」点选的用字（结构化通道）。
+	// 早前前端把它拼成 "包含字：木木" 混进 meaning_keywords 文本发送，
+	// 而后端从未读取任何偏旁信息 —— 该功能实际从未生效（docs/29 A9）。
+	SelectedChars []string `json:"selected_chars"`
+	PinyinInitial string   `json:"pinyin_initial"`
 
 	// 避讳长辈：父系/母系直系长辈姓名（建议往上两代）
 	// 生成名字时排除同形字与同音字，避免"压运"
@@ -351,6 +348,7 @@ func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateReq
 			IncludePoetry:   req.IncludePoetry,
 			IncludeClassic:  req.IncludeClassic,
 			MeaningKeywords: req.MeaningKeywords,
+			RequiredChars:   req.SelectedChars,
 			PinyinInitial:   req.PinyinInitial,
 			ExtraChars:      extraChars,
 		},
@@ -512,7 +510,7 @@ func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziA
 
 	// 姓氏笔画（康熙优先）
 	surnameStrokes := 0
-	if l1, l2, err := (&HanziDataProvider{}).GetSurnameStrokes(req.Surname); err == nil {
+	if l1, l2, err := NewHanziDataProvider().GetSurnameStrokes(req.Surname); err == nil {
 		surnameStrokes = l1 + l2
 	}
 	if surnameStrokes == 0 {

@@ -31,16 +31,16 @@ func BalanceXiYongJi(baziInfo BaziInfoForGeJu) XiYongJiChou {
 	var xi, yong, ji, chou string
 	if qiangRuo == "强" {
 		// 日主强：克泄为用
-		yong = findKeWoWuxing(riZhuWuxing)   // 官杀
-		xi = findWoShengWuxing(riZhuWuxing)  // 食伤
-		ji = riZhuWuxing                       // 比劫
-		chou = findShengWoWuxing(riZhuWuxing)  // 印
+		yong = findKeWoWuxing(riZhuWuxing)    // 官杀
+		xi = findWoShengWuxing(riZhuWuxing)   // 食伤
+		ji = riZhuWuxing                      // 比劫
+		chou = findShengWoWuxing(riZhuWuxing) // 印
 	} else {
 		// 日主弱：生扶为用
-		yong = riZhuWuxing                       // 比劫
-		xi = findShengWoWuxing(riZhuWuxing)  // 印
-		ji = findKeWoWuxing(riZhuWuxing)     // 官杀
-		chou = findWoKeWuxing(riZhuWuxing)   // 财
+		yong = riZhuWuxing                  // 比劫
+		xi = findShengWoWuxing(riZhuWuxing) // 印
+		ji = findKeWoWuxing(riZhuWuxing)    // 官杀
+		chou = findWoKeWuxing(riZhuWuxing)  // 财
 	}
 
 	// 补最缺五行

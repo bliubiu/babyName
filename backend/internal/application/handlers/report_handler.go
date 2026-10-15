@@ -4,10 +4,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 	"name/internal/application/response"
 	"name/internal/application/services"
 	"name/internal/infrastructure/logger"
-	"go.uber.org/zap"
 )
 
 type ReportHandler struct {
