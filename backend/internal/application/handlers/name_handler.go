@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	apperrors "name/internal/application/errors"
 	"name/internal/application/response"
 	"name/internal/application/services"
 	"name/internal/application/validator"
@@ -15,12 +16,26 @@ import (
 
 // writeGenerateError 生成失败时的统一错误响应
 //
-// 超时必须与普通失败区分开：超时是可重试的（503），服务异常不是（500）。
-// 历史上两者都返回 500，前端无法给出正确提示。
+// 错误分三级，语义不可互相掩盖：
+//   - 超时（context.DeadlineExceeded）：可重试 → 503；
+//   - 业务错误（*errors.AppError）：透传 Code 与 Message。例如
+//     「无法生成符合条件的名字，请调整筛选条件」是客户端可行动的错误，
+//     必须返回 400 与原提示，让前端引导用户放宽条件；
+//   - 其余未知错误：服务端缺陷 → 500 + 通用文案。
+//
+// 历史缺陷：原实现把非超时错误一律映射为 500 并替换成通用文案，业务层
+// 明确的 400 被吞掉——前端拿不到可行动提示，监控上也多了一批假 500
+// （空库回落场景实测：每次 /names/generate 都返回 500，掩盖了真实的
+// 「物料缺失 → 候选池为空」业务语义）。
 func writeGenerateError(c *gin.Context, err error, scope string) {
 	logger.Error(scope+": failed", zap.Error(err))
 	if stderrors.Is(err, context.DeadlineExceeded) {
 		response.ErrorJSON(c, 503, "请求超时，请稍后重试")
+		return
+	}
+	var appErr *apperrors.AppError
+	if stderrors.As(err, &appErr) {
+		response.ErrorJSON(c, int(appErr.Code), appErr.Message)
 		return
 	}
 	response.ErrorJSON(c, 500, "生成名字失败，请稍后重试")
