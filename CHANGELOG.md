@@ -5,6 +5,36 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.16.10]
+
+**门禁层 M8：匹配性能（Aho-Corasick 多模式匹配，替换合规红线线性扫描）**（`docs/33` M8）。
+
+### ✨ New Features 新增功能
+
+- 【门禁层】新增 `fate/actrie.go`：纯 Go、无第三方依赖的 Aho-Corasick 自动机——
+  `NewACTrie`（模式去重、BFS 构建 fail 指针并继承后缀 outputs）、`MatchAny`（短路查询）/
+  `FindAll`（去重、首次命中序）/`PatternCount`；构建后只读、可并发使用。
+- 【门禁层】`compliance_redline.go` 接入 trie：三套动态红线集合与内置兜底 `forbiddenEntities`
+  各建一个自动机（`newRedlineTrie` 跳过单字条目），`SetComplianceRedline` 重建、
+  `IsComplianceRedline` 走 trie 扫描（白名单豁免语义不变）。
+
+### 📈 Improvements 性能/体验优化
+
+- 【门禁层】合规红线匹配由 **O(模式数 × 文本长)** 线性 `strings.Contains` 改为
+  **O(文本长 + 命中数)**：5000 条词表下 **142604 ns/op → 69.81 ns/op（约 2000×）、零分配**
+  （`-benchmem` 对比 benchmark 见测试）。
+- 行为等价：既有 `fate` 合规红线测试零改动全绿（子串命中/单字忽略/白名单优先不变）。
+
+### 📚 Docs 文档更新
+
+- `docs/33` M8 状态更新为已完成并补落地记录；§七差距表「匹配性能」标注已落地。
+
+### 🧪 Tests 测试
+
+- 新增 `fate/actrie_test.go`：MatchAny / FindAll / 去重与空模式 / 中文组合 / 边界（空与 nil 自动机）/
+  单字跳过 / `matchAnyEntity` 边界 + 线性 vs trie 性能对比 benchmark。
+- `actrie.go` 与 `compliance_redline.go` 新增/改动函数覆盖率 100%。
+
 ## [2026.10.16.9]
 
 **文档：门禁层 M7「灰度发布」设计定档（ADR-015，按物料整体），代码待实现**（`docs/33` §十二）。

@@ -30,7 +30,23 @@ var (
 	redlineStateOrg = map[string]bool{}
 	redlinePlace    = map[string]bool{}
 	redlinePerson   = map[string]bool{}
+	// redlineTries 动态三集合的自动机，随 set 同步重建（docs/33 M8）
+	redlineTries [3]*ACTrie
 )
+
+// entityTrie 内置兜底 forbiddenEntities 的自动机（静态，包初始化构建一次）
+var entityTrie = newRedlineTrie(forbiddenEntities)
+
+// newRedlineTrie 以集合构建自动机，跳过单字条目（沿用原 matchAnyEntity 语义）
+func newRedlineTrie(set map[string]bool) *ACTrie {
+	patterns := make([]string, 0, len(set))
+	for entry := range set {
+		if len([]rune(entry)) >= 2 {
+			patterns = append(patterns, entry)
+		}
+	}
+	return NewACTrie(patterns)
+}
 
 // RedlineEntry 一条合规红线记录（entry + kind），供物料装载路径注入
 type RedlineEntry struct {
@@ -63,6 +79,11 @@ func SetComplianceRedline(entries []RedlineEntry) {
 	redlineStateOrg = stateOrg
 	redlinePlace = place
 	redlinePerson = person
+	redlineTries = [3]*ACTrie{
+		newRedlineTrie(stateOrg),
+		newRedlineTrie(place),
+		newRedlineTrie(person),
+	}
 	redlineMu.Unlock()
 }
 
@@ -116,16 +137,15 @@ func IsComplianceRedline(fullName string) bool {
 	redlineMu.RLock()
 	defer redlineMu.RUnlock()
 
-	if matchAnyEntity(fullName, forbiddenEntities) {
+	if matchAnyEntity(fullName, entityTrie) {
 		return true
 	}
-	if matchAnyEntity(fullName, redlineStateOrg) {
-		return true
+	for _, trie := range redlineTries {
+		if matchAnyEntity(fullName, trie) {
+			return true
+		}
 	}
-	if matchAnyEntity(fullName, redlinePlace) {
-		return true
-	}
-	return matchAnyEntity(fullName, redlinePerson)
+	return false
 }
 
 // matchAnyEntity 判断 fullName 是否命中集合内任一红线条目
@@ -133,14 +153,11 @@ func IsComplianceRedline(fullName string) bool {
 // fullName 含条目（含「全名==条目」与「名部==条目」两种情形）即命中；
 // 命中前置白名单豁免（IsAllowlistedText）。单字条目不参与（避免误伤）。
 // 调用方须持有 redlineMu 读锁。
-func matchAnyEntity(fullName string, set map[string]bool) bool {
-	for entry := range set {
-		if len([]rune(entry)) < 2 {
-			continue
-		}
-		if !strings.Contains(fullName, entry) {
-			continue
-		}
+func matchAnyEntity(fullName string, trie *ACTrie) bool {
+	if fullName == "" || trie == nil {
+		return false
+	}
+	for _, entry := range trie.FindAll(fullName) {
 		if IsAllowlistedText(entry) {
 			continue // 白名单优先于黑名单
 		}
