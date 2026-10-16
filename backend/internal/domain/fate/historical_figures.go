@@ -94,6 +94,10 @@ func IsHistoricalFigureCombo(c1, c2 string) bool {
 	if c1 == "" || c2 == "" {
 		return false
 	}
+	// 白名单优先于黑名单（docs/33 门禁层 M1）：显式豁免的组合直接放行
+	if IsAllowlistedCombo(c1, c2) {
+		return false
+	}
 	if historicalFigureCombos[c1+c2] {
 		return true
 	}

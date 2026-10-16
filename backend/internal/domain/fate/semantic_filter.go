@@ -125,11 +125,14 @@ func IsSoftNegativeChar(char string) bool {
 }
 
 // IsBlessingCombo 判断两字组合是否为祈福豁免组合（去病/弃疾等）
+//
+// 内置默认（blessingCombos）与 allowlist 物料的 blessing 条目取并集
+// （docs/33 门禁层 M1：祈福组合迁入白名单物料，硬编码降级为兜底）。
 func IsBlessingCombo(c1, c2 string) bool {
-	if blessingCombos[c1+c2] {
+	if blessingCombos[c1+c2] || blessingCombos[c2+c1] {
 		return true
 	}
-	return blessingCombos[c2+c1]
+	return isBlessingExtra(c1, c2)
 }
 
 // IsBadCombo 判断两个字组合是否为禁忌组合（正反序均检测）
@@ -139,6 +142,10 @@ func IsBlessingCombo(c1, c2 string) bool {
 // 用于双名候选生成时剔除「父母」「蜂蜜」等荒谬组合
 func IsBadCombo(c1, c2 string) bool {
 	if c1 == "" || c2 == "" {
+		return false
+	}
+	// 白名单优先于黑名单（docs/33 门禁层 M1）：显式豁免的组合直接放行
+	if IsAllowlistedCombo(c1, c2) {
 		return false
 	}
 	forward := c1 + c2

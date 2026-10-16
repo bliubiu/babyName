@@ -162,6 +162,14 @@ func InitWithDB(dataDir string, dbLoader DBLoader) error {
 		}
 	}
 
+	// 7.5 显式白名单（docs/33 门禁层 M1）：豁免黑名单（白名单优先）+ 祈福组合。
+	//     可选物料，缺失时降级为内置默认（仅祈福组合），不阻断。
+	if !loadedFromDB["allowlist"] {
+		if err := fate.LoadAllowlistFromJSON(dataDir); err != nil {
+			logger.Warn("加载白名单表失败，白名单豁免降级为内置默认", logger.ErrField(err))
+		}
+	}
+
 	// 8. 人名频率库（Tier≥2）
 	if !loadedFromDB["name_frequency"] {
 		if p.RequireAll {

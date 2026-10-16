@@ -795,6 +795,73 @@ func (s *Store) importForbidden(def schema.Definition, src string, res ImportRes
 	})
 }
 
+// importAllowlist 导入显式白名单（字 / 组合 / 祈福组合），docs/33 门禁层 M1
+//
+// 源格式：{"version":"...","chars":[...],"combos":[...],"blessings":[...]}
+// 落库：allowlist(entry PK, kind)，kind ∈ char/combo/blessing（白名单优先于黑名单）。
+func (s *Store) importAllowlist(def schema.Definition, src string, res ImportResult, opt ImportOptions) ImportResult {
+	raw, err := os.ReadFile(src)
+	if err != nil {
+		res.Err = fmt.Sprintf("读取 %s 失败: %v", src, err)
+		return res
+	}
+	var doc struct {
+		Version   string   `json:"version"`
+		Chars     []string `json:"chars"`
+		Combos    []string `json:"combos"`
+		Blessings []string `json:"blessings"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		res.Err = fmt.Sprintf("解析 %s 失败: %v", src, err)
+		return res
+	}
+	res.Version = doc.Version
+
+	type allowRow struct {
+		entry string
+		kind  string
+	}
+	rows := make([]allowRow, 0, len(doc.Chars)+len(doc.Combos)+len(doc.Blessings))
+	var errs validate.Errors
+	for _, c := range normalize.Tags(doc.Chars) {
+		errs = append(errs, validate.Rune(def.Name, "char", c)...)
+		rows = append(rows, allowRow{entry: c, kind: schema.AllowKindChar})
+	}
+	for _, c := range normalize.Tags(doc.Combos) {
+		errs = append(errs, validate.Combo(def.Name, c)...)
+		rows = append(rows, allowRow{entry: c, kind: schema.AllowKindCombo})
+	}
+	for _, c := range normalize.Tags(doc.Blessings) {
+		errs = append(errs, validate.Combo(def.Name, c)...)
+		rows = append(rows, allowRow{entry: c, kind: schema.AllowKindBlessing})
+	}
+	if msg := failValidate(errs, opt); msg != "" {
+		res.Err = msg
+		return res
+	}
+
+	return *s.runImport(def.Name, def.Tables, &res, opt, func(tx *sql.Tx) (int, error) {
+		stmt, err := tx.Prepare("INSERT INTO allowlist(entry, kind) VALUES(?,?)")
+		if err != nil {
+			return 0, err
+		}
+		defer func() { _ = stmt.Close() }()
+		seen := make(map[string]bool, len(rows))
+		n := 0
+		for _, r := range rows {
+			if r.entry == "" || seen[r.entry] {
+				continue
+			}
+			seen[r.entry] = true
+			if _, err := stmt.Exec(r.entry, r.kind); err != nil {
+				return 0, fmt.Errorf("写入白名单 %s 失败: %w", r.entry, err)
+			}
+			n++
+		}
+		return n, nil
+	})
+}
+
 // importYijing 导入易经六十四卦
 func (s *Store) importYijing(def schema.Definition, src string, res ImportResult, opt ImportOptions) ImportResult {
 	raw, err := os.ReadFile(src)

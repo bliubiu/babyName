@@ -5,6 +5,37 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.16.3]
+
+**门禁层 M1：显式 allowlist 物料（白名单优先于黑名单）**（`docs/33` M1）。
+
+### ✨ New Features 新增功能
+
+- 【门禁层】新增 `allowlist` 物料（`allowlist.json`，可选）：显式白名单条目
+  `kind ∈ char|combo|blessing`，落库新表 `allowlist(entry PK, kind)`。
+  匹配优先级 `allow > deny`：被收录的「字/组合」直接豁免字级门禁（`IsNonNamingChar`）、
+  禁忌组合（`IsBadCombo`）与历史人物组合（`IsHistoricalFigureCombo`）；
+  祈福组合（`IsBlessingCombo`）取「内置兜底 ∪ 物料」并集。
+- 【门禁层】新增 `fate.SetAllowlist` / `LoadAllowlistFromJSON`（JSON 回落，缺失降级内置默认不阻断）、
+  `loadAllowlistFromDB`（库路径，接入 `LoadMaterialsFromDB`）、`importAllowlist`（导入期校验+单事务写入）。
+- 【数据】新增 `backend/data/allowlist.json` 种子：内置 9 条祈福组合
+  （去病/弃疾/除疾/愈病/去疾/除病/愈疾/安恙/康宁）。
+
+### 📈 Improvements 性能/体验优化
+
+- 【门禁层】零回归：白名单动态集合为空时行为与既有完全一致；`allowlist` 为可选物料，
+  不计入必需物料清单，不影响 `VerifyMaterialsFromDB` 的 fail-fast。
+
+### 📚 Docs 文档更新
+
+- `docs/33` M1 状态更新为已完成，并新增「十一、落地记录」小节记录 M1 交付细节。
+- `docs/31 §8.5`：已建成表由 11 张更新为 12 张（补 `allowlist`）与实测行数。
+
+### 🧪 Tests 测试
+
+- 新增 `internal/domain/fate/allowlist_test.go`、`store_materials_allowlist_test.go`：
+  覆盖装载/计数/匹配优先级/祈福并集/降级与错误路径/库路径生效，新代码函数覆盖率 100%。
+
 ## [2026.10.16.2]
 
 **门禁层 M0：文档拆分与落地里程碑登记**（`docs/31` §十二 → `docs/33`）。

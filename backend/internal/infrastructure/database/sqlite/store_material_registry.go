@@ -75,6 +75,7 @@ func init() {
 		schema.BigramMaterial:    (*Store).importBigram,
 		schema.GateMaterial:      (*Store).importGate,
 		schema.ForbiddenMaterial: (*Store).importForbidden,
+		schema.AllowlistMaterial: (*Store).importAllowlist,
 		schema.YijingMaterial:    (*Store).importYijing,
 		schema.ZodiacMaterial:    (*Store).importZodiac,
 	}

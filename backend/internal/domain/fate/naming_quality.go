@@ -106,6 +106,10 @@ func IsNonNamingChar(char string) bool {
 	if char == "" {
 		return false
 	}
+	// 白名单优先于黑名单（docs/33 门禁层 M1）：显式豁免的字直接放行
+	if IsAllowlistedChar(char) {
+		return false
+	}
 	nonNamingCharsMu.RLock()
 	defer nonNamingCharsMu.RUnlock()
 	return nonNamingChars[char]

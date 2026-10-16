@@ -97,6 +97,13 @@ var materialTableDDL = []string{
 		combo TEXT PRIMARY KEY
 	)`,
 
+	// 显式白名单：豁免黑名单（白名单优先）+ 祈福组合（docs/33 门禁层 M1）
+	// kind ∈ char（单字级豁免）/ combo（组合级豁免）/ blessing（祈福组合）
+	`CREATE TABLE IF NOT EXISTS allowlist (
+		entry TEXT PRIMARY KEY,
+		kind  TEXT NOT NULL DEFAULT 'combo'
+	)`,
+
 	// 易经六十四卦
 	`CREATE TABLE IF NOT EXISTS yijing_hexagrams (
 		id             INTEGER PRIMARY KEY,
@@ -136,7 +143,7 @@ var materialTableDDL = []string{
 var materialTables = []string{
 	"kangxi_strokes", "hanzi_data", "char_groups", "words",
 	"name_frequency", "name_bigram", "naming_gate", "forbidden_combos",
-	"yijing_hexagrams", "zodiac", "materials_state",
+	"allowlist", "yijing_hexagrams", "zodiac", "materials_state",
 }
 
 // createMaterialTables 建立全部物料表（幂等）

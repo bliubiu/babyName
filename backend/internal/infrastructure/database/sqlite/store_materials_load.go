@@ -45,6 +45,9 @@ func (s *Store) LoadMaterialsFromDB() []string {
 	if s.loadForbiddenFromDB() {
 		loaded = append(loaded, "forbidden_combos")
 	}
+	if s.loadAllowlistFromDB() {
+		loaded = append(loaded, "allowlist")
+	}
 	if s.loadYijingFromDB() {
 		loaded = append(loaded, "yijing")
 	}
@@ -290,6 +293,33 @@ func (s *Store) loadForbiddenFromDB() bool {
 		return false
 	}
 	fate.SetForbiddenCombos(combos)
+	return true
+}
+
+// loadAllowlistFromDB 从库载入显式白名单（豁免黑名单 + 祈福组合，docs/33 门禁层 M1）
+func (s *Store) loadAllowlistFromDB() bool {
+	if !s.tableHasRows("allowlist") {
+		return false
+	}
+	rows, err := s.db.Query("SELECT entry, kind FROM allowlist")
+	if err != nil {
+		logger.Error("sqlite: 查询 allowlist 失败", logger.ErrField(err))
+		return false
+	}
+	defer func() { _ = rows.Close() }()
+
+	entries := make([]fate.AllowEntry, 0, 256)
+	for rows.Next() {
+		var e fate.AllowEntry
+		if err := rows.Scan(&e.Entry, &e.Kind); err != nil {
+			continue
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil || len(entries) == 0 {
+		return false
+	}
+	fate.SetAllowlist(entries)
 	return true
 }
 

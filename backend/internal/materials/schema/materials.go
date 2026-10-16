@@ -20,6 +20,8 @@ const (
 	GateMaterial = "naming_gate"
 	// ForbiddenMaterial 禁忌双字组合（forbidden_combos.json）
 	ForbiddenMaterial = "forbidden_combos"
+	// AllowlistMaterial 显式白名单（allowlist.json）：豁免黑名单（白名单优先）+ 祈福组合
+	AllowlistMaterial = "allowlist"
 	// YijingMaterial 易经六十四卦（yijing.json）
 	YijingMaterial = "yijing"
 	// ZodiacMaterial 十二生肖（zodiac.json）
@@ -43,6 +45,16 @@ type Definition struct {
 	// Required 源文件缺失时是否报错（true=缺物料即失败，false=允许缺失跳过）
 	Required bool
 }
+
+// 白名单条目类型（docs/33 门禁层 M1）：allowlist 物料的 kind 取值
+const (
+	// AllowKindChar 单字级：豁免 naming_gate 等字级黑名单
+	AllowKindChar = "char"
+	// AllowKindCombo 组合级：豁免 forbidden_combos / 历史人物组合
+	AllowKindCombo = "combo"
+	// AllowKindBlessing 祈福组合：豁免软性消极惩罚并参与评分加分
+	AllowKindBlessing = "blessing"
+)
 
 // Definitions 全部物料的集中注册表
 //
@@ -75,6 +87,10 @@ var Definitions = []Definition{
 	{
 		Name: ForbiddenMaterial, Source: "forbidden_combos.json",
 		DependsOn: []string{NamerMaterial}, Tables: []string{"forbidden_combos"}, Required: true,
+	},
+	{
+		Name: AllowlistMaterial, Source: "allowlist.json",
+		DependsOn: []string{}, Tables: []string{"allowlist"}, Required: false,
 	},
 	{
 		Name: YijingMaterial, Source: "yijing.json",
