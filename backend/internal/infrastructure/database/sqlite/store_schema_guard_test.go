@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"name/internal/domain/hanzi"
+	"name/internal/materials/schema"
 )
 
 // 本文件是 docs/31 §11.3 的「schema 漂移守护测试」本体：
@@ -105,12 +105,12 @@ func TestSchema漂移_占位符数量与列数一致(t *testing.T) {
 	}
 }
 
-// TestSchema漂移_行值数量与列数一致 防止改列忘改 hanziDataValues
+// TestSchema漂移_行值数量与列数一致 防止改列忘改 wordValues
 func TestSchema漂移_行值数量与列数一致(t *testing.T) {
 	cols, _ := insertColumns(t)
-	values := hanziDataValues("字", hanzi.Hanzi{})
+	values := wordValues(schema.Word{Char: "字"})
 	if len(values) != len(cols) {
-		t.Errorf("hanziDataValues 返回 %d 个值，插入语句为 %d 列", len(values), len(cols))
+		t.Errorf("wordValues 返回 %d 个值，插入语句为 %d 列", len(values), len(cols))
 	}
 }
 

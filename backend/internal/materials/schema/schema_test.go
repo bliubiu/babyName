@@ -98,7 +98,7 @@ func TestNames_字典序且完整(t *testing.T) {
 		}
 	}
 	// 核心物料必须在册
-	for _, want := range []string{NamerMaterial, KangxiMaterial, WordMaterial, GateMaterial} {
+	for _, want := range []string{NamerMaterial, KangxiMaterial, GateMaterial} {
 		found := false
 		for _, n := range names {
 			if n == want {

@@ -39,7 +39,7 @@ func TestMaterialRegistry_Definition与注册名一致(t *testing.T) {
 // TestMaterialRegistry_已接入物料不使用legacy 已接入统一导入器的物料不得登记为 legacy
 func TestMaterialRegistry_已接入物料不使用legacy(t *testing.T) {
 	integrated := []string{
-		schema.KangxiMaterial, schema.NamerMaterial, schema.WordMaterial,
+		schema.KangxiMaterial, schema.NamerMaterial,
 		schema.FrequencyMaterial, schema.BigramMaterial, schema.GateMaterial,
 		schema.ForbiddenMaterial, schema.AllowlistMaterial,
 		schema.ComplianceRedlineMaterial, schema.YijingMaterial, schema.ZodiacMaterial,

@@ -70,7 +70,6 @@ func init() {
 	impls := map[string]func(*Store, schema.Definition, string, ImportResult, ImportOptions) ImportResult{
 		schema.KangxiMaterial:            (*Store).importKangxi,
 		schema.NamerMaterial:             (*Store).importNamer,
-		schema.WordMaterial:              (*Store).importWords,
 		schema.FrequencyMaterial:         (*Store).importCharFreq,
 		schema.BigramMaterial:            (*Store).importBigram,
 		schema.GateMaterial:              (*Store).importGate,

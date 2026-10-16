@@ -36,9 +36,6 @@ func (s *Store) LoadMaterialsFromDB() []string {
 	if s.loadBigramFromDB() {
 		loaded = append(loaded, "name_bigram")
 	}
-	if s.loadWordsFromDB() {
-		loaded = append(loaded, "word")
-	}
 	if s.loadGateFromDB() {
 		loaded = append(loaded, "naming_gate")
 	}
@@ -246,33 +243,6 @@ func (s *Store) loadBigramFromDB() bool {
 	return true
 }
 
-// loadWordsFromDB 从库载入词典释义
-func (s *Store) loadWordsFromDB() bool {
-	if !s.tableHasRows("words") {
-		return false
-	}
-	rows, err := s.db.Query("SELECT char, explanation FROM words")
-	if err != nil {
-		logger.Error("sqlite: 查询 words 失败", logger.ErrField(err))
-		return false
-	}
-	defer func() { _ = rows.Close() }()
-
-	entries := make([]hanzi.WordEntry, 0, 16384)
-	for rows.Next() {
-		var w hanzi.WordEntry
-		if err := rows.Scan(&w.Word, &w.Explanation); err != nil {
-			continue
-		}
-		entries = append(entries, w)
-	}
-	if err := rows.Err(); err != nil || len(entries) == 0 {
-		return false
-	}
-	hanzi.SetWordMeanings(entries)
-	return true
-}
-
 // loadGateFromDB 从库载入命名质量门禁字表
 func (s *Store) loadGateFromDB() bool {
 	if !s.tableHasRows("naming_gate") {
@@ -477,7 +447,7 @@ func (s *Store) LoadMaterialsFromDBWithReport() MaterialLoadReport {
 // materialNames 运行时支持的物料名（有序）
 func materialNames() []string {
 	return []string{
-		"kangxi", "namer", "name_frequency", "name_bigram", "word",
+		"kangxi", "namer", "name_frequency", "name_bigram",
 		"naming_gate", "forbidden_combos", "yijing", "zodiac",
 	}
 }

@@ -375,6 +375,16 @@ func TestImport_只导入指定物料并自动补齐依赖(t *testing.T) {
 	if err := s.db.QueryRow("SELECT COUNT(*) FROM zodiac").Scan(&n); err == nil && n > 0 {
 		t.Errorf("未列入的物料不应有数据，实得 %d 行", n)
 	}
+
+	// 康熙笔画必须经「源文件预解析注入」合并进 hanzi_data（docs/34 阶段 A2）：
+	// 部分导入同样成立，不依赖回读 kangxi_strokes 表的落库时序。
+	var kangxi int
+	if err := s.db.QueryRow("SELECT kangxi_strokes FROM hanzi_data WHERE char = '永'").Scan(&kangxi); err != nil {
+		t.Fatalf("查询 kangxi_strokes 失败: %v", err)
+	}
+	if kangxi != 5 {
+		t.Errorf("部分导入时康熙笔画期望 5（由源文件注入合并），实得 %d", kangxi)
+	}
 }
 
 func TestImport_干运行不写库(t *testing.T) {

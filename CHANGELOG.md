@@ -5,6 +5,47 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.16.12]
+
+**物料管线阶段 A：收敛数据口径**（`docs/34` 阶段 A）。根除 `hanzi_data` 双口径写入，
+`namer.json` 成为字库唯一真源，`word.json` 退出物料管线。
+
+### ✨ New Features 新增功能
+
+- 【物料管线】`Import()` 分发前预解析跨物料依赖并经 `ImportOptions.deps` 注入
+  （`resolveImportDeps`/`parseKangxiFile`），`importNamer` 不再回读只读连接
+  `s.db` 取康熙笔画——解除「依赖物料已落库 + WAL 跨连接可见」两个隐含前提。
+- 【物料管线】新增 `Store.syncNameFreqTier`：`hanzi_data.name_freq_tier` 改为在
+  `Import()` 末尾以 `name_frequency` 表为唯一真源单点归一化（`COALESCE` 子查询，
+  仅 Tier ≥ 2 回填），双向传导、与导入顺序和指纹短路无关。
+
+### 🐛 Bug Fixes 问题修复
+
+- 【物料管线】修复 `hanzi_data` 双口径写入：legacy `seedHanziData`/`rebuildHanziData`/
+  `ReloadHanziData`（内存 `hanzi.HanziData` → `hanziDataValues` 投影）与物料导入路径
+  `importNamer`（`namer.json` → `wordValues` 投影）字段派生口径不一致，一旦被误用即污染
+  字库。该路径无生产调用方，已整体移除，`importNamer` 成为唯一写入方。
+- 【物料管线】修复 `name_freq_tier` 两处维护（`importNamer` 回读 + `importCharFreq`
+  内 `UPDATE`）的隐式顺序依赖与口径漂移风险。
+
+### 🗑 Deprecated 废弃功能
+
+- 【物料管线】移除 `word` 物料（`schema.WordMaterial`、`importWords`、`words` 表 DDL、
+  `loadWordsFromDB`、`materialNames` 条目）。`namer.json` 已包含全部三级候选字及释义，
+  `word.json` 不再被加载/读取。
+- 【领域层】移除 `hanzi.LoadWordData`/`WordMeaning`/`SetWordMeanings`/`WordEntry`
+  及 word.json 运行时加载节（均无生产调用方，仅测试引用）。
+- 【CLI】`cmd/namer-cli` 移除 `hanzi.LoadWordData` 调用，装配顺序与 server 对齐。
+
+### 📈 Improvements 性能/体验优化
+
+- 【物料管线】康熙笔画 CSV 由「每物料各解析一次」收敛为 `parseKangxiFile` 单一入口，
+  `importKangxi` 与依赖预解析共用同一份口径。
+
+### 📚 Docs 文档更新
+
+- `docs/34` 阶段 A 标记为已实施并登记验证结论；`docs/32` M11 双模式 e2e 复验记录更新。
+
 ## [2026.10.16.11]
 
 **门禁层 M7：灰度发布（按物料整体 staging + 观察 + 回滚）**（`docs/33` M7 / `docs/31` ADR-015）。

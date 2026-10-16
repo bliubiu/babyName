@@ -63,12 +63,6 @@ var materialTableDDL = []string{
 		chars   TEXT NOT NULL DEFAULT '[]'
 	)`,
 
-	// 词典释义点查表：替代运行时 26MB 的 word.json 急载
-	`CREATE TABLE IF NOT EXISTS words (
-		char        TEXT PRIMARY KEY,
-		explanation TEXT NOT NULL DEFAULT ''
-	)`,
-
 	// 单字人名频率
 	`CREATE TABLE IF NOT EXISTS name_frequency (
 		char  TEXT PRIMARY KEY,
@@ -148,7 +142,7 @@ var materialTableDDL = []string{
 
 // materialTables 全部物料表名（守护测试与文档用）
 var materialTables = []string{
-	"kangxi_strokes", "hanzi_data", "char_groups", "words",
+	"kangxi_strokes", "hanzi_data", "char_groups",
 	"name_frequency", "name_bigram", "naming_gate", "forbidden_combos",
 	"allowlist", "compliance_redline", "yijing_hexagrams", "zodiac", "materials_state",
 }

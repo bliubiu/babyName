@@ -1,13 +1,10 @@
 package sqlite
 
 import (
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -20,12 +17,6 @@ import (
 	"name/internal/infrastructure/database"
 	"name/internal/infrastructure/logger"
 )
-
-// metaKeyHanziChecksum data_meta 中记录 hanzi_data 物料指纹的 key（ADR-014）
-//
-// data_meta 是 key/value/updated_at 结构（无独立 checksum 列），
-// 故按约定 key 存放每物料的版本与指纹
-const metaKeyHanziChecksum = "materials.hanzi.checksum"
 
 type Store struct {
 	db        *sql.DB // 读连接池（WAL 模式下可并发读）
@@ -262,8 +253,8 @@ func createTables(db *sql.DB) error {
 			source     TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
-		// 汉字字库缓存表（从 hanzi.HanziData 导入，支持热重载）
-		`CREATE TABLE IF NOT EXISTS hanzi_data (
+	// 汉字字库缓存表（由 namer.json 经物料导入路径 importNamer 写入，docs/34 阶段 A1）
+	`CREATE TABLE IF NOT EXISTS hanzi_data (
 			char       TEXT PRIMARY KEY,
 			pinyin     TEXT NOT NULL DEFAULT '',
 			strokes    INTEGER NOT NULL DEFAULT 0,
@@ -1062,15 +1053,14 @@ func (s *Store) DeleteCuratedName(name string) error {
 
 // --- Hanzi 字库缓存 ---
 
-// maxHanziRowFailures 汉字字库重建时允许跳过的最大失败行数
+// hanziDataInsertSQL hanzi_data 的插入语句
 //
-// 少量脏行跳过并记录，物料整体损坏（失败率超阈值）则回滚报错（docs/31 ADR-004）
-const maxHanziRowFailures = 8
-
-// hanziDataInsertSQL hanzi_data 的插入语句，seed 与 reload 共用唯一真源
+// 写入列顺序与 wordValues()（store_materials_import.go）的返回值顺序严格对应，
+// 改动必须同步（hanzi_data 表列、hanziDataColumnMigrations、wordValues 三处一致）。
 //
-// 写入列顺序与 hanziDataValues() 的返回值顺序严格对应，改动必须同步
-// （hanzi_data 表列、hanziDataColumnMigrations、hanziDataValues 三处须一致）
+// hanzi_data 的唯一写入方是物料导入路径 importNamer（docs/34 阶段 A1）：
+// 内存态 hanzi.HanziData → SQLite 的 legacy 投影路径（seedHanziData/rebuildHanziData/
+// ReloadHanziData）因无生产调用方且字段派生口径不同，已整体移除，避免双口径污染。
 const hanziDataInsertSQL = `INSERT INTO hanzi_data(
 	char, pinyin, strokes, kangxi_strokes, radical, meaning, wuxing, gender,
 	level, tone, name_freq_tier, gender_tags, style_tags, usage_level,
@@ -1078,21 +1068,6 @@ const hanziDataInsertSQL = `INSERT INTO hanzi_data(
 	is_polyphonic, is_rare, is_negative,
 	pair_blacklist, curation_level, name_penalty, naming_categories
 ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-
-// hanziDataValues 把 hanzi.Hanzi 投影为 hanzi_data 的行值
-//
-// 列为 seed/reload 共用的唯一映射真源（docs/31 ADR-012），避免两处各写一遍而漂移
-func hanziDataValues(char string, h hanzi.Hanzi) []any {
-	return []any{
-		char, h.Pinyin, h.Strokes, h.KangxiStrokes, h.Radical, h.Meaning, h.Wuxing, h.Gender,
-		h.Level, h.Tone, h.NameFreqTier,
-		mustMarshalJSON(h.GenderTags), mustMarshalJSON(h.StyleTags), h.UsageLevel,
-		h.PositiveScore, h.PhoneticScore, h.ModernScore, h.ClassicalScore,
-		boolToInt(h.IsPolyphonic), boolToInt(h.IsRare), boolToInt(h.IsNegative),
-		mustMarshalJSON(h.PairBlacklist), h.CurationLevel, h.NamePenalty,
-		mustMarshalJSON(h.NamingCategories),
-	}
-}
 
 // boolToInt 把布尔转成 SQLite 存储用的 0/1
 func boolToInt(b bool) int {
@@ -1114,140 +1089,6 @@ func (s *Store) HanziRowCount() (int, error) {
 		return 0, fmt.Errorf("查询 hanzi_data 行数失败: %w", err)
 	}
 	return n, nil
-}
-
-// seedHanziData 将 hanzi.HanziData 投影到 hanzi_data 表
-//
-// 语义（docs/31 ADR-011）：同输入多次执行结果等价，且物料的字段修订与删字都能传导到 SQLite。
-// 实现为「单事务 DELETE + INSERT 全量重建」，不再使用 INSERT OR IGNORE ——
-// 冲突即跳过会让字段修订与删字静默失效，SQL 与内存双读由此长期不一致。
-//
-// 同时带 checksum 门控（ADR-014）：物料指纹未变且表非空时整段跳过，
-// 避免每次启动都对 8105 字做无谓的全量重建。
-func (s *Store) seedHanziData() {
-	if s.hanziUnchanged() {
-		logger.Info("sqlite: 汉字物料未变更，跳过 hanzi_data 重建",
-			logger.String("指纹", s.storedHanziChecksum()))
-		return
-	}
-	s.rebuildHanziData("seedHanziData")
-}
-
-// storedHanziChecksum 读出库内记录的汉字物料指纹（未记录返回空串）
-func (s *Store) storedHanziChecksum() string {
-	var v string
-	err := s.db.QueryRow("SELECT value FROM data_meta WHERE key = ?", metaKeyHanziChecksum).Scan(&v)
-	if err != nil {
-		return ""
-	}
-	return v
-}
-
-// currentHanziChecksum 计算当前内存字库的指纹
-//
-// 指纹取自「字集 + 关键字段」的稳定序列化：内容不变则指纹不变，
-// 任一字被增删改都会导致指纹变化，从而触发重建（ADR-014 的门控依据）。
-func currentHanziChecksum() string {
-	chars := make([]string, 0, len(hanzi.HanziData))
-	for c := range hanzi.HanziData {
-		chars = append(chars, c)
-	}
-	sort.Strings(chars)
-
-	h := sha256.New()
-	for _, c := range chars {
-		hv := hanzi.HanziData[c]
-		fmt.Fprintf(h, "%s|%s|%d|%d|%s|%s|%s|%s|%d|%d|%d|%t|%t|%t|%d|%s\n",
-			c, hv.Pinyin, hv.Strokes, hv.KangxiStrokes, hv.Radical, hv.Meaning,
-			hv.Wuxing, hv.Gender, hv.Level, hv.Tone, hv.NameFreqTier,
-			hv.IsPolyphonic, hv.IsRare, hv.IsNegative, hv.PositiveScore,
-			strings.Join(hv.NamingCategories, ","))
-	}
-	return hex.EncodeToString(h.Sum(nil))
-}
-
-// hanziUnchanged 判断是否可跳过重建：指纹一致且表非空
-func (s *Store) hanziUnchanged() bool {
-	stored := s.storedHanziChecksum()
-	if stored == "" {
-		return false
-	}
-	var n int
-	if err := s.db.QueryRow("SELECT COUNT(*) FROM hanzi_data").Scan(&n); err != nil || n == 0 {
-		return false
-	}
-	return stored == currentHanziChecksum()
-}
-
-// ReloadHanziData 热重载汉字字库数据
-// 从 hanzi.HanziData 重新同步到 SQLite，用于 JSON 文件热更新后调用
-func (s *Store) ReloadHanziData() {
-	s.rebuildHanziData("ReloadHanziData")
-}
-
-// rebuildHanziData 在单个事务内重建 hanzi_data 表
-//
-// 事务保证中途失败时表内容回滚到原状，不会留下半截数据；
-// HanziData 为空时拒绝重建，避免数据尚未装载就把既有表清空
-func (s *Store) rebuildHanziData(op string) {
-	if len(hanzi.HanziData) == 0 {
-		logger.Warn("sqlite: 汉字数据为空，跳过 hanzi_data 重建以免清空既有数据",
-			logger.String("操作", op))
-		return
-	}
-
-	tx, err := s.writeDB.Begin()
-	if err != nil {
-		logger.Error("sqlite: 汉字字库重建事务开启失败", logger.String("操作", op), logger.ErrField(err))
-		return
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if _, err := tx.Exec("DELETE FROM hanzi_data"); err != nil {
-		logger.Error("sqlite: 汉字字库清空失败", logger.String("操作", op), logger.ErrField(err))
-		return
-	}
-
-	stmt, err := tx.Prepare(hanziDataInsertSQL)
-	if err != nil {
-		logger.Error("sqlite: 汉字字库插入语句准备失败", logger.String("操作", op), logger.ErrField(err))
-		return
-	}
-	defer stmt.Close()
-
-	written, failed := 0, 0
-	for char, h := range hanzi.HanziData {
-		if _, err := stmt.Exec(hanziDataValues(char, h)...); err != nil {
-			// 个别脏数据不拖垮整表，但失败率超阈值即视为物料损坏，整体回滚报错
-			failed++
-			if failed > maxHanziRowFailures {
-				logger.Error("sqlite: 汉字字库写入失败率超阈值，已回滚",
-					logger.String("操作", op), logger.Int("失败数", failed),
-					logger.Int("阈值", maxHanziRowFailures), logger.String("字", char),
-					logger.ErrField(err))
-				return
-			}
-			logger.Warn("sqlite: 单个字写入失败已跳过", logger.String("操作", op),
-				logger.String("字", char), logger.ErrField(err))
-			continue
-		}
-		written++
-	}
-
-	if err := tx.Commit(); err != nil {
-		logger.Error("sqlite: 汉字字库重建提交失败", logger.String("操作", op), logger.ErrField(err))
-		return
-	}
-
-	// 记录物料指纹，供下次启动的门控比对（ADR-014）
-	if failed == 0 {
-		if err := s.saveMeta(metaKeyHanziChecksum, currentHanziChecksum()); err != nil {
-			logger.Warn("sqlite: 汉字物料指纹写入失败，下次启动将重建", logger.ErrField(err))
-		}
-	}
-
-	logger.Info("sqlite: 汉字字库已重建", logger.String("操作", op),
-		logger.Int("条数", written), logger.Int("跳过", failed))
 }
 
 // QueryHanziByWuxing 从 SQLite 按五行查询汉字
@@ -1302,15 +1143,6 @@ func (s *Store) QueryHanziByStrokes(min, max int) ([]database.Hanzi, error) {
 	}
 
 	return result, nil
-}
-
-// mustMarshalJSON 将任意值 JSON 序列化，失败则返回 "[]"
-func mustMarshalJSON(v interface{}) string {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return "[]"
-	}
-	return string(data)
 }
 
 // SearchHanziByFilter 按基础过滤参数查询 hanzi_data（services.SQLiteCharStore 接口实现）

@@ -1,13 +1,8 @@
 package hanzi
 
-import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
-	"sync"
-)
+// HanziData 相关全局状态与访问函数见 loader.go / namer_loader.go。
 
+// RareChars 超生僻字集合（《通用规范汉字表》表外字优先规避）
 var RareChars = map[string]bool{
 	"龘": true, "靐": true, "齉": true, "齾": true, "龗": true,
 	"鱻": true, "麤": true, "灪": true, "馫": true, "譶": true,
@@ -103,61 +98,6 @@ func ForEachHanzi(fn func(Hanzi)) {
 	}
 }
 
-// --- 运行时 word.json 释义加载 ---
-
-var (
-	wordMeanings map[string]string
-	wordMu       sync.Mutex
-	wordLoaded   bool
-)
-
-// wordEntry word.json 条目结构
-type wordEntry struct {
-	Word        string `json:"word"`
-	Explanation string `json:"explanation"`
-}
-
-// WordEntry 词条结构（对外，供 SQLite 物料装载路径传入）
-type WordEntry struct {
-	Word        string
-	Explanation string
-}
-
-// LoadWordData 从 data/word.json 加载词语释义，用于非精选字的含义回退
-func LoadWordData(dir string) error {
-	wordMu.Lock()
-	defer wordMu.Unlock()
-
-	if wordLoaded {
-		return nil
-	}
-
-	path := filepath.Join(dir, "word.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("读取 word.json 失败: %w", err)
-	}
-
-	var entries []wordEntry
-	if err := json.Unmarshal(data, &entries); err != nil {
-		return fmt.Errorf("解析 word.json 失败: %w", err)
-	}
-
-	wordMeanings = make(map[string]string, len(entries))
-	for _, e := range entries {
-		if e.Word == "" {
-			continue
-		}
-		char := string([]rune(e.Word)[0])
-		if _, exists := wordMeanings[char]; !exists && e.Explanation != "" {
-			wordMeanings[char] = e.Explanation
-		}
-	}
-
-	wordLoaded = true
-	return nil
-}
-
 // ResolveWuxing 按统一优先级解析单字的五行（字形法/字义法修正规则）
 //
 // 优先级：
@@ -204,42 +144,4 @@ func ApplyWuxingOverrides() {
 			HanziData[char] = data
 		}
 	}
-}
-
-// SetWordMeanings 以词条集合设置首字释义（SQLite 物料装载路径，ADR-008）
-//
-// 语义与 LoadWordData 一致：多字词取首字为键，首见即锁；
-// 与 JSON 路径的差别只在于「首见」的顺序由库表主键序（char 升序）给出，
-// 因此库内数据已是定稿结果，运行时不再重排。
-func SetWordMeanings(entries []WordEntry) {
-	wordMu.Lock()
-	defer wordMu.Unlock()
-
-	m := make(map[string]string, len(entries))
-	for _, e := range entries {
-		if e.Word == "" || e.Explanation == "" {
-			continue
-		}
-		r := []rune(e.Word)
-		if len(r) == 0 {
-			continue
-		}
-		char := string(r[0])
-		if _, exists := m[char]; !exists {
-			m[char] = e.Explanation
-		}
-	}
-	wordMeanings = m
-	wordLoaded = true
-}
-
-// WordMeaning 返回汉字的词语级释义（来自 word.json），空字符串表示无数据
-func WordMeaning(char string) string {
-	wordMu.Lock()
-	defer wordMu.Unlock()
-
-	if wordMeanings == nil {
-		return ""
-	}
-	return wordMeanings[char]
 }

@@ -10,8 +10,6 @@ const (
 	NamerMaterial = "namer"
 	// KangxiMaterial 康熙笔画（raw/kangxi-strokecount.csv）
 	KangxiMaterial = "kangxi"
-	// WordMaterial 词典释义（word.json）
-	WordMaterial = "word"
 	// FrequencyMaterial 单字人名频率（name_frequency.json）
 	FrequencyMaterial = "name_frequency"
 	// BigramMaterial 双字人名频率（name_bigram_frequency.json）
@@ -87,10 +85,6 @@ var Definitions = []Definition{
 	{
 		Name: BigramMaterial, Source: "name_bigram_frequency.json",
 		DependsOn: []string{NamerMaterial}, Tables: []string{"name_bigram"}, Required: false,
-	},
-	{
-		Name: WordMaterial, Source: "word.json",
-		DependsOn: []string{NamerMaterial}, Tables: []string{"words"}, Required: false,
 	},
 	{
 		Name: GateMaterial, Source: "naming_quality.json",

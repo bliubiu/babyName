@@ -40,10 +40,10 @@ func Test运行时从库装载_等价于JSON路径(t *testing.T) {
 		t.Fatalf("导入失败: %v", err)
 	}
 	report := s.LoadMaterialsFromDBWithReport()
-	// 本用例的最小物料集不含 word/频率，属预期缺失
+	// 本用例的最小物料集不含频率类物料，属预期缺失
 	for _, m := range report.Missing {
 		switch m {
-		case "word", "name_frequency", "name_bigram":
+		case "name_frequency", "name_bigram":
 		default:
 			t.Errorf("核心物料不应缺失: %s", m)
 		}
@@ -106,7 +106,8 @@ func Test运行时从库装载_等价于JSON路径(t *testing.T) {
 	if dbHanzi.IsPolyphonic != jsonHanzi.IsPolyphonic {
 		t.Errorf("多音字标记不一致：JSON=%t 库=%t", jsonHanzi.IsPolyphonic, dbHanzi.IsPolyphonic)
 	}
-	// 频率档：JSON 路径经 GetCharTier 合并，库路径由导入期回填，两边必须等价
+	// 频率档：JSON 路径经 GetCharTier 合并，库路径由导入末态 syncNameFreqTier
+	// 以 name_frequency 表为唯一真源归一化，两边必须等价
 	if dbHanzi.NameFreqTier != jsonHanzi.NameFreqTier {
 		t.Errorf("人名频率档不一致：JSON=%d 库=%d", jsonHanzi.NameFreqTier, dbHanzi.NameFreqTier)
 	}
@@ -115,9 +116,12 @@ func Test运行时从库装载_等价于JSON路径(t *testing.T) {
 	}
 }
 
-// Test导入频率档回填hanzi_data 守护导入期频率档合并（docs/31 §9.6 步骤4）：
-// namer.json 无 nameFreqTier 真值，必须由频率物料回填 hanzi_data，
+// Test导入频率档回填hanzi_data 守护导入末态的频率档归一化（docs/31 §9.6 步骤4）：
+// namer.json 无 nameFreqTier 真值，必须由频率物料派生进 hanzi_data，
 // 运行时读库即得规范态，与 JSON 路径的 GetCharTier 合并口径一致（仅 Tier ≥ 2）。
+//
+// 归一化收敛在 Import() 末尾的 syncNameFreqTier 单点完成（docs/34 阶段 A3），
+// 不再由 importCharFreq 在自身事务内 UPDATE hanzi_data。
 func Test导入频率档回填hanzi_data(t *testing.T) {
 	dir := writeMinimalMaterials(t)
 	s := newTestStoreIn(t, dir)
@@ -243,18 +247,10 @@ func Test运行时从库装载_易经与生肖(t *testing.T) {
 	}
 }
 
-func Test运行时从库装载_频率与释义(t *testing.T) {
+// Test运行时从库装载_频率档 守护库路径的人名频率档装载：
+// 仅 Tier ≥ 2 入内存，与 JSON 路径 LoadFrequencyDB 过滤口径一致。
+func Test运行时从库装载_频率档(t *testing.T) {
 	dir := writeMinimalMaterials(t)
-
-	word := `[
-      {"word":"永远","explanation":"长久不变"},
-      {"word":"永久","explanation":"永久"},
-      {"word":"水位","explanation":"水的高度"},
-      {"word":"水果","explanation":"可食用的果实"}
-    ]`
-	if err := os.WriteFile(filepath.Join(dir, "word.json"), []byte(word), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	freq := `{"meta":{"total_names":100,"built_at":"2026-01-01"},"frequency":[
       {"char":"永","count":500,"rank":1,"tier":5},
       {"char":"水","count":300,"rank":2,"tier":4},
@@ -270,16 +266,12 @@ func Test运行时从库装载_频率与释义(t *testing.T) {
 	}
 	s.LoadMaterialsFromDB()
 
-	if got := hanzi.WordMeaning("永"); got != "长久不变" {
-		t.Errorf("释义期望「长久不变」（首见即锁），实得 %q", got)
-	}
-	if got := hanzi.WordMeaning("水"); got != "水的高度" {
-		t.Errorf("释义期望「水的高度」，实得 %q", got)
-	}
-
 	// Tier 1 不入内存（与 JSON 路径同一过滤口径）
 	if got := hanzi.GetCharTier("永"); got != 5 {
 		t.Errorf("「永」频率档期望 5，实得 %d", got)
+	}
+	if got := hanzi.GetCharTier("水"); got != 4 {
+		t.Errorf("「水」频率档期望 4，实得 %d", got)
 	}
 	if got := hanzi.GetCharTier("和"); got != 0 {
 		t.Errorf("Tier<2 的字不应入内存，实得档位 %d", got)

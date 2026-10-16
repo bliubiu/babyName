@@ -32,7 +32,7 @@ const maxImportErrors = 20
 
 // ImportOptions 导入参数
 type ImportOptions struct {
-	// DataDir 物料源目录（含 namer.json / word.json / raw/kangxi-strokecount.csv 等）
+	// DataDir 物料源目录（含 namer.json / raw/kangxi-strokecount.csv 等）
 	DataDir string
 	// Materials 只导入指定物料；为空表示全部
 	Materials []string
@@ -40,6 +40,20 @@ type ImportOptions struct {
 	Lenient bool
 	// DryRun 只校验与统计，不写库
 	DryRun bool
+
+	// deps 本次导入流程预解析的跨物料依赖（docs/34 阶段 A2）
+	//
+	// 由 Import() 在分发前统一构建，各 importXxx 只读不写。目的是让
+	// importNamer 不再回读只读连接 s.db 取康熙笔画/频率档——「依赖物料已落库」
+	// 这个前提在部分导入、增量重灌、跨连接 WAL 可见性下都脆弱。
+	// 包外调用方无需设置（nil 时各 importXxx 退化为无依赖合并）。
+	deps *importDeps
+}
+
+// importDeps 导入流程内注入的已解析跨物料依赖
+type importDeps struct {
+	// kangxi 康熙笔画表（char → strokes），来自 kangxi-strokecount.csv
+	kangxi map[string]int
 }
 
 // ImportResult 单次导入的汇总结果
@@ -81,6 +95,10 @@ func (s *Store) Import(opt ImportOptions) (*ImportReport, error) {
 		}
 	}
 
+	// 预解析跨物料依赖：康熙笔画由源文件直接解析后注入，importNamer 不再回读库
+	// （docs/34 阶段 A2，见 importDeps 注释）。
+	opt.deps = s.resolveImportDeps(order, opt.DataDir)
+
 	report := &ImportReport{DryRun: opt.DryRun, StartedAt: time.Now().Format("2006-01-02 15:04:05")}
 	for _, name := range order {
 		def := schema.Registry[name]
@@ -95,7 +113,68 @@ func (s *Store) Import(opt ImportOptions) (*ImportReport, error) {
 			report.Written++
 		}
 	}
+
+	// name_freq_tier 单一来源归一化（docs/34 阶段 A3）：
+	// 以 name_frequency 表为唯一真源重算派生列，替代原先
+	// 「importNamer 回读 + importCharFreq UPDATE」两处维护。
+	// 无论哪一侧物料变更或被指纹短路跳过，派生链都不断。
+	if !opt.DryRun {
+		if err := s.syncNameFreqTier(); err != nil {
+			return nil, fmt.Errorf("归一化人名频率档位失败: %w", err)
+		}
+	}
 	return report, nil
+}
+
+// resolveImportDeps 预解析导入顺序中各物料对外暴露的依赖数据
+//
+// 只解析「被其它物料合并消费」的依赖（当前仅康熙笔画），解析失败不阻断——
+// 对应物料自身的 importXxx 会给出可归因的错误，此处留空 map 即可。
+func (s *Store) resolveImportDeps(order []string, dataDir string) *importDeps {
+	deps := &importDeps{kangxi: map[string]int{}}
+	for _, name := range order {
+		if name != schema.KangxiMaterial {
+			continue
+		}
+		def, ok := schema.Registry[name]
+		if !ok {
+			continue
+		}
+		src := filepath.Join(dataDir, filepath.FromSlash(def.Source))
+		if m, err := parseKangxiFile(src); err == nil {
+			deps.kangxi = m
+		}
+	}
+	return deps
+}
+
+// parseKangxiFile 解析康熙笔画 CSV 为 char → strokes 映射
+//
+// importKangxi 与 resolveImportDeps 共用同一解析入口，避免两份口径漂移。
+func parseKangxiFile(src string) (map[string]int, error) {
+	m, err := hanzi.ParseKangxiCSVFile(src)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]int, len(m))
+	for c, v := range m {
+		out[c] = normalize.Stroke(v)
+	}
+	return out, nil
+}
+
+// syncNameFreqTier 以 name_frequency 为唯一真源，归一化 hanzi_data.name_freq_tier
+//
+// 口径与 JSON 运行时路径一致：仅 Tier ≥ 2 回填（LoadFrequencyDB 过滤口径），
+// 其余置 0。单条 UPSERT 式 UPDATE 同时完成清零与回填，天然幂等（ADR-011）。
+func (s *Store) syncNameFreqTier() error {
+	_, err := s.writeDB.Exec(`UPDATE hanzi_data SET name_freq_tier = COALESCE(
+		(SELECT tier FROM name_frequency
+		 WHERE name_frequency.char = hanzi_data.char AND tier >= 2), 0)`)
+	if err != nil {
+		return fmt.Errorf("重算人名频率档位失败: %w", err)
+	}
+	return nil
 }
 
 // resolveMaterials 按名称过滤物料定义，并自动补齐依赖闭包
@@ -303,16 +382,16 @@ func mustJSON(v any) string {
 
 // importKangxi 导入康熙笔画
 func (s *Store) importKangxi(def schema.Definition, src string, res ImportResult, opt ImportOptions) ImportResult {
-	m, err := hanzi.ParseKangxiCSVFile(src)
+	m, err := parseKangxiFile(src)
 	if err != nil {
 		res.Err = err.Error()
 		return res
 	}
 	res.Version = "csv"
 
-	var items []schema.KangxiStroke
+	items := make([]schema.KangxiStroke, 0, len(m))
 	for c, v := range m {
-		items = append(items, schema.KangxiStroke{Char: c, Strokes: normalize.Stroke(v)})
+		items = append(items, schema.KangxiStroke{Char: c, Strokes: v})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Char < items[j].Char })
 
@@ -352,7 +431,7 @@ type namerJSON struct {
 	CharGroups []hanzi.StandardCharGroup `json:"charGroups"`
 }
 
-// importNamer 导入汉字表与偏旁分组（依赖康熙笔画做合并）
+// importNamer 导入汉字表与偏旁分组（康熙笔画由导入流程注入，不再回读库）
 func (s *Store) importNamer(def schema.Definition, src string, res ImportResult, opt ImportOptions) ImportResult {
 	raw, err := os.ReadFile(src)
 	if err != nil {
@@ -366,51 +445,28 @@ func (s *Store) importNamer(def schema.Definition, src string, res ImportResult,
 	}
 	res.Version = nj.Version + "@" + nj.Generated
 
-	// 康熙笔画合并（docs/31 §9.6 跨物料合并优先级：康熙只填该列，不动简体笔画）
+	// 康熙笔画合并（docs/31 §9.6 跨物料合并优先级：康熙只填该列，不动简体笔画）。
+	//
+	// 数据由 Import() 在分发前从源文件预解析后注入（docs/34 阶段 A2），不再回读
+	// 只读连接 s.db —— 回读隐含「依赖物料已落库 + WAL 跨连接可见」两个前提，
+	// 在部分导入与增量重灌下都脆弱。
 	kangxi := map[string]int{}
-	if err := s.db.QueryRow("SELECT COUNT(*) FROM kangxi_strokes").Scan(new(int)); err == nil {
-		rows, qerr := s.db.Query("SELECT char, strokes FROM kangxi_strokes")
-		if qerr == nil {
-			for rows.Next() {
-				var c string
-				var v int
-				if err := rows.Scan(&c, &v); err == nil {
-					kangxi[c] = v
-				}
-			}
-			_ = rows.Close()
+	if opt.deps != nil && len(opt.deps.kangxi) > 0 {
+		for c, v := range opt.deps.kangxi {
+			kangxi[c] = v
 		}
 	}
 
-	// 人名频率档位合并（docs/31 §9.6 步骤 4 / ADR-009）。
-	//
-	// 必须在此处从 name_frequency 表回读合并，而不能只依赖「频率物料导入时
-	// UPDATE hanzi_data」：若仅 namer.json 变更（频率源不变），本函数会重写全表
-	// name_freq_tier 为 namer 原值（namer.json 无该字段=0），而频率物料因指纹未变
-	// 被短路跳过、其 UPDATE 不再执行 → 档位被静默清零。回读合并后，无论哪一侧变更，
-	// 「库内频率表 → hanzi_data.name_freq_tier」这条派生链都不会断。
-	// 口径与 JSON 运行时路径一致：仅 Tier ≥ 2（LoadFrequencyDB 过滤口径）。
-	freqTier := map[string]int{}
-	if err := s.db.QueryRow("SELECT COUNT(*) FROM name_frequency").Scan(new(int)); err == nil {
-		rows, qerr := s.db.Query("SELECT char, tier FROM name_frequency")
-		if qerr == nil {
-			for rows.Next() {
-				var c string
-				var t int
-				if err := rows.Scan(&c, &t); err == nil && t >= 2 {
-					freqTier[c] = t
-				}
-			}
-			_ = rows.Close()
-		}
-	}
+	// name_freq_tier 不在此处合并：该列是 name_frequency 的派生列，由 Import()
+	// 末尾的 syncNameFreqTier 以库表为唯一真源统一归一化（docs/34 阶段 A3），
+	// 避免「importNamer 回读 + importCharFreq UPDATE」两处维护的口径漂移。
 
 	// 逐字归一：namer.json 实测仅 17 个字段
 	//   - 有真值：char/pinyin/strokes/radical/meaning/wuxing/gender/level/tone/
 	//     styleTags/usageLevel/positiveScore/isRare/isNegative/isPolyphonic/namePenalty/
 	//     namingCategories
 	//   - 无真值（保持零值，不得伪造）：phoneticScore/modernScore/classicalScore/
-	//     curationLevel/genderTags/pairBlacklist/nameFreqTier（后者由频率物料合并）
+	//     curationLevel/genderTags/pairBlacklist/nameFreqTier（后者由频率物料派生）
 	words := make([]schema.Word, 0, len(nj.Chars))
 	for _, nc := range nj.Chars {
 		// 五行必须走与内存装载路径同一套解析规则（hanzi.ResolveWuxing）：
@@ -425,7 +481,7 @@ func (s *Store) importNamer(def schema.Definition, src string, res ImportResult,
 			KangxiStrokes: kangxi[nc.Char],
 			Radical:       nc.Radical, Meaning: nc.Meaning, Wuxing: wuxing,
 			Level: nc.Level, Gender: normalize.Gender(nc.Gender),
-			Tone: nc.Tone, NameFreqTier: freqTier[nc.Char],
+			Tone: nc.Tone,
 			UsageLevel: nc.UsageLevel, PositiveScore: nc.PositiveScore,
 			NamePenalty:  nc.NamePenalty,
 			IsPolyphonic: nc.IsPolyphonic, IsRare: nc.IsRare, IsNegative: nc.IsNegative,
@@ -508,78 +564,6 @@ func wordValues(w schema.Word) []any {
 	}
 }
 
-// wordJSON word.json 的磁盘结构
-type wordJSON struct {
-	Word        string `json:"word"`
-	Explanation string `json:"explanation"`
-}
-
-// importWords 导入词典释义（取多字词的首字，首见即锁）
-func (s *Store) importWords(def schema.Definition, src string, res ImportResult, opt ImportOptions) ImportResult {
-	raw, err := os.ReadFile(src)
-	if err != nil {
-		res.Err = fmt.Sprintf("读取 %s 失败: %v", src, err)
-		return res
-	}
-	var entries []wordJSON
-	if err := json.Unmarshal(raw, &entries); err != nil {
-		res.Err = fmt.Sprintf("解析 %s 失败: %v", src, err)
-		return res
-	}
-	res.Version = fmt.Sprintf("%d-entries", len(entries))
-
-	// 首见即锁：按源文件顺序取首字，命中即不再覆盖（与运行时 hanzi.LoadWordData 同语义）
-	seen := make(map[string]bool)
-	items := make([]schema.Meaning, 0, len(entries))
-	for _, e := range entries {
-		w := strings.TrimSpace(e.Word)
-		if w == "" {
-			continue
-		}
-		r := []rune(w)
-		if len(r) == 0 {
-			continue
-		}
-		char := string(r[0])
-		if seen[char] {
-			continue
-		}
-		exp := normalize.Meaning(e.Explanation)
-		if exp == "" {
-			continue
-		}
-		seen[char] = true
-		items = append(items, schema.Meaning{Char: char, Explanation: exp})
-	}
-	sort.Slice(items, func(i, j int) bool { return items[i].Char < items[j].Char })
-
-	var errs validate.Errors
-	for _, m := range items {
-		errs = append(errs, validate.Meaning(def.Name, m)...)
-		if len(errs) >= maxImportErrors {
-			break
-		}
-	}
-	if msg := failValidate(errs, opt); msg != "" {
-		res.Err = msg
-		return res
-	}
-
-	return *s.runImport(def.Name, def.Tables, &res, opt, func(tx *sql.Tx) (int, error) {
-		stmt, err := tx.Prepare("INSERT INTO words(char, explanation) VALUES(?,?)")
-		if err != nil {
-			return 0, err
-		}
-		defer func() { _ = stmt.Close() }()
-		for _, m := range items {
-			if _, err := stmt.Exec(m.Char, m.Explanation); err != nil {
-				return 0, fmt.Errorf("写入释义 %s 失败: %w", m.Char, err)
-			}
-		}
-		return len(items), nil
-	})
-}
-
 // freqJSON 人名频率的磁盘结构
 type freqJSON struct {
 	Meta struct {
@@ -638,27 +622,9 @@ func (s *Store) importCharFreq(def schema.Definition, src string, res ImportResu
 			}
 		}
 
-		// 频率档回填（docs/31 §9.6 步骤4 / ADR-009）：namer.json 不含 nameFreqTier 真值，
-		// JSON 运行时路径靠 GetCharTier 事后合并；库路径必须由频率物料在导入期
-		// 把档位合并进 hanzi_data，落库即规范态，运行时读库无需再合并。
-		// 回填口径与 JSON 路径一致：仅 Tier ≥ 2（LoadFrequencyDB 的过滤口径）。
-		// 先清零再回填，保证重导入幂等（ADR-011）。
-		if _, err := tx.Exec("UPDATE hanzi_data SET name_freq_tier = 0"); err != nil {
-			return 0, fmt.Errorf("清零人名频率档位失败: %w", err)
-		}
-		upd, err := tx.Prepare("UPDATE hanzi_data SET name_freq_tier = ? WHERE char = ?")
-		if err != nil {
-			return 0, err
-		}
-		defer func() { _ = upd.Close() }()
-		for _, c := range items {
-			if c.Tier < 2 {
-				continue
-			}
-			if _, err := upd.Exec(c.Tier, c.Char); err != nil {
-				return 0, fmt.Errorf("回填人名频率档位 %s 失败: %w", c.Char, err)
-			}
-		}
+		// name_freq_tier 回填已收敛到 Import() 末尾的 syncNameFreqTier
+		// （docs/34 阶段 A3）：以 name_frequency 表为唯一真源单点归一化，
+		// 不再在本函数内 UPDATE hanzi_data，避免两处维护的口径漂移。
 		return len(items), nil
 	})
 }

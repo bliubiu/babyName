@@ -27,7 +27,6 @@ import (
 
 	"name/internal/application/services"
 	"name/internal/domain/fate"
-	"name/internal/domain/hanzi"
 	"name/internal/domain/name"
 	"name/internal/infrastructure/data"
 	"name/internal/infrastructure/logger"
@@ -159,7 +158,7 @@ func buildFlagOverrides() *Params {
 // generate 初始化数据与领域服务后执行生成
 // 装配顺序与 cmd/server/main.go 保持一致，确保 CLI 与 Web 链路行为相同：
 //
-//	data.Init（字表/易经/诗词/生肖）→ word.json → 同步起名索引
+//	data.Init（字表/易经/诗词/生肖）→ 同步起名索引
 //	→ 注入策展好名 → fate 引擎 + NameService
 func generate(req *services.GenerateRequest, dataDir string) (*services.GenerateWithAnalysisResponse, error) {
 	absDataDir, err := filepath.Abs(dataDir)
@@ -172,12 +171,7 @@ func generate(req *services.GenerateRequest, dataDir string) (*services.Generate
 		return nil, fmt.Errorf("加载文化数据失败（目录 %s）: %w", absDataDir, err)
 	}
 
-	// 2. 加载 word.json 释义（失败不阻断，仅部分字缺释义）
-	if loadErr := hanzi.LoadWordData(absDataDir); loadErr != nil {
-		fmt.Fprintf(os.Stderr, "警告: 加载 word.json 失败(忽略): %v\n", loadErr)
-	}
-
-	// 3. 日志初始化到文件，避免污染终端结果输出
+	// 2. 日志初始化到文件，避免污染终端结果输出
 	if logErr := logger.Init(&logger.Config{
 		Level:      "info",
 		Format:     "console",
@@ -187,7 +181,7 @@ func generate(req *services.GenerateRequest, dataDir string) (*services.Generate
 	}
 	defer logger.Sync()
 
-	// 4. 同步起名分类索引到 fate 层（前置条件）
+	// 3. 同步起名分类索引到 fate 层（前置条件）
 	services.SyncNamingIndexFromHanzi()
 
 	// 5. 注入策展好名到 fate 引擎（共现分白名单，与 server 一致）
