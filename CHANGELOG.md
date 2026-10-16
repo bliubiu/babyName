@@ -5,6 +5,27 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.16.1]
+
+**P0 `Material` 接口抽象**（`docs/31 §11.9` 第 3 项，`docs/32` M5）。
+
+### 📈 Improvements 性能/体验优化
+
+- 【物料管线】`importOne` 的 `switch` 硬编码改为 `materialRegistry` 注册表多态分发：
+  新增 `sqlite.Material` 接口（`Definition()` + `Import()`），已接入物料用方法表达式
+  （`(*Store).importKangxi` 等）登记，`classics`/`curated_names` 显式登记为 legacy 跳过。
+  `init` 按 `schema.Definitions` 逐项校验，未登记即 `panic`——新增物料漏登记从
+  「静默跳过」变为「启动期立即失败」。
+
+### 🧪 Tests 测试
+
+- 新增 `store_material_registry_test.go`：锁定「注册表 ↔ `schema.Definitions` 双射」、
+  注册名与 `Definition().Name` 一致、已接入物料不得登记为 legacy、legacy 物料跳过且给出原因。
+
+### 📚 Docs 文档更新
+
+- `docs/31 §11.9` 第 3 项、`docs/32` M5 状态更新为已完成。
+
 ## [2026.10.16.0]
 
 **物料管线模式一/模式二双链路验证 + 空库回落修复**（`docs/31` ADR-008/ADR-013、

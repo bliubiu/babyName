@@ -181,31 +181,13 @@ func (s *Store) importOne(def schema.Definition, opt ImportOptions) ImportResult
 		return res
 	}
 
-	// 解析 → 归一化 → 校验 → 写入
-	switch def.Name {
-	case schema.KangxiMaterial:
-		return s.importKangxi(def, src, res, opt)
-	case schema.NamerMaterial:
-		return s.importNamer(def, src, res, opt)
-	case schema.WordMaterial:
-		return s.importWords(def, src, res, opt)
-	case schema.FrequencyMaterial:
-		return s.importCharFreq(def, src, res, opt)
-	case schema.BigramMaterial:
-		return s.importBigram(def, src, res, opt)
-	case schema.GateMaterial:
-		return s.importGate(def, src, res, opt)
-	case schema.ForbiddenMaterial:
-		return s.importForbidden(def, src, res, opt)
-	case schema.YijingMaterial:
-		return s.importYijing(def, src, res, opt)
-	case schema.ZodiacMaterial:
-		return s.importZodiac(def, src, res, opt)
-	default:
-		res.Skipped = true
-		res.Reason = "该物料走既有导入路径（classics/curated），本阶段未接入统一导入器"
+	// 解析 → 归一化 → 校验 → 写入：按注册表多态分发（store_material_registry.go）
+	m, ok := materialRegistry[def.Name]
+	if !ok {
+		res.Err = fmt.Sprintf("物料 %s 未登记导入实现（见 store_material_registry.go）", def.Name)
 		return res
 	}
+	return m.Import(s, src, res, opt)
 }
 
 // materialUnchanged 判断库内记录的指纹是否与传入一致且表非空
