@@ -23,6 +23,7 @@ import (
 
 	"name/internal/infrastructure/database/sqlite"
 	"name/internal/materials/schema"
+	"name/internal/materials/subscribe"
 )
 
 func main() {
@@ -40,6 +41,14 @@ func main() {
 		err = runImport(args)
 	case "status":
 		err = runStatus(args)
+	case "lock-init":
+		err = runLockInit(args)
+	case "lock-verify":
+		err = runLockVerify(args)
+	case "lock-diff":
+		err = runLockDiff(args)
+	case "patch":
+		err = runPatch(args)
 	case "help", "-h", "--help":
 		printHelp()
 		return
@@ -61,6 +70,10 @@ func printHelp() {
 用法:
   materials import [选项]     从 JSON/CSV 源导入物料到 SQLite（归一化+校验+单事务写入）
   materials status  [选项]     列出各物料的版本、指纹与行数
+  materials lock-init [选项]   生成门禁物料订阅清单 materials.lock（上游源+产物指纹）
+  materials lock-verify [选项] 校验 materials.lock 中登记的产物指纹是否一致
+  materials lock-diff [选项]   对两版本文本行差分，生成 gate_patch.jsonl 补丁
+  materials patch [选项]       把补丁应用到 data 物料 JSON（--rollback 反向应用即回滚）
 
 import 选项:
   --data    string   物料源目录（默认 ./data）
@@ -72,10 +85,17 @@ import 选项:
 status 选项:
   --db      string   SQLite 库路径（默认 ./namer.db）
 
+订阅管线选项（docs/33 门禁层 M5）:
+  lock-init:   --data ./data --out ./data/materials.lock --version 1.0 [--source naming_gate=repo@commit,...]
+  lock-verify: --lock ./data/materials.lock --data ./data
+  lock-diff:   --old old.txt --new new.txt --material naming_gate [--kind combo] [--out patch.jsonl]
+  patch:       --file patch.jsonl --data ./data [--rollback]
+
 说明:
   · 写入语义为「单事务 DELETE + INSERT 全量重建」，同输入多次导入结果等价（ADR-011）
   · 指纹未变的物料会短路跳过，避免数十 MB 物料的无谓重灌（ADR-014）
   · 导入完成后运行时统一从 SQLite 读取，物料变更需重新 import 才生效
+  · 补丁为 append-only 的 JSONL 操作行；反向应用（Invert）即得回滚补丁
   · 物料清单: ` + strings.Join(schema.Names(), ", "))
 }
 
@@ -226,4 +246,157 @@ func printJSONReport(report *sqlite.ImportReport) {
 		return
 	}
 	fmt.Println(string(b))
+}
+
+// —— 订阅管线子命令（docs/33 门禁层 M5）——
+
+// runLockInit 生成门禁物料订阅清单
+func runLockInit(args []string) error {
+	fs := flag.NewFlagSet("lock-init", flag.ExitOnError)
+	dataDir := fs.String("data", "./data", "物料源目录")
+	out := fs.String("out", "./data/materials.lock", "lock 输出路径")
+	version := fs.String("version", "1.0", "lock 版本号")
+	sourceSpec := fs.String("source", "", "上游来源，格式 material=url,material=url")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	sources := make(map[string]string)
+	for _, kv := range splitList(*sourceSpec) {
+		if i := strings.Index(kv, "="); i > 0 {
+			sources[kv[:i]] = kv[i+1:]
+		}
+	}
+
+	lock, err := subscribe.BuildLock(*dataDir, *version, sources)
+	if err != nil {
+		return err
+	}
+	if err := subscribe.SaveLock(*out, lock); err != nil {
+		return err
+	}
+	fmt.Printf("已生成 %s：登记 %d 项门禁物料\n", *out, len(lock.Entries))
+	for _, e := range lock.Entries {
+		fmt.Printf("  %-20s %s  %s\n", e.Material, truncate(e.ArtifactSHA256, 16), e.Generated)
+	}
+	return nil
+}
+
+// runLockVerify 校验 lock 中登记的产物指纹
+func runLockVerify(args []string) error {
+	fs := flag.NewFlagSet("lock-verify", flag.ExitOnError)
+	lockPath := fs.String("lock", "./data/materials.lock", "lock 路径")
+	dataDir := fs.String("data", "./data", "物料源目录")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	lock, err := subscribe.LoadLock(*lockPath)
+	if err != nil {
+		return err
+	}
+	mismatches := lock.Verify(*dataDir)
+	if len(mismatches) == 0 {
+		fmt.Printf("lock 校验通过：%d 项物料指纹一致\n", len(lock.Entries))
+		return nil
+	}
+	fmt.Printf("lock 校验发现 %d 项不一致：\n", len(mismatches))
+	for _, m := range mismatches {
+		fmt.Printf("  %-20s %s  期望 %s 实际 %s\n", m.Material, m.Reason, truncate(m.Want, 16), truncate(m.Got, 16))
+	}
+	return fmt.Errorf("lock 校验未通过")
+}
+
+// runLockDiff 对两版本文本做行差分并生成补丁
+func runLockDiff(args []string) error {
+	fs := flag.NewFlagSet("lock-diff", flag.ExitOnError)
+	oldPath := fs.String("old", "", "旧版本文本（缺省视为空）")
+	newPath := fs.String("new", "", "新版本文本（每行一个条目）")
+	material := fs.String("material", "", "目标物料名")
+	kind := fs.String("kind", "", "条目类别（allowlist/compliance_redline 必填）")
+	out := fs.String("out", "", "补丁输出路径（缺省打印到标准输出）")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *newPath == "" || *material == "" {
+		return fmt.Errorf("必须指定 --new 与 --material")
+	}
+
+	oldLines, err := readLinesFile(*oldPath)
+	if err != nil {
+		return err
+	}
+	newLines, err := readLinesFile(*newPath)
+	if err != nil {
+		return err
+	}
+	d := subscribe.DiffLines(oldLines, newLines)
+	entries := subscribe.BuildPatch(*material, *kind, d)
+	b, err := subscribe.FormatPatch(entries)
+	if err != nil {
+		return err
+	}
+	if *out == "" {
+		fmt.Print(string(b))
+		return nil
+	}
+	if err := os.WriteFile(*out, b, 0o644); err != nil {
+		return fmt.Errorf("写入补丁失败: %w", err)
+	}
+	fmt.Printf("已生成补丁 %s：新增 %d / 移除 %d\n", *out, len(d.Added), len(d.Removed))
+	return nil
+}
+
+// runPatch 把补丁应用到 data 物料 JSON（--rollback 反向应用即回滚）
+func runPatch(args []string) error {
+	fs := flag.NewFlagSet("patch", flag.ExitOnError)
+	file := fs.String("file", "", "补丁文件（JSONL）")
+	dataDir := fs.String("data", "./data", "物料源目录")
+	rollback := fs.Bool("rollback", false, "反向应用补丁（回滚）")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *file == "" {
+		return fmt.Errorf("必须指定 --file")
+	}
+
+	b, err := os.ReadFile(*file)
+	if err != nil {
+		return fmt.Errorf("读取补丁失败: %w", err)
+	}
+	entries, err := subscribe.ParsePatch(b)
+	if err != nil {
+		return err
+	}
+	if *rollback {
+		entries = subscribe.Invert(entries)
+	}
+
+	byMaterial := make(map[string][]subscribe.PatchEntry)
+	var order []string
+	for _, e := range entries {
+		if _, ok := byMaterial[e.Material]; !ok {
+			order = append(order, e.Material)
+		}
+		byMaterial[e.Material] = append(byMaterial[e.Material], e)
+	}
+	for _, m := range order {
+		if err := subscribe.ApplyToFile(*dataDir, m, byMaterial[m]); err != nil {
+			return fmt.Errorf("应用物料 %s 失败: %w", m, err)
+		}
+		fmt.Printf("已应用物料 %s：%d 条操作\n", m, len(byMaterial[m]))
+	}
+	fmt.Println("提示: 数据文件已更新，请执行 materials import 使其生效。")
+	return nil
+}
+
+func readLinesFile(path string) ([]string, error) {
+	if path == "" {
+		return nil, nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("读取 %s 失败: %w", path, err)
+	}
+	return subscribe.ParseLines(string(b)), nil
 }

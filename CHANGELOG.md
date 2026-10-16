@@ -5,6 +5,33 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.16.7]
+
+**门禁层 M5：外部词库订阅管线（materials.lock + 行差分 + gate_patch）**（`docs/33` M5）。
+
+### ✨ New Features 新增功能
+
+- 【门禁层】新增 `internal/materials/subscribe` 订阅管线：`materials.lock` 登记门禁四物料
+  （`naming_gate`/`forbidden_combos`/`allowlist`/`compliance_redline`）的上游来源与产物 sha256，
+  支持 `BuildLock`/`LoadLock`/`SaveLock`/`Find`/`Verify`（逐条重算指纹并报告不一致）。
+- 【门禁层】行差分 `DiffLines`/`ParseLines`（去空白、去 `#` 注释、去重）与补丁
+  `PatchEntry`/`BuildPatch`/`ParsePatch`/`FormatPatch`（append-only JSONL，`op ∈ add|remove`）；
+  `Invert` 生成反向补丁即回滚。
+- 【门禁层】`ApplyToSet`（幂等）与 `ApplyToFile`：按物料分派写入 `[]string` 物料或
+  `allowlist`（chars/combos/blessings）、`compliance_redline`（state_orgs/places/persons）各 kind。
+- 【工具】`cmd/materials` 新增子命令 `lock-init` / `lock-verify` / `lock-diff` / `patch`（`--rollback` 回滚），
+  构成「上游更新 → 差分补丁 → 应用 → 重新 import」闭环。
+
+### 📚 Docs 文档更新
+
+- `docs/33` M5 状态更新为已完成并补落地记录。
+
+### 🧪 Tests 测试
+
+- 新增 `subscribe_test.go`：哈希 / 清单读写与校验 / 行差分 / 补丁构建·解析·格式化·反向 /
+  集合与文件应用（各 kind、非法 kind、未注册物料、缺失与 JSON 非法、只读写盘失败）/ 清单生成含跳过。
+- 新增 `backend/data/materials.lock` 种子（4 项门禁物料指纹，`git add -f` 入库）。
+
 ## [2026.10.16.6]
 
 **门禁层 M4：指标闭环（命中率/命中分布 + /metrics 端点）**（`docs/33` M4）。

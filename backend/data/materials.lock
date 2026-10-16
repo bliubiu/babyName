@@ -1,0 +1,30 @@
+{
+  "version": "2026.10.16",
+  "note": "门禁物料上游来源与产物指纹（docs/33 门禁层 M5）：可审计、可回滚。",
+  "entries": [
+    {
+      "material": "naming_gate",
+      "source": "",
+      "generated": "naming_quality.json",
+      "artifact_sha256": "87b74088051da6d2d5224d71c67f78aec9937f77c87fb260137f7e605ec69082"
+    },
+    {
+      "material": "forbidden_combos",
+      "source": "",
+      "generated": "forbidden_combos.json",
+      "artifact_sha256": "2d30f60348b6280927433aa64d76fb96fde6c671515004abe3ab1a937797ff46"
+    },
+    {
+      "material": "allowlist",
+      "source": "curated:M1",
+      "generated": "allowlist.json",
+      "artifact_sha256": "d1a76f8667cd4fb199da05c67ef6007512030b854c023699c20323d7a987eb43"
+    },
+    {
+      "material": "compliance_redline",
+      "source": "curated:M2",
+      "generated": "compliance_redline.json",
+      "artifact_sha256": "6e9aad967033c2405f0c0aadb859ce86f8c5c8bc4a5f878c2e6a7cdcab0be618"
+    }
+  ]
+}
