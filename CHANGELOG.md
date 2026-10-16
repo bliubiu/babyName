@@ -5,6 +5,33 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.16.5]
+
+**门禁层 M3：命中审计埋点（脱敏）+ gate_audit 扩展**（`docs/33` M3）。
+
+### ✨ New Features 新增功能
+
+- 【门禁层】新增门禁命中审计埋点 `fate.GateHit` / `fate.RecordGateHit`（`fate/audit.go`）：
+  结构化记录 来源 / 层级 / 类别 / 等级 / 名字 / 命中值 / 说明；`CheckBadPinyinCombo`（评分链路 L3）
+  与 `AssessNameRisks`（测名体检）命中点接入。
+- 【门禁层】埋点自带「全量计数 + 详情节流」：计数精确累加（`GateAuditTotal` / `GateAuditCounts`），
+  详情按 (层级, 类别, 等级, 命中值) 去重并按窗口节流（`GateAuditRecent`，环形容量 256），
+  保护双名 N² 评分热路径不被埋点拖慢。
+- 【门禁层】脱敏前置：写入前对 名字 / 命中值 / 说明 统一做 PII 掩码（身份证 / 邮箱 / 手机号 → `***`）。
+- 【门禁层】分层解耦：domain 只产出事件，基础设施 `internal/infrastructure/gateaudit.Install()`
+  注册 sink 落为结构化日志（`cmd/server` 启动装配）。
+- 【工具】`tools/gate_audit` 新增「D. 命中审计：门禁命中埋点快照」，展示命中总数、分类计数
+  与最近命中详情（已脱敏）。
+
+### 📚 Docs 文档更新
+
+- `docs/33` M3 状态更新为已完成并补落地记录；§七「审计日志」差距标注已落地。
+
+### 🧪 Tests 测试
+
+- 新增 `fate/audit_test.go`：脱敏掩码、计数 / 详情副本、节流、sink 注册与取消、时间保留、
+  环形封顶、重置、负窗口等；`audit.go` 全部函数与 `recordAssessHits` 覆盖率 100%。
+
 ## [2026.10.16.4]
 
 **门禁层 M2：L5 合规红线独立物料**（`docs/33` M2）。

@@ -22,6 +22,7 @@ import (
 	"name/internal/infrastructure/database"
 	"name/internal/infrastructure/database/memory"
 	"name/internal/infrastructure/database/sqlite"
+	"name/internal/infrastructure/gateaudit"
 	"name/internal/infrastructure/logger"
 	"name/internal/infrastructure/middleware"
 	"name/internal/infrastructure/server"
@@ -110,6 +111,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "警告: 日志系统初始化失败(%v)，使用标准输出\n", err)
 	}
 	defer logger.Sync()
+
+	// 注册门禁命中审计落地器（docs/33 M3）：命中事件写成结构化日志
+	gateaudit.Install()
 
 	// 初始化缓存（SQLite + 内存缓存，不使用 Redis）
 

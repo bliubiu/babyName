@@ -173,6 +173,7 @@ func main() {
 
 	if *staticOnly {
 		fmt.Println("\n（-static-only：已跳过动态对照）")
+		printGateAudit()
 		return
 	}
 
@@ -181,6 +182,7 @@ func main() {
 	fmt.Println(repeat("-", 96))
 	fmt.Println("B. 动态对照：启用门禁 vs 门禁置空，完整生成的差异")
 	fmt.Println(repeat("-", 96))
+	fate.ResetGateAudit()
 
 	for _, nlen := range []int{2, 1} {
 		label := fmt.Sprintf("%s 双名", *surname)
@@ -228,6 +230,39 @@ func main() {
 				fmt.Println("  → 虽然榜单有差异，但没有任何门禁字挤进 Top 榜，说明门禁表在本路径上已被其他防线取代。")
 			}
 		}
+	}
+
+	printGateAudit()
+}
+
+// printGateAudit 打印门禁命中埋点快照（docs/33 M3）。
+//
+// 数据来自领域层内存埋点：生成过程中的评分/体检命中经 fate.RecordGateHit 汇聚，
+// 这里展示分类计数与最近命中详情（详情已在领域层脱敏）。
+func printGateAudit() {
+	fmt.Println()
+	fmt.Println(repeat("-", 96))
+	fmt.Println("D. 命中审计：门禁命中埋点快照（docs/33 M3）")
+	fmt.Println(repeat("-", 96))
+	total := fate.GateAuditTotal()
+	fmt.Printf("  命中事件总数: %d\n", total)
+	if total == 0 {
+		fmt.Println("  （本次运行未产生命中埋点；-static-only 不跑生成时属正常）")
+		return
+	}
+	counts := fate.GateAuditCounts()
+	keys := make([]string, 0, len(counts))
+	for k := range counts {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	fmt.Println("  分类计数:")
+	for _, k := range keys {
+		fmt.Printf("    %-24s %d\n", k, counts[k])
+	}
+	fmt.Println("  最近命中（已脱敏）:")
+	for _, h := range fate.GateAuditRecent(5) {
+		fmt.Printf("    [%s/%s] %s %s → %s %s\n", h.Layer, h.Category, h.Level, h.Name, h.HitValue, h.Rule)
 	}
 }
 

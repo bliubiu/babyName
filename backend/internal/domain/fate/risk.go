@@ -50,6 +50,8 @@ func OverallRiskLevel(items []RiskItem) RiskLevel {
 // 未收录汉字不报错，而是作为 fail 项输出（测名场景下比直接 400 更有用）。
 func AssessNameRisks(provider CharacterProvider, surname, given string) []RiskItem {
 	items := make([]RiskItem, 0, 8)
+	// 体检结论统一在返回前写入命中审计（docs/33 M3）；items 由闭包按最终值读取
+	defer func() { recordAssessHits(surname, given, items) }()
 	given = strings.TrimSpace(given)
 	runes := []rune(given)
 	if len(runes) == 0 || len(runes) > 2 {
@@ -307,4 +309,24 @@ func AssessNameRisks(provider CharacterProvider, surname, given string) []RiskIt
 	}
 
 	return items
+}
+
+// recordAssessHits 把体检结论中的非通过项写入门禁命中审计（docs/33 M3）。
+//
+// 只记 warn/fail，pass 不算命中；名字是产物无 PII，仍交由 RecordGateHit 统一脱敏。
+func recordAssessHits(surname, given string, items []RiskItem) {
+	full := surname + given
+	for _, it := range items {
+		if it.Level == RiskPass {
+			continue
+		}
+		RecordGateHit(GateHit{
+			Source:   "测名体检",
+			Layer:    riskCategoryLayer(it.Category),
+			Category: it.Category,
+			Level:    string(it.Level),
+			Name:     full,
+			Rule:     it.Detail,
+		})
+	}
 }

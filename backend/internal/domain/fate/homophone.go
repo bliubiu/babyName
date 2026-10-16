@@ -607,7 +607,17 @@ func CheckBadPinyinCombo(surnamePinyin string, givenPinyins ...string) (bool, st
 		return false, ""
 	}
 	comboStr := strings.Join(BadPinyinCombos[best].Combo, "")
-	return true, "拼音连读「" + comboStr + "」" + BadPinyinCombos[best].Description
+	desc := BadPinyinCombos[best].Description
+	// 命中埋点（docs/33 M3）：评分链路 N² 高频调用，RecordGateHit 自带详情节流
+	RecordGateHit(GateHit{
+		Source:   "评分链路",
+		Layer:    "L3",
+		Category: "谐音连读",
+		Level:    string(RiskFail),
+		HitValue: comboStr,
+		Rule:     desc,
+	})
+	return true, "拼音连读「" + comboStr + "」" + desc
 }
 
 // ——— 热路径预编译索引 ———
