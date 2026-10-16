@@ -53,10 +53,15 @@ type LockEntry struct {
 }
 
 // Lock materials.lock 文档
+//
+// 两态（docs/33 门禁层 M7 / ADR-015）：
+//   - Entries：当前生效版本（active）；
+//   - Staging：候选版本（灰度暂存），缺省即「无候选」，兼容 M5 单态旧格式。
 type Lock struct {
 	Version string      `json:"version"`
 	Note    string      `json:"note,omitempty"`
 	Entries []LockEntry `json:"entries"`
+	Staging []LockEntry `json:"staging,omitempty"`
 }
 
 // LoadLock 读取 lock 文件
@@ -89,6 +94,57 @@ func (l *Lock) Find(material string) (LockEntry, bool) {
 		}
 	}
 	return LockEntry{}, false
+}
+
+// FindStaging 按物料名查候选条目
+func (l *Lock) FindStaging(material string) (LockEntry, bool) {
+	for _, e := range l.Staging {
+		if e.Material == material {
+			return e, true
+		}
+	}
+	return LockEntry{}, false
+}
+
+// SetStaging 登记/覆盖某物料的候选条目（同物料只保留最新候选）
+func (l *Lock) SetStaging(e LockEntry) {
+	for i := range l.Staging {
+		if l.Staging[i].Material == e.Material {
+			l.Staging[i] = e
+			return
+		}
+	}
+	l.Staging = append(l.Staging, e)
+}
+
+// RemoveStaging 移除某物料的候选，返回是否原本存在
+func (l *Lock) RemoveStaging(material string) bool {
+	for i := range l.Staging {
+		if l.Staging[i].Material == material {
+			l.Staging = append(l.Staging[:i], l.Staging[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+// UpsertEntry 登记/更新某物料的生效条目：仅更新指纹与产物路径，保留既有来源信息
+func (l *Lock) UpsertEntry(e LockEntry) {
+	for i := range l.Entries {
+		if l.Entries[i].Material == e.Material {
+			if e.ArtifactSHA256 != "" {
+				l.Entries[i].ArtifactSHA256 = e.ArtifactSHA256
+			}
+			if e.Generated != "" {
+				l.Entries[i].Generated = e.Generated
+			}
+			if e.Source != "" {
+				l.Entries[i].Source = e.Source
+			}
+			return
+		}
+	}
+	l.Entries = append(l.Entries, e)
 }
 
 // VerifyMismatch 指纹校验不一致项

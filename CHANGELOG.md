@@ -5,6 +5,38 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.16.11]
+
+**门禁层 M7：灰度发布（按物料整体 staging + 观察 + 回滚）**（`docs/33` M7 / `docs/31` ADR-015）。
+
+### ✨ New Features 新增功能
+
+- 【门禁层】`subscribe.Lock` 扩为两态：新增 `staging []LockEntry`（`json:"staging,omitempty"`，
+  缺省即单态旧格式，向后兼容），并增 `FindStaging`/`SetStaging`/`RemoveStaging`/`UpsertEntry`。
+- 【门禁层】新增 `internal/materials/subscribe/release.go`：
+  - `Stage`：候选按物料结构校验后落 `data/staging/<material>.json` + 写 lock 候选指纹 + 记 release；
+  - `Observe`：复用 M5 `DiffLines` 出差分预演（`Current`/`Candidate` 双指纹 + 新增/移除条目）；
+  - `Promote`：当前 active 存档到 `data/history/<material>/<sha>.json` → 候选覆盖生效路径
+    → 更新 lock.active 并清候选；
+  - `Abort`：无 `--to` 丢弃候选；`--to <sha>` 从存档回退 active（粒度=整物料）；
+  - 每次动作追加一条 append-only `data/release.jsonl`（可审计、可回滚）。
+- 【门禁层】`cmd/materials` 新增 `stage`/`observe`/`promote`/`abort` 子命令
+  （`--material`/`--from`/`--to`/`--operator`/`--source`/`--lock`/`--limit`）并更新帮助文本。
+
+### 📚 Docs 文档更新
+
+- `docs/33` M7 状态更新为已完成并补落地记录；§十二 状态改为「已落地」、勾选待实现清单、
+  `observe` 参数对齐实现；§六/§七/「一句话」标注 **M0~M8 全部落地**。
+
+### 🧪 Tests 测试
+
+- 新增 `internal/materials/subscribe/release_test.go`：两态 lock 往返与旧格式兼容、
+  `stage→observe→promote`、`abort` 丢弃、`abort --to` 回退、`release.jsonl` append，
+  以及 lock 缺失/物料与候选脏读/归档与日志路径占用/只读 lock 等错误路径；
+  release.go 新增函数覆盖率 100%（不可达防御分支除外）。
+- 演练：`lock-init → stage → observe → promote → stage → promote → abort --to` 全流程通过；
+  全量 `go build/vet/test` 与 `e2e_check -strict` 全绿。
+
 ## [2026.10.16.10]
 
 **门禁层 M8：匹配性能（Aho-Corasick 多模式匹配，替换合规红线线性扫描）**（`docs/33` M8）。

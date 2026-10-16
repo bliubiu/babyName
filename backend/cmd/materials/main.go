@@ -51,6 +51,14 @@ func main() {
 		err = runLockDiff(args)
 	case "patch":
 		err = runPatch(args)
+	case "stage":
+		err = runStage(args)
+	case "observe":
+		err = runObserve(args)
+	case "promote":
+		err = runPromote(args)
+	case "abort":
+		err = runAbort(args)
 	case "review":
 		err = runReview(args)
 	case "help", "-h", "--help":
@@ -78,6 +86,10 @@ func printHelp() {
   materials lock-verify [选项] 校验 materials.lock 中登记的产物指纹是否一致
   materials lock-diff [选项]   对两版本文本行差分，生成 gate_patch.jsonl 补丁
   materials patch [选项]       把补丁应用到 data 物料 JSON（--rollback 反向应用即回滚）
+  materials stage [选项]       登记物料候选版本（灰度暂存，docs/33 M7）
+  materials observe [选项]     查看候选相对生效版本的差异预演（不改变状态）
+  materials promote [选项]     把候选提升为生效版本（旧版自动存档，可回退）
+  materials abort [选项]       丢弃候选，或 --to <指纹> 回退生效版本
   materials review [子命令]    门禁复审队列（docs/33 M6）：list | decide | export
 
 import 选项:
@@ -95,6 +107,12 @@ status 选项:
   lock-verify: --lock ./data/materials.lock --data ./data
   lock-diff:   --old old.txt --new new.txt --material naming_gate [--kind combo] [--out patch.jsonl]
   patch:       --file patch.jsonl --data ./data [--rollback]
+
+灰度发布选项（docs/33 门禁层 M7 / ADR-015，切分粒度=物料整体）:
+  stage:    --material allowlist --from ./candidate.json --data ./data [--lock ./data/materials.lock] [--source 说明]
+  observe:  --material allowlist --data ./data [--lock ./data/materials.lock] [--limit 20]
+  promote:  --material allowlist --data ./data [--lock ./data/materials.lock]
+  abort:    --material allowlist --data ./data [--lock ./data/materials.lock] [--to <指纹>]
 
 复审队列选项（docs/33 门禁层 M6）:
   review list:   --db ./namer.db [--status pending|confirmed|false_positive|border] [--limit N]
@@ -409,6 +427,124 @@ func readLinesFile(path string) ([]string, error) {
 		return nil, fmt.Errorf("读取 %s 失败: %w", path, err)
 	}
 	return subscribe.ParseLines(string(b)), nil
+}
+
+// —— 灰度发布子命令（docs/33 门禁层 M7 / ADR-015）——
+
+// runStage 登记物料候选版本（灰度暂存）
+func runStage(args []string) error {
+	fs := flag.NewFlagSet("stage", flag.ExitOnError)
+	dataDir := fs.String("data", "./data", "物料源目录")
+	lockPath := fs.String("lock", "./data/materials.lock", "lock 路径")
+	material := fs.String("material", "", "目标物料名")
+	from := fs.String("from", "", "候选文件路径（JSON）")
+	source := fs.String("source", "", "候选来源说明")
+	operator := fs.String("operator", "", "操作者标识")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *material == "" || *from == "" {
+		return fmt.Errorf("必须指定 --material 与 --from")
+	}
+	rec, err := subscribe.Stage(*dataDir, *lockPath, *material, *from, *source, *operator)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("已登记候选：%s  指纹 %s  （%s）\n", rec.Material, truncate(rec.To, 16), rec.Time)
+	fmt.Println("提示: 执行 materials observe 查看差异预演，promote 提升生效，abort 丢弃候选。")
+	return nil
+}
+
+// runObserve 查看候选相对生效版本的差异预演
+func runObserve(args []string) error {
+	fs := flag.NewFlagSet("observe", flag.ExitOnError)
+	dataDir := fs.String("data", "./data", "物料源目录")
+	lockPath := fs.String("lock", "./data/materials.lock", "lock 路径")
+	material := fs.String("material", "", "目标物料名")
+	limit := fs.Int("limit", 20, "每类差异最多显示条数（0=全部）")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *material == "" {
+		return fmt.Errorf("必须指定 --material")
+	}
+	diff, err := subscribe.Observe(*dataDir, *lockPath, *material)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("=== %s 候选预演 ===\n", diff.Material)
+	fmt.Printf("生效指纹: %s\n候选指纹: %s\n", truncate(diff.Current, 16), truncate(diff.Candidate, 16))
+	fmt.Printf("新增 %d 条 / 移除 %d 条\n", len(diff.Added), len(diff.Removed))
+	printEntries("+ 新增", diff.Added, *limit)
+	printEntries("- 移除", diff.Removed, *limit)
+	return nil
+}
+
+// printEntries 打印条目明细（超限时提示省略数量）
+func printEntries(title string, items []string, limit int) {
+	if len(items) == 0 {
+		return
+	}
+	fmt.Printf("%s:\n", title)
+	shown := items
+	if limit > 0 && len(items) > limit {
+		shown = items[:limit]
+	}
+	for _, s := range shown {
+		fmt.Printf("    %s\n", s)
+	}
+	if len(shown) < len(items) {
+		fmt.Printf("    ...（其余 %d 条省略）\n", len(items)-len(shown))
+	}
+}
+
+// runPromote 把候选提升为生效版本
+func runPromote(args []string) error {
+	fs := flag.NewFlagSet("promote", flag.ExitOnError)
+	dataDir := fs.String("data", "./data", "物料源目录")
+	lockPath := fs.String("lock", "./data/materials.lock", "lock 路径")
+	material := fs.String("material", "", "目标物料名")
+	operator := fs.String("operator", "", "操作者标识")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *material == "" {
+		return fmt.Errorf("必须指定 --material")
+	}
+	rec, err := subscribe.Promote(*dataDir, *lockPath, *material, *operator)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("已提升生效：%s  %s → %s\n", rec.Material, truncate(rec.From, 16), truncate(rec.To, 16))
+	fmt.Println("提示: 数据文件已更新，请执行 materials import 使其生效；回退执行 materials abort --to <旧指纹>。")
+	return nil
+}
+
+// runAbort 丢弃候选，或 --to <指纹> 回退生效版本
+func runAbort(args []string) error {
+	fs := flag.NewFlagSet("abort", flag.ExitOnError)
+	dataDir := fs.String("data", "./data", "物料源目录")
+	lockPath := fs.String("lock", "./data/materials.lock", "lock 路径")
+	material := fs.String("material", "", "目标物料名")
+	to := fs.String("to", "", "回退到该指纹（缺省仅丢弃候选）")
+	operator := fs.String("operator", "", "操作者标识")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *material == "" {
+		return fmt.Errorf("必须指定 --material")
+	}
+	rec, err := subscribe.Abort(*dataDir, *lockPath, *material, *to, *operator)
+	if err != nil {
+		return err
+	}
+	if rec.To == "" {
+		fmt.Printf("已丢弃候选：%s\n", rec.Material)
+		return nil
+	}
+	fmt.Printf("已回退：%s  %s → %s\n", rec.Material, truncate(rec.From, 16), truncate(rec.To, 16))
+	fmt.Println("提示: 数据文件已更新，请执行 materials import 使其生效。")
+	return nil
 }
 
 // —— 复审队列子命令（docs/33 门禁层 M6）——
