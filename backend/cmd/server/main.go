@@ -303,6 +303,14 @@ func newServices(store database.Store, dataDir string) *appServices {
 	if ndb := nameSvc.GetNameDB(); ndb != nil {
 		favSvc.SetNameDB(ndb)
 	}
+	// 门禁复审回流（docs/33 M6）：收藏是隐式正反馈，把名字登记为复审候选
+	if r, ok := store.(services.GateReviewRecorder); ok {
+		favSvc.SetGateReviewRecorder(r)
+	}
+	// 门禁指标闭环（docs/33 M4/M6）：注入复审统计作为误报率/漏报率/复审时长的真实数据源
+	if p, ok := store.(fate.GateMetricProvider); ok {
+		fate.SetGateMetricProvider(p)
+	}
 
 	return &appServices{
 		name:     nameSvc,

@@ -10,11 +10,18 @@ import (
 	"go.uber.org/zap"
 )
 
+// GateReviewRecorder 门禁复审候选记录端口（docs/33 M6）：由基础设施实现。
+// 收藏是隐式正反馈——被收藏的名字进复审队列，供人审判定误报/违规。
+type GateReviewRecorder interface {
+	RecordFavoriteCandidate(surname, givenName string)
+}
+
 // FavoriteService 收藏服务
 type FavoriteService struct {
 	store        database.FavoriteStore
 	curatedStore database.CuratedStore // 持久化层，用于自学习
 	nameDB       *name.NameDB          // 内存索引，用于实时生效
+	reviewer     GateReviewRecorder    // 门禁复审候选记录器（可选，docs/33 M6）
 }
 
 // NewFavoriteService 创建收藏服务
@@ -26,6 +33,11 @@ func NewFavoriteService(store database.FavoriteStore) *FavoriteService {
 // SetNameDB 设置 NameDB（自学习实时生效需要）
 func (s *FavoriteService) SetNameDB(db *name.NameDB) {
 	s.nameDB = db
+}
+
+// SetGateReviewRecorder 注入门禁复审候选记录器（可选；nil 表示不回流）
+func (s *FavoriteService) SetGateReviewRecorder(r GateReviewRecorder) {
+	s.reviewer = r
 }
 
 // FavoriteRecord 收藏记录
@@ -123,6 +135,12 @@ func (s *FavoriteService) SaveFavorite(ctx context.Context, record *FavoriteReco
 				logger.Warn("收藏自学习：持久化精选名失败", zap.String("name", fullName), zap.Error(err))
 			}
 		}
+	}
+
+	// bad-case 回流闭环（docs/33 M6）：收藏是隐式正反馈，登记为复审候选。
+	// 记录器为可选端口，缺失时静默跳过；失败由实现侧告警、不阻断收藏。
+	if s.reviewer != nil {
+		s.reviewer.RecordFavoriteCandidate(record.Surname, record.GivenName)
 	}
 
 	return id, nil

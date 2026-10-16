@@ -21,7 +21,9 @@ import (
 	"strings"
 	"time"
 
+	"name/internal/domain/fate"
 	"name/internal/infrastructure/database/sqlite"
+	"name/internal/materials/review"
 	"name/internal/materials/schema"
 	"name/internal/materials/subscribe"
 )
@@ -49,6 +51,8 @@ func main() {
 		err = runLockDiff(args)
 	case "patch":
 		err = runPatch(args)
+	case "review":
+		err = runReview(args)
 	case "help", "-h", "--help":
 		printHelp()
 		return
@@ -74,6 +78,7 @@ func printHelp() {
   materials lock-verify [选项] 校验 materials.lock 中登记的产物指纹是否一致
   materials lock-diff [选项]   对两版本文本行差分，生成 gate_patch.jsonl 补丁
   materials patch [选项]       把补丁应用到 data 物料 JSON（--rollback 反向应用即回滚）
+  materials review [子命令]    门禁复审队列（docs/33 M6）：list | decide | export
 
 import 选项:
   --data    string   物料源目录（默认 ./data）
@@ -90,6 +95,11 @@ status 选项:
   lock-verify: --lock ./data/materials.lock --data ./data
   lock-diff:   --old old.txt --new new.txt --material naming_gate [--kind combo] [--out patch.jsonl]
   patch:       --file patch.jsonl --data ./data [--rollback]
+
+复审队列选项（docs/33 门禁层 M6）:
+  review list:   --db ./namer.db [--status pending|confirmed|false_positive|border] [--limit N]
+  review decide: --db ./namer.db --id <条目ID> --status confirmed|false_positive|border [--note 备注]
+  review export: --db ./namer.db [--out gate_patch.jsonl]   # 已落定条目 → gate_patch 补丁
 
 说明:
   · 写入语义为「单事务 DELETE + INSERT 全量重建」，同输入多次导入结果等价（ADR-011）
@@ -399,4 +409,134 @@ func readLinesFile(path string) ([]string, error) {
 		return nil, fmt.Errorf("读取 %s 失败: %w", path, err)
 	}
 	return subscribe.ParseLines(string(b)), nil
+}
+
+// —— 复审队列子命令（docs/33 门禁层 M6）——
+
+// runReview 分发 review 子命令：list | decide | export
+func runReview(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("review 需要子命令: list | decide | export")
+	}
+	sub, rest := args[0], args[1:]
+	switch sub {
+	case "list":
+		return runReviewList(rest)
+	case "decide":
+		return runReviewDecide(rest)
+	case "export":
+		return runReviewExport(rest)
+	default:
+		return fmt.Errorf("未知 review 子命令: %s（可用 list | decide | export）", sub)
+	}
+}
+
+// runReviewList 列出复审候选
+func runReviewList(args []string) error {
+	fs := flag.NewFlagSet("review list", flag.ExitOnError)
+	dbPath := fs.String("db", "./namer.db", "SQLite 库路径")
+	status := fs.String("status", "", "按状态过滤：pending|confirmed|false_positive|border（缺省全部）")
+	limit := fs.Int("limit", 0, "最多显示条数（0=全部）")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *status != "" && !fate.ValidReviewStatus(fate.ReviewStatus(*status)) {
+		return fmt.Errorf("非法状态: %s", *status)
+	}
+
+	store, err := openStore(*dbPath, "", true)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = store.Close() }()
+
+	items, err := store.ListGateReviews(fate.ReviewStatus(*status), *limit)
+	if err != nil {
+		return err
+	}
+	if len(items) == 0 {
+		fmt.Println("(无复审条目)")
+		return nil
+	}
+	fmt.Printf("%-38s %-14s %-12s %-8s %-14s %s\n", "ID", "状态", "名字", "层级", "类别", "命中值")
+	fmt.Println(strings.Repeat("-", 96))
+	for _, it := range items {
+		fmt.Printf("%-38s %-14s %-12s %-8s %-14s %s\n",
+			it.ID, it.Status, it.Name, it.Layer, truncate(it.Category, 14), it.HitValue)
+	}
+	return nil
+}
+
+// runReviewDecide 落定一条复审结论
+func runReviewDecide(args []string) error {
+	fs := flag.NewFlagSet("review decide", flag.ExitOnError)
+	dbPath := fs.String("db", "./namer.db", "SQLite 库路径")
+	id := fs.String("id", "", "复审条目 ID")
+	status := fs.String("status", "", "结论：confirmed|false_positive|border")
+	note := fs.String("note", "", "备注")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *id == "" || *status == "" {
+		return fmt.Errorf("必须指定 --id 与 --status")
+	}
+	if !fate.ValidReviewStatus(fate.ReviewStatus(*status)) || *status == string(fate.ReviewPending) {
+		return fmt.Errorf("非法结论: %s（可用 confirmed|false_positive|border）", *status)
+	}
+
+	store, err := openStore(*dbPath, "", true)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = store.Close() }()
+
+	if err := store.DecideGateReview(*id, fate.ReviewStatus(*status), *note); err != nil {
+		return err
+	}
+	fmt.Printf("已落定复审 %s → %s\n", *id, *status)
+	return nil
+}
+
+// runReviewExport 把已落定条目导出为 gate_patch.jsonl
+func runReviewExport(args []string) error {
+	fs := flag.NewFlagSet("review export", flag.ExitOnError)
+	dbPath := fs.String("db", "./namer.db", "SQLite 库路径")
+	out := fs.String("out", "", "补丁输出路径（缺省打印到标准输出）")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	store, err := openStore(*dbPath, "", true)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = store.Close() }()
+
+	var items []fate.ReviewItem
+	for _, st := range []fate.ReviewStatus{fate.ReviewConfirmed, fate.ReviewFalsePositive} {
+		got, err := store.ListGateReviews(st, 0)
+		if err != nil {
+			return err
+		}
+		items = append(items, got...)
+	}
+	fate.SortReviews(items)
+
+	entries, err := review.ToPatch(items)
+	if err != nil {
+		return err
+	}
+	b, err := subscribe.FormatPatch(entries)
+	if err != nil {
+		return err
+	}
+	if *out == "" {
+		fmt.Print(string(b))
+		return nil
+	}
+	if err := os.WriteFile(*out, b, 0o644); err != nil {
+		return fmt.Errorf("写入补丁失败: %w", err)
+	}
+	fmt.Printf("已导出补丁 %s：共 %d 条（已落定 %d 条）\n", *out, len(entries), len(items))
+	return nil
 }

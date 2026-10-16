@@ -5,6 +5,39 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.16.8]
+
+**门禁层 M6：bad-case 回流闭环（gate_review 状态机 + 收藏回流 + gate_patch 导出）**（`docs/33` M6）。
+
+### ✨ New Features 新增功能
+
+- 【门禁层】新增 `fate/review.go`：复审状态机 `ReviewStatus`
+  （`pending`/`confirmed`/`false_positive`/`border`）、`ValidReviewStatus`/`CanDecide`/`ReviewKey`，
+  指标口径 `ReviewMetrics`（`Reviewed`/`FalsePositiveRate`/`SampleMissRate`/`ReviewLatencyMs`）、
+  `TallyReviews`/`SortReviews`。
+- 【门禁层】新增 `gate_review` 表与 `sqlite/store_gate_review.go`：`AddGateReview`（唯一键
+  `name+layer+category+hit_value` 幂等）、`ListGateReviews`、`DecideGateReview`（仅 pending 可落定）、
+  `GateReviewStats`、`GateReviewLatencyMs`；`Store` 实现 `fate.GateMetricProvider`
+  （误报率 / 漏报代理 / 复审时长），`GET /metrics` 的 `gate_*` 变为真实数据。
+- 【门禁层】收藏回流：application 端口 `services.GateReviewRecorder` + `SetGateReviewRecorder`；
+  `FavoriteService.SaveFavorite` 落库成功后登记收藏正样本候选（未注入 no-op，已存在收藏不重复登记），
+  `cmd/server` 注入。
+- 【工具】新增 `internal/materials/review.ToPatch`：已落定复审条目 → `gate_patch`（confirmed →
+  增补 `naming_gate`/`forbidden_combos`；false_positive → `allowlist` char/combo；border/pending 跳过）。
+- 【工具】`cmd/materials` 新增子命令 `review`（`list` / `decide` / `export`），串起
+  「线上命中 / 收藏 → 人审 → gate_patch → materials patch → 重导入」回流闭环。
+
+### 📚 Docs 文档更新
+
+- `docs/33` M6 状态更新为已完成并补落地记录；§六指标闭环/误伤治理、§七外部回流·误报漏报指标差距标注已落地。
+
+### 🧪 Tests 测试
+
+- 新增 `fate/review_test.go`、`sqlite/store_gate_review_test.go`、`internal/materials/review/export_test.go`；
+  `favorite_service_test.go` 追加「回流转录 / 未注入 / 已存在 / 写失败不回流」用例。
+- domain 与 review 包新增函数覆盖率 100%（sqlite 侧错误/防御分支除外）；
+  「收藏 → pending → decide → export → patch → 回滚」端到端闭环演练通过。
+
 ## [2026.10.16.7]
 
 **门禁层 M5：外部词库订阅管线（materials.lock + 行差分 + gate_patch）**（`docs/33` M5）。

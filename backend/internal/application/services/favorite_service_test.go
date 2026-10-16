@@ -294,3 +294,79 @@ func TestSaveFavorite_WriteFailurePropagates(t *testing.T) {
 		t.Errorf("收藏失败时不应调用精选库保存，实际 %d 次", store.curatedCalls)
 	}
 }
+
+// mockReviewRecorder 记录门禁复审回流调用（docs/33 M6）
+type mockReviewRecorder struct {
+	calls [][2]string
+}
+
+func (m *mockReviewRecorder) RecordFavoriteCandidate(surname, givenName string) {
+	m.calls = append(m.calls, [2]string{surname, givenName})
+}
+
+// TestSaveFavorite_触发门禁复审回流 收藏成功后应把名字登记为复审候选
+func TestSaveFavorite_触发门禁复审回流(t *testing.T) {
+	svc := NewFavoriteService(&mockFavoriteStore{})
+	rec := &mockReviewRecorder{}
+	svc.SetGateReviewRecorder(rec)
+
+	if _, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
+		Surname: "张", GivenName: "珀熙", Score: 90,
+	}); err != nil {
+		t.Fatalf("SaveFavorite 出错: %v", err)
+	}
+	if len(rec.calls) != 1 || rec.calls[0] != [2]string{"张", "珀熙"} {
+		t.Fatalf("应回流一次收藏候选，实得 %+v", rec.calls)
+	}
+}
+
+// TestSaveFavorite_未注入记录器不panic 未注入记录器时收藏应正常
+func TestSaveFavorite_未注入记录器不panic(t *testing.T) {
+	svc := NewFavoriteService(&mockFavoriteStore{})
+	if _, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
+		Surname: "李", GivenName: "明轩", Score: 85,
+	}); err != nil {
+		t.Fatalf("未注入记录器时收藏应正常: %v", err)
+	}
+}
+
+// TestSaveFavorite_已存在不回流 重复收藏（返回原 ID）不应再次回流
+func TestSaveFavorite_已存在不回流(t *testing.T) {
+	store := &mockFavoriteStore{}
+	store.favorites = append(store.favorites, &database.FavoriteRecord{
+		ID: "existing-id", Surname: "王", GivenName: "涵",
+	})
+	svc := NewFavoriteService(store)
+	rec := &mockReviewRecorder{}
+	svc.SetGateReviewRecorder(rec)
+
+	id, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
+		Surname: "王", GivenName: "涵", Score: 90,
+	})
+	if err != nil {
+		t.Fatalf("SaveFavorite 出错: %v", err)
+	}
+	if id != "existing-id" {
+		t.Fatalf("应返回已存在 ID，实得 %q", id)
+	}
+	if len(rec.calls) != 0 {
+		t.Fatalf("已存在收藏不应回流，实得 %+v", rec.calls)
+	}
+}
+
+// TestSaveFavorite_写库失败不回流 收藏失败不得登记复审候选
+func TestSaveFavorite_写库失败不回流(t *testing.T) {
+	store := &mockFavoriteStore{saveErr: errors.New("disk I/O error")}
+	svc := NewFavoriteService(store)
+	rec := &mockReviewRecorder{}
+	svc.SetGateReviewRecorder(rec)
+
+	if _, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
+		Surname: "李", GivenName: "明轩", Score: 95,
+	}); err == nil {
+		t.Fatal("写库失败应返回错误")
+	}
+	if len(rec.calls) != 0 {
+		t.Fatalf("收藏失败不应回流，实得 %+v", rec.calls)
+	}
+}

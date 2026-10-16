@@ -295,6 +295,25 @@ func createTables(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_hanzi_data_strokes ON hanzi_data(strokes)`,
 		`CREATE INDEX IF NOT EXISTS idx_hanzi_data_pinyin ON hanzi_data(pinyin)`,
 		`CREATE INDEX IF NOT EXISTS idx_hanzi_data_level ON hanzi_data(level)`,
+
+		// 门禁复审队列（docs/33 门禁层 M6）：bad-case 回流闭环的人审状态机。
+		// status ∈ pending（待复审）/ confirmed（确认违规）/ false_positive（误报）/
+		// border（边界）；key 为 名字+层级+类别+命中值，保证候选幂等去重。
+		`CREATE TABLE IF NOT EXISTS gate_review (
+			id          TEXT PRIMARY KEY,
+			name        TEXT NOT NULL DEFAULT '',
+			layer       TEXT NOT NULL DEFAULT '',
+			category    TEXT NOT NULL DEFAULT '',
+			level       TEXT NOT NULL DEFAULT '',
+			hit_value   TEXT NOT NULL DEFAULT '',
+			status      TEXT NOT NULL DEFAULT 'pending',
+			note        TEXT NOT NULL DEFAULT '',
+			created_at  TIMESTAMP NOT NULL,
+			reviewed_at TIMESTAMP
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_gate_review_key
+			ON gate_review(name, layer, category, hit_value)`,
+		`CREATE INDEX IF NOT EXISTS idx_gate_review_status ON gate_review(status)`,
 	}
 
 	for _, q := range queries {
