@@ -311,15 +311,18 @@ func AssessNameRisks(provider CharacterProvider, surname, given string) []RiskIt
 	return items
 }
 
-// recordAssessHits 把体检结论中的非通过项写入门禁命中审计（docs/33 M3）。
+// recordAssessHits 把体检结论中的非通过项写入门禁命中审计（docs/33 M3），
+// 并记录一次门禁评估（docs/33 M4，供命中率指标）。
 //
 // 只记 warn/fail，pass 不算命中；名字是产物无 PII，仍交由 RecordGateHit 统一脱敏。
 func recordAssessHits(surname, given string, items []RiskItem) {
 	full := surname + given
+	hit := false
 	for _, it := range items {
 		if it.Level == RiskPass {
 			continue
 		}
+		hit = true
 		RecordGateHit(GateHit{
 			Source:   "测名体检",
 			Layer:    riskCategoryLayer(it.Category),
@@ -329,4 +332,5 @@ func recordAssessHits(surname, given string, items []RiskItem) {
 			Rule:     it.Detail,
 		})
 	}
+	RecordGateEvaluation(hit)
 }

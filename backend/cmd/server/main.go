@@ -387,6 +387,11 @@ func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store
 		c.JSON(503, gin.H{"status": "not ready", "db": "disconnected"})
 	})
 
+	// 门禁指标端点（docs/33 M4）：命中率 / 命中分布 + 复审闭环指标（数据源 M6）
+	router.GET("/metrics", func(c *gin.Context) {
+		c.JSON(200, fate.GateMetricsSnapshot())
+	})
+
 	// API 路由
 	api := router.Group("/api/v1")
 	{

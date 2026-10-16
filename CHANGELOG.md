@@ -5,6 +5,29 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.16.6]
+
+**门禁层 M4：指标闭环（命中率/命中分布 + /metrics 端点）**（`docs/33` M4）。
+
+### ✨ New Features 新增功能
+
+- 【门禁层】新增 `fate/gatemetrics.go`：指标快照 `GateMetrics`（评估次数 / 命中评估数 /
+  命中率 / 命中事件数 / 分层·等级·类别分布 / 误报率 / 抽样漏报率 / 复审时长）。
+- 【门禁层】`RecordGateEvaluation(hit bool)` 记录一次门禁评估，由 `AssessNameRisks`
+  （经 `recordAssessHits`）调用；命中率 = 命中评估数 / 评估数（分母为 0 时取 0）。
+- 【门禁层】`GateMetricProvider` + `SetGateMetricProvider`：误报率 / 抽样漏报率 / 复审时长
+  的来源注入点，未注册时以 0 暴露，待 M6 复审闭环接入真实数据。
+- 【接口】`cmd/server` 新增 `GET /metrics`，返回 `fate.GateMetricsSnapshot()`（JSON，`gate_*` 字段）。
+
+### 📚 Docs 文档更新
+
+- `docs/33` M4 状态更新为已完成并补落地记录；§六指标闭环、§七误报/漏报指标差距标注已落地。
+
+### 🧪 Tests 测试
+
+- 新增 `fate/gatemetrics_test.go`：命中率、空快照、命中分布、指标来源注入与注销、重置、
+  `recordAssessHits` 命中/未命中两分支、真实体检路径评估计数；`gatemetrics.go` 全部函数覆盖率 100%。
+
 ## [2026.10.16.5]
 
 **门禁层 M3：命中审计埋点（脱敏）+ gate_audit 扩展**（`docs/33` M3）。
