@@ -133,7 +133,7 @@ func Word(w schema.Word) schema.Word {
 	w.PositiveScore = Score(w.PositiveScore)
 	w.PhoneticScore = Score(w.PhoneticScore)
 	w.ModernScore = Score(w.ModernScore)
-	w.ClassicalSc = Score(w.ClassicalSc)
+	w.ClassicalScore = Score(w.ClassicalScore)
 	w.NamePenalty = Score(w.NamePenalty)
 	w.Strokes = Stroke(w.Strokes)
 	w.KangxiStrokes = Stroke(w.KangxiStrokes)

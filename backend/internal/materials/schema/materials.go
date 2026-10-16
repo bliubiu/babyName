@@ -41,6 +41,10 @@ type Definition struct {
 	// DependsOn 依赖的物料名，导入顺序据此拓扑排列
 	DependsOn []string
 	// Tables 该物料写入的表（文档与守护测试用）
+	//
+	// 约定：首项为主表（必然非空），其余为辅表（允许合理为空，
+	// 如 namer 的 char_groups 在源无分组时为空）。materialUnchanged
+	// 的短路判定只校验主表（docs/34 阶段 B3）。
 	Tables []string
 	// Required 源文件缺失时是否报错（true=缺物料即失败，false=允许缺失跳过）
 	Required bool

@@ -5,6 +5,52 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.16.13]
+
+**物料管线阶段 B/C/D：清理接线、健壮性与回归固化**（`docs/34` 阶段 B~D）。
+收敛「宣称未落地」的优化、修补装载漏报与原子性缺口，并把幂等/增量门控固化为 CI 断言。
+
+### ✨ New Features 新增功能
+
+- 【物料校验】`validate.Errors.Summarize`：校验错误按 (字段, 规则) 聚合计数 +
+  前 N 条明细样例，`failValidate` 改走聚合输出（大批量脏数据时可读、可回归比对）。
+- 【物料装载】`IntegratedMaterialNames()`：运行时装载物料清单改为从
+  `schema.Definitions` 派生（剔除 legacy），「导入侧接入集合」与「装载侧报告集合」
+  单一真源，杜绝手抄清单漂移。
+
+### 🐛 Bug Fixes 问题修复
+
+- 【物料装载】修复装载报告漏报 optional 物料：`materialNames()` 曾漏列
+  `allowlist` / `compliance_redline`，`LoadMaterialsFromDBWithReport` 与
+  `VerifyMaterialsFromDB` 永远不报这两类物料缺失（docs/34 阶段 B2）。
+- 【物料导入】修复 `materialUnchanged` 空表误判：辅表（如 namer 的 `char_groups`）
+  合理为空时物料被误判为「已变更」而每次重灌，指纹门控形同虚设；现只校验主表
+  （`Tables[0]`，schema 层加约定注释）（docs/34 阶段 B3）。
+- 【灰度发布】`subscribe.writeFile` 改为「写临时文件 → fsync → rename 覆盖」：
+  promote/abort 直接覆写生效物料与 lock 的中断窗口（半截文件）关闭（docs/34 阶段 C1）。
+
+### ♻️ Refactors 重构
+
+- 【物料导入】抽取两个通用骨架（docs/34 阶段 C3）：
+  `importStringSliceMaterial`（naming_gate / forbidden_combos）与
+  `importKindRowsMaterial`（allowlist / compliance_redline），importer 只保留
+  物料差异参数，样板代码约减 120 行。
+- 【代码整洁】删除 `checksum.Cache`/`Stat`/`StatOf`/`Forget`（docs/34 阶段 B1）：
+  size+mtime 快速路径从未接线，且「等长修改 + mtime 未变」场景会漏判——
+  用正确性换不存在的性能；单次导入每文件只 hash 一次，缓存无收益。
+- 【代码整洁】sha256 统一到 `materials/checksum`：`subscribe.HashBytes`/`HashFile`
+  改为委托（docs/34 阶段 P2-4），全仓不再有两份指纹实现。
+- 【代码整洁】`schema.Word.ClassicalSc` → `ClassicalScore`（缩写命名对齐
+  PositiveScore/ModernScore 等同族字段）。
+
+### ✅ Tests 测试
+
+- 【物料导入】新增 `store_materials_idempotency_test.go`（docs/34 阶段 D1）：
+  ① 二次导入全短路后内容快照逐字节等价（含频率档派生列一致性）；
+  ② 增量门控：单物料源变更只重灌该项、其余全部短路；
+  ③ 辅表为空不误判变更（B3 回归）；④ 可选物料源缺失即跳过不失败。
+- 【灰度发布】新增原子写测试：覆盖后内容完整、无临时文件残留、首写场景成立。
+
 ## [2026.10.16.12]
 
 **物料管线阶段 A：收敛数据口径**（`docs/34` 阶段 A）。根除 `hanzi_data` 双口径写入，

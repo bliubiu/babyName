@@ -17,7 +17,7 @@ func TestWord_合法字零错误(t *testing.T) {
 	w := schema.Word{
 		Char: "永", Strokes: 5, Wuxing: "水", Gender: schema.Male,
 		Level: 1, Tone: 3, NameFreqTier: 4,
-		PositiveScore: 100, PhoneticScore: 0, ModernScore: 100, ClassicalSc: 100,
+		PositiveScore: 100, PhoneticScore: 0, ModernScore: 100, ClassicalScore: 100,
 		NamePenalty: 0,
 	}
 	if errs := Word(testMaterial, w); errs.Len() != 0 {
@@ -38,7 +38,7 @@ func TestWord_各类违规可归因(t *testing.T) {
 		Char:    "永水", // 非单字
 		Strokes: 0, Wuxing: "气", Gender: "unknown",
 		Level: 4, Tone: 5, NameFreqTier: 6,
-		PositiveScore: 101, PhoneticScore: -1, ModernScore: 200, ClassicalSc: 101,
+		PositiveScore: 101, PhoneticScore: -1, ModernScore: 200, ClassicalScore: 101,
 		NamePenalty: 101,
 	}
 	errs := Word(testMaterial, w)
@@ -80,7 +80,7 @@ func TestWord_五评分共用同一规则(t *testing.T) {
 	// 五个评分字段越界时都必须命中「评分必须在 0~100」
 	w := schema.Word{
 		Char: "永", Strokes: 1, Gender: schema.Neutral,
-		PositiveScore: 101, PhoneticScore: 101, ModernScore: 101, ClassicalSc: 101, NamePenalty: 101,
+		PositiveScore: 101, PhoneticScore: 101, ModernScore: 101, ClassicalScore: 101, NamePenalty: 101,
 	}
 	errs := Word(testMaterial, w)
 	if errs.Len() != 5 {
@@ -301,6 +301,48 @@ func TestErrors_集合语义(t *testing.T) {
 	}
 	if !strings.Contains(msg, "; ") {
 		t.Errorf("多条错误应以分号连接：%q", msg)
+	}
+}
+
+// TestErrors_Summarize聚合 守护 docs/34 阶段 C2：
+// 同规则多条错误必须聚合为一条计数，输出稳定可回归。
+func TestErrors_Summarize聚合(t *testing.T) {
+	if got := (Errors(nil)).Summarize(3); got != "" {
+		t.Errorf("空集合 Summarize 应为空串，实得 %q", got)
+	}
+
+	errs := Errors{
+		{Material: "a", Field: "strokes", Value: "0", Rule: "简体笔画必须 ≥1"},
+		{Material: "a", Field: "strokes", Value: "-2", Rule: "简体笔画必须 ≥1"},
+		{Material: "a", Field: "char", Value: "永水", Rule: "必须是单个汉字"},
+		{Material: "a", Field: "char", Value: "和淼", Rule: "必须是单个汉字"},
+		{Material: "a", Field: "char", Value: "空", Rule: "必须是单个汉字"},
+	}
+	got := errs.Summarize(2)
+
+	// 聚合计数：strokes × 2、char × 3（样例取 sorted 后首个值）
+	if !strings.Contains(got, "共 5 条校验问题") {
+		t.Errorf("应报告总条数：%q", got)
+	}
+	if !strings.Contains(got, "字段[strokes] 规则[简体笔画必须 ≥1] × 2（样例 \"-2\"）") {
+		t.Errorf("strokes 规则应聚合为 ×2：%q", got)
+	}
+	if !strings.Contains(got, "字段[char] 规则[必须是单个汉字] × 3（样例 \"和淼\"）") {
+		t.Errorf("char 规则应聚合为 ×3：%q", got)
+	}
+	// 明细条数受 sampleN 限制
+	if !strings.Contains(got, "明细前 2 条") {
+		t.Errorf("明细应截断到前 2 条：%q", got)
+	}
+
+	// 稳定性：同输入两次输出必须一致（sorted 保证）
+	if again := errs.Summarize(2); again != got {
+		t.Errorf("Summarize 输出不稳定：\n%q\n%q", got, again)
+	}
+
+	// sampleN 超过总数时不截断
+	if full := errs.Summarize(100); !strings.Contains(full, "明细前 5 条") {
+		t.Errorf("sampleN 超过总数时应给全部明细：%q", full)
 	}
 }
 

@@ -269,18 +269,24 @@ func (s *Store) importOne(def schema.Definition, opt ImportOptions) ImportResult
 	return m.Import(s, src, res, opt)
 }
 
-// materialUnchanged 判断库内记录的指纹是否与传入一致且表非空
+// materialUnchanged 判断库内记录的指纹是否与传入一致且主表非空
+//
+// 只校验主表（Tables[0]，schema.Definition 约定）：辅表允许合理为空
+// （如 namer 的 char_groups 源无分组时），此前要求全部表非空会让这类
+// 物料每次导入都重灌，指纹门控形同虚设（docs/34 阶段 B3）。
 func (s *Store) materialUnchanged(material, sum string) bool {
 	var stored string
 	err := s.db.QueryRow("SELECT checksum FROM materials_state WHERE material = ?", material).Scan(&stored)
 	if err != nil || stored == "" || stored != sum {
 		return false
 	}
+	tables := materialTablesOf(material)
+	if len(tables) == 0 {
+		return false
+	}
 	var n int
-	for _, t := range materialTablesOf(material) {
-		if err := s.db.QueryRow("SELECT COUNT(*) FROM " + t).Scan(&n); err != nil || n == 0 {
-			return false
-		}
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM " + tables[0]).Scan(&n); err != nil || n == 0 {
+		return false
 	}
 	return true
 }
@@ -358,6 +364,9 @@ func (s *Store) runImport(material string, tables []string, res *ImportResult, o
 // 校验结果一律由各 importXxx 直接写入 res.Err 并返回。
 
 // failValidate 记录校验错误；非 lenient 时直接返回错误字符串
+//
+// 输出走 Errors.Summarize 聚合（docs/34 阶段 C2）：按 (字段, 规则) 计数 +
+// 前几条明细，避免大批量脏数据时逐条拼接出不可读的长串。
 func failValidate(errs validate.Errors, opt ImportOptions) string {
 	if len(errs) == 0 {
 		return ""
@@ -366,7 +375,7 @@ func failValidate(errs validate.Errors, opt ImportOptions) string {
 		logger.Warn("sqlite: 校验发现问题（lenient 模式继续导入）", logger.Int("问题数", len(errs)))
 		return ""
 	}
-	return errs.Error()
+	return errs.Summarize(3)
 }
 
 // mustJSON 序列化标签切片；出错时退化为空数组而非中断导入
@@ -557,7 +566,7 @@ func wordValues(w schema.Word) []any {
 		w.Char, w.Pinyin, w.Strokes, w.KangxiStrokes, w.Radical, w.Meaning,
 		w.Wuxing, string(w.Gender), w.Level, w.Tone, w.NameFreqTier,
 		mustJSON(w.GenderTags), mustJSON(w.StyleTags), w.UsageLevel,
-		w.PositiveScore, w.PhoneticScore, w.ModernScore, w.ClassicalSc,
+		w.PositiveScore, w.PhoneticScore, w.ModernScore, w.ClassicalScore,
 		boolToInt(w.IsPolyphonic), boolToInt(w.IsRare), boolToInt(w.IsNegative),
 		mustJSON(w.PairBlacklist), w.CurationLevel, w.NamePenalty,
 		mustJSON(w.NamingCats),
@@ -687,212 +696,100 @@ func (s *Store) importBigram(def schema.Definition, src string, res ImportResult
 	})
 }
 
-// importGate 导入命名质量门禁字表
+// importGate 导入命名质量门禁字表（走字符串数组骨架，见 importStringSliceMaterial）
 func (s *Store) importGate(def schema.Definition, src string, res ImportResult, opt ImportOptions) ImportResult {
-	chars, err := readStringSlice(src)
-	if err != nil {
-		res.Err = err.Error()
-		return res
-	}
-	res.Version = fmt.Sprintf("%d-chars", len(chars))
-
-	items := normalize.Tags(chars)
-	var errs validate.Errors
-	for _, c := range items {
-		errs = append(errs, validate.Rune(def.Name, "char", c)...)
-		if len(errs) >= maxImportErrors {
-			break
-		}
-	}
-	if msg := failValidate(errs, opt); msg != "" {
-		res.Err = msg
-		return res
-	}
-
-	return *s.runImport(def.Name, def.Tables, &res, opt, func(tx *sql.Tx) (int, error) {
-		stmt, err := tx.Prepare("INSERT INTO naming_gate(char) VALUES(?)")
-		if err != nil {
-			return 0, err
-		}
-		defer func() { _ = stmt.Close() }()
-		for _, c := range items {
-			if _, err := stmt.Exec(c); err != nil {
-				return 0, fmt.Errorf("写入门禁字 %s 失败: %w", c, err)
-			}
-		}
-		return len(items), nil
-	})
+	return s.importStringSliceMaterial(def, src, res, opt,
+		func(n int) string { return fmt.Sprintf("%d-chars", n) },
+		func(material, value string) validate.Errors { return validate.Rune(material, "char", value) },
+		"INSERT INTO naming_gate(char) VALUES(?)", "门禁字",
+	)
 }
 
-// importForbidden 导入禁忌双字组合
+// importForbidden 导入禁忌双字组合（走字符串数组骨架，见 importStringSliceMaterial）
 func (s *Store) importForbidden(def schema.Definition, src string, res ImportResult, opt ImportOptions) ImportResult {
-	combos, err := readStringSlice(src)
-	if err != nil {
-		res.Err = err.Error()
-		return res
-	}
-	res.Version = fmt.Sprintf("%d-combos", len(combos))
-
-	items := normalize.Tags(combos)
-	var errs validate.Errors
-	for _, c := range items {
-		errs = append(errs, validate.Combo(def.Name, c)...)
-		if len(errs) >= maxImportErrors {
-			break
-		}
-	}
-	if msg := failValidate(errs, opt); msg != "" {
-		res.Err = msg
-		return res
-	}
-
-	return *s.runImport(def.Name, def.Tables, &res, opt, func(tx *sql.Tx) (int, error) {
-		stmt, err := tx.Prepare("INSERT INTO forbidden_combos(combo) VALUES(?)")
-		if err != nil {
-			return 0, err
-		}
-		defer func() { _ = stmt.Close() }()
-		for _, c := range items {
-			if _, err := stmt.Exec(c); err != nil {
-				return 0, fmt.Errorf("写入禁忌组合 %s 失败: %w", c, err)
-			}
-		}
-		return len(items), nil
-	})
+	return s.importStringSliceMaterial(def, src, res, opt,
+		func(n int) string { return fmt.Sprintf("%d-combos", n) },
+		validate.Combo,
+		"INSERT INTO forbidden_combos(combo) VALUES(?)", "禁忌组合",
+	)
 }
 
 // importAllowlist 导入显式白名单（字 / 组合 / 祈福组合），docs/33 门禁层 M1
 //
 // 源格式：{"version":"...","chars":[...],"combos":[...],"blessings":[...]}
 // 落库：allowlist(entry PK, kind)，kind ∈ char/combo/blessing（白名单优先于黑名单）。
+// 读写骨架见 importKindRowsMaterial。
 func (s *Store) importAllowlist(def schema.Definition, src string, res ImportResult, opt ImportOptions) ImportResult {
-	raw, err := os.ReadFile(src)
-	if err != nil {
-		res.Err = fmt.Sprintf("读取 %s 失败: %v", src, err)
-		return res
-	}
-	var doc struct {
-		Version   string   `json:"version"`
-		Chars     []string `json:"chars"`
-		Combos    []string `json:"combos"`
-		Blessings []string `json:"blessings"`
-	}
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		res.Err = fmt.Sprintf("解析 %s 失败: %v", src, err)
-		return res
-	}
-	res.Version = doc.Version
-
-	type allowRow struct {
-		entry string
-		kind  string
-	}
-	rows := make([]allowRow, 0, len(doc.Chars)+len(doc.Combos)+len(doc.Blessings))
-	var errs validate.Errors
-	for _, c := range normalize.Tags(doc.Chars) {
-		errs = append(errs, validate.Rune(def.Name, "char", c)...)
-		rows = append(rows, allowRow{entry: c, kind: schema.AllowKindChar})
-	}
-	for _, c := range normalize.Tags(doc.Combos) {
-		errs = append(errs, validate.Combo(def.Name, c)...)
-		rows = append(rows, allowRow{entry: c, kind: schema.AllowKindCombo})
-	}
-	for _, c := range normalize.Tags(doc.Blessings) {
-		errs = append(errs, validate.Combo(def.Name, c)...)
-		rows = append(rows, allowRow{entry: c, kind: schema.AllowKindBlessing})
-	}
-	if msg := failValidate(errs, opt); msg != "" {
-		res.Err = msg
-		return res
-	}
-
-	return *s.runImport(def.Name, def.Tables, &res, opt, func(tx *sql.Tx) (int, error) {
-		stmt, err := tx.Prepare("INSERT INTO allowlist(entry, kind) VALUES(?,?)")
+	read := func(src string) (string, []kindRow, validate.Errors, error) {
+		raw, err := os.ReadFile(src)
 		if err != nil {
-			return 0, err
+			return "", nil, nil, fmt.Errorf("读取 %s 失败: %v", src, err)
 		}
-		defer func() { _ = stmt.Close() }()
-		seen := make(map[string]bool, len(rows))
-		n := 0
-		for _, r := range rows {
-			if r.entry == "" || seen[r.entry] {
-				continue
-			}
-			seen[r.entry] = true
-			if _, err := stmt.Exec(r.entry, r.kind); err != nil {
-				return 0, fmt.Errorf("写入白名单 %s 失败: %w", r.entry, err)
-			}
-			n++
+		var doc struct {
+			Version   string   `json:"version"`
+			Chars     []string `json:"chars"`
+			Combos    []string `json:"combos"`
+			Blessings []string `json:"blessings"`
 		}
-		return n, nil
-	})
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return "", nil, nil, fmt.Errorf("解析 %s 失败: %v", src, err)
+		}
+		rows := make([]kindRow, 0, len(doc.Chars)+len(doc.Combos)+len(doc.Blessings))
+		var errs validate.Errors
+		for _, c := range normalize.Tags(doc.Chars) {
+			errs = append(errs, validate.Rune(def.Name, "char", c)...)
+			rows = append(rows, kindRow{entry: c, kind: schema.AllowKindChar})
+		}
+		for _, c := range normalize.Tags(doc.Combos) {
+			errs = append(errs, validate.Combo(def.Name, c)...)
+			rows = append(rows, kindRow{entry: c, kind: schema.AllowKindCombo})
+		}
+		for _, c := range normalize.Tags(doc.Blessings) {
+			errs = append(errs, validate.Combo(def.Name, c)...)
+			rows = append(rows, kindRow{entry: c, kind: schema.AllowKindBlessing})
+		}
+		return doc.Version, rows, errs, nil
+	}
+	return s.importKindRowsMaterial(def, src, res, opt, "白名单", read)
 }
 
 // importComplianceRedline 导入 L5 合规红线（机关单位/争议地名/负面历史人物），docs/33 门禁层 M2
 //
 // 源格式：{"version":"...","state_orgs":[...],"places":[...],"persons":[...]}
 // 落库：compliance_redline(entry PK, kind)，kind ∈ state_org/place/person。
+// 读写骨架见 importKindRowsMaterial。
 func (s *Store) importComplianceRedline(def schema.Definition, src string, res ImportResult, opt ImportOptions) ImportResult {
-	raw, err := os.ReadFile(src)
-	if err != nil {
-		res.Err = fmt.Sprintf("读取 %s 失败: %v", src, err)
-		return res
-	}
-	var doc struct {
-		Version   string   `json:"version"`
-		StateOrgs []string `json:"state_orgs"`
-		Places    []string `json:"places"`
-		Persons   []string `json:"persons"`
-	}
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		res.Err = fmt.Sprintf("解析 %s 失败: %v", src, err)
-		return res
-	}
-	res.Version = doc.Version
-
-	type redlineRow struct {
-		entry string
-		kind  string
-	}
-	rows := make([]redlineRow, 0, len(doc.StateOrgs)+len(doc.Places)+len(doc.Persons))
-	var errs validate.Errors
-	for _, e := range normalize.Tags(doc.StateOrgs) {
-		errs = append(errs, validate.Entity(def.Name, "state_org", e)...)
-		rows = append(rows, redlineRow{entry: e, kind: schema.RedlineKindStateOrg})
-	}
-	for _, e := range normalize.Tags(doc.Places) {
-		errs = append(errs, validate.Entity(def.Name, "place", e)...)
-		rows = append(rows, redlineRow{entry: e, kind: schema.RedlineKindPlace})
-	}
-	for _, e := range normalize.Tags(doc.Persons) {
-		errs = append(errs, validate.Entity(def.Name, "person", e)...)
-		rows = append(rows, redlineRow{entry: e, kind: schema.RedlineKindPerson})
-	}
-	if msg := failValidate(errs, opt); msg != "" {
-		res.Err = msg
-		return res
-	}
-
-	return *s.runImport(def.Name, def.Tables, &res, opt, func(tx *sql.Tx) (int, error) {
-		stmt, err := tx.Prepare("INSERT INTO compliance_redline(entry, kind) VALUES(?,?)")
+	read := func(src string) (string, []kindRow, validate.Errors, error) {
+		raw, err := os.ReadFile(src)
 		if err != nil {
-			return 0, err
+			return "", nil, nil, fmt.Errorf("读取 %s 失败: %v", src, err)
 		}
-		defer func() { _ = stmt.Close() }()
-		seen := make(map[string]bool, len(rows))
-		n := 0
-		for _, r := range rows {
-			if r.entry == "" || seen[r.entry] {
-				continue
-			}
-			seen[r.entry] = true
-			if _, err := stmt.Exec(r.entry, r.kind); err != nil {
-				return 0, fmt.Errorf("写入合规红线 %s 失败: %w", r.entry, err)
-			}
-			n++
+		var doc struct {
+			Version   string   `json:"version"`
+			StateOrgs []string `json:"state_orgs"`
+			Places    []string `json:"places"`
+			Persons   []string `json:"persons"`
 		}
-		return n, nil
-	})
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return "", nil, nil, fmt.Errorf("解析 %s 失败: %v", src, err)
+		}
+		rows := make([]kindRow, 0, len(doc.StateOrgs)+len(doc.Places)+len(doc.Persons))
+		var errs validate.Errors
+		for _, e := range normalize.Tags(doc.StateOrgs) {
+			errs = append(errs, validate.Entity(def.Name, "state_org", e)...)
+			rows = append(rows, kindRow{entry: e, kind: schema.RedlineKindStateOrg})
+		}
+		for _, e := range normalize.Tags(doc.Places) {
+			errs = append(errs, validate.Entity(def.Name, "place", e)...)
+			rows = append(rows, kindRow{entry: e, kind: schema.RedlineKindPlace})
+		}
+		for _, e := range normalize.Tags(doc.Persons) {
+			errs = append(errs, validate.Entity(def.Name, "person", e)...)
+			rows = append(rows, kindRow{entry: e, kind: schema.RedlineKindPerson})
+		}
+		return doc.Version, rows, errs, nil
+	}
+	return s.importKindRowsMaterial(def, src, res, opt, "合规红线", read)
 }
 
 // importYijing 导入易经六十四卦
@@ -1016,4 +913,109 @@ func readStringSlice(src string) ([]string, error) {
 		return nil, fmt.Errorf("解析 %s 失败: %w", src, err)
 	}
 	return out, nil
+}
+
+// --- 通用导入骨架（docs/34 阶段 C3）---
+//
+// 各 importXxx 曾高度同构（读文件 → 归一 → 校验 → runImport），每类物料
+// 手写 30~60 行样板。按「源结构 × 落库形态」归并为两个骨架，物料间只差
+// 少量差异参数；新增同类物料只需在注册表登记 + 写一个分发函数。
+
+// importStringSliceMaterial 「JSON 字符串数组 → 单列单表」物料的骨架
+//（naming_gate / forbidden_combos）
+//
+// version 由调用方按条目数生成（各物料版本串格式不同）；
+// check 为逐条校验函数（签名兼容 validate.Rune / validate.Combo 的适配）。
+func (s *Store) importStringSliceMaterial(
+	def schema.Definition, src string, res ImportResult, opt ImportOptions,
+	version func(n int) string,
+	check func(material, value string) validate.Errors,
+	insertSQL, writeLabel string,
+) ImportResult {
+	values, err := readStringSlice(src)
+	if err != nil {
+		res.Err = err.Error()
+		return res
+	}
+	items := normalize.Tags(values)
+	res.Version = version(len(items))
+
+	var errs validate.Errors
+	for _, v := range items {
+		errs = append(errs, check(def.Name, v)...)
+		if len(errs) >= maxImportErrors {
+			break
+		}
+	}
+	if msg := failValidate(errs, opt); msg != "" {
+		res.Err = msg
+		return res
+	}
+
+	return *s.runImport(def.Name, def.Tables, &res, opt, func(tx *sql.Tx) (int, error) {
+		stmt, err := tx.Prepare(insertSQL)
+		if err != nil {
+			return 0, err
+		}
+		defer func() { _ = stmt.Close() }()
+		for _, v := range items {
+			if _, err := stmt.Exec(v); err != nil {
+				return 0, fmt.Errorf("写入%s %s 失败: %w", writeLabel, v, err)
+			}
+		}
+		return len(items), nil
+	})
+}
+
+// kindRow 一条 (entry, kind) 落库行（allowlist / compliance_redline 共用形态）
+type kindRow struct {
+	entry string
+	kind  string
+}
+
+// importKindRowsMaterial 「多分类 JSON 对象 → (entry, kind) 两列表」物料的骨架
+//（allowlist / compliance_redline）
+//
+// read 由调用方提供：负责读文件、按类别字段归一 + 逐类校验，返回
+// 版本串与 (entry, kind) 行集合；骨架统一做 failValidate 与去重落库
+// （entry 首见即锁，跨类别重复只保留首次出现的 kind）。
+func (s *Store) importKindRowsMaterial(
+	def schema.Definition, src string, res ImportResult, opt ImportOptions,
+	writeLabel string,
+	read func(src string) (version string, rows []kindRow, errs validate.Errors, err error),
+) ImportResult {
+	version, rows, errs, err := read(src)
+	if err != nil {
+		res.Err = err.Error()
+		return res
+	}
+	res.Version = version
+
+	if msg := failValidate(errs, opt); msg != "" {
+		res.Err = msg
+		return res
+	}
+
+	// 两列表形态：表名取主表（Definitions 约定 Tables[0]），列固定 (entry, kind)
+	insertSQL := "INSERT INTO " + def.Tables[0] + "(entry, kind) VALUES(?,?)"
+	return *s.runImport(def.Name, def.Tables, &res, opt, func(tx *sql.Tx) (int, error) {
+		stmt, err := tx.Prepare(insertSQL)
+		if err != nil {
+			return 0, err
+		}
+		defer func() { _ = stmt.Close() }()
+		seen := make(map[string]bool, len(rows))
+		n := 0
+		for _, r := range rows {
+			if r.entry == "" || seen[r.entry] {
+				continue
+			}
+			seen[r.entry] = true
+			if _, err := stmt.Exec(r.entry, r.kind); err != nil {
+				return 0, fmt.Errorf("写入%s %s 失败: %w", writeLabel, r.entry, err)
+			}
+			n++
+		}
+		return n, nil
+	})
 }

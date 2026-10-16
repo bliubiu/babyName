@@ -152,7 +152,7 @@ func validWord() schema.Word {
 		Char: "永", Pinyin: "yong3", Strokes: 5, KangxiStrokes: 5,
 		Radical: "水", Meaning: "水流长", Wuxing: "水",
 		Level: 1, Gender: schema.Male, Tone: 3, NameFreqTier: 4, UsageLevel: 3,
-		PositiveScore: 90, PhoneticScore: 80, ModernScore: 70, ClassicalSc: 95,
+		PositiveScore: 90, PhoneticScore: 80, ModernScore: 70, ClassicalScore: 95,
 		CurationLevel: 2, NamePenalty: 5,
 		IsPolyphonic: false, IsRare: false, IsNegative: false,
 		StyleTags: []string{"古典"}, GenderTags: []string{"male"},
@@ -175,7 +175,7 @@ func TestWord_全字段归一(t *testing.T) {
 	w.PositiveScore = 150 // → 100
 	w.PhoneticScore = -1  // → 0
 	w.ModernScore = 200   // → 100
-	w.ClassicalSc = 101   // → 100
+	w.ClassicalScore = 101   // → 100
 	w.NamePenalty = 101   // → 100
 	w.Strokes = -1        // → 0
 	w.KangxiStrokes = -1  // → 0
@@ -202,9 +202,9 @@ func TestWord_全字段归一(t *testing.T) {
 		t.Errorf("CurationLevel 负数应归零，实得 %d", got.CurationLevel)
 	}
 	if got.PositiveScore != 100 || got.PhoneticScore != 0 || got.ModernScore != 100 ||
-		got.ClassicalSc != 100 || got.NamePenalty != 100 {
+		got.ClassicalScore != 100 || got.NamePenalty != 100 {
 		t.Errorf("评分截断不符：%d/%d/%d/%d/%d", got.PositiveScore, got.PhoneticScore,
-			got.ModernScore, got.ClassicalSc, got.NamePenalty)
+			got.ModernScore, got.ClassicalScore, got.NamePenalty)
 	}
 	if got.Strokes != 0 || got.KangxiStrokes != 0 {
 		t.Errorf("笔画负数应归零：%d/%d", got.Strokes, got.KangxiStrokes)

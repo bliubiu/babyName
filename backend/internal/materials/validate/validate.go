@@ -7,6 +7,7 @@ package validate
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"name/internal/materials/schema"
@@ -37,6 +38,57 @@ func (e Errors) Error() string {
 
 // Len 返回错误条数
 func (e Errors) Len() int { return len(e) }
+
+// RuleStat 单条 (字段, 规则) 的聚合计数
+type RuleStat struct {
+	Field  string `json:"field"`
+	Rule   string `json:"rule"`
+	Count  int    `json:"count"`
+	Sample string `json:"sample"` // 该规则下首个触发值（按 sorted 序）
+}
+
+// Summarize 按 (字段, 规则) 聚合计数并附前 sampleN 条明细样例
+//
+// 大批量脏数据（整列字段非法）时逐条拼接的错误串不可读：聚合让
+// 「哪类问题有多少、典型值长什么样」一目了然（docs/34 阶段 C2）。
+// 顺序经 sorted() 稳定，输出可 diff、可回归比对。
+func (e Errors) Summarize(sampleN int) string {
+	if len(e) == 0 {
+		return ""
+	}
+	sorted := e.sorted()
+
+	type ruleKey struct{ field, rule string }
+	counts := make(map[ruleKey]int, len(sorted))
+	samples := make(map[ruleKey]string, len(sorted))
+	order := make([]ruleKey, 0, len(sorted))
+	for _, x := range sorted {
+		k := ruleKey{x.Field, x.Rule}
+		if _, ok := counts[k]; !ok {
+			order = append(order, k)
+			samples[k] = x.Value
+		}
+		counts[k]++
+	}
+
+	parts := make([]string, 0, len(order)+2)
+	parts = append(parts, fmt.Sprintf("共 %d 条校验问题（按规则聚合）", len(sorted)))
+	for _, k := range order {
+		parts = append(parts, fmt.Sprintf("字段[%s] 规则[%s] × %d（样例 %q）",
+			k.field, k.rule, counts[k], samples[k]))
+	}
+	if n := sampleN; n > 0 {
+		if n > len(sorted) {
+			n = len(sorted)
+		}
+		detail := make([]string, 0, n)
+		for _, x := range sorted[:n] {
+			detail = append(detail, x.Error())
+		}
+		parts = append(parts, "明细前 "+strconv.Itoa(n)+" 条: "+strings.Join(detail, "; "))
+	}
+	return strings.Join(parts, "；")
+}
 
 // sorted 保证错误输出顺序稳定，便于 diff 与回归比对
 func (e Errors) sorted() Errors {
@@ -86,7 +138,7 @@ func Word(material string, w schema.Word) Errors {
 	}
 	for field, v := range map[string]int{
 		"positiveScore": w.PositiveScore, "phoneticScore": w.PhoneticScore,
-		"modernScore": w.ModernScore, "classicalScore": w.ClassicalSc,
+		"modernScore": w.ModernScore, "classicalScore": w.ClassicalScore,
 		"namePenalty": w.NamePenalty,
 	} {
 		if v < 0 || v > 100 {

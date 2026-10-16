@@ -62,6 +62,32 @@ func (m legacyMarker) Import(_ *Store, _ string, res ImportResult, _ ImportOptio
 	return res
 }
 
+// legacyMaterials 走既有路径、暂不接入统一导入器的物料
+//
+// 这类物料由 store_classics.go 等既有路径导入，统一导入器遇到时跳过并给出
+// 原因，不视为错误；同样不参与运行时统一装载报告（materialNames）。
+var legacyMaterials = map[string]bool{
+	schema.ClassicsMaterial: true,
+	schema.CuratedMaterial:  true,
+}
+
+// IntegratedMaterialNames 已接入统一导入链路的物料名（按 schema 注册序）
+//
+// 供 materialNames（运行时装载报告）派生，保证「导入侧接入集合」与
+// 「装载侧报告集合」单一真源：新增物料接入 impls 后无需再手抄一份装载
+// 清单（docs/34 阶段 B2 修复的正是手抄清单漏列 allowlist /
+// compliance_redline 导致的漏报）。
+func IntegratedMaterialNames() []string {
+	names := make([]string, 0, len(schema.Definitions))
+	for _, def := range schema.Definitions {
+		if legacyMaterials[def.Name] {
+			continue
+		}
+		names = append(names, def.Name)
+	}
+	return names
+}
+
 // materialRegistry 物料导入适配器注册表，键为物料名
 var materialRegistry = map[string]Material{}
 
@@ -79,15 +105,10 @@ func init() {
 		schema.YijingMaterial:            (*Store).importYijing,
 		schema.ZodiacMaterial:            (*Store).importZodiac,
 	}
-	// 走既有路径、暂不接入统一导入器的物料
-	legacy := map[string]bool{
-		schema.ClassicsMaterial: true,
-		schema.CuratedMaterial:  true,
-	}
 
 	for _, def := range schema.Definitions {
 		switch {
-		case legacy[def.Name]:
+		case legacyMaterials[def.Name]:
 			materialRegistry[def.Name] = legacyMarker{name: def.Name, reason: legacyImportReason}
 		default:
 			fn, ok := impls[def.Name]

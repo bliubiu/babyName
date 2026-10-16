@@ -53,7 +53,7 @@ type Word struct {
 	PositiveScore int      `json:"positiveScore"`
 	PhoneticScore int      `json:"phoneticScore"`
 	ModernScore   int      `json:"modernScore"`
-	ClassicalSc   int      `json:"classicalScore"`
+	ClassicalScore int      `json:"classicalScore"`
 	CurationLevel int      `json:"curationLevel"`
 	NamePenalty   int      `json:"namePenalty"`
 	IsPolyphonic  bool     `json:"isPolyphonic"`

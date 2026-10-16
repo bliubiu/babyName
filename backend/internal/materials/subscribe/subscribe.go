@@ -11,32 +11,30 @@
 package subscribe
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"name/internal/materials/checksum"
 	"name/internal/materials/schema"
 )
 
 // ---------- 指纹 ----------
+//
+// sha256 统一委托 materials/checksum（docs/34 阶段 P2-4）：
+// 全仓曾有两份等价实现（本包与 checksum 包），指纹口径必须单一，
+// 否则「lock 登记指纹」与「导入门控指纹」可能走向不同算法细节。
 
 // HashBytes 返回数据的 sha256 十六进制串（小写）
 func HashBytes(b []byte) string {
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])
+	return checksum.Bytes(b)
 }
 
 // HashFile 计算文件 sha256；文件不存在或不可读时返回错误
 func HashFile(path string) (string, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("读取文件失败: %w", err)
-	}
-	return HashBytes(b), nil
+	return checksum.File(path)
 }
 
 // ---------- materials.lock ----------
@@ -457,9 +455,39 @@ func writeJSON(path string, v any) error {
 	return writeFile(path, append(b, '\n'))
 }
 
+// writeFile 原子写入：临时文件 → fsync → rename 覆盖目标
+//
+// 直接 WriteFile 覆盖在进程中断（kill / 掉电）时会留下半截文件——
+// promote/abort 改的正是运行时生效物料与 lock，瞬时损坏窗口不可接受
+// （docs/34 阶段 C1）。rename 由 OS 保证原子替换；临时文件与目标同目录，
+// 确保同一文件系统内 rename 不跨盘。
 func writeFile(path string, b []byte) error {
-	if err := os.WriteFile(path, b, 0o644); err != nil {
-		return fmt.Errorf("写入 %s 失败: %w", path, err)
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".wb-tmp-*")
+	if err != nil {
+		return fmt.Errorf("创建临时文件失败: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }() // 失败路径清理；成功后 rename 已移走
+
+	if _, err := tmp.Write(b); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("写入临时文件失败: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("同步临时文件失败: %w", err)
+	}
+	// CreateTemp 默认 0600，归一为 0644 与历史行为一致（rename 保留权限）
+	if err := tmp.Chmod(0o644); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("设置临时文件权限失败: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("关闭临时文件失败: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("替换 %s 失败: %w", path, err)
 	}
 	return nil
 }

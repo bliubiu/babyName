@@ -3,6 +3,7 @@ package subscribe
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -30,6 +31,77 @@ func TestHashBytesAndFile(t *testing.T) {
 
 	if _, err := HashFile(filepath.Join(dir, "missing.txt")); err == nil {
 		t.Fatal("文件不存在应返回错误")
+	}
+}
+
+// TestWriteFile_原子替换不留半截文件 守护 docs/34 阶段 C1：
+// 覆盖写必须「临时文件 → rename」，旧内容要么全在要么全不在；
+// 成功后目标目录不得残留临时文件。
+func TestWriteFile_原子替换不留半截文件(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "materials.lock")
+
+	if err := writeFile(path, []byte("第一版内容")); err != nil {
+		t.Fatalf("首次写入失败: %v", err)
+	}
+	if err := writeFile(path, []byte("第二版内容，更长")); err != nil {
+		t.Fatalf("覆盖写入失败: %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("读取目标失败: %v", err)
+	}
+	if string(got) != "第二版内容，更长" {
+		t.Errorf("覆盖后内容应全为新值，实得 %q", got)
+	}
+
+	// 临时文件必须已随 rename 移走，不得残留
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() != filepath.Base(path) {
+			t.Errorf("目标目录残留了临时文件: %s", e.Name())
+		}
+	}
+
+	// 权限归一为 0644（CreateTemp 默认 0600，rename 保留权限）。
+	// Windows 无 POSIX 权限位（Go Chmod 仅能切只读属性），跳过该断言。
+	if runtime.GOOS != "windows" {
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fi.Mode().Perm() != 0o644 {
+			t.Errorf("文件权限期望 0644，实得 %o", fi.Mode().Perm())
+		}
+	}
+}
+
+// TestWriteFile_父目录缺失时报错 覆盖原子写的失败分支：
+// CreateTemp 在不存在目录上失败时必须返回错误，且不留半截目标文件
+//（调用方对生效物料的写入失败应当显式可见，而不是被静默吞掉）。
+func TestWriteFile_父目录缺失时报错(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "不存在子目录", "x.json")
+	if err := writeFile(path, []byte("{}")); err == nil {
+		t.Fatal("父目录不存在时应返回错误")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("失败写入不得留下目标文件，stat err=%v", err)
+	}
+}
+
+// TestWriteFile_目标不存在时创建 原子写在首写场景同样成立
+func TestWriteFile_目标不存在时创建(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "new.json")
+	if err := writeFile(path, []byte("{}")); err != nil {
+		t.Fatalf("写入失败: %v", err)
+	}
+	if b, err := os.ReadFile(path); err != nil || string(b) != "{}" {
+		t.Errorf("首写内容异常: %q err=%v", b, err)
 	}
 }
 

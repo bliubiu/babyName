@@ -445,11 +445,14 @@ func (s *Store) LoadMaterialsFromDBWithReport() MaterialLoadReport {
 }
 
 // materialNames 运行时支持的物料名（有序）
+//
+// 单一真源 = IntegratedMaterialNames（已接入统一导入链路的物料，按 schema
+// 注册序派生）。曾手抄一份清单，漏列 allowlist / compliance_redline 导致
+// 装载报告与 VerifyMaterialsFromDB 永远不报这两类物料缺失
+// （docs/34 阶段 B2）；改为派生后「导入侧接入集合」与「装载侧报告集合」
+// 不可能再漂移。legacy 物料（curated_names / classics）不参与本报告。
 func materialNames() []string {
-	return []string{
-		"kangxi", "namer", "name_frequency", "name_bigram",
-		"naming_gate", "forbidden_combos", "yijing", "zodiac",
-	}
+	return IntegratedMaterialNames()
 }
 
 // VerifyMaterialsFromDB 校验库中物料是否齐备，用于启动前 fail-fast 引导

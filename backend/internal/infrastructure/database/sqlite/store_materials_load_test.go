@@ -3,6 +3,7 @@ package sqlite
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"name/internal/domain/fate"
@@ -40,10 +41,10 @@ func Test运行时从库装载_等价于JSON路径(t *testing.T) {
 		t.Fatalf("导入失败: %v", err)
 	}
 	report := s.LoadMaterialsFromDBWithReport()
-	// 本用例的最小物料集不含频率类物料，属预期缺失
+	// 本用例的最小物料集不含频率类与门禁扩展物料，属预期缺失
 	for _, m := range report.Missing {
 		switch m {
-		case "name_frequency", "name_bigram":
+		case "name_frequency", "name_bigram", "allowlist", "compliance_redline":
 		default:
 			t.Errorf("核心物料不应缺失: %s", m)
 		}
@@ -291,6 +292,30 @@ func Test运行时从库装载_库为空时报告缺失(t *testing.T) {
 	}
 	if err := s.VerifyMaterialsFromDB(); err == nil {
 		t.Error("VerifyMaterialsFromDB 对不完整库应报错以引导 import")
+	}
+}
+
+// TestMaterialNames_覆盖全部已接入物料 materialNames 必须覆盖
+// LoadMaterialsFromDB 的全部装载分支（docs/34 阶段 B2：此前手抄清单漏列
+// allowlist / compliance_redline，装载报告永远不报其缺失）。
+//
+// 期望列表同时充当「新增物料时的检查清单」：接入新物料必须同步补
+// LoadMaterialsFromDB 装载分支，否则本测试失败。
+func TestMaterialNames_覆盖全部已接入物料(t *testing.T) {
+	want := []string{
+		"kangxi", "namer", "name_frequency", "name_bigram",
+		"naming_gate", "forbidden_combos", "allowlist", "compliance_redline",
+		"yijing", "zodiac",
+	}
+	if got := materialNames(); !reflect.DeepEqual(got, want) {
+		t.Errorf("materialNames 与装载分支集合不一致\n got: %v\nwant: %v", got, want)
+	}
+
+	// legacy 物料不得混入装载报告
+	for _, name := range materialNames() {
+		if legacyMaterials[name] {
+			t.Errorf("legacy 物料 %s 不应参与运行时装载报告", name)
+		}
 	}
 }
 
