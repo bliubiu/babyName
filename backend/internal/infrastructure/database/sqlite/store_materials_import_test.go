@@ -403,6 +403,11 @@ func TestImport_干运行不写库(t *testing.T) {
 //
 // 刻意**排除 materials_state**：它是导入元数据（含 imported_at 时间戳），
 // 每次导入必然不同，纳入比对会让幂等断言恒假。
+//
+// 同时**排除 updated_at 列**：该列由数据库 `DEFAULT CURRENT_TIMESTAMP` 自维护
+// （见 store.go 建表 DDL 与 store_schema_guard_test.go 同口径的注释），两次导入
+// 只要跨越秒边界取值就不同——曾导致本测试随机失败（快照含该列时断言恒假）。
+// 幂等语义针对物料内容，不含数据库自维护的时间戳。
 func snapshotMaterialTables(t *testing.T, s *Store) string {
 	t.Helper()
 	out := ""
@@ -415,6 +420,7 @@ func snapshotMaterialTables(t *testing.T, s *Store) string {
 			continue
 		}
 		cols, _ := rows.Columns()
+		cols = excludeVolatileCols(cols)
 		q := "SELECT " + joinCols(cols) + " FROM " + table + " ORDER BY " + cols[0]
 		rows.Close()
 
@@ -437,6 +443,21 @@ func snapshotMaterialTables(t *testing.T, s *Store) string {
 			out += "\n"
 		}
 		_ = r2.Close()
+	}
+	return out
+}
+
+// excludeVolatileCols 过滤数据库自维护的易变列（updated_at）
+//
+// 与 store.go 建表 DDL 的 `DEFAULT CURRENT_TIMESTAMP` 对应：该值由数据库在写入时
+// 生成，同一输入跨秒重灌即不同，不参与「物料内容幂等」比对。
+func excludeVolatileCols(cols []string) []string {
+	out := make([]string, 0, len(cols))
+	for _, c := range cols {
+		if c == "updated_at" {
+			continue
+		}
+		out = append(out, c)
 	}
 	return out
 }
