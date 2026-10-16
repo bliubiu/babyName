@@ -5,6 +5,21 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.16.9]
+
+**文档：门禁层 M7「灰度发布」设计定档（ADR-015，按物料整体），代码待实现**（`docs/33` §十二）。
+
+### 📚 Docs 文档更新
+
+- `docs/31` 新增 **ADR-015**：门禁物料灰度发布 = **物料级 staging + 观察窗口 + 一键回滚**，
+  切分粒度**按物料整体**（`naming_gate`/`forbidden_combos`/`allowlist`/`compliance_redline`
+  各一份独立版本）；明确**不做** kind 级切分与条目百分比/流量分流（留作多实例演进）。
+- `docs/33` 新增「§十二 灰度发布设计（M7）」：状态与产物（`materials.lock` 扩 `active`/`staging`
+  两态 + `data/staging/` + append-only `data/release.jsonl`）、发布流（`stage → observe →
+  promote|abort`）、观察窗口（复用 M4/M6 `gate_*` 指标与 `gate_review` 人审，到期仅提示不自动切换）、
+  回滚（`abort --to <lock 版本>`）、待实现清单；M7 里程碑状态更新为「设计✅（ADR-015）·代码⬜」。
+- 本次为**纯设计定档**，无代码改动；M7 代码实现留待后续迭代。
+
 ## [2026.10.16.8]
 
 **门禁层 M6：bad-case 回流闭环（gate_review 状态机 + 收藏回流 + gate_patch 导出）**（`docs/33` M6）。
