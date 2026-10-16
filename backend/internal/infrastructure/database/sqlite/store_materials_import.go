@@ -862,6 +862,73 @@ func (s *Store) importAllowlist(def schema.Definition, src string, res ImportRes
 	})
 }
 
+// importComplianceRedline 导入 L5 合规红线（机关单位/争议地名/负面历史人物），docs/33 门禁层 M2
+//
+// 源格式：{"version":"...","state_orgs":[...],"places":[...],"persons":[...]}
+// 落库：compliance_redline(entry PK, kind)，kind ∈ state_org/place/person。
+func (s *Store) importComplianceRedline(def schema.Definition, src string, res ImportResult, opt ImportOptions) ImportResult {
+	raw, err := os.ReadFile(src)
+	if err != nil {
+		res.Err = fmt.Sprintf("读取 %s 失败: %v", src, err)
+		return res
+	}
+	var doc struct {
+		Version   string   `json:"version"`
+		StateOrgs []string `json:"state_orgs"`
+		Places    []string `json:"places"`
+		Persons   []string `json:"persons"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		res.Err = fmt.Sprintf("解析 %s 失败: %v", src, err)
+		return res
+	}
+	res.Version = doc.Version
+
+	type redlineRow struct {
+		entry string
+		kind  string
+	}
+	rows := make([]redlineRow, 0, len(doc.StateOrgs)+len(doc.Places)+len(doc.Persons))
+	var errs validate.Errors
+	for _, e := range normalize.Tags(doc.StateOrgs) {
+		errs = append(errs, validate.Entity(def.Name, "state_org", e)...)
+		rows = append(rows, redlineRow{entry: e, kind: schema.RedlineKindStateOrg})
+	}
+	for _, e := range normalize.Tags(doc.Places) {
+		errs = append(errs, validate.Entity(def.Name, "place", e)...)
+		rows = append(rows, redlineRow{entry: e, kind: schema.RedlineKindPlace})
+	}
+	for _, e := range normalize.Tags(doc.Persons) {
+		errs = append(errs, validate.Entity(def.Name, "person", e)...)
+		rows = append(rows, redlineRow{entry: e, kind: schema.RedlineKindPerson})
+	}
+	if msg := failValidate(errs, opt); msg != "" {
+		res.Err = msg
+		return res
+	}
+
+	return *s.runImport(def.Name, def.Tables, &res, opt, func(tx *sql.Tx) (int, error) {
+		stmt, err := tx.Prepare("INSERT INTO compliance_redline(entry, kind) VALUES(?,?)")
+		if err != nil {
+			return 0, err
+		}
+		defer func() { _ = stmt.Close() }()
+		seen := make(map[string]bool, len(rows))
+		n := 0
+		for _, r := range rows {
+			if r.entry == "" || seen[r.entry] {
+				continue
+			}
+			seen[r.entry] = true
+			if _, err := stmt.Exec(r.entry, r.kind); err != nil {
+				return 0, fmt.Errorf("写入合规红线 %s 失败: %w", r.entry, err)
+			}
+			n++
+		}
+		return n, nil
+	})
+}
+
 // importYijing 导入易经六十四卦
 func (s *Store) importYijing(def schema.Definition, src string, res ImportResult, opt ImportOptions) ImportResult {
 	raw, err := os.ReadFile(src)

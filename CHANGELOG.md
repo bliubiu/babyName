@@ -5,6 +5,39 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.16.4]
+
+**门禁层 M2：L5 合规红线独立物料**（`docs/33` M2）。
+
+### ✨ New Features 新增功能
+
+- 【门禁层】新增 `compliance_redline` 物料（`compliance_redline.json`，可选）：
+  输出侧 L5 法务红线，`kind ∈ state_org|place|person`（机关单位 / 争议地名 / 负面历史人物），
+  落库新表 `compliance_redline(entry PK, kind)`。
+- 【门禁层】`IsComplianceRedline(fullName)`：全名精确 / 名部（去姓氏首字）/ 全名包含（条目 ≥2 字）
+  即命中，命中前先查白名单豁免；单字条目不参与。原 `IsForbiddenEntity` 保留为兼容入口并委托本函数。
+- 【门禁层】硬编码 `forbiddenEntities` 降级为「内置兜底」，与物料三集合合并判定——
+  物料缺失红线也不失效；新增 `fate.SetComplianceRedline` / `LoadComplianceRedlineFromJSON`（JSON 回落）、
+  `loadComplianceRedlineFromDB`（库路径，接入 `LoadMaterialsFromDB`）、`importComplianceRedline`。
+- 【校验】新增 `validate.Entity`：合规红线条目须为 2~8 个汉字且不含空白。
+- 【数据】新增 `backend/data/compliance_redline.json` 种子（共 98 条：机关 40 / 地名 34 / 负面人物 24）。
+
+### 📈 Improvements 性能/体验优化
+
+- 【门禁层】`allowlist` 新增 `IsAllowlistedText`（任意 kind 原串整体豁免），
+  供跨长度条目（合规红线等）复用「白名单优先」语义。
+
+### 📚 Docs 文档更新
+
+- `docs/33` M2 状态更新为已完成并补落地记录；§二 L5 层、§七差距清单标注已落地。
+- `docs/31 §8.5`：已建成表 12 → 13 张（补 `compliance_redline`）与实测行数。
+
+### 🧪 Tests 测试
+
+- 新增 `fate/compliance_redline_test.go`、`sqlite/store_materials_compliance_test.go`、
+  `validate_test.go::TestEntity`：覆盖装载/计数/三类命中/白名单豁免/单字忽略/降级/错误路径，
+  新增/改动函数覆盖率 100%。
+
 ## [2026.10.16.3]
 
 **门禁层 M1：显式 allowlist 物料（白名单优先于黑名单）**（`docs/33` M1）。

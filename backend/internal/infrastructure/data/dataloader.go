@@ -170,6 +170,14 @@ func InitWithDB(dataDir string, dbLoader DBLoader) error {
 		}
 	}
 
+	// 7.6 L5 合规红线（docs/33 门禁层 M2）：机关单位/争议地名/负面历史人物。
+	//     可选物料，缺失时降级为内置兜底（机关单位），不阻断。
+	if !loadedFromDB["compliance_redline"] {
+		if err := fate.LoadComplianceRedlineFromJSON(dataDir); err != nil {
+			logger.Warn("加载合规红线表失败，合规红线降级为内置兜底", logger.ErrField(err))
+		}
+	}
+
 	// 8. 人名频率库（Tier≥2）
 	if !loadedFromDB["name_frequency"] {
 		if p.RequireAll {

@@ -41,7 +41,8 @@ func TestMaterialRegistry_已接入物料不使用legacy(t *testing.T) {
 	integrated := []string{
 		schema.KangxiMaterial, schema.NamerMaterial, schema.WordMaterial,
 		schema.FrequencyMaterial, schema.BigramMaterial, schema.GateMaterial,
-		schema.ForbiddenMaterial, schema.AllowlistMaterial, schema.YijingMaterial, schema.ZodiacMaterial,
+		schema.ForbiddenMaterial, schema.AllowlistMaterial,
+		schema.ComplianceRedlineMaterial, schema.YijingMaterial, schema.ZodiacMaterial,
 	}
 	for _, name := range integrated {
 		m, ok := materialRegistry[name]

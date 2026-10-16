@@ -303,3 +303,27 @@ func TestErrors_集合语义(t *testing.T) {
 		t.Errorf("多条错误应以分号连接：%q", msg)
 	}
 }
+
+func TestEntity(t *testing.T) {
+	// 合法：2~8 个汉字且不含空白
+	for _, v := range []string{"北京", "省高院", "国务院", "中共中央"} {
+		if errs := Entity(testMaterial, "state_org", v); errs.Len() != 0 {
+			t.Errorf("Entity(%q) 应零错误，实得: %v", v, errs)
+		}
+	}
+	// 非法：单字 / 超长 / 含空白
+	for _, v := range []string{"京", "二三四五六七八九十", "北 京", " 北京"} {
+		if errs := Entity(testMaterial, "state_org", v); errs.Len() == 0 {
+			t.Errorf("Entity(%q) 应报错，实得零错误", v)
+		}
+	}
+	// 错误归因到物料/字段
+	errs := Entity(testMaterial, "place", "京")
+	if errs.Len() != 1 || errs[0].Material != testMaterial || errs[0].Field != "place" {
+		t.Errorf("错误归因错误：%+v", errs)
+	}
+	// 同时违反两条规则（超长 + 含空白）应报 2 条
+	if two := Entity(testMaterial, "state_org", "二 三四五六七八九"); two.Len() != 2 {
+		t.Errorf("超长且含空白应报 2 条错误，实得 %d：%v", two.Len(), two)
+	}
+}

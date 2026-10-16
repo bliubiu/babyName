@@ -104,6 +104,13 @@ var materialTableDDL = []string{
 		kind  TEXT NOT NULL DEFAULT 'combo'
 	)`,
 
+	// L5 合规红线：机关单位/争议地名/负面历史人物（docs/33 门禁层 M2）
+	// kind ∈ state_org（机关单位）/ place（争议地名）/ person（负面历史人物）
+	`CREATE TABLE IF NOT EXISTS compliance_redline (
+		entry TEXT PRIMARY KEY,
+		kind  TEXT NOT NULL DEFAULT 'state_org'
+	)`,
+
 	// 易经六十四卦
 	`CREATE TABLE IF NOT EXISTS yijing_hexagrams (
 		id             INTEGER PRIMARY KEY,
@@ -143,7 +150,7 @@ var materialTableDDL = []string{
 var materialTables = []string{
 	"kangxi_strokes", "hanzi_data", "char_groups", "words",
 	"name_frequency", "name_bigram", "naming_gate", "forbidden_combos",
-	"allowlist", "yijing_hexagrams", "zodiac", "materials_state",
+	"allowlist", "compliance_redline", "yijing_hexagrams", "zodiac", "materials_state",
 }
 
 // createMaterialTables 建立全部物料表（幂等）

@@ -193,3 +193,24 @@ func TestLoadAllowlistFromJSON_路径非法报错(t *testing.T) {
 		t.Error("读取失败（路径为目录）应返回错误")
 	}
 }
+
+// TestAllowlist_整体文本豁免查询 供跨长度条目（合规红线等）豁免使用
+func TestAllowlist_整体文本豁免查询(t *testing.T) {
+	resetAllowlist(t)
+	if IsAllowlistedText("") {
+		t.Error("空文本不应命中")
+	}
+	if IsAllowlistedText("父母") {
+		t.Error("未装载前不应命中")
+	}
+	SetAllowlist([]AllowEntry{
+		{Entry: "父母", Kind: schema.AllowKindCombo},
+		{Entry: "伙", Kind: schema.AllowKindChar},
+	})
+	if !IsAllowlistedText("父母") || !IsAllowlistedText("伙") {
+		t.Error("装载后整体文本应命中（任意 kind）")
+	}
+	if IsAllowlistedText("母父") {
+		t.Error("整体文本为原串精确匹配，反序不应命中")
+	}
+}

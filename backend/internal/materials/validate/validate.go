@@ -236,3 +236,21 @@ func Combo(material, value string) Errors {
 	}
 	return nil
 }
+
+// Entity 校验合规红线条目（机关单位/争议地名/负面历史人物，docs/33 M2）
+//
+// 红线实体为 2~8 字的名称/专名，且不得含空白字符（避免切词歧义与脏数据）。
+func Entity(material, field, value string) Errors {
+	var errs Errors
+	add := func(rule string) {
+		errs = append(errs, Error{Material: material, Field: field, Value: value, Rule: rule})
+	}
+	n := len([]rune(value))
+	if n < 2 || n > 8 {
+		add("长度必须为 2~8 个汉字")
+	}
+	if value != strings.TrimSpace(value) || strings.ContainsAny(value, " \t\r\n") {
+		add("不可含空白字符")
+	}
+	return errs
+}

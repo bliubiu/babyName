@@ -68,16 +68,17 @@ var materialRegistry = map[string]Material{}
 func init() {
 	// 已接入统一导入器的物料 → 对应 importXxx 方法表达式
 	impls := map[string]func(*Store, schema.Definition, string, ImportResult, ImportOptions) ImportResult{
-		schema.KangxiMaterial:    (*Store).importKangxi,
-		schema.NamerMaterial:     (*Store).importNamer,
-		schema.WordMaterial:      (*Store).importWords,
-		schema.FrequencyMaterial: (*Store).importCharFreq,
-		schema.BigramMaterial:    (*Store).importBigram,
-		schema.GateMaterial:      (*Store).importGate,
-		schema.ForbiddenMaterial: (*Store).importForbidden,
-		schema.AllowlistMaterial: (*Store).importAllowlist,
-		schema.YijingMaterial:    (*Store).importYijing,
-		schema.ZodiacMaterial:    (*Store).importZodiac,
+		schema.KangxiMaterial:            (*Store).importKangxi,
+		schema.NamerMaterial:             (*Store).importNamer,
+		schema.WordMaterial:              (*Store).importWords,
+		schema.FrequencyMaterial:         (*Store).importCharFreq,
+		schema.BigramMaterial:            (*Store).importBigram,
+		schema.GateMaterial:              (*Store).importGate,
+		schema.ForbiddenMaterial:         (*Store).importForbidden,
+		schema.AllowlistMaterial:         (*Store).importAllowlist,
+		schema.ComplianceRedlineMaterial: (*Store).importComplianceRedline,
+		schema.YijingMaterial:            (*Store).importYijing,
+		schema.ZodiacMaterial:            (*Store).importZodiac,
 	}
 	// 走既有路径、暂不接入统一导入器的物料
 	legacy := map[string]bool{

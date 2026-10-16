@@ -22,6 +22,8 @@ const (
 	ForbiddenMaterial = "forbidden_combos"
 	// AllowlistMaterial 显式白名单（allowlist.json）：豁免黑名单（白名单优先）+ 祈福组合
 	AllowlistMaterial = "allowlist"
+	// ComplianceRedlineMaterial L5 合规红线（compliance_redline.json）：机关单位/争议地名/负面历史人物
+	ComplianceRedlineMaterial = "compliance_redline"
 	// YijingMaterial 易经六十四卦（yijing.json）
 	YijingMaterial = "yijing"
 	// ZodiacMaterial 十二生肖（zodiac.json）
@@ -54,6 +56,16 @@ const (
 	AllowKindCombo = "combo"
 	// AllowKindBlessing 祈福组合：豁免软性消极惩罚并参与评分加分
 	AllowKindBlessing = "blessing"
+)
+
+// 合规红线条目类型（docs/33 门禁层 M2）：compliance_redline 物料的 kind 取值
+const (
+	// RedlineKindStateOrg 国家/国家机关/地区机关/军事警务等机关单位
+	RedlineKindStateOrg = "state_org"
+	// RedlineKindPlace 争议地名（行政区划/敏感地名，可交叉行政区划库）
+	RedlineKindPlace = "place"
+	// RedlineKindPerson 负面历史人物（同名不当联想）
+	RedlineKindPerson = "person"
 )
 
 // Definitions 全部物料的集中注册表
@@ -91,6 +103,10 @@ var Definitions = []Definition{
 	{
 		Name: AllowlistMaterial, Source: "allowlist.json",
 		DependsOn: []string{}, Tables: []string{"allowlist"}, Required: false,
+	},
+	{
+		Name: ComplianceRedlineMaterial, Source: "compliance_redline.json",
+		DependsOn: []string{}, Tables: []string{"compliance_redline"}, Required: false,
 	},
 	{
 		Name: YijingMaterial, Source: "yijing.json",

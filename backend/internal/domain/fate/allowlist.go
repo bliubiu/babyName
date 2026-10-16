@@ -28,6 +28,7 @@ var (
 	allowChars    = map[string]bool{}
 	allowCombos   = map[string]bool{}
 	blessingExtra = map[string]bool{} // 动态祈福组合（与内置 blessingCombos 取并集）
+	allowEntries  = map[string]bool{} // 全部条目原串（任意 kind，供整体文本豁免查询）
 )
 
 // AllowEntry 一条白名单记录（entry + kind），供物料装载路径注入
@@ -43,6 +44,7 @@ func SetAllowlist(entries []AllowEntry) {
 	chars := make(map[string]bool)
 	combos := make(map[string]bool)
 	blessings := make(map[string]bool)
+	all := make(map[string]bool)
 	for _, e := range entries {
 		entry := strings.TrimSpace(e.Entry)
 		if entry == "" {
@@ -55,12 +57,16 @@ func SetAllowlist(entries []AllowEntry) {
 			combos[entry] = true
 		case schema.AllowKindBlessing:
 			blessings[entry] = true
+		default:
+			continue
 		}
+		all[entry] = true
 	}
 	allowlistMu.Lock()
 	allowChars = chars
 	allowCombos = combos
 	blessingExtra = blessings
+	allowEntries = all
 	allowlistMu.Unlock()
 }
 
@@ -138,4 +144,16 @@ func AllowlistCounts() (chars, combos, blessings int) {
 	allowlistMu.RLock()
 	defer allowlistMu.RUnlock()
 	return len(allowChars), len(allowCombos), len(blessingExtra)
+}
+
+// IsAllowlistedText 判断整体文本是否被白名单收录（任意 kind，原串精确匹配）
+//
+// 供合规红线等跨长度条目豁免使用（docs/33 门禁层 M2：白名单优先于黑名单）。
+func IsAllowlistedText(text string) bool {
+	if text == "" {
+		return false
+	}
+	allowlistMu.RLock()
+	defer allowlistMu.RUnlock()
+	return allowEntries[text]
 }

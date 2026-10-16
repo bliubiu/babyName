@@ -48,6 +48,9 @@ func (s *Store) LoadMaterialsFromDB() []string {
 	if s.loadAllowlistFromDB() {
 		loaded = append(loaded, "allowlist")
 	}
+	if s.loadComplianceRedlineFromDB() {
+		loaded = append(loaded, "compliance_redline")
+	}
 	if s.loadYijingFromDB() {
 		loaded = append(loaded, "yijing")
 	}
@@ -320,6 +323,33 @@ func (s *Store) loadAllowlistFromDB() bool {
 		return false
 	}
 	fate.SetAllowlist(entries)
+	return true
+}
+
+// loadComplianceRedlineFromDB 从库载入 L5 合规红线（机关单位/争议地名/负面历史人物，docs/33 门禁层 M2）
+func (s *Store) loadComplianceRedlineFromDB() bool {
+	if !s.tableHasRows("compliance_redline") {
+		return false
+	}
+	rows, err := s.db.Query("SELECT entry, kind FROM compliance_redline")
+	if err != nil {
+		logger.Error("sqlite: 查询 compliance_redline 失败", logger.ErrField(err))
+		return false
+	}
+	defer func() { _ = rows.Close() }()
+
+	entries := make([]fate.RedlineEntry, 0, 256)
+	for rows.Next() {
+		var e fate.RedlineEntry
+		if err := rows.Scan(&e.Entry, &e.Kind); err != nil {
+			continue
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil || len(entries) == 0 {
+		return false
+	}
+	fate.SetComplianceRedline(entries)
 	return true
 }
 

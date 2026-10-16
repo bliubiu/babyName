@@ -1,7 +1,5 @@
 package fate
 
-import "strings"
-
 // sensitiveChars 敏感字集合（"大"名需"大"命）
 // 这类字格局宏大，普通命格难以承载，易"亢龙有悔"
 // 仅专旺格/从强格（日主极旺）方可使用
@@ -60,8 +58,11 @@ func isExtremeStrongPattern(fateData *FateData) bool {
 	return tongleiCount >= 3
 }
 
-// forbiddenEntities 禁止的国家地区机关单位名称
-// 严禁生成此类名称作为人名（AGENTS.md 安全策略）
+// forbiddenEntities 禁止的国家地区机关单位名称（内置兜底）
+//
+// 严禁生成此类名称作为人名（AGENTS.md 安全策略）。
+// docs/33 门禁层 M2 起作为「内置兜底」，与物料 compliance_redline（机关单位/争议地名/
+// 负面历史人物）合并参与 IsComplianceRedline 判定；物料缺失时红线仍不失效。
 var forbiddenEntities = map[string]bool{
 	// 国家名称
 	"中国": true, "美国": true, "日本": true, "韩国": true,
@@ -83,31 +84,10 @@ var forbiddenEntities = map[string]bool{
 	"安全部": true, "武警": true, "解放军": true,
 }
 
-// IsForbiddenEntity 检查全名或名字部分是否为禁止的国家机关单位名称
-// 检查规则：
-//  1. 全名匹配（如"中国"）
-//  2. 名字部分匹配（去掉姓氏后的部分，如姓"李"名"国务院"→"国务院"）
-//  3. 全名包含禁止实体（如"李国务院"）
+// IsForbiddenEntity 检查全名是否命中合规红线（机关单位/争议地名/负面历史人物）
+//
+// 兼容旧 API：docs/33 门禁层 M2 起，硬编码 forbiddenEntities 降级为「内置兜底」，
+// 匹配与白名单豁免统一由 IsComplianceRedline 负责（白名单优先于黑名单）。
 func IsForbiddenEntity(fullName string) bool {
-	if forbiddenEntities[fullName] {
-		return true
-	}
-	runes := []rune(fullName)
-	if len(runes) > 1 {
-		givenPart := string(runes[1:])
-		if forbiddenEntities[givenPart] {
-			return true
-		}
-	}
-	for entity := range forbiddenEntities {
-		if len([]rune(entity)) > 1 && containsRune(fullName, entity) {
-			return true
-		}
-	}
-	return false
-}
-
-// containsRune 检查 s 是否包含 substr（按 rune 比较）
-func containsRune(s, substr string) bool {
-	return strings.Contains(s, substr)
+	return IsComplianceRedline(fullName)
 }
