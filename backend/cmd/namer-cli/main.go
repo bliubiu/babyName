@@ -29,12 +29,14 @@ import (
 	"name/internal/domain/fate"
 	"name/internal/domain/name"
 	"name/internal/infrastructure/data"
+	"name/internal/infrastructure/database/sqlite"
 	"name/internal/infrastructure/logger"
 )
 
 var (
 	configFile = flag.String("config", "", "TOML 配置文件路径（可选，命令行参数优先级更高）")
-	dataFlag   = flag.String("data", "./data", "文化数据 JSON 文件目录")
+	dataFlag   = flag.String("data", "./data", "文化数据 JSON 文件目录（未指定 --db 时使用）")
+	dbFlag     = flag.String("db", "", "SQLite 物料库路径（指定后从库装载，与服务端一致）")
 	help       = flag.Bool("help", false, "显示帮助")
 
 	// 核心输入（与 Web UI 表单一致）
@@ -107,7 +109,7 @@ func main() {
 	}
 
 	// 5. 初始化数据与服务，执行生成
-	resp, err := generate(params.ToRequest(), *dataFlag)
+	resp, err := generate(params.ToRequest(), *dataFlag, *dbFlag)
 	if err != nil {
 		fail(err)
 	}
@@ -160,15 +162,22 @@ func buildFlagOverrides() *Params {
 //
 //	data.Init（字表/易经/诗词/生肖）→ 同步起名索引
 //	→ 注入策展好名 → fate 引擎 + NameService
-func generate(req *services.GenerateRequest, dataDir string) (*services.GenerateWithAnalysisResponse, error) {
+//
+// dbPath 非空时改走 SQLite 物料库（与服务端运行期口径一致，docs/31 ADR-008）；
+// 为空时回落纯 JSON 源文件路径，便于在未建库的环境下快速验证。
+func generate(req *services.GenerateRequest, dataDir string, dbPath string) (*services.GenerateWithAnalysisResponse, error) {
 	absDataDir, err := filepath.Abs(dataDir)
 	if err != nil {
 		return nil, fmt.Errorf("解析数据目录失败: %w", err)
 	}
 
-	// 1. 加载传统文化数据（hanzi.json → 易经 → 诗词 → 生肖）
-	if err := data.Init(absDataDir); err != nil {
-		return nil, fmt.Errorf("加载文化数据失败（目录 %s）: %w", absDataDir, err)
+	// 1. 加载传统文化数据（字表/易经/诗词/生肖）
+	store, err := loadMaterials(absDataDir, dbPath)
+	if err != nil {
+		return nil, err
+	}
+	if store != nil {
+		defer func() { _ = store.Close() }()
 	}
 
 	// 2. 日志初始化到文件，避免污染终端结果输出
@@ -185,7 +194,7 @@ func generate(req *services.GenerateRequest, dataDir string) (*services.Generate
 	services.SyncNamingIndexFromHanzi()
 
 	// 5. 注入策展好名到 fate 引擎（共现分白名单，与 server 一致）
-	if curatedNames := loadCuratedNames(absDataDir); len(curatedNames) > 0 {
+	if curatedNames := loadCuratedNames(absDataDir, store); len(curatedNames) > 0 {
 		fate.SetCuratedNames(curatedNames)
 	}
 
@@ -202,8 +211,48 @@ func generate(req *services.GenerateRequest, dataDir string) (*services.Generate
 	return svc.GenerateWithAnalysis(context.Background(), req)
 }
 
-// loadCuratedNames 读取 curated_names.json 的 name 字段列表
-func loadCuratedNames(dataDir string) []string {
+// loadMaterials 装载全部物料，返回已打开的物料库（未指定 --db 时为 nil）
+//
+// dbPath 非空：走 SQLite 物料库（与服务端运行期同一口径，必需物料缺料即报错）。
+// dbPath 为空：回落纯 JSON 源文件路径，便于未建库环境快速验证。
+func loadMaterials(absDataDir, dbPath string) (*sqlite.Store, error) {
+	if strings.TrimSpace(dbPath) == "" {
+		if err := data.Init(absDataDir); err != nil {
+			return nil, fmt.Errorf("加载文化数据失败（目录 %s）: %w", absDataDir, err)
+		}
+		return nil, nil
+	}
+
+	store, err := sqlite.NewStore(dbPath, absDataDir)
+	if err != nil {
+		return nil, fmt.Errorf("打开物料库失败（%s）: %w", dbPath, err)
+	}
+	if err := data.InitWithDB(absDataDir, store); err != nil {
+		_ = store.Close()
+		return nil, fmt.Errorf("从物料库装载失败（%s）: %w", dbPath, err)
+	}
+	return store, nil
+}
+
+// loadCuratedNames 读取策展好名的 name 字段列表
+//
+// store 非 nil（走库路径）时从 curated_names 表读；否则读 curated_names.json。
+func loadCuratedNames(dataDir string, store *sqlite.Store) []string {
+	if store != nil {
+		entries, err := store.LoadAllCuratedNames()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "警告: 从库读取策展名失败: %v\n", err)
+			return nil
+		}
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			if e.Name != "" {
+				names = append(names, e.Name)
+			}
+		}
+		return names
+	}
+
 	entries, err := name.LoadCuratedNamesData(dataDir)
 	if err != nil {
 		return nil
@@ -245,6 +294,10 @@ func printHelp() {
   # 配置文件 + 命令行覆盖（姓氏以命令行为准）
   go run ./cmd/namer-cli -config cmd/namer-cli/example.toml -surname 李
 
+  # 使用 SQLite 物料库（与服务端同一口径）
+  go run ./cmd/namer-cli -db ./namer.db -surname 王 -gender male \
+    -birth_year 2024 -birth_month 1 -birth_day 15 -birth_hour 12
+
   # JSON 输出（结构与 Web API 一致，便于脚本对比验证）
   go run ./cmd/namer-cli -config cmd/namer-cli/example.toml -format json
 
@@ -270,6 +323,9 @@ func printHelp() {
   -count                text 展示数量上限，默认 20
 
 其他:
-  -data                 文化数据 JSON 目录，默认 ./data（在 backend 目录下运行）
+  -db                   SQLite 物料库路径。指定后从库装载物料（与服务端运行期口径
+                        一致，docs/31 ADR-008），必需物料缺料直接报错；未指定时
+                        回落读取 -data 下的 JSON 源文件
+  -data                 文化数据 JSON 目录，默认 ./data（未指定 -db 时使用）
   -config               TOML 配置文件路径`)
 }

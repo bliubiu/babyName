@@ -9,6 +9,7 @@
 //	namer materials import --data ./data --db ./namer.db --dry-run # 只校验不写库
 //	namer materials import --data ./data --db ./namer.db --only namer,kangxi
 //	namer materials import --data ./data --db ./namer.db --lenient # 校验问题仅记录
+//	namer materials load   --data ./data --db ./namer.db          # 库 → 内存装载自检
 //	namer materials status  --db ./namer.db                        # 查看物料版本与行数
 package main
 
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"name/internal/domain/fate"
+	"name/internal/infrastructure/data"
 	"name/internal/infrastructure/database/sqlite"
 	"name/internal/materials/review"
 	"name/internal/materials/schema"
@@ -41,6 +43,8 @@ func main() {
 	switch cmd {
 	case "import":
 		err = runImport(args)
+	case "load":
+		err = runLoad(args)
 	case "status":
 		err = runStatus(args)
 	case "lock-init":
@@ -81,6 +85,7 @@ func printHelp() {
 
 用法:
   materials import [选项]     从 JSON/CSV 源导入物料到 SQLite（归一化+校验+单事务写入）
+  materials load   [选项]     从 SQLite 库装载物料到内存索引（运行期装载路径自检）
   materials status  [选项]     列出各物料的版本、指纹与行数
   materials lock-init [选项]   生成门禁物料订阅清单 materials.lock（上游源+产物指纹）
   materials lock-verify [选项] 校验 materials.lock 中登记的产物指纹是否一致
@@ -98,6 +103,14 @@ import 选项:
   --only    string   只导入指定物料，逗号分隔（默认全部）
   --lenient          校验问题仅记录不阻断（数据清洗期取证用）
   --dry-run          只校验与统计，不写库
+  --json             以 JSON 输出报告（供 CI 消费）
+
+load 选项:
+  --db      string   SQLite 库路径（默认 ./namer.db）
+  --data    string   物料源目录（仅用于错误提示；运行期不读 JSON）
+  --json             以 JSON 输出装载报告（供 CI 消费）
+
+  必需物料在库中缺失时命令以非 0 退出码结束并提示执行 materials import。
 
 status 选项:
   --db      string   SQLite 库路径（默认 ./namer.db）
@@ -198,6 +211,55 @@ func printImportReport(report *sqlite.ImportReport, elapsed time.Duration, dryRu
 		report.Written, report.Skipped, report.Failed, elapsed.Round(time.Millisecond))
 }
 
+// runLoad 从库装载物料到进程内内存索引（运行期装载路径的独立验证入口）
+//
+// 与 import 的分工：import 负责「JSON → 库」，load 负责「库 → 内存」。
+// 服务启动时两者都会发生（load 走 data.InitWithDB）；本子命令把装载单独
+// 暴露出来，用于导入后自检与 CI 校验「库中物料是否足以支撑完整起名」。
+//
+// --data 仍需给出：经典语料的物化在导入期完成，但本命令用于校验时
+// 若库缺经典语料会明确报错，不会回落 JSON。
+func runLoad(args []string) error {
+	fs := flag.NewFlagSet("load", flag.ExitOnError)
+	dbPath := fs.String("db", "./namer.db", "SQLite 库路径")
+	dataDir := fs.String("data", "./data", "物料源目录（仅用于错误提示，不读 JSON）")
+	asJSON := fs.Bool("json", false, "以 JSON 输出装载报告（供 CI 消费）")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	store, err := openStore(*dbPath, *dataDir, false)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = store.Close() }()
+
+	start := time.Now()
+	if err := data.InitWithDB(*dataDir, store); err != nil {
+		return fmt.Errorf("装载失败: %w", err)
+	}
+	report := store.LoadMaterialsFromDBWithReport()
+	elapsed := time.Since(start)
+
+	if *asJSON {
+		return printJSON(map[string]any{"loaded": report.Loaded, "missing": report.Missing})
+	}
+
+	fmt.Println("=== 装载完成 ===")
+	for _, name := range report.Loaded {
+		fmt.Printf("  已装载 %s\n", name)
+	}
+	if len(report.Missing) > 0 {
+		fmt.Println("  缺失物料（可降级）:")
+		for _, name := range report.Missing {
+			fmt.Printf("    - %s\n", name)
+		}
+	}
+	fmt.Printf("合计: 装载 %d 项 / 缺失 %d 项，耗时 %s\n",
+		len(report.Loaded), len(report.Missing), elapsed.Round(time.Millisecond))
+	return nil
+}
+
 func runStatus(args []string) error {
 	fs := flag.NewFlagSet("status", flag.ExitOnError)
 	dbPath := fs.String("db", "./namer.db", "SQLite 库路径")
@@ -274,6 +336,16 @@ func printJSONReport(report *sqlite.ImportReport) {
 		return
 	}
 	fmt.Println(string(b))
+}
+
+// printJSON 以 JSON 输出任意值（供 CI 消费）
+func printJSON(v any) error {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return fmt.Errorf("报告序列化失败: %w", err)
+	}
+	fmt.Println(string(b))
+	return nil
 }
 
 // —— 订阅管线子命令（docs/33 门禁层 M5）——

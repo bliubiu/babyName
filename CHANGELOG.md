@@ -5,6 +5,66 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.18.14]
+
+**统一规范 SQLite 数据集结构：curated/classics 接入统一导入器，运行期彻底只读库**
+
+### ✨ New Features 新增功能
+
+- 【策展名】`curated_names` 接入统一导入器（`materials import`），新增 `importCurated`：
+  仅重建种子行（`source=seed`），保留用户自学习收藏行（`source=user_favorite`），
+  移除启动期 `seedCuratedNames` 回路
+- 【策展名】`curated_names` 扩列 `meaning`/`wuxing`/`styles`/`tags`，新增
+  `migrateCuratedNamesColumns` 为存量库补列，使运行时改读库后策展释义与风格标签不再丢失
+- 【经典语料】`classics` 接入统一导入器，新增 `importClassics`：装载字库补全拼音/五行/性别
+  → 复用 JSON 提取逻辑 → 三表与物化表单事务写入
+- 【经典语料】新增两张运行期物化表 `classics_extracts`（18 组经典字集）与
+  `classics_poem_entries`（诗词索引）；`FullText`/`Chars` 为 `content` 纯函数故不落库
+- 【经典语料】新增 `classics/snapshot.go` 数据契约：`ExportExtractSets`/`LoadExtractSets`、
+  `ExportPoemEntries`/`LoadPoemEntries`
+- 【经典语料】新增 `Store.LoadClassicsFromDB()` 运行期装载；`data` 包经可选
+  `ClassicsLoader` 接口接入
+- 【CLI】新增 `materials load` 子命令（库 → 内存装载自检，必需物料缺料以非 0 退出）
+- 【CLI】`namer-cli` 新增 `--db` 走 SQLite 物料库，与服务端运行期口径一致
+
+### ⚠️ Breaking Changes 破坏性变更
+
+- 【运行期】物料来源策略默认收紧为 `SourceSQLite + AllowFallback=false + RequireAll=true`：
+  必需物料（kangxi/namer/naming_gate/forbidden_combos/yijing/zodiac）在库中缺失即启动失败
+  并提示执行 `materials import`，不再静默回落 JSON
+- 【CLI】`namer-cli` 不带 `--db` 时仍走纯 JSON 路径；带 `--db` 时不再读 JSON 物料
+  （策展名改从 `curated_names` 表读）
+
+### 🐛 Bug Fixes 问题修复
+
+- 【表结构】`hanzi_data` 建表语句此前在 `store.go` 与 `store_materials_schema.go`
+  各定义一份且默认值不同（`usage_level` 3 vs 0），已收敛为单一真源
+- 【表结构】经典三表建表语句从 `store.go` 收敛到 `materialTableDDL`；
+  `data_meta`/`classics_version` 对拍机制随统一导入器落地而移除
+- 【导入器】`snapshotMaterialTables` 原用字符串 `+=` 拼接快照，物料表扩容后退化为
+  O(n²)，导致 sqlite 包测试耗时失控（>600s）；改用 `strings.Builder`
+- 【导入器】`excludeVolatileCols` 补入 `created_at`（`curated_names` 每次重灌刷新该列），
+  避免幂等断言恒假
+- 【导入器】classics 导入后归零 `sqlite_sequence`，保证「同输入多次导入结果等价」
+
+### 📈 Improvements 性能/体验优化
+
+- 【经典语料】单文件解析失败不再阻断整个物料（如 `qianjiashi.json` 的 `paragraphs`
+  元素为 `{subchapter, paragraphs}` 嵌套对象）；跳过清单写入导入报告 `Reason`，由静默改为可见
+- 【装载报告】新增 `loadedElsewhereMaterials`，把「导入侧接入集合」与「运行期装载报告集合」
+  解耦：curated/classics 由各自领域消费方自证 fail-fast
+
+### 📚 Docs 文档更新
+
+- 更新 `docs/31`（ADR-008 落地状态：全部 12 项物料均已接入统一导入器）与
+  `docs/34`（阶段 E：统一数据集结构与运行期唯一真源）
+
+### ✅ Tests 测试
+
+- 新增 `TestImportClassics_真实数据下库路径与JSON路径等价`：真实 `data` 目录对拍，
+  18 组字集 33539 条 + 12474 条诗词条目，库路径与 JSON 路径零差异
+- 新增 curated 导入守护（富字段落库、用户行保留、修订传导、同名让位）
+- 新增 classics 导入/装载守护（三表与物化表、字集属性补全、自增序列幂等、空库 fail-fast）
 ## [2026.10.16.13]
 
 **物料管线阶段 B/C/D：清理接线、健壮性与回归固化**（`docs/34` 阶段 B~D）。
