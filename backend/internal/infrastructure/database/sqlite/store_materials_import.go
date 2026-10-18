@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"name/internal/domain/hanzi"
+	"name/internal/domain/name"
 	"name/internal/domain/yijing"
 	"name/internal/domain/zodiac"
 	"name/internal/infrastructure/logger"
@@ -339,13 +340,8 @@ func (s *Store) runImport(material string, tables []string, res *ImportResult, o
 		return res
 	}
 
-	if _, err := tx.Exec(`INSERT INTO materials_state(material, version, checksum, row_count)
-		VALUES(?,?,?,?)
-		ON CONFLICT(material) DO UPDATE SET version = excluded.version,
-			checksum = excluded.checksum, row_count = excluded.row_count,
-			imported_at = CURRENT_TIMESTAMP`,
-		material, res.Version, res.Checksum, n); err != nil {
-		res.Err = fmt.Sprintf("登记物料状态失败: %v", err)
+	if err := s.registerMaterialState(tx, material, res.Version, res.Checksum, n); err != nil {
+		res.Err = err.Error()
 		return res
 	}
 
@@ -356,6 +352,22 @@ func (s *Store) runImport(material string, tables []string, res *ImportResult, o
 	res.Rows = n
 	logger.Info("sqlite: 物料已导入", logger.String("物料", material), logger.Int("行数", n))
 	return res
+}
+
+// registerMaterialState 在导入事务内登记物料指纹与行数
+//
+// 供 runImport 与自带事务的 importXxx（如 importCurated）共用，避免
+// materials_state 的 UPSERT 语句两处维护。
+func (s *Store) registerMaterialState(tx *sql.Tx, material, version, checksum string, rows int) error {
+	if _, err := tx.Exec(`INSERT INTO materials_state(material, version, checksum, row_count)
+		VALUES(?,?,?,?)
+		ON CONFLICT(material) DO UPDATE SET version = excluded.version,
+			checksum = excluded.checksum, row_count = excluded.row_count,
+			imported_at = CURRENT_TIMESTAMP`,
+		material, version, checksum, rows); err != nil {
+		return fmt.Errorf("登记物料状态失败: %v", err)
+	}
+	return nil
 }
 
 // pendingErrors 收集待上报的校验错误（由各 importXxx 设置）
@@ -900,6 +912,90 @@ func (s *Store) importZodiac(def schema.Definition, src string, res ImportResult
 		}
 		return len(items), nil
 	})
+}
+
+// userFavoriteSource 用户自学习精选名的 source 标记（与 favorite_service 保持一致）
+const userFavoriteSource = "user_favorite"
+
+// importCurated 导入精选策展名（curated_names.json）
+//
+// 与其它物料不同，curated_names 表同时承载种子行（source=seed）与用户自学习行
+// （source=user_favorite，收藏功能写入）。故不能走 runImport 的「整表重建」语义，
+// 否则会清掉用户收藏：改为只重建非用户行，用户行原样保留；种子写入用
+// INSERT OR IGNORE，与保留的用户行同名时让位用户行、不覆盖其富字段。
+func (s *Store) importCurated(def schema.Definition, src string, res ImportResult, opt ImportOptions) ImportResult {
+	raw, err := os.ReadFile(src)
+	if err != nil {
+		res.Err = fmt.Sprintf("读取 %s 失败: %v", src, err)
+		return res
+	}
+	var entries []name.CuratedName
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		res.Err = fmt.Sprintf("解析 %s 失败: %v", src, err)
+		return res
+	}
+
+	// 归一化：去空名、同名首见即锁
+	seen := make(map[string]bool, len(entries))
+	items := make([]name.CuratedName, 0, len(entries))
+	for _, e := range entries {
+		n := strings.TrimSpace(e.Name)
+		if n == "" || seen[n] {
+			continue
+		}
+		seen[n] = true
+		e.Name = n
+		items = append(items, e)
+	}
+	res.Version = fmt.Sprintf("%d-names", len(items))
+
+	if opt.DryRun {
+		res.Rows = 0
+		res.Reason = "试运行：仅校验，未写库"
+		return res
+	}
+
+	tx, err := s.writeDB.Begin()
+	if err != nil {
+		res.Err = fmt.Sprintf("开启导入事务失败: %v", err)
+		return res
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(`DELETE FROM curated_names WHERE source <> ?`, userFavoriteSource); err != nil {
+		res.Err = fmt.Sprintf("清理旧策展名失败: %v", err)
+		return res
+	}
+
+	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO curated_names
+		(name,pinyin,gender,score,source,meaning,wuxing,styles,tags)
+		VALUES(?,?,?,?,?,?,?,?,?)`)
+	if err != nil {
+		res.Err = fmt.Sprintf("预编译写入失败: %v", err)
+		return res
+	}
+	defer func() { _ = stmt.Close() }()
+
+	for _, e := range items {
+		if _, err := stmt.Exec(e.Name, e.Pinyin, e.Gender, e.YinyunScore, "seed",
+			e.Meaning, e.Wuxing, mustJSON(normalize.Tags(e.Styles)), mustJSON(normalize.Tags(e.Tags))); err != nil {
+			res.Err = fmt.Sprintf("写入策展名 %s 失败: %v", e.Name, err)
+			return res
+		}
+	}
+
+	if err := s.registerMaterialState(tx, def.Name, res.Version, res.Checksum, len(items)); err != nil {
+		res.Err = err.Error()
+		return res
+	}
+
+	if err := tx.Commit(); err != nil {
+		res.Err = fmt.Sprintf("提交导入事务失败: %v", err)
+		return res
+	}
+	res.Rows = len(items)
+	logger.Info("sqlite: 物料已导入", logger.String("物料", def.Name), logger.Int("行数", len(items)))
+	return res
 }
 
 // readStringSlice 读取一个 JSON 字符串数组文件

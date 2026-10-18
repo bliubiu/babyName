@@ -40,12 +40,19 @@ type CuratedPersister interface {
 }
 
 // CuratedNameEntry 精简版本，仅包含持久化所需字段
+//
+// 扩列携带 meaning/wuxing/styles/tags（docs/31 ADR-008）：curated_names.json
+// 的这四类信息随「运行时改读库」落库保真，避免策展释义/五行/风格标签丢失。
 type CuratedNameEntry struct {
-	Name   string  `json:"name"`
-	Pinyin string  `json:"pinyin,omitempty"`
-	Gender string  `json:"gender,omitempty"`
-	Score  float64 `json:"score"`
-	Source string  `json:"source,omitempty"`
+	Name    string   `json:"name"`
+	Pinyin  string   `json:"pinyin,omitempty"`
+	Gender  string   `json:"gender,omitempty"`
+	Score   float64  `json:"score"`
+	Source  string   `json:"source,omitempty"`
+	Meaning string   `json:"meaning,omitempty"`
+	Wuxing  string   `json:"wuxing,omitempty"`
+	Styles  []string `json:"styles,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
 }
 
 // NameDB 候选名库管理器
@@ -160,7 +167,16 @@ func LoadCuratedNamesData(dataDir string) ([]CuratedName, error) {
 }
 
 // loadCuratedNames 从 JSON 加载精选候选名库
+//
+// 运行期（配置了持久化器）不读 JSON 种子：curated_names 表的种子行由
+// `materials import` 导入，与用户自学习行同表，统一经 loadCuratedFromPersister
+// 从库装载（docs/31 ADR-008「运行时只读 SQLite」）。仅在无持久化器的
+// 离线工具/测试场景回落到 JSON 源文件。
 func (db *NameDB) loadCuratedNames() error {
+	if db.persister != nil {
+		return nil
+	}
+
 	names, err := LoadCuratedNamesData(db.dataDir)
 	if err != nil {
 		return err
@@ -198,10 +214,14 @@ func (db *NameDB) loadCuratedFromPersister() error {
 	for _, e := range entries {
 		if !db.nameIndex[e.Name] {
 			db.curatedNames = append(db.curatedNames, CuratedName{
-				Name:   e.Name,
-				Pinyin: e.Pinyin,
-				Gender: e.Gender,
-				Source: e.Source,
+				Name:    e.Name,
+				Pinyin:  e.Pinyin,
+				Gender:  e.Gender,
+				Source:  e.Source,
+				Meaning: e.Meaning,
+				Wuxing:  e.Wuxing,
+				Styles:  e.Styles,
+				Tags:    e.Tags,
 			})
 			db.nameIndex[e.Name] = true
 			added++

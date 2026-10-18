@@ -11,6 +11,7 @@ import (
 	"name/internal/domain/yijing"
 	"name/internal/domain/zodiac"
 	"name/internal/infrastructure/logger"
+	"name/internal/materials/schema"
 )
 
 // 本文件实现「运行时统一只读 SQLite 数据源」的物料读取路径
@@ -444,15 +445,21 @@ func (s *Store) LoadMaterialsFromDBWithReport() MaterialLoadReport {
 	return report
 }
 
-// materialNames 运行时支持的物料名（有序）
+// materialNames 运行时装载报告支持的物料名（有序）
 //
-// 单一真源 = IntegratedMaterialNames（已接入统一导入链路的物料，按 schema
-// 注册序派生）。曾手抄一份清单，漏列 allowlist / compliance_redline 导致
-// 装载报告与 VerifyMaterialsFromDB 永远不报这两类物料缺失
-// （docs/34 阶段 B2）；改为派生后「导入侧接入集合」与「装载侧报告集合」
-// 不可能再漂移。legacy 物料（curated_names / classics）不参与本报告。
+// 单一真源 = schema.Definitions 减去 loadedElsewhereMaterials（由领域消费方
+// 自装载、不参与统一报告的物料：curated / classics）。报告集合与
+// LoadMaterialsFromDB 的装载分支严格一致：新增物料接入 LoadMaterialsFromDB
+// 时必须同步，否则 TestMaterialNames_覆盖全部已接入物料 失败。
 func materialNames() []string {
-	return IntegratedMaterialNames()
+	names := make([]string, 0, len(schema.Definitions))
+	for _, def := range schema.Definitions {
+		if loadedElsewhereMaterials[def.Name] {
+			continue
+		}
+		names = append(names, def.Name)
+	}
+	return names
 }
 
 // VerifyMaterialsFromDB 校验库中物料是否齐备，用于启动前 fail-fast 引导

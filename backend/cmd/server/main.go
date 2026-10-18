@@ -252,7 +252,7 @@ func newServices(store database.Store, dataDir string) *appServices {
 	// 装配 fate 引擎（新一代引擎：完整 Rater 评分链、避讳长辈、负面反馈、更大候选池）
 	// 前置条件：loadCulturalData 已通过 data.Init 将标准字表同步到 hanzi.HanziData
 	services.SyncNamingIndexFromHanzi()
-	if curatedNames := loadCuratedNamesForFate(dataDir); len(curatedNames) > 0 {
+	if curatedNames := loadCuratedNamesForFate(store); len(curatedNames) > 0 {
 		fate.SetCuratedNames(curatedNames)
 		logger.Info("已注入策展好名到 fate 引擎", logger.Int("count", len(curatedNames)))
 	}
@@ -539,12 +539,18 @@ func loadCulturalData(dataDir string, db database.Store) error {
 	return data.Init(dataDir)
 }
 
-// loadCuratedNamesForFate 读取 curated_names.json 的 name 字段，返回策展好名列表
+// loadCuratedNamesForFate 从库读取策展名的 name 字段，返回策展好名列表
 // 注入 fate 引擎作为共现分白名单（与 verify_fate 的 loadCuratedNames 逻辑一致）
-func loadCuratedNamesForFate(dataDir string) []string {
-	entries, err := name.LoadCuratedNamesData(dataDir)
+//
+// 运行时只读 SQLite（docs/31 ADR-008）：curated_names 表由 materials import 导入，
+// 不再读 curated_names.json。库不可用/读取失败时返回 nil（fate 引擎无策展白名单）。
+func loadCuratedNamesForFate(store database.Store) []string {
+	if store == nil {
+		return nil
+	}
+	entries, err := store.LoadAllCuratedNames()
 	if err != nil {
-		logger.Warn("读取 curated_names.json 失败，fate 引擎无策展白名单", logger.ErrField(err))
+		logger.Warn("从库读取策展名失败，fate 引擎无策展白名单", logger.ErrField(err))
 		return nil
 	}
 	names := make([]string, 0, len(entries))

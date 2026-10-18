@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
 	"name/internal/domain/hanzi"
-	"name/internal/domain/name"
 	"name/internal/domain/yijing"
 	"name/internal/domain/zodiac"
 	"name/internal/infrastructure/database"
@@ -131,8 +130,8 @@ func NewStore(dbPath string, dataDir string) (*Store, error) {
 		logger.Error("sqlite: seed classics data failed", logger.ErrField(err))
 	}
 
-	// 导入精选名库种子数据（仅在表为空时）
-	store.seedCuratedNames(dataDir)
+	// 精选名种子数据不再在启动时 seed：curated_names 已接入统一导入器
+	// （materials import），运行时经 NameDB 从库读（docs/31 ADR-008）。
 
 	// 注意：字库与康熙笔画**不再**在此处 seed。
 	//
@@ -245,47 +244,9 @@ func createTables(db *sql.DB) error {
 			char_count      INTEGER DEFAULT 0
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_classics_paragraphs_section ON classics_paragraphs(section_id)`,
-		`CREATE TABLE IF NOT EXISTS curated_names (
-			name       TEXT PRIMARY KEY,
-			pinyin     TEXT NOT NULL DEFAULT '',
-			gender     TEXT NOT NULL DEFAULT '',
-			score      REAL NOT NULL DEFAULT 0,
-			source     TEXT NOT NULL DEFAULT '',
-			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)`,
-	// 汉字字库缓存表（由 namer.json 经物料导入路径 importNamer 写入，docs/34 阶段 A1）
-	`CREATE TABLE IF NOT EXISTS hanzi_data (
-			char       TEXT PRIMARY KEY,
-			pinyin     TEXT NOT NULL DEFAULT '',
-			strokes    INTEGER NOT NULL DEFAULT 0,
-			kangxi_strokes INTEGER NOT NULL DEFAULT 0,
-			radical    TEXT NOT NULL DEFAULT '',
-			meaning    TEXT NOT NULL DEFAULT '',
-			wuxing     TEXT NOT NULL DEFAULT '',
-			gender     TEXT NOT NULL DEFAULT '',
-			level      INTEGER NOT NULL DEFAULT 0,
-			tone       INTEGER NOT NULL DEFAULT 0,
-			name_freq_tier INTEGER NOT NULL DEFAULT 0,
-			gender_tags     TEXT NOT NULL DEFAULT '[]',
-			style_tags      TEXT NOT NULL DEFAULT '[]',
-			usage_level     INTEGER NOT NULL DEFAULT 3,
-			positive_score  INTEGER NOT NULL DEFAULT 0,
-			phonetic_score  INTEGER NOT NULL DEFAULT 0,
-			modern_score    INTEGER NOT NULL DEFAULT 0,
-			classical_score INTEGER NOT NULL DEFAULT 0,
-			is_polyphonic   INTEGER NOT NULL DEFAULT 0,
-			is_rare         INTEGER NOT NULL DEFAULT 0,
-			is_negative     INTEGER NOT NULL DEFAULT 0,
-			pair_blacklist  TEXT NOT NULL DEFAULT '[]',
-			curation_level  INTEGER NOT NULL DEFAULT 0,
-			name_penalty    INTEGER NOT NULL DEFAULT 0,
-			naming_categories TEXT NOT NULL DEFAULT '[]',
-			updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_hanzi_data_wuxing ON hanzi_data(wuxing)`,
-		`CREATE INDEX IF NOT EXISTS idx_hanzi_data_strokes ON hanzi_data(strokes)`,
-		`CREATE INDEX IF NOT EXISTS idx_hanzi_data_pinyin ON hanzi_data(pinyin)`,
-		`CREATE INDEX IF NOT EXISTS idx_hanzi_data_level ON hanzi_data(level)`,
+		// 注意：hanzi_data 与 curated_names 是物料表，建表语句统一收敛在
+		// store_materials_schema.go（materialTableDDL），本处不再重复定义，
+		// 避免同一张表两处 DDL 因默认值/列集不同而漂移（docs/34 双口径）。
 
 		// 门禁复审队列（docs/33 门禁层 M6）：bad-case 回流闭环的人审状态机。
 		// status ∈ pending（待复审）/ confirmed（确认违规）/ false_positive（误报）/
@@ -313,10 +274,6 @@ func createTables(db *sql.DB) error {
 		}
 	}
 
-	// 存量库补列：CREATE TABLE IF NOT EXISTS 不会给已存在的表加列（docs/31 ADR-012）
-	if err := migrateHanziDataColumns(db); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -963,62 +920,23 @@ func (s *Store) GetAlgorithmPerformance() ([]*database.AlgorithmPerformance, err
 
 // --- CuratedStore ---
 
-func (s *Store) seedCuratedNames(dataDir string) {
-	var count int
-	err := s.db.QueryRow("SELECT COUNT(*) FROM curated_names").Scan(&count)
-	if err != nil || count > 0 {
-		return
-	}
-
-	// 读取统一收敛到 name.LoadCuratedNamesData（P2-12），避免四处各自解析漂移
-	entries, err := name.LoadCuratedNamesData(dataDir)
-	if err != nil {
-		logger.Warn("sqlite: seed curated_names.json 读取失败，跳过", logger.ErrField(err))
-		return
-	}
-
-	tx, err := s.writeDB.Begin()
-	if err != nil {
-		logger.Warn("sqlite: seed curated names tx begin failed", logger.ErrField(err))
-		return
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	stmt, err := tx.Prepare("INSERT OR IGNORE INTO curated_names(name,pinyin,gender,score,source) VALUES(?,?,?,?,?)")
-	if err != nil {
-		logger.Warn("sqlite: seed curated names prepare failed", logger.ErrField(err))
-		return
-	}
-	defer stmt.Close()
-
-	seeded := 0
-	for _, e := range entries {
-		name := strings.TrimSpace(e.Name)
-		if name == "" {
-			continue
-		}
-		if _, err := stmt.Exec(name, e.Pinyin, e.Gender, e.YinyunScore, "seed"); err != nil {
-			continue
-		}
-		seeded++
-	}
-	if err := tx.Commit(); err != nil {
-		logger.Warn("sqlite: seed curated names commit failed", logger.ErrField(err))
-		return
-	}
-	logger.Info("sqlite: seeded curated names", logger.Int("count", seeded))
-}
-
+// SaveCuratedName 写入精选名（用户自学习）
+//
+// 用 UPSERT 而非 INSERT OR REPLACE：同名冲突时只更新用户可写字段，
+// 保留库里已有的策展释义/五行/风格/标签（种子行富字段不被清空）。
 func (s *Store) SaveCuratedName(name, pinyin, gender string, score float64, source string) error {
 	_, err := s.writeDB.Exec(
-		"INSERT OR REPLACE INTO curated_names(name,pinyin,gender,score,source,created_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)",
+		`INSERT INTO curated_names(name,pinyin,gender,score,source,created_at)
+		 VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)
+		 ON CONFLICT(name) DO UPDATE SET pinyin=excluded.pinyin, gender=excluded.gender,
+		   score=excluded.score, source=excluded.source, created_at=CURRENT_TIMESTAMP`,
 		name, pinyin, gender, score, source,
 	)
 	return err
 }
 
 func (s *Store) LoadAllCuratedNames() ([]database.CuratedNameEntry, error) {
-	rows, err := s.db.Query("SELECT name,pinyin,gender,score,source FROM curated_names ORDER BY score DESC")
+	rows, err := s.db.Query("SELECT name,pinyin,gender,score,source,meaning,wuxing,styles,tags FROM curated_names ORDER BY score DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -1026,10 +944,16 @@ func (s *Store) LoadAllCuratedNames() ([]database.CuratedNameEntry, error) {
 
 	var result []database.CuratedNameEntry
 	for rows.Next() {
-		var e database.CuratedNameEntry
-		if err := rows.Scan(&e.Name, &e.Pinyin, &e.Gender, &e.Score, &e.Source); err != nil {
+		var (
+			e             database.CuratedNameEntry
+			styles, tags  string
+		)
+		if err := rows.Scan(&e.Name, &e.Pinyin, &e.Gender, &e.Score, &e.Source,
+			&e.Meaning, &e.Wuxing, &styles, &tags); err != nil {
 			continue
 		}
+		e.Styles = unmarshalTags(styles)
+		e.Tags = unmarshalTags(tags)
 		result = append(result, e)
 	}
 	if err := rows.Err(); err != nil {

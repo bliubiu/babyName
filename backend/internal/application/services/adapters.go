@@ -108,11 +108,15 @@ func (a *CuratedPersisterAdapter) LoadAllCuratedNames() ([]name.CuratedNameEntry
 	result := make([]name.CuratedNameEntry, len(entries))
 	for i, e := range entries {
 		result[i] = name.CuratedNameEntry{
-			Name:   e.Name,
-			Pinyin: e.Pinyin,
-			Gender: e.Gender,
-			Score:  e.Score,
-			Source: e.Source,
+			Name:    e.Name,
+			Pinyin:  e.Pinyin,
+			Gender:  e.Gender,
+			Score:   e.Score,
+			Source:  e.Source,
+			Meaning: e.Meaning,
+			Wuxing:  e.Wuxing,
+			Styles:  e.Styles,
+			Tags:    e.Tags,
 		}
 	}
 	return result, nil

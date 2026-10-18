@@ -11,8 +11,8 @@ import "name/internal/materials/schema"
 // 在编译/启动期暴露），已接入统一导入器的物料与走既有路径的 legacy 物料
 // 显式区分。
 //
-// 未接入统一导入器的物料（classics/curated_names）登记为 legacyMarker，
-// 保持既有「跳过并给出原因」语义，但不视为错误。
+// 尚未接入统一导入器的物料登记为 legacyMarker，保持既有「跳过并给出原因」
+// 语义，但不视为错误。curated 已接入（importCurated）；classics 待阶段 3 接入。
 
 // Material 单个物料的导入能力抽象
 //
@@ -62,21 +62,31 @@ func (m legacyMarker) Import(_ *Store, _ string, res ImportResult, _ ImportOptio
 	return res
 }
 
-// legacyMaterials 走既有路径、暂不接入统一导入器的物料
+// legacyMaterials 尚未接入统一导入器的物料
 //
 // 这类物料由 store_classics.go 等既有路径导入，统一导入器遇到时跳过并给出
-// 原因，不视为错误；同样不参与运行时统一装载报告（materialNames）。
+// 原因，不视为错误。curated 已接入后此表仅剩 classics，待阶段 3 接入后清空。
 var legacyMaterials = map[string]bool{
 	schema.ClassicsMaterial: true,
+}
+
+// loadedElsewhereMaterials 不参与 LoadMaterialsFromDB 运行时装载报告的物料
+//
+// 它们由各自领域消费方单独从库装载，故不能纳入「统一装载报告」的
+// 已载/缺失集合（否则会永远报缺失，使 VerifyMaterialsFromDB 误 fail-fast）：
+//   - curated → name.NameDB 经 CuratedPersister 从 curated_names 表装载；
+//   - classics → classics 装载器从 classics_* 表装载。
+//
+// 其 fail-fast 由消费方自证，报告范围仍严格等于 LoadMaterialsFromDB 实载集合。
+var loadedElsewhereMaterials = map[string]bool{
 	schema.CuratedMaterial:  true,
+	schema.ClassicsMaterial: true,
 }
 
 // IntegratedMaterialNames 已接入统一导入链路的物料名（按 schema 注册序）
 //
-// 供 materialNames（运行时装载报告）派生，保证「导入侧接入集合」与
-// 「装载侧报告集合」单一真源：新增物料接入 impls 后无需再手抄一份装载
-// 清单（docs/34 阶段 B2 修复的正是手抄清单漏列 allowlist /
-// compliance_redline 导致的漏报）。
+// 「已接入」= 非 legacyMaterials。注意与「运行时装载报告集合」区分：
+// 后者还要排除 loadedElsewhereMaterials（由领域消费方自装载的物料）。
 func IntegratedMaterialNames() []string {
 	names := make([]string, 0, len(schema.Definitions))
 	for _, def := range schema.Definitions {
@@ -104,6 +114,7 @@ func init() {
 		schema.ComplianceRedlineMaterial: (*Store).importComplianceRedline,
 		schema.YijingMaterial:            (*Store).importYijing,
 		schema.ZodiacMaterial:            (*Store).importZodiac,
+		schema.CuratedMaterial:           (*Store).importCurated,
 	}
 
 	for _, def := range schema.Definitions {

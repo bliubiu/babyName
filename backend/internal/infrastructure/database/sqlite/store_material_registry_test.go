@@ -43,6 +43,7 @@ func TestMaterialRegistry_已接入物料不使用legacy(t *testing.T) {
 		schema.FrequencyMaterial, schema.BigramMaterial, schema.GateMaterial,
 		schema.ForbiddenMaterial, schema.AllowlistMaterial,
 		schema.ComplianceRedlineMaterial, schema.YijingMaterial, schema.ZodiacMaterial,
+		schema.CuratedMaterial,
 	}
 	for _, name := range integrated {
 		m, ok := materialRegistry[name]
@@ -56,8 +57,10 @@ func TestMaterialRegistry_已接入物料不使用legacy(t *testing.T) {
 }
 
 // TestMaterialRegistry_Legacy物料跳过并给出原因 legacy 物料必须跳过且原因非空
+//
+// curated 已接入统一导入器（importCurated），此处仅剩 classics 待阶段 3 接入。
 func TestMaterialRegistry_Legacy物料跳过并给出原因(t *testing.T) {
-	for _, name := range []string{schema.ClassicsMaterial, schema.CuratedMaterial} {
+	for _, name := range []string{schema.ClassicsMaterial} {
 		m, ok := materialRegistry[name]
 		if !ok {
 			t.Fatalf("legacy 物料 %s 未登记", name)

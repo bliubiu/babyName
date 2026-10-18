@@ -83,6 +83,17 @@ func writeMinimalMaterials(t *testing.T) string {
 		t.Fatalf("写入双字频率失败: %v", err)
 	}
 
+	// 精选策展名：含富字段（meaning/wuxing/styles/tags）与一条空名（应被丢弃）
+	curated := `[
+      {"name":"子轩","pinyin":"zi xuan","gender":"male","source":"百家姓","meaning":"志向高远","wuxing":"水木","yinyun_score":88,"styles":["古典风","大气"],"tags":["志向","高频平"]},
+      {"name":"浩然","pinyin":"hao ran","gender":"male","source":"易经","meaning":"浩然正气","wuxing":"水木","yinyun_score":92,"styles":["古典风","大气"],"tags":["阳刚","高频平"]},
+      {"name":"永嘉","pinyin":"yong jia","gender":"","source":"测试","meaning":"长久美好","wuxing":"土","yinyun_score":70,"styles":["古典"],"tags":["测试"]},
+      {"name":"","pinyin":"x","gender":"","source":"","meaning":"","wuxing":"","yinyun_score":0}
+    ]`
+	if err := os.WriteFile(filepath.Join(dir, "curated_names.json"), []byte(curated), 0o644); err != nil {
+		t.Fatalf("写入策展名失败: %v", err)
+	}
+
 	return dir
 }
 
@@ -457,14 +468,15 @@ func snapshotMaterialTables(t *testing.T, s *Store) string {
 	return out
 }
 
-// excludeVolatileCols 过滤数据库自维护的易变列（updated_at）
+// excludeVolatileCols 过滤数据库自维护的易变列（updated_at / created_at）
 //
-// 与 store.go 建表 DDL 的 `DEFAULT CURRENT_TIMESTAMP` 对应：该值由数据库在写入时
+// 与建表 DDL 的 `DEFAULT CURRENT_TIMESTAMP` 对应：该值由数据库在写入时
 // 生成，同一输入跨秒重灌即不同，不参与「物料内容幂等」比对。
+// created_at 为 curated_names 所有（素材行每次重灌都刷新该列）。
 func excludeVolatileCols(cols []string) []string {
 	out := make([]string, 0, len(cols))
 	for _, c := range cols {
-		if c == "updated_at" {
+		if c == "updated_at" || c == "created_at" {
 			continue
 		}
 		out = append(out, c)

@@ -130,6 +130,22 @@ var materialTableDDL = []string{
 		lucky_numbers  TEXT NOT NULL DEFAULT '[]'
 	)`,
 
+	// 精选策展名（curated_names.json）：种子行（source=seed）与用户自学习行
+	// （source=user_favorite）同表共存。扩列保留策展释义/五行/风格/标签，
+	// 使运行时改读库后 SearchCuratedNames / GetStyles 等不退化（docs/31 ADR-008）。
+	`CREATE TABLE IF NOT EXISTS curated_names (
+		name       TEXT PRIMARY KEY,
+		pinyin     TEXT NOT NULL DEFAULT '',
+		gender     TEXT NOT NULL DEFAULT '',
+		score      REAL NOT NULL DEFAULT 0,
+		source     TEXT NOT NULL DEFAULT '',
+		meaning    TEXT NOT NULL DEFAULT '',
+		wuxing     TEXT NOT NULL DEFAULT '',
+		styles     TEXT NOT NULL DEFAULT '[]',
+		tags       TEXT NOT NULL DEFAULT '[]',
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`,
+
 	// 物料版本与指纹
 	`CREATE TABLE IF NOT EXISTS materials_state (
 		material   TEXT PRIMARY KEY,
@@ -140,11 +156,22 @@ var materialTableDDL = []string{
 	)`,
 }
 
+// curatedNamesColumnMigrations curated_names 的增量补列清单：列名 → 完整列定义
+//
+// 新增列必须同时登记到本表，否则旧库升级后读写不一致（schema 漂移的护栏）。
+var curatedNamesColumnMigrations = []struct{ column, definition string }{
+	{"meaning", "TEXT NOT NULL DEFAULT ''"},
+	{"wuxing", "TEXT NOT NULL DEFAULT ''"},
+	{"styles", "TEXT NOT NULL DEFAULT '[]'"},
+	{"tags", "TEXT NOT NULL DEFAULT '[]'"},
+}
+
 // materialTables 全部物料表名（守护测试与文档用）
 var materialTables = []string{
 	"kangxi_strokes", "hanzi_data", "char_groups",
 	"name_frequency", "name_bigram", "naming_gate", "forbidden_combos",
-	"allowlist", "compliance_redline", "yijing_hexagrams", "zodiac", "materials_state",
+	"allowlist", "compliance_redline", "yijing_hexagrams", "zodiac",
+	"curated_names", "materials_state",
 }
 
 // createMaterialTables 建立全部物料表（幂等）
@@ -152,6 +179,58 @@ func createMaterialTables(db *sql.DB) error {
 	for _, ddl := range materialTableDDL {
 		if _, err := db.Exec(ddl); err != nil {
 			return fmt.Errorf("创建物料表失败: %w", err)
+		}
+	}
+	// 存量库补列：CREATE TABLE IF NOT EXISTS 不会给已存在的表加列（docs/31 ADR-012）。
+	// 补列随物料表结构就绪而执行，保证「新增列登记在补列清单」这一
+	// 单一真源与建表语句在同一处维护。
+	if err := migrateHanziDataColumns(db); err != nil {
+		return err
+	}
+	if err := migrateCuratedNamesColumns(db); err != nil {
+		return err
+	}
+	return nil
+}
+
+// migrateCuratedNamesColumns 给已存在的 curated_names 表补齐缺失的新列
+//
+// 先读 PRAGMA table_info 判断列是否已存在再 ALTER，避免重复加列报错。
+// 覆盖「早期仅 5 列的库」升级到「扩列保真」后的 schema 一致性。
+func migrateCuratedNamesColumns(db *sql.DB) error {
+	rows, err := db.Query("PRAGMA table_info(curated_names)")
+	if err != nil {
+		return fmt.Errorf("读取 curated_names 表结构失败: %w", err)
+	}
+	existing := make(map[string]bool)
+	for rows.Next() {
+		var (
+			cid       int
+			col       string
+			ctype     sql.NullString
+			notNull   sql.NullInt64
+			dfltValue sql.NullString
+			pk        sql.NullInt64
+		)
+		if err := rows.Scan(&cid, &col, &ctype, &notNull, &dfltValue, &pk); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("解析 curated_names 表结构失败: %w", err)
+		}
+		existing[col] = true
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("遍历 curated_names 表结构失败: %w", err)
+	}
+	_ = rows.Close()
+
+	for _, m := range curatedNamesColumnMigrations {
+		if existing[m.column] {
+			continue
+		}
+		stmt := fmt.Sprintf("ALTER TABLE curated_names ADD COLUMN %s %s", m.column, m.definition)
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("curated_names 补列 %s 失败: %w", m.column, err)
 		}
 	}
 	return nil

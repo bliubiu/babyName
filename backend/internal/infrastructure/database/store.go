@@ -79,12 +79,20 @@ type CuratedStore interface {
 }
 
 // CuratedNameEntry 精选名条目
+//
+// 由「单字库」扩列至携带 meaning/wuxing/styles/tags（docs/31 ADR-008）：
+// 这些字段在 curated_names.json 中确有数据，只落 5 列会在「运行时改读库」后
+// 丢失策展释义/五行/风格标签，使 SearchCuratedNames / GetStyles 等退化。
 type CuratedNameEntry struct {
-	Name   string  `json:"name"`
-	Pinyin string  `json:"pinyin,omitempty"`
-	Gender string  `json:"gender,omitempty"`
-	Score  float64 `json:"score"`
-	Source string  `json:"source,omitempty"`
+	Name    string   `json:"name"`
+	Pinyin  string   `json:"pinyin,omitempty"`
+	Gender  string   `json:"gender,omitempty"`
+	Score   float64  `json:"score"`
+	Source  string   `json:"source,omitempty"`
+	Meaning string   `json:"meaning,omitempty"`
+	Wuxing  string   `json:"wuxing,omitempty"`
+	Styles  []string `json:"styles,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
 }
 
 // NameStatStore 姓名统计存储接口
