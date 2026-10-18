@@ -123,12 +123,13 @@ func InitWithDB(dataDir string, dbLoader DBLoader) error {
 
 	// 4. 古典文学语料（诗经/楚辞/诗词/蒙学）
 	//
-	// 语料体量大且走异步预热，此处只登记同步部分。
+	// 语料体量大。运行期优先从 SQLite 物化表装载（classics_extracts /
+	// classics_poem_entries），库缺料时才回落 JSON（阶段 4 将移除回落）。
 	//
 	// 缺失**不阻断**：语料缺失只影响诗词取名，属于可降级能力；
 	// 若在此返回错误，会把前面已成功从库装载的字库/易经/生肖一并作废 ——
 	// 这是「语料缺失拖垮全局」的反模式。
-	if err := classics.LoadFromJSON(dataDir); err != nil {
+	if err := loadClassics(p, dbLoader, dataDir); err != nil {
 		logger.Warn("加载古典文学语料失败，诗词取名能力降级", logger.ErrField(err))
 	}
 
@@ -211,6 +212,33 @@ func sortedKeys(m map[string]bool) []string {
 type DBLoader interface {
 	// LoadMaterialsFromDB 从库装载全部可用物料，返回已装载的物料名清单
 	LoadMaterialsFromDB() []string
+}
+
+// ClassicsLoader 经典语料的库装载能力（可选接口）
+//
+// 经典语料不入统一装载报告（LoadMaterialsFromDB 负责的物料集），由消费方
+// 单独自证：库有则从物化表装载，库缺则报错/回落，不与统一报告互相牵连。
+type ClassicsLoader interface {
+	LoadClassicsFromDB() error
+}
+
+// loadClassics 装载古典文学语料：优先库物化表，其次回落 JSON 源文件
+//
+// 回落策略受 RequireAll 约束：严格模式（阶段 4 起）下库缺料即报错，
+// 符合「运行时 SQLite 为唯一真源」；宽松模式仍保留 JSON 兜底。
+func loadClassics(p SourcePolicy, dbLoader DBLoader, dataDir string) error {
+	if dbLoader != nil && p.Source == SourceSQLite {
+		if cl, ok := dbLoader.(ClassicsLoader); ok {
+			if err := cl.LoadClassicsFromDB(); err == nil {
+				return nil
+			} else if p.RequireAll {
+				return err
+			} else {
+				logger.Warn("经典语料从库装载失败，回落 JSON 源文件", logger.ErrField(err))
+			}
+		}
+	}
+	return classics.LoadFromJSON(dataDir)
 }
 
 // ReloadAll 热更新所有数据

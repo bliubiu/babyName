@@ -1,23 +1,28 @@
 package sqlite
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"name/internal/infrastructure/logger"
 )
 
-// 经典数据导入 - 将 JSON 文件中的经典数据写入 SQLite
+// 经典语料解析与落库（docs/31 ADR-008：经典物料接入统一导入器）
 //
 // 统一的三表设计：
-//   classics_books      - 书籍级别元数据（如《诗经》《论语》《唐诗三百首》）
-//   classics_sections   - 篇章级别（如"国风·周南"、"学而篇"）
-//   classics_paragraphs - 段落/句子级别（具体诗文内容）
 //
-// 覆盖 23 个 JSON 文件（排除 hanzi/word/curated_names/standard_chars/zodiac）
+//	classics_books      - 书籍级别元数据（如《诗经》《论语》《唐诗三百首》）
+//	classics_sections   - 篇章级别（如"国风·周南"、"学而篇"）
+//	classics_paragraphs - 段落/句子级别（具体诗文内容）
+//
+// 另有两张物化表（classics_extracts / classics_poem_entries）承载运行期真正
+// 消费的经典字集与诗词索引，由 importClassics 在同一事务内一并写入，
+// 提取逻辑复用 classics 域的 extractFromEntries（见 classics/snapshot.go）。
 
 // --- 解析用中间结构 ---
 
@@ -177,7 +182,7 @@ var classicsFileCategory = map[string]string{
 	"wenzimengqiu.json":          "蒙学",
 }
 
-// 排除的文件
+// 排除的文件（与 classics 域运行期字集无关：字库/词库/策展名/生肖）
 var excludedClassicsFiles = map[string]bool{
 	"hanzi.json":          true,
 	"word.json":           true,
@@ -186,85 +191,13 @@ var excludedClassicsFiles = map[string]bool{
 	"zodiac.json":         true,
 }
 
-// seedClassicsData 将 JSON 文件中的经典数据导入 SQLite
-// 通过 data_meta 中的 classics_version 与 data 目录对拍：版本变化时强制重建，避免 JSON 热更新后双源漂移。
-func (s *Store) seedClassicsData(dataDir string) error {
-	version := classicsDataVersion(dataDir)
-
-	stored := ""
-	err := s.db.QueryRow(`SELECT value FROM data_meta WHERE key = 'classics_version'`).Scan(&stored)
+// classicsSourceFiles 返回待导入的经典文件名（字典序，保证导入结果可复现）
+func classicsSourceFiles(dataDir string) []string {
+	entries, err := os.ReadDir(dataDir)
 	if err != nil {
-		// 读失败不能当作「版本一致」跳过（P2-10）：stored 保持零值即可
-		// 与最新 version 不相等 → 走重建分支，并告警以便排查。
-		logger.Warn("读取 classics_version 失败，按「需要重建」处理", logger.ErrField(err))
-		stored = ""
-	}
-
-	var count int
-	if err := s.db.QueryRow("SELECT COUNT(*) FROM classics_books").Scan(&count); err != nil {
-		return fmt.Errorf("检查经典数据失败: %w", err)
-	}
-
-	if count > 0 && stored == version {
-		logger.Info("经典数据版本一致，跳过导入", logger.String("version", version))
 		return nil
 	}
-
-	if count > 0 {
-		logger.Info("经典数据版本变化，强制重建",
-			logger.String("old", stored),
-			logger.String("new", version))
-		if err := s.clearClassicsTables(); err != nil {
-			return fmt.Errorf("清理旧经典数据失败: %w", err)
-		}
-	}
-
-	entries, err := os.ReadDir(dataDir)
-	if err != nil {
-		return fmt.Errorf("读取数据目录失败: %w", err)
-	}
-
-	imported := 0
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		if excludedClassicsFiles[entry.Name()] {
-			continue
-		}
-		category, ok := classicsFileCategory[entry.Name()]
-		if !ok {
-			continue
-		}
-
-		filePath := filepath.Join(dataDir, entry.Name())
-		if err := s.importClassicsFile(filePath, entry.Name(), category); err != nil {
-			logger.Error("导入经典文件失败",
-				logger.String("file", entry.Name()),
-				logger.ErrField(err))
-			continue
-		}
-		imported++
-	}
-
-	if err := s.saveMeta("classics_version", version); err != nil {
-		return fmt.Errorf("保存经典数据版本失败: %w", err)
-	}
-	logger.Info("经典数据导入完成",
-		logger.Int("files", imported),
-		logger.String("version", version))
-	return nil
-}
-
-// classicsDataVersion 根据经典 JSON 文件名+大小生成版本指纹
-func classicsDataVersion(dataDir string) string {
-	entries, err := os.ReadDir(dataDir)
-	if err != nil {
-		return "dir-error"
-	}
-	h := new(strings.Builder)
-	var total int64
-	n := 0
+	var out []string
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
@@ -275,104 +208,71 @@ func classicsDataVersion(dataDir string) string {
 		if _, ok := classicsFileCategory[e.Name()]; !ok {
 			continue
 		}
-		info, err := e.Info()
+		out = append(out, e.Name())
+	}
+	sort.Strings(out)
+	return out
+}
+
+// classicsDataVersion 经典物料的版本指纹：文件名 + 字节大小
+//
+// 经典物料的「源」是 dataDir 下的多个 JSON（不是 schema.Definition 登记的
+// 单个 Source 文件），因此版本指纹不能用通用路径的 res.Checksum，
+// 否则任一非主源文件变更都不会触发重灌。
+func classicsDataVersion(dataDir string) string {
+	files := classicsSourceFiles(dataDir)
+	var total int64
+	h := new(strings.Builder)
+	for _, name := range files {
+		info, err := os.Stat(filepath.Join(dataDir, name))
 		if err != nil {
 			continue
 		}
-		fmt.Fprintf(h, "%s:%d;", e.Name(), info.Size())
+		fmt.Fprintf(h, "%s:%d;", name, info.Size())
 		total += info.Size()
-		n++
 	}
-	return fmt.Sprintf("n=%d;size=%d;%s", n, total, h.String())
+	return fmt.Sprintf("n=%d;size=%d;%s", len(files), total, h.String())
 }
 
-// clearClassicsTables 清空经典三表（重建用）
-func (s *Store) clearClassicsTables() error {
-	tx, err := s.writeDB.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	for _, q := range []string{
-		`DELETE FROM classics_paragraphs`,
-		`DELETE FROM classics_sections`,
-		`DELETE FROM classics_books`,
-	} {
-		if _, err := tx.Exec(q); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
-// saveMeta 写入 data_meta
-func (s *Store) saveMeta(key, value string) error {
-	_, err := s.writeDB.Exec(
-		`INSERT INTO data_meta (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-		 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
-		key, value,
-	)
-	return err
-}
-
-// GetClassicsDataVersion 读取当前经典数据版本指纹
-// 读取失败返回空串并告警（P2-10）：调用方应按「版本未知 → 核对重建」处理，
-// 而不是把空串误判成「版本一致」。
-func (s *Store) GetClassicsDataVersion() string {
-	var v string
-	err := s.db.QueryRow(`SELECT value FROM data_meta WHERE key = 'classics_version'`).Scan(&v)
-	if err != nil {
-		logger.Warn("读取 classics_version 失败，返回空版本指纹", logger.ErrField(err))
-		return ""
-	}
-	return v
-}
-
-// importClassicsFile 导入单个 JSON 文件
-func (s *Store) importClassicsFile(filePath, fileName, category string) error {
+// importClassicsFile 在给定事务内导入单个经典 JSON 文件，返回写入行数
+func importClassicsFile(tx *sql.Tx, filePath, fileName, category string) (int, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		return fmt.Errorf("读取文件失败: %w", err)
+		return 0, fmt.Errorf("读取文件失败: %w", err)
 	}
 
 	// 根据文件名选择解析策略
 	switch fileName {
 	case "baijiaxing.json":
-		return s.importBaijiaxing(data, fileName, category)
+		return importBaijiaxing(tx, data, fileName, category)
 	case "qianziwen.json":
-		return s.importQianziwen(data, fileName, category)
+		return importQianziwen(tx, data, fileName, category)
 	default:
 		// 通用策略：先尝试解析为数组，再尝试解析为对象
-		return s.importGeneric(data, fileName, category)
+		return importGeneric(tx, data, fileName, category)
 	}
 }
 
 // --- 通用导入（覆盖大部分 JSON 文件） ---
 
-func (s *Store) importGeneric(data []byte, fileName, category string) error {
+func importGeneric(tx *sql.Tx, data []byte, fileName, category string) (int, error) {
 	// 策略1：尝试解析为数组
 	var works []arrayWork
 	if err := json.Unmarshal(data, &works); err == nil && len(works) > 0 {
-		return s.importArrayWorks(works, fileName, category)
+		return importArrayWorks(tx, works, fileName, category)
 	}
 
 	// 策略2：尝试解析为对象（含 content 章节数组）
 	var book bookObject
 	if err := json.Unmarshal(data, &book); err == nil && len(book.Content) > 0 {
-		return s.importBookObject(&book, fileName, category)
+		return importBookObject(tx, &book, fileName, category)
 	}
 
-	return fmt.Errorf("无法识别的 JSON 结构")
+	return 0, fmt.Errorf("无法识别的 JSON 结构")
 }
 
 // importArrayWorks 处理数组型 JSON（shijing, shici, chuci, yuanqu, yuefu, cifu）
-func (s *Store) importArrayWorks(works []arrayWork, fileName, category string) error {
-	tx, err := s.writeDB.Begin()
-	if err != nil {
-		return fmt.Errorf("开启事务失败: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
+func importArrayWorks(tx *sql.Tx, works []arrayWork, fileName, category string) (int, error) {
 	// 确定书籍元数据（从第一条推断）
 	title := category
 	author := ""
@@ -394,7 +294,7 @@ func (s *Store) importArrayWorks(works []arrayWork, fileName, category string) e
 		fileName, category, title, author, dynasty,
 	)
 	if err != nil {
-		return fmt.Errorf("插入书籍记录失败: %w", err)
+		return 0, fmt.Errorf("插入书籍记录失败: %w", err)
 	}
 	bookID, _ := bookResult.LastInsertId()
 
@@ -404,19 +304,20 @@ func (s *Store) importArrayWorks(works []arrayWork, fileName, category string) e
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 	)
 	if err != nil {
-		return fmt.Errorf("预编译 section 插入失败: %w", err)
+		return 0, fmt.Errorf("预编译 section 插入失败: %w", err)
 	}
-	defer secStmt.Close()
+	defer func() { _ = secStmt.Close() }()
 
 	paraStmt, err := tx.Prepare(
 		`INSERT INTO classics_paragraphs (section_id, content, paragraph_index, char_count)
 		 VALUES (?, ?, ?, ?)`,
 	)
 	if err != nil {
-		return fmt.Errorf("预编译 paragraph 插入失败: %w", err)
+		return 0, fmt.Errorf("预编译 paragraph 插入失败: %w", err)
 	}
-	defer paraStmt.Close()
+	defer func() { _ = paraStmt.Close() }()
 
+	rows := 0
 	for i, work := range works {
 		// 写入 section（每个 array 元素是一条作品/篇章）
 		secResult, err := secStmt.Exec(
@@ -452,20 +353,15 @@ func (s *Store) importArrayWorks(works []arrayWork, fileName, category string) e
 					logger.ErrField(err))
 				continue
 			}
+			rows++
 		}
 	}
 
-	return tx.Commit()
+	return rows, nil
 }
 
 // importBookObject 处理对象型 JSON（lunyu, mengzi, sanzijing, 等）
-func (s *Store) importBookObject(book *bookObject, fileName, category string) error {
-	tx, err := s.writeDB.Begin()
-	if err != nil {
-		return fmt.Errorf("开启事务失败: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
+func importBookObject(tx *sql.Tx, book *bookObject, fileName, category string) (int, error) {
 	// 写入 book
 	bookResult, err := tx.Exec(
 		`INSERT INTO classics_books (file_name, category, title, author, dynasty, book, abstract, tags)
@@ -474,7 +370,7 @@ func (s *Store) importBookObject(book *bookObject, fileName, category string) er
 		book.Book, book.Abstract, strings.Join(book.Tags, ","),
 	)
 	if err != nil {
-		return fmt.Errorf("插入书籍记录失败: %w", err)
+		return 0, fmt.Errorf("插入书籍记录失败: %w", err)
 	}
 	bookID, _ := bookResult.LastInsertId()
 
@@ -483,19 +379,20 @@ func (s *Store) importBookObject(book *bookObject, fileName, category string) er
 		 VALUES (?, ?, ?, ?, ?, ?)`,
 	)
 	if err != nil {
-		return fmt.Errorf("预编译 section 插入失败: %w", err)
+		return 0, fmt.Errorf("预编译 section 插入失败: %w", err)
 	}
-	defer secStmt.Close()
+	defer func() { _ = secStmt.Close() }()
 
 	paraStmt, err := tx.Prepare(
 		`INSERT INTO classics_paragraphs (section_id, content, paragraph_index, char_count)
 		 VALUES (?, ?, ?, ?)`,
 	)
 	if err != nil {
-		return fmt.Errorf("预编译 paragraph 插入失败: %w", err)
+		return 0, fmt.Errorf("预编译 paragraph 插入失败: %w", err)
 	}
-	defer paraStmt.Close()
+	defer func() { _ = paraStmt.Close() }()
 
+	rows := 0
 	for i, ch := range book.Content {
 		// 确定章节标题
 		secTitle := ch.Chapter
@@ -526,26 +423,21 @@ func (s *Store) importBookObject(book *bookObject, fileName, category string) er
 					logger.ErrField(err))
 				continue
 			}
+			rows++
 		}
 	}
 
-	return tx.Commit()
+	return rows, nil
 }
 
 // --- 特殊结构导入 ---
 
 // importBaijiaxing 处理百家姓（origin: [{surname, place}]）
-func (s *Store) importBaijiaxing(data []byte, fileName, category string) error {
+func importBaijiaxing(tx *sql.Tx, data []byte, fileName, category string) (int, error) {
 	var book baijiaxing
 	if err := json.Unmarshal(data, &book); err != nil {
-		return fmt.Errorf("解析百家姓数据失败: %w", err)
+		return 0, fmt.Errorf("解析百家姓数据失败: %w", err)
 	}
-
-	tx, err := s.writeDB.Begin()
-	if err != nil {
-		return fmt.Errorf("开启事务失败: %w", err)
-	}
-	defer tx.Rollback()
 
 	bookResult, err := tx.Exec(
 		`INSERT INTO classics_books (file_name, category, title, author, dynasty, book, tags)
@@ -554,30 +446,30 @@ func (s *Store) importBaijiaxing(data []byte, fileName, category string) error {
 		strings.Join(book.Tags, ","),
 	)
 	if err != nil {
-		return fmt.Errorf("插入书籍记录失败: %w", err)
+		return 0, fmt.Errorf("插入书籍记录失败: %w", err)
 	}
 	bookID, _ := bookResult.LastInsertId()
 
 	secStmt, err := tx.Prepare(
-		`INSERT INTO classics_sections (book_id, title, sort_order)
-		 VALUES (?, ?, ?)`,
+		`INSERT INTO classics_sections (book_id, title, sort_order) VALUES (?, ?, ?)`,
 	)
 	if err != nil {
-		return fmt.Errorf("预编译 section 插入失败: %w", err)
+		return 0, fmt.Errorf("预编译 section 插入失败: %w", err)
 	}
-	defer secStmt.Close()
+	defer func() { _ = secStmt.Close() }()
 
 	paraStmt, err := tx.Prepare(
 		`INSERT INTO classics_paragraphs (section_id, content, paragraph_index, char_count)
 		 VALUES (?, ?, ?, ?)`,
 	)
 	if err != nil {
-		return fmt.Errorf("预编译 paragraph 插入失败: %w", err)
+		return 0, fmt.Errorf("预编译 paragraph 插入失败: %w", err)
 	}
-	defer paraStmt.Close()
+	defer func() { _ = paraStmt.Close() }()
 
 	// 按姓氏分节（每 20 个姓氏一节）
 	batchSize := 20
+	rows := 0
 	for i := 0; i < len(book.Origin); i += batchSize {
 		end := i + batchSize
 		if end > len(book.Origin) {
@@ -596,24 +488,19 @@ func (s *Store) importBaijiaxing(data []byte, fileName, category string) error {
 			if _, err := paraStmt.Exec(secID, line, j, len([]rune(line))); err != nil {
 				continue
 			}
+			rows++
 		}
 	}
 
-	return tx.Commit()
+	return rows, nil
 }
 
 // importQianziwen 处理千字文（有 spells 和 content 双字段）
-func (s *Store) importQianziwen(data []byte, fileName, category string) error {
+func importQianziwen(tx *sql.Tx, data []byte, fileName, category string) (int, error) {
 	var book qianziwen
 	if err := json.Unmarshal(data, &book); err != nil {
-		return fmt.Errorf("解析千字文数据失败: %w", err)
+		return 0, fmt.Errorf("解析千字文数据失败: %w", err)
 	}
-
-	tx, err := s.writeDB.Begin()
-	if err != nil {
-		return fmt.Errorf("开启事务失败: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
 
 	bookResult, err := tx.Exec(
 		`INSERT INTO classics_books (file_name, category, title, author, dynasty, book, tags)
@@ -622,27 +509,28 @@ func (s *Store) importQianziwen(data []byte, fileName, category string) error {
 		strings.Join(book.Tags, ","),
 	)
 	if err != nil {
-		return fmt.Errorf("插入书籍记录失败: %w", err)
+		return 0, fmt.Errorf("插入书籍记录失败: %w", err)
 	}
 	bookID, _ := bookResult.LastInsertId()
 
 	secStmt, err := tx.Prepare(
-		`INSERT INTO classics_sections (book_id, title, sort_order)
-		 VALUES (?, ?, ?)`,
+		`INSERT INTO classics_sections (book_id, title, sort_order) VALUES (?, ?, ?)`,
 	)
 	if err != nil {
-		return fmt.Errorf("预编译 section 插入失败: %w", err)
+		return 0, fmt.Errorf("预编译 section 插入失败: %w", err)
 	}
-	defer secStmt.Close()
+	defer func() { _ = secStmt.Close() }()
 
 	paraStmt, err := tx.Prepare(
 		`INSERT INTO classics_paragraphs (section_id, content, paragraph_index, char_count)
 		 VALUES (?, ?, ?, ?)`,
 	)
 	if err != nil {
-		return fmt.Errorf("预编译 paragraph 插入失败: %w", err)
+		return 0, fmt.Errorf("预编译 paragraph 插入失败: %w", err)
 	}
-	defer paraStmt.Close()
+	defer func() { _ = paraStmt.Close() }()
+
+	rows := 0
 
 	// Section 1: 拼音
 	secResult1, err := secStmt.Exec(bookID, "千字文·拼音", 0)
@@ -652,6 +540,7 @@ func (s *Store) importQianziwen(data []byte, fileName, category string) error {
 			if _, err := paraStmt.Exec(secID1, spell, i, len([]rune(spell))); err != nil {
 				continue
 			}
+			rows++
 		}
 	}
 
@@ -671,10 +560,11 @@ func (s *Store) importQianziwen(data []byte, fileName, category string) error {
 			if _, err := paraStmt.Exec(secID, line, j, len([]rune(line))); err != nil {
 				continue
 			}
+			rows++
 		}
 	}
 
-	return tx.Commit()
+	return rows, nil
 }
 
 // --- 工具函数 ---

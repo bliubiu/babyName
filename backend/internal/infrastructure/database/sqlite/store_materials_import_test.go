@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -431,7 +432,7 @@ func TestImport_干运行不写库(t *testing.T) {
 // 幂等语义针对物料内容，不含数据库自维护的时间戳。
 func snapshotMaterialTables(t *testing.T, s *Store) string {
 	t.Helper()
-	out := ""
+	var out strings.Builder
 	for _, table := range MaterialTables() {
 		if table == "materials_state" {
 			continue
@@ -449,7 +450,7 @@ func snapshotMaterialTables(t *testing.T, s *Store) string {
 		if err != nil {
 			continue
 		}
-		out += "== " + table + " ==\n"
+		out.WriteString("== " + table + " ==\n")
 		for r2.Next() {
 			cells := make([]any, len(cols))
 			for i := range cells {
@@ -459,13 +460,13 @@ func snapshotMaterialTables(t *testing.T, s *Store) string {
 				continue
 			}
 			for i, c := range cells {
-				out += cols[i] + "=" + c.(*sql.NullString).String + "|"
+				out.WriteString(cols[i] + "=" + c.(*sql.NullString).String + "|")
 			}
-			out += "\n"
+			out.WriteString("\n")
 		}
 		_ = r2.Close()
 	}
-	return out
+	return out.String()
 }
 
 // excludeVolatileCols 过滤数据库自维护的易变列（updated_at / created_at）

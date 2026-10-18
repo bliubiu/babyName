@@ -11,8 +11,8 @@ import "name/internal/materials/schema"
 // 在编译/启动期暴露），已接入统一导入器的物料与走既有路径的 legacy 物料
 // 显式区分。
 //
-// 尚未接入统一导入器的物料登记为 legacyMarker，保持既有「跳过并给出原因」
-// 语义，但不视为错误。curated 已接入（importCurated）；classics 待阶段 3 接入。
+// 未接入统一导入器的物料登记为 legacyMarker，保持既有「跳过并给出原因」
+// 语义，但不视为错误。全部物料已接入（curated/classics），legacyMaterials 为空。
 
 // Material 单个物料的导入能力抽象
 //
@@ -64,11 +64,10 @@ func (m legacyMarker) Import(_ *Store, _ string, res ImportResult, _ ImportOptio
 
 // legacyMaterials 尚未接入统一导入器的物料
 //
-// 这类物料由 store_classics.go 等既有路径导入，统一导入器遇到时跳过并给出
-// 原因，不视为错误。curated 已接入后此表仅剩 classics，待阶段 3 接入后清空。
-var legacyMaterials = map[string]bool{
-	schema.ClassicsMaterial: true,
-}
+// 全部物料均已接入统一导入器（curated→importCurated、classics→importClassics），
+// 本表为空；legacyMarker 与本表一并保留，作为「新增物料漏登记导入实现」时的
+// 显式逃生舱与文档锚点。
+var legacyMaterials = map[string]bool{}
 
 // loadedElsewhereMaterials 不参与 LoadMaterialsFromDB 运行时装载报告的物料
 //
@@ -115,6 +114,7 @@ func init() {
 		schema.YijingMaterial:            (*Store).importYijing,
 		schema.ZodiacMaterial:            (*Store).importZodiac,
 		schema.CuratedMaterial:           (*Store).importCurated,
+		schema.ClassicsMaterial:          (*Store).importClassics,
 	}
 
 	for _, def := range schema.Definitions {

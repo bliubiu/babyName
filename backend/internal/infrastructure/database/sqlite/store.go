@@ -125,13 +125,9 @@ func NewStore(dbPath string, dataDir string) (*Store, error) {
 		Zodiacs:   zodiac.GetAllZodiacs(),
 	}
 
-	// 导入经典文化数据到 SQLite（诗词、易经、蒙学等）
-	if err := store.seedClassicsData(dataDir); err != nil {
-		logger.Error("sqlite: seed classics data failed", logger.ErrField(err))
-	}
-
-	// 精选名种子数据不再在启动时 seed：curated_names 已接入统一导入器
-	// （materials import），运行时经 NameDB 从库读（docs/31 ADR-008）。
+	// 经典语料数据不再在启动时 seed：classics 已接入统一导入器
+	// （materials import），运行期从 classics_* / classics_extracts 表装载
+	// （docs/31 ADR-008）。精选名同理，见下方注释。
 
 	// 注意：字库与康熙笔画**不再**在此处 seed。
 	//
@@ -203,47 +199,10 @@ func createTables(db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_name_feedback_request ON name_feedback(request_id)`,
 
-		// 经典数据版本元信息（JSON 热更新对拍）
-		`CREATE TABLE IF NOT EXISTS data_meta (
-			key        TEXT PRIMARY KEY,
-			value      TEXT NOT NULL,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`,
+		// 经典数据表（诗词、易经、蒙学等）与 hanzi_data / curated_names 一样
+		// 是物料表，建表语句统一收敛在 store_materials_schema.go
+		//（materialTableDDL），本处不再重复定义（docs/34 双口径）。
 
-		// 经典数据表（诗词、易经、蒙学等）
-		`CREATE TABLE IF NOT EXISTS classics_books (
-			id         INTEGER PRIMARY KEY AUTOINCREMENT,
-			file_name  TEXT NOT NULL,
-			category   TEXT NOT NULL,
-			title      TEXT NOT NULL,
-			author     TEXT,
-			dynasty    TEXT,
-			book       TEXT,
-			abstract   TEXT,
-			tags       TEXT,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_classics_books_file ON classics_books(file_name)`,
-		`CREATE TABLE IF NOT EXISTS classics_sections (
-			id          INTEGER PRIMARY KEY AUTOINCREMENT,
-			book_id     INTEGER NOT NULL REFERENCES classics_books(id),
-			title       TEXT,
-			chapter     TEXT,
-			section     TEXT,
-			author      TEXT,
-			source      TEXT,
-			extra       TEXT,
-			sort_order  INTEGER DEFAULT 0
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_classics_sections_book ON classics_sections(book_id)`,
-		`CREATE TABLE IF NOT EXISTS classics_paragraphs (
-			id              INTEGER PRIMARY KEY AUTOINCREMENT,
-			section_id      INTEGER NOT NULL REFERENCES classics_sections(id),
-			content         TEXT NOT NULL,
-			paragraph_index INTEGER DEFAULT 0,
-			char_count      INTEGER DEFAULT 0
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_classics_paragraphs_section ON classics_paragraphs(section_id)`,
 		// 注意：hanzi_data 与 curated_names 是物料表，建表语句统一收敛在
 		// store_materials_schema.go（materialTableDDL），本处不再重复定义，
 		// 避免同一张表两处 DDL 因默认值/列集不同而漂移（docs/34 双口径）。

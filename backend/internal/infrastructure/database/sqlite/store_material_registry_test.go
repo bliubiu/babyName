@@ -43,7 +43,7 @@ func TestMaterialRegistry_已接入物料不使用legacy(t *testing.T) {
 		schema.FrequencyMaterial, schema.BigramMaterial, schema.GateMaterial,
 		schema.ForbiddenMaterial, schema.AllowlistMaterial,
 		schema.ComplianceRedlineMaterial, schema.YijingMaterial, schema.ZodiacMaterial,
-		schema.CuratedMaterial,
+		schema.CuratedMaterial, schema.ClassicsMaterial,
 	}
 	for _, name := range integrated {
 		m, ok := materialRegistry[name]
@@ -56,21 +56,17 @@ func TestMaterialRegistry_已接入物料不使用legacy(t *testing.T) {
 	}
 }
 
-// TestMaterialRegistry_Legacy物料跳过并给出原因 legacy 物料必须跳过且原因非空
+// TestMaterialRegistry_无legacy物料 全部物料均已接入统一导入器
 //
-// curated 已接入统一导入器（importCurated），此处仅剩 classics 待阶段 3 接入。
-func TestMaterialRegistry_Legacy物料跳过并给出原因(t *testing.T) {
-	for _, name := range []string{schema.ClassicsMaterial} {
-		m, ok := materialRegistry[name]
-		if !ok {
-			t.Fatalf("legacy 物料 %s 未登记", name)
-		}
-		res := m.Import(nil, "不存在的源", ImportResult{Material: name}, ImportOptions{})
-		if !res.Skipped {
-			t.Errorf("legacy 物料 %s 应跳过，实得 skipped=%v err=%q", name, res.Skipped, res.Err)
-		}
-		if res.Reason == "" {
-			t.Errorf("legacy 物料 %s 跳过时必须给出原因", name)
+// legacyMarker 作为「新增物料漏登记导入实现」时的显式逃生舱保留，
+// 但当前不应有任何物料登记为 legacy。
+func TestMaterialRegistry_无legacy物料(t *testing.T) {
+	if len(legacyMaterials) != 0 {
+		t.Errorf("全部物料应已接入统一导入器，legacyMaterials 仍非空: %v", legacyMaterials)
+	}
+	for name, m := range materialRegistry {
+		if _, isLegacy := m.(legacyMarker); isLegacy {
+			t.Errorf("物料 %s 不应登记为 legacy", name)
 		}
 	}
 }

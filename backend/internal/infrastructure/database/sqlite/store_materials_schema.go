@@ -130,6 +130,77 @@ var materialTableDDL = []string{
 		lucky_numbers  TEXT NOT NULL DEFAULT '[]'
 	)`,
 
+	// 经典语料三表（docs/31 ADR-008：经典物料接入统一导入器，
+	// 建表语句随物料表一并收敛到本文件，不再散落在 createTables）
+	//
+	//   classics_books      - 书籍级元数据（如《诗经》《论语》）
+	//   classics_sections   - 篇章级（国风·周南 / 学而篇）
+	//   classics_paragraphs - 段落级（具体诗文）
+	`CREATE TABLE IF NOT EXISTS classics_books (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		file_name  TEXT NOT NULL,
+		category   TEXT NOT NULL,
+		title      TEXT NOT NULL,
+		author     TEXT,
+		dynasty    TEXT,
+		book       TEXT,
+		abstract   TEXT,
+		tags       TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_classics_books_file ON classics_books(file_name)`,
+	`CREATE TABLE IF NOT EXISTS classics_sections (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		book_id     INTEGER NOT NULL REFERENCES classics_books(id),
+		title       TEXT,
+		chapter     TEXT,
+		section     TEXT,
+		author      TEXT,
+		source      TEXT,
+		extra       TEXT,
+		sort_order  INTEGER DEFAULT 0
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_classics_sections_book ON classics_sections(book_id)`,
+	`CREATE TABLE IF NOT EXISTS classics_paragraphs (
+		id              INTEGER PRIMARY KEY AUTOINCREMENT,
+		section_id      INTEGER NOT NULL REFERENCES classics_sections(id),
+		content         TEXT NOT NULL,
+		paragraph_index INTEGER DEFAULT 0,
+		char_count      INTEGER DEFAULT 0
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_classics_paragraphs_section ON classics_paragraphs(section_id)`,
+
+	// 经典字集物化表：导入期由 extractFromEntries 算出、运行期逐行还原，
+	// 使运行期不再需要从 classics_* 三表二次实现提取规则（docs/31 ADR-008）。
+	// seq 保留 extractFromEntries 的码点升序（下游候选池注入顺序依赖它）。
+	`CREATE TABLE IF NOT EXISTS classics_extracts (
+		material TEXT NOT NULL,
+		seq      INTEGER NOT NULL DEFAULT 0,
+		char     TEXT NOT NULL,
+		pinyin   TEXT NOT NULL DEFAULT '',
+		meaning  TEXT NOT NULL DEFAULT '',
+		work     TEXT NOT NULL DEFAULT '',
+		chapter  TEXT NOT NULL DEFAULT '',
+		sentence TEXT NOT NULL DEFAULT '',
+		wuxing   TEXT NOT NULL DEFAULT '',
+		gender   TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (material, char)
+	)`,
+
+	// 诗词索引物化表：FullText/Chars 均为 content 的纯函数，不落库
+	`CREATE TABLE IF NOT EXISTS classics_poem_entries (
+		id       INTEGER PRIMARY KEY AUTOINCREMENT,
+		source   TEXT NOT NULL DEFAULT '',
+		title    TEXT NOT NULL DEFAULT '',
+		author   TEXT NOT NULL DEFAULT '',
+		dynasty  TEXT NOT NULL DEFAULT '',
+		type     TEXT NOT NULL DEFAULT '',
+		category TEXT NOT NULL DEFAULT '',
+		book     TEXT NOT NULL DEFAULT '',
+		tags     TEXT NOT NULL DEFAULT '[]',
+		content  TEXT NOT NULL DEFAULT '[]'
+	)`,
+
 	// 精选策展名（curated_names.json）：种子行（source=seed）与用户自学习行
 	// （source=user_favorite）同表共存。扩列保留策展释义/五行/风格/标签，
 	// 使运行时改读库后 SearchCuratedNames / GetStyles 等不退化（docs/31 ADR-008）。
@@ -171,7 +242,10 @@ var materialTables = []string{
 	"kangxi_strokes", "hanzi_data", "char_groups",
 	"name_frequency", "name_bigram", "naming_gate", "forbidden_combos",
 	"allowlist", "compliance_redline", "yijing_hexagrams", "zodiac",
-	"curated_names", "materials_state",
+	"curated_names",
+	"classics_books", "classics_sections", "classics_paragraphs",
+	"classics_extracts", "classics_poem_entries",
+	"materials_state",
 }
 
 // createMaterialTables 建立全部物料表（幂等）
