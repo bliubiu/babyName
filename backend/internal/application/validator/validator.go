@@ -4,8 +4,16 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
+
+// isChineseChar 判断是否为汉字。
+// 采用 unicode.Han 脚本判定（覆盖 CJK 统一表意文字、扩展A、兼容汉字及〇等），
+// 避免硬编码区间 [\u4e00,\u9fa5] 漏掉合法但罕见的中文字符导致误拒。
+func isChineseChar(r rune) bool {
+	return unicode.Is(unicode.Han, r)
+}
 
 type ValidationError struct {
 	Field   string
@@ -61,7 +69,7 @@ func ValidateSurname(surname string) error {
 		return NewValidationError("surname", "姓氏长度不能超过4个字符")
 	}
 	for _, r := range surname {
-		if r < '\u4e00' || r > '\u9fa5' {
+		if !isChineseChar(r) {
 			return NewValidationError("surname", "姓氏只能包含中文字符")
 		}
 	}
@@ -87,7 +95,7 @@ func ValidateGivenName(name string) error {
 		return NewValidationError("given_name", "名字长度不能超过8个字符")
 	}
 	for _, r := range name {
-		if r < '\u4e00' || r > '\u9fa5' {
+		if !isChineseChar(r) {
 			return NewValidationError("given_name", "名字只能包含中文字符")
 		}
 	}
