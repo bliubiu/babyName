@@ -62,12 +62,18 @@ type FrequencyDB struct {
 	bigramRank []*BigramFrequency          // 按频率降序
 	totalNames int                         // 语料库总人数（meta.total_names）
 	loaded     bool
+	// dir 本次数据来自哪个目录（docs/34 阶段 E）
+	//
+	// 此前只有 loaded 一个布尔闩，语义是「进程内只装载一次」。该语义不成立：
+	// 换一个 dataDir 后函数直接返回，而调用方（LoadNamerFromJSON）恰恰依赖它
+	// 把档位合并进**刚重建的** HanziData —— 于是同进程内第二次装载字库时，
+	// 所有字的 NameFreqTier 静默变 0（人名频率评分整体失效）。
+	dir string
 }
 
 var (
-	freqDB     FrequencyDB
-	freqDBOnce sync.Once
-	freqDBMu   sync.RWMutex
+	freqDB   FrequencyDB
+	freqDBMu sync.RWMutex
 )
 
 // LoadFrequencyDB 从 data 目录加载人名频率数据
@@ -81,7 +87,7 @@ func LoadFrequencyDB(dataDir string) error {
 	freqDBMu.Lock()
 	defer freqDBMu.Unlock()
 
-	if freqDB.loaded {
+	if freqDB.loaded && freqDB.dir == dataDir {
 		return nil
 	}
 
@@ -139,6 +145,7 @@ func LoadFrequencyDB(dataDir string) error {
 		bigramRank: bigramRank,
 		totalNames: charOutput.Meta.TotalNames,
 		loaded:     true,
+		dir:        dataDir,
 	}
 
 	return nil
@@ -190,6 +197,7 @@ func SetBigramFromData(bigrams []BigramFrequency) {
 	freqDB.bigramMap = bigramMap
 	freqDB.bigramRank = bigramRank
 	freqDB.loaded = true
+	freqDB.dir = "" // 来源为库表而非目录：后续 LoadFrequencyDB 必须重新装载
 }
 
 // SetFrequencyTotalNames 记录语料总量（导入路径从 meta 带入）

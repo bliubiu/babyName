@@ -122,7 +122,7 @@ var Definitions = []Definition{
 		Name: ClassicsMaterial, Source: "shijing.json",
 		DependsOn: []string{NamerMaterial},
 		Tables: []string{
-			"classics_books", "classics_sections", "classics_paragraphs",
+			"classics_books", "classics_sections",
 			"classics_extracts", "classics_poem_entries",
 		},
 		Required: false,

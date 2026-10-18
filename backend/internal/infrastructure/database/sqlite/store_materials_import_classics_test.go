@@ -2,13 +2,17 @@ package sqlite
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
+	"strings"
 	"testing"
 
 	"name/internal/domain/classics"
 	"name/internal/domain/hanzi"
+	"name/internal/infrastructure/data"
 	"name/internal/materials/schema"
 )
 
@@ -42,7 +46,7 @@ func writeMinimalClassics(t *testing.T, dir string) {
 	}
 }
 
-func TestImportClassics_三表与物化表一并写入(t *testing.T) {
+func TestImportClassics_骨架与物化表一并写入(t *testing.T) {
 	dir := writeMinimalMaterials(t)
 	writeMinimalClassics(t, dir)
 	s := newTestStore(t)
@@ -56,14 +60,13 @@ func TestImportClassics_三表与物化表一并写入(t *testing.T) {
 		t.Fatal("经典语料导入行数不应为 0")
 	}
 
-	var books, sections, paragraphs, extracts, poems int
+	var books, sections, extracts, poems int
 	for _, q := range []struct {
 		table string
 		dst   *int
 	}{
 		{"classics_books", &books},
 		{"classics_sections", &sections},
-		{"classics_paragraphs", &paragraphs},
 		{"classics_extracts", &extracts},
 		{"classics_poem_entries", &poems},
 	} {
@@ -76,8 +79,8 @@ func TestImportClassics_三表与物化表一并写入(t *testing.T) {
 	if books != 4 {
 		t.Errorf("classics_books 应为 4（shijing/chuci/lunyu/yijing），实得 %d", books)
 	}
-	if paragraphs == 0 {
-		t.Error("classics_paragraphs 不应为空")
+	if sections == 0 {
+		t.Error("classics_sections 不应为空")
 	}
 	if extracts == 0 {
 		t.Error("classics_extracts（物化字集）不应为空")
@@ -87,25 +90,88 @@ func TestImportClassics_三表与物化表一并写入(t *testing.T) {
 	}
 }
 
-func TestImportClassics_字集属性已由字库补全(t *testing.T) {
+// TestImportClassics_段落表已废弃 docs/34 阶段 E-B：classics_paragraphs
+// 无任何运行期读者却占库体积 8%，且与 poem_entries 重复 42.2% 文本，已整体删除。
+func TestImportClassics_段落表已废弃(t *testing.T) {
 	dir := writeMinimalMaterials(t)
 	writeMinimalClassics(t, dir)
 	s := newTestStore(t)
-
 	importMinimal(t, s, dir, ImportOptions{})
 
-	// 「鸠」不在测试字库中，应落默认值；「水」在字库中，应带上拼音与五行
-	var pinyin, wuxing string
-	err := s.db.QueryRow(`SELECT pinyin, wuxing FROM classics_extracts
-		WHERE material = ? AND char = '水'`, classics.MaterialShijing).Scan(&pinyin, &wuxing)
+	if _, err := s.db.Query("SELECT COUNT(*) FROM classics_paragraphs"); err == nil {
+		t.Error("classics_paragraphs 应已废弃，不应再存在")
+	}
+	for _, name := range MaterialTables() {
+		if name == "classics_paragraphs" {
+			t.Error("classics_paragraphs 不应出现在物料表清单中")
+		}
+	}
+}
+
+// TestImportClassics_字集不再落字典属性 docs/34 阶段 E-A：拼音/释义/五行/性别
+// 是 hanzi_data 的列，18 组字集平均把每个汉字抄 3.3 遍（meaning 单列曾占全库 11.5%）。
+func TestImportClassics_字集不再落字典属性(t *testing.T) {
+	dir := writeMinimalMaterials(t)
+	writeMinimalClassics(t, dir)
+	s := newTestStore(t)
+	importMinimal(t, s, dir, ImportOptions{})
+
+	cols, err := tableColumns(s.writeDB, "classics_extracts")
 	if err != nil {
-		t.Fatalf("查询物化字集失败: %v", err)
+		t.Fatalf("读取 classics_extracts 列失败: %v", err)
 	}
-	if pinyin != "shui3" {
-		t.Errorf("字集拼音应由字库补全为 shui3，实得 %q", pinyin)
+	for _, legacy := range classicExtractsLegacyColumns {
+		if cols[legacy] {
+			t.Errorf("classics_extracts 不应再有冗余列 %s", legacy)
+		}
 	}
-	if wuxing != "水" {
-		t.Errorf("字集五行应由字库补全为 水，实得 %q", wuxing)
+	for _, want := range []string{"material", "seq", "char", "work", "chapter", "sentence"} {
+		if !cols[want] {
+			t.Errorf("classics_extracts 缺少列 %s", want)
+		}
+	}
+}
+
+// TestLoadClassicsFromDB_字典属性由字库补全 去冗余列后，字集属性必须在装载期
+// 从 hanzi_data 按 char 补回，且与 JSON 路径的 extractFromEntry 口径一致。
+func TestLoadClassicsFromDB_字典属性由字库补全(t *testing.T) {
+	dir := writeMinimalMaterials(t)
+	writeMinimalClassics(t, dir)
+	s := newTestStore(t)
+	importMinimal(t, s, dir, ImportOptions{})
+
+	// 前置条件：字库须先装载，否则 LoadClassicsFromDB 拒绝执行（静默补空值
+	// 会让释义评分整体失效却无任何报错）。
+	if !s.loadHanziFromDB() {
+		t.Fatal("从库装载字库失败")
+	}
+	if err := s.LoadClassicsFromDB(); err != nil {
+		t.Fatalf("从库装载经典语料失败: %v", err)
+	}
+
+	var pinyin, meaning, wuxing string
+	err := s.db.QueryRow(`SELECT pinyin, meaning, wuxing FROM hanzi_data WHERE char = '水'`).
+		Scan(&pinyin, &meaning, &wuxing)
+	if err != nil {
+		t.Fatalf("查询字库失败: %v", err)
+	}
+
+	var gotPinyin, gotMeaning, gotWuxing string
+	found := false
+	for _, pc := range classics.GetShijingPoetryChars() {
+		if pc.Char != "水" {
+			continue
+		}
+		found = true
+		gotPinyin, gotMeaning, gotWuxing = pc.Pinyin, pc.Meaning, pc.Wuxing
+	}
+	if !found {
+		t.Fatal("诗经字集中应含「水」（蒹葭「在水一方」）")
+	}
+	if gotPinyin != pinyin || gotMeaning != meaning || gotWuxing != wuxing {
+		t.Errorf("字集属性应与 hanzi_data 一致：\n 字集 pinyin=%q meaning(%d rune) wuxing=%q\n 字库 pinyin=%q meaning(%d rune) wuxing=%q",
+			gotPinyin, len([]rune(gotMeaning)), gotWuxing,
+			pinyin, len([]rune(meaning)), wuxing)
 	}
 }
 
@@ -195,6 +261,82 @@ func TestImportClassics_自增序列归零保证幂等(t *testing.T) {
 	}
 }
 
+// hanziSnapshot 字库内存态的**逐字段逐字**快照
+//
+// ⚠️ Meaning 必须纳入：此前等价性守护只覆盖了 pinyin/笔画/五行等 8 个维度，
+// 漏掉 Meaning 后，JSON 路径装载未截断原文（262~276 rune）而 hanzi_data 是
+// 200 rune 截断版这一分歧被整体漏过（docs/34 阶段 E-C）。
+//
+// 切片字段统一格式化为 "" 或 "a|b"：JSON 路径缺字段时是 nil 切片，
+// 库路径经 unmarshalTags 得到空切片，二者 json.Marshal 结果为 null 与 []，
+// 字节不同但语义相同，按值比较而非按序列化字节比较。
+func hanziSnapshot() map[string]map[string]string {
+	pick := map[string]func(hanzi.Hanzi) any{
+		"pinyin":          func(h hanzi.Hanzi) any { return h.Pinyin },
+		"strokes":         func(h hanzi.Hanzi) any { return h.Strokes },
+		"kangxi_strokes":  func(h hanzi.Hanzi) any { return h.KangxiStrokes },
+		"radical":         func(h hanzi.Hanzi) any { return h.Radical },
+		"wuxing":          func(h hanzi.Hanzi) any { return h.Wuxing },
+		"level":           func(h hanzi.Hanzi) any { return h.Level },
+		"name_freq_tier":  func(h hanzi.Hanzi) any { return h.NameFreqTier },
+		"gender":          func(h hanzi.Hanzi) any { return h.Gender },
+		"meaning":         func(h hanzi.Hanzi) any { return h.Meaning },
+		"usage_level":     func(h hanzi.Hanzi) any { return h.UsageLevel },
+		"is_polyphonic":   func(h hanzi.Hanzi) any { return h.IsPolyphonic },
+		"is_rare":         func(h hanzi.Hanzi) any { return h.IsRare },
+		"is_negative":     func(h hanzi.Hanzi) any { return h.IsNegative },
+		"positive_score":  func(h hanzi.Hanzi) any { return h.PositiveScore },
+		"name_penalty":    func(h hanzi.Hanzi) any { return h.NamePenalty },
+		"gender_tags":     func(h hanzi.Hanzi) any { return h.GenderTags },
+		"style_tags":      func(h hanzi.Hanzi) any { return h.StyleTags },
+		"naming_cats":     func(h hanzi.Hanzi) any { return h.NamingCategories },
+		"pair_blacklist":  func(h hanzi.Hanzi) any { return h.PairBlacklist },
+		"phonetic_score":  func(h hanzi.Hanzi) any { return h.PhoneticScore },
+		"modern_score":    func(h hanzi.Hanzi) any { return h.ModernScore },
+		"classical_score": func(h hanzi.Hanzi) any { return h.ClassicalScore },
+		"curation_level":  func(h hanzi.Hanzi) any { return h.CurationLevel },
+	}
+
+	out := make(map[string]map[string]string, len(pick))
+	for field, get := range pick {
+		col := make(map[string]string, len(hanzi.HanziData))
+		for ch, h := range hanzi.HanziData {
+			col[ch] = fmt.Sprint(get(h))
+		}
+		out[field] = col
+	}
+	return out
+}
+
+// assertHanziEquivalent 逐字段比对两条路径的字库内存态，并给出具体差异字
+func assertHanziEquivalent(t *testing.T, want, got map[string]map[string]string) {
+	t.Helper()
+	for _, field := range sortedFields(want) {
+		wf, gf := want[field], got[field]
+		var diffs []string
+		for ch, wv := range wf {
+			if gv, ok := gf[ch]; !ok || gv != wv {
+				if len(diffs) < 5 {
+					diffs = append(diffs, fmt.Sprintf("%s: JSON=%q DB=%q", ch, wv, gv))
+				}
+			}
+		}
+		if len(diffs) > 0 {
+			t.Errorf("字库字段 %s 不等价（最多列 5 例）：%s", field, strings.Join(diffs, "; "))
+		}
+	}
+}
+
+// sortedFields 快照 map 的有序键，保证断言输出稳定
+func sortedFields(m map[string]map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // TestImportClassics_真实数据下库路径与JSON路径等价 docs/31 ADR-003
 // 「SQL 与内存结果等价」在 classics 物料上的守护：
 // 物化（导入期提取 → 落库）与还原（运行期读回）必须逐字段等价，
@@ -212,13 +354,13 @@ func TestImportClassics_真实数据下库路径与JSON路径等价(t *testing.T
 
 	s := newTestStore(t)
 
-	// 1. JSON 路径基线
-	if err := hanzi.LoadNamerFromJSON(realData); err != nil {
-		t.Fatalf("装载字库失败: %v", err)
+	// 1. JSON 路径基线：用生产同款入口 data.Init（它按 康熙→namer→易经→语料
+	//    →生肖→门禁→… 顺序装载）。直接调 hanzi.LoadNamerFromJSON 会漏掉康熙
+	//    笔画合并（loader 在 namer 之后才 merge），基线就会带上 kangxi=0 的偏差。
+	if err := data.Init(realData); err != nil {
+		t.Fatalf("JSON 路径装载失败: %v", err)
 	}
-	if err := classics.LoadFromJSON(realData); err != nil {
-		t.Fatalf("JSON 路径装载经典语料失败: %v", err)
-	}
+	wantHanzi := hanziSnapshot()
 	wantSets := classics.ExportExtractSets()
 	wantPoems := classics.ExportPoemEntries()
 
@@ -232,11 +374,21 @@ func TestImportClassics_真实数据下库路径与JSON路径等价(t *testing.T
 		t.Fatalf("清空字集失败: %v", err)
 	}
 	classics.LoadPoemEntries(nil)
+	if err := s.LoadMaterialsFromDB(); err == nil {
+		t.Fatal("前置条件：此时不应能完整装载，LoadClassicsFromDB 尚未调用")
+	}
+	// 库路径的字库：读 hanzi_data
+	if !s.loadHanziFromDB() {
+		t.Fatal("从库装载字库失败")
+	}
 	if err := s.LoadClassicsFromDB(); err != nil {
 		t.Fatalf("从库装载失败: %v", err)
 	}
 
-	// 4. 逐字集、逐诗词条目比对
+	// 4. 字库等价（逐字段逐字；E-C 的回归守护）
+	assertHanziEquivalent(t, wantHanzi, hanziSnapshot())
+
+	// 5. 逐字集、逐诗词条目比对
 	gotSets := classics.ExportExtractSets()
 	if len(gotSets) != len(wantSets) {
 		t.Fatalf("字集物料数不一致: JSON %d vs DB %d", len(wantSets), len(gotSets))
@@ -247,8 +399,18 @@ func TestImportClassics_真实数据下库路径与JSON路径等价(t *testing.T
 			t.Fatalf("第 %d 个字集物料不一致: %s vs %s", i, wantSets[i].Material, gotSets[i].Material)
 		}
 		if !reflect.DeepEqual(wantSets[i].Chars, gotSets[i].Chars) {
-			t.Errorf("字集 %s 不等价: JSON %d 条 vs DB %d 条",
-				wantSets[i].Material, len(wantSets[i].Chars), len(gotSets[i].Chars))
+			t.Errorf("字集 %s 不等价: JSON %d 条 vs DB %d 条", wantSets[i].Material,
+				len(wantSets[i].Chars), len(gotSets[i].Chars))
+			for k := range wantSets[i].Chars {
+				if k >= len(gotSets[i].Chars) {
+					break
+				}
+				if !reflect.DeepEqual(wantSets[i].Chars[k], gotSets[i].Chars[k]) {
+					t.Errorf("  首个差异 @%d:\n    JSON=%+v\n    DB  =%+v",
+						k, wantSets[i].Chars[k], gotSets[i].Chars[k])
+					break
+				}
+			}
 		}
 		total += len(wantSets[i].Chars)
 	}

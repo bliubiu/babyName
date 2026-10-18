@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"name/internal/domain/hanzi"
 )
 
 // 本文件定义经典物料的「导入期物化 / 运行期还原」数据契约。
@@ -78,16 +80,17 @@ type ExtractSet struct {
 }
 
 // ExtractRow classics_extracts 表的一行（物化后的单字诗词条目）
+//
+// 只存「诗词侧」属性（出处/诗句）与字本身；拼音/释义/五行/性别**不落库**——
+// 它们是 hanzi_data 的列，而 18 组经典字集平均把每个汉字抄了 3.3 遍，
+// 物化 meaning 单列即占全库 11.5%。运行期按 char 从字库补全（见 LoadExtractSets），
+// 与 JSON 路径 extractFromEntry 查 hanzi.GetHanzi 的口径完全一致。
 type ExtractRow struct {
 	Material string
 	Char     string
-	Pinyin   string
-	Meaning  string
 	Work     string
 	Chapter  string
 	Sentence string
-	Wuxing   string
-	Gender   string
 }
 
 // PoemEntryRow classics_poem_entries 表的一行（物化后的整首诗词）
@@ -125,23 +128,18 @@ func ExportExtractSets() []ExtractSet {
 // 每行一个 (material, char) 条目；按 material 归组后按汉字码点升序写回
 // 包级变量，与 mapToSortedSlice 的产出顺序一致（下游候选池注入顺序依赖它）。
 // 未知 material 视为数据损坏并报错，避免静默丢弃。
+//
+// **前置条件**：字库必须已装载。拼音/释义/五行/性别不在本表，统一由
+// hanzi.GetHanzi 按 char 补全，取值与缺省口径与 extractFromEntry 完全一致
+// （字库未收录时 Pinyin/Meaning/Wuxing 留空、Gender 置「通用」）。
 func LoadExtractSets(rows []ExtractRow) error {
 	grouped := make(map[string][]PoetryChar, len(extractTargets))
 	for _, r := range rows {
-		grouped[r.Material] = append(grouped[r.Material], PoetryChar{
-			Char:     r.Char,
-			Pinyin:   r.Pinyin,
-			Meaning:  r.Meaning,
-			Work:     r.Work,
-			Chapter:  r.Chapter,
-			Sentence: r.Sentence,
-			Wuxing:   r.Wuxing,
-			Gender:   r.Gender,
-		})
+		grouped[r.Material] = append(grouped[r.Material], newPoetryChar(r))
 	}
 
 	for material := range grouped {
-		if target := extractTargetOf(material); target == nil {
+		if extractTargetOf(material) == nil {
 			return fmt.Errorf("经典字集物料 %q 未注册，无法还原", material)
 		}
 	}
@@ -152,6 +150,27 @@ func LoadExtractSets(rows []ExtractRow) error {
 		setExtracted(t.target, chars)
 	}
 	return nil
+}
+
+// newPoetryChar 由库行 + 字库补全构造 PoetryChar
+//
+// 与 extractFromEntry 的字段填充顺序/缺省值保持一致：字库未收录该字时
+// 拼音、释义、五行留空、性别置「通用」，而不是伪造值。
+func newPoetryChar(r ExtractRow) PoetryChar {
+	pc := PoetryChar{
+		Char:     r.Char,
+		Work:     r.Work,
+		Chapter:  r.Chapter,
+		Sentence: r.Sentence,
+		Gender:   "通用",
+	}
+	if h, ok := hanzi.GetHanzi(r.Char); ok {
+		pc.Pinyin = h.Pinyin
+		pc.Meaning = h.Meaning
+		pc.Wuxing = h.Wuxing
+		pc.Gender = h.Gender
+	}
+	return pc
 }
 
 // extractTargetOf 按物料标识取包级结果变量，未注册返回 nil

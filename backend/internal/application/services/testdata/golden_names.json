@@ -97,7 +97,7 @@
           "given_name": "珞安",
           "full_name": "林珞安",
           "pinyin": "luò ān",
-          "total_score": 78.2,
+          "total_score": 78.5,
           "gate_hit": false
         },
         {
@@ -122,10 +122,10 @@
           "gate_hit": false
         },
         {
-          "given_name": "思玥",
-          "full_name": "林思玥",
-          "pinyin": "sī,sāi yuè",
-          "total_score": 75.7,
+          "given_name": "晨玥",
+          "full_name": "林晨玥",
+          "pinyin": "chén yuè",
+          "total_score": 76.2,
           "gate_hit": false
         },
         {
@@ -143,17 +143,17 @@
           "gate_hit": false
         },
         {
-          "given_name": "岫玥",
-          "full_name": "林岫玥",
-          "pinyin": "xiù yuè",
-          "total_score": 71.2,
+          "given_name": "昀婉",
+          "full_name": "林昀婉",
+          "pinyin": "yún wǎn",
+          "total_score": 71.3,
           "gate_hit": false
         },
         {
           "given_name": "悦瑄",
           "full_name": "林悦瑄",
           "pinyin": "yuè xuān",
-          "total_score": 70.9,
+          "total_score": 71.1,
           "gate_hit": false
         },
         {
@@ -176,10 +176,10 @@
       "name_length": 2,
       "names": [
         {
-          "given_name": "炜珏",
-          "full_name": "陈炜珏",
-          "pinyin": "wěi jué",
-          "total_score": 82.7,
+          "given_name": "炜亭",
+          "full_name": "陈炜亭",
+          "pinyin": "wěi tíng",
+          "total_score": 82.8,
           "gate_hit": false
         },
         {
@@ -190,9 +190,9 @@
           "gate_hit": false
         },
         {
-          "given_name": "辰珞",
-          "full_name": "陈辰珞",
-          "pinyin": "chén luò",
+          "given_name": "玙宝",
+          "full_name": "陈玙宝",
+          "pinyin": "yú bǎo",
           "total_score": 81.9,
           "gate_hit": false
         },
@@ -204,9 +204,9 @@
           "gate_hit": false
         },
         {
-          "given_name": "祎正",
-          "full_name": "陈祎正",
-          "pinyin": "yī zhèng,zhēng",
+          "given_name": "玠真",
+          "full_name": "陈玠真",
+          "pinyin": "jiè zhēn",
           "total_score": 80.7,
           "gate_hit": false
         },
@@ -239,10 +239,10 @@
           "gate_hit": false
         },
         {
-          "given_name": "宝旸",
-          "full_name": "陈宝旸",
-          "pinyin": "bǎo yáng",
-          "total_score": 82.6,
+          "given_name": "炜张",
+          "full_name": "陈炜张",
+          "pinyin": "wěi zhāng",
+          "total_score": 82.7,
           "gate_hit": false
         }
       ]

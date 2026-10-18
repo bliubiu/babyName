@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"name/internal/materials/normalize"
 )
 
 // NamerChar 对应 namer.json 中每一条汉字数据
@@ -95,12 +97,29 @@ func LoadNamerFromJSON(dataDir string) error {
 		return err
 	}
 
+	// 字段归一**就地**做一次：NamerCharMap 与 HanziData 两个下游各自遍历
+	// nd.Chars，若只在其中一处归一，另一处会拿到未归一的原值。
+	for i := range nd.Chars {
+		nd.Chars[i].Gender = normalizeGender(nd.Chars[i].Gender)
+		// 释义长度口径统一（docs/34 阶段 E-C）：导入期 importNamer 经
+		// normalize.Word 把 Meaning 截断到 200 rune 后落 hanzi_data，而本函数
+		// （JSON 路径）此前装载的是**未截断原文**。于是同一字在两条路径下
+		// HanziData[char].Meaning 不同（实测 200 vs 262~276 rune），字典释义
+		// 评分与诗词出典释义口径分裂。复用同一个归一函数而非各自实现，
+		// 避免上限常量双口径。
+		nd.Chars[i].Meaning = normalize.Meaning(nd.Chars[i].Meaning)
+		// 标签集合同理：导入期 normalize.Tags 去重并**排序**后落库，JSON 路径
+		// 原先保留 namer.json 的源序。同一集合两种顺序，下游按序展示时两条
+		// 路径结果不同（如「锐」：JSON=[大气 响亮 坚毅] vs DB=[响亮 坚毅 大气]）。
+		nd.Chars[i].StyleTags = normalize.Tags(nd.Chars[i].StyleTags)
+		nd.Chars[i].NamingCategories = normalize.Tags(nd.Chars[i].NamingCategories)
+	}
+
 	namerMu.Lock()
 	defer namerMu.Unlock()
 
-	m := make(map[string]NamerChar, len(nd.Chars))
+m := make(map[string]NamerChar, len(nd.Chars))
 	for _, nc := range nd.Chars {
-		nc.Gender = normalizeGender(nc.Gender)
 		m[nc.Char] = nc
 	}
 	NamerCharMap = m

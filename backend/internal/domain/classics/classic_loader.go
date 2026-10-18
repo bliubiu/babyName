@@ -113,15 +113,24 @@ func (e ChuCiEntry) GetTitle() string     { return e.Title }
 func (e ChuCiEntry) GetContent() []string { return e.Content }
 func (e ChuCiEntry) GetSource() string    { return "楚辞" }
 
-// shiciReady 通道，shici.json 加载完成后关闭
-var shiciReady = make(chan struct{})
-
 // shiciLoadTimeout 等待 shici.json 加载完成的上限。
 // 正常耗时约 200ms（6.7MB），30s 已远超实际需要，只用于兜住异常路径。
 var shiciLoadTimeout = 30 * time.Second
 
-// loadShiCiOnce 保证 shici 异步加载只启动一次（多次 assembly/测试不会重复 close 通道）
-var loadShiCiOnce sync.Once
+// shici 异步加载状态：按 dataDir 去重，每次装载持有独立的完成通道
+//
+// 此前用包级 sync.Once + 单个 shiciReady 通道，语义是「进程内只加载一次」。
+// 该语义在两处不成立：
+//   - 热更新到**另一个 data 目录**时会静默沿用旧数据；
+//   - 同进程内多次 LoadFromJSON（如导入器与守护测试各跑一次）时，第二次
+//     调用拿到的是空字集，却因 once 已消费而不再发起装载 —— 对拍测试正是
+//     因此在同批用例里静默丢掉 shici 覆盖。
+// 现改为「同目录不重复起协程、目录变化则重新装载并等待新任务」。
+var (
+	shiciMu   sync.Mutex
+	shiciDir  string
+	shiciDone chan struct{}
+)
 
 // ensureShiCiLoaded 确保唐诗宋词数据已加载完成
 //
@@ -133,7 +142,13 @@ var loadShiCiOnce sync.Once
 // 现在改为有界等待：超时即降级（本次请求按「无诗词共现数据」继续），
 // 并由 runShiCiLoad 的 recover 保证通道一定被关闭。
 func ensureShiCiLoaded() {
-	if !waitShiCiLoaded(shiciReady, shiciLoadTimeout) {
+	shiciMu.Lock()
+	ready := shiciDone
+	shiciMu.Unlock()
+	if ready == nil {
+		return
+	}
+	if !waitShiCiLoaded(ready, shiciLoadTimeout) {
 		logger.Warn("唐诗宋词数据等待超时，本次请求降级为不含诗词共现数据",
 			zap.Duration("timeout", shiciLoadTimeout))
 	}
@@ -177,14 +192,23 @@ func runShiCiLoad(loader func() error, ready chan struct{}) {
 }
 
 // loadShiCiAsync 在后台协程中加载 shici.json，不阻塞启动
+//
+// 同一 dataDir 重复调用不重复起协程；换目录则重新装载（见 shiciDir 注释）。
 func loadShiCiAsync(dataDir string) {
-	loadShiCiOnce.Do(func() {
-		go runShiCiLoad(func() error {
-			return loadShiCiFromJSON(dataDir)
-		}, shiciReady)
+	shiciMu.Lock()
+	if shiciDone != nil && shiciDir == dataDir {
+		shiciMu.Unlock()
+		return
+	}
+	ready := make(chan struct{})
+	shiciDir, shiciDone = dataDir, ready
+	shiciMu.Unlock()
 
-		logger.Info("唐诗宋词数据已提交后台加载（6.7MB），不阻塞启动")
-	})
+	go runShiCiLoad(func() error {
+		return loadShiCiFromJSON(dataDir)
+	}, ready)
+
+	logger.Info("唐诗宋词数据已提交后台加载（6.7MB），不阻塞启动")
 }
 
 // ============================================================

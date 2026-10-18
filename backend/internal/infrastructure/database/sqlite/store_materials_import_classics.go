@@ -1,4 +1,4 @@
-package sqlite
+﻿package sqlite
 
 import (
 	"database/sql"
@@ -18,13 +18,13 @@ import (
 //
 //  1. 源是 dataDir 下的多个 JSON，而非 schema.Definition 登记的单个 Source。
 //     因此版本指纹改用 classicsDataVersion（覆盖全部经典文件的大小）。
-//  2. 除 classics_books/sections/paragraphs 三表外，还物化两张运行期消费表：
+//  2. 除 classics_books/sections 骨架外，还物化两张运行期消费表：
 //     classics_extracts（经典字集）与 classics_poem_entries（诗词索引）。
 //     提取逻辑不在此处重写，而是直接调用 classics 域的 LoadFromJSON +
 //     ExportExtractSets/ExportPoemEntries —— 与旧运行期 JSON 路径**同一份实现**，
 //     物化只是搬运结果，杜绝两套提取规则漂移。
 
-// importClassics 导入经典语料（原三表 + 两张物化表）
+// importClassics 导入经典语料（书籍/篇章骨架 + 两张物化表）
 func (s *Store) importClassics(def schema.Definition, _ string, res ImportResult, opt ImportOptions) ImportResult {
 	dataDir := opt.DataDir
 	res.Version = classicsDataVersion(dataDir)
@@ -35,16 +35,10 @@ func (s *Store) importClassics(def schema.Definition, _ string, res ImportResult
 		return res
 	}
 
-	// 提取字集需用字库补全拼音/释义/五行/性别（extractFromEntry 查 hanzi.GetHanzi）。
-	// 导入进程是干净的 CLI 进程，HanziData 必然为空，必须先装字库，
-	// 否则物化出的 classics_extracts 四列全空 —— 这是最容易被漏掉的隐性依赖。
-	if len(hanzi.HanziData) == 0 {
-		if err := hanzi.LoadNamerFromJSON(dataDir); err != nil {
-			res.Err = fmt.Sprintf("装载字库以补全经典字集属性失败: %v", err)
-			return res
-		}
-	}
-
+	// 字库不再需要预装载（docs/34 阶段 E-A）：字集物化只落诗词侧属性，
+	// 拼音/释义/五行/性别改由运行期按 char 从 hanzi_data 补全。
+	// 此前此处必须 hanzi.LoadNamerFromJSON，否则物化出的四列全空 ——
+	// 一处极易漏掉的隐性依赖，已随冗余列一并消除。
 	if err := classics.LoadFromJSON(dataDir); err != nil {
 		res.Err = fmt.Sprintf("解析经典语料失败: %v", err)
 		return res
@@ -56,7 +50,7 @@ func (s *Store) importClassics(def schema.Definition, _ string, res ImportResult
 		total := 0
 		var skipped []string
 
-		// 1. 三表：逐文件导入（复用既有解析策略）
+		// 1. 书籍/篇章骨架：逐文件导入（复用既有解析策略）
 		//
 		// 单个文件解析失败**不阻断**整个物料：经典语料是 20+ 个异构 JSON，
 		// 其中个别文件存在非标准结构（如 qianjiashi.json 的 paragraphs 元素
@@ -79,10 +73,12 @@ func (s *Store) importClassics(def schema.Definition, _ string, res ImportResult
 			logger.Warn("经典语料存在无法解析的文件", logger.String("文件", strings.Join(skipped, ",")))
 		}
 
-		// 2. 字集物化
+		// 2. 字集物化：只落诗词侧属性。拼音/释义/五行/性别是 hanzi_data 的列，
+		//    不在此反规范化（docs/34 阶段 E-A）——18 组字集平均把每个汉字抄 3.3 遍，
+		//    单是 meaning 就占全库 11.5%，且其取值还与字库存在截断口径差异。
 		estmt, err := tx.Prepare(`INSERT INTO classics_extracts
-			(material, seq, char, pinyin, meaning, work, chapter, sentence, wuxing, gender)
-			VALUES (?,?,?,?,?,?,?,?,?,?)`)
+			(material, seq, char, work, chapter, sentence)
+			VALUES (?,?,?,?,?,?)`)
 		if err != nil {
 			return 0, err
 		}
@@ -90,15 +86,16 @@ func (s *Store) importClassics(def schema.Definition, _ string, res ImportResult
 
 		for _, set := range extracts {
 			for i, pc := range set.Chars {
-				if _, err := estmt.Exec(set.Material, i, pc.Char, pc.Pinyin, pc.Meaning,
-					pc.Work, pc.Chapter, pc.Sentence, pc.Wuxing, pc.Gender); err != nil {
+				if _, err := estmt.Exec(set.Material, i, pc.Char, pc.Work, pc.Chapter, pc.Sentence); err != nil {
 					return 0, fmt.Errorf("写入经典字集 %s/%s 失败: %w", set.Material, pc.Char, err)
 				}
 				total++
 			}
 		}
 
-		// 3. 诗词索引物化
+		// 3. 诗词索引物化。tags/content 均按原顺序落库：normalize.Tags 会重排切片，
+		// 而标签顺序（作品名/篇/章）与诗句顺序都是语义的一部分，
+		// 排序会让「库路径 == JSON 路径」这条等价性不成立。
 		pstmt, err := tx.Prepare(`INSERT INTO classics_poem_entries
 			(source, title, author, dynasty, type, category, book, tags, content)
 			VALUES (?,?,?,?,?,?,?,?,?)`)
@@ -107,9 +104,6 @@ func (s *Store) importClassics(def schema.Definition, _ string, res ImportResult
 		}
 		defer func() { _ = pstmt.Close() }()
 
-		// tags/content 均按原顺序落库：normalize.Tags 会重排切片，
-		// 而标签顺序（作品名/篇/章）与诗句顺序都是语义的一部分，
-		// 排序会让「库路径 == JSON 路径」这条等价性不成立。
 		for _, e := range poems {
 			if _, err := pstmt.Exec(e.Source, e.Title, e.Author, e.Dynasty, e.Type,
 				e.Category, e.Book, mustJSON(e.Tags), mustJSON(e.Content)); err != nil {
@@ -127,7 +121,7 @@ func (s *Store) importClassics(def schema.Definition, _ string, res ImportResult
 	// 4. AUTOINCREMENT 序列归零：保证「同输入多次导入结果等价」（ADR-011）。
 	//    sqlite_sequence 不随 DELETE 重置，不归零则二次导入的自增 id 递增，
 	//    使幂等比对与「重建即等价」的约定失效。
-	for _, t := range []string{"classics_books", "classics_sections", "classics_paragraphs", "classics_poem_entries"} {
+	for _, t := range []string{"classics_books", "classics_sections", "classics_poem_entries"} {
 		if _, err := s.writeDB.Exec("DELETE FROM sqlite_sequence WHERE name = ?", t); err != nil {
 			logger.Warn("sqlite: 重置自增序列失败", logger.String("表", t), logger.ErrField(err))
 			break
@@ -141,21 +135,29 @@ func (s *Store) importClassics(def schema.Definition, _ string, res ImportResult
 //
 // 覆盖三类运行期状态：18 组经典字集、全局诗词索引。任一为空即视为库未导入，
 // 直接返回错误由调用方 fail-fast（不回落 JSON）—— 回落策略见 data 包策略开关。
+//
+// **前置条件**：字库必须已装载。字集的拼音/释义/五行/性别不在 classics_extracts，
+// 而是按 char 从 hanzi_data 补全（docs/34 阶段 E-A）。data.InitWithDB 的装载
+// 顺序保证 hanzi 先于 classics。
 func (s *Store) LoadClassicsFromDB() error {
 	if !s.tableHasRows("classics_extracts") {
 		return fmt.Errorf("经典语料库缺失 classics_extracts，请执行 materials import")
 	}
 
-	rows, err := s.db.Query(`SELECT material, char, pinyin, meaning, work, chapter,
-		sentence, wuxing, gender FROM classics_extracts`)
+	// 字集属性（拼音/释义/五行/性别）由字库补全，字库未装载时补出来的是空值 ——
+	// 这种静默降级会让释义评分整体失效却无任何报错，故此处直接失败。
+	if len(hanzi.HanziData) == 0 {
+		return fmt.Errorf("字库未装载，无法补全经典字集属性（请先装载 hanzi_data）")
+	}
+
+	rows, err := s.db.Query(`SELECT material, char, work, chapter, sentence FROM classics_extracts`)
 	if err != nil {
 		return fmt.Errorf("查询 classics_extracts 失败: %w", err)
 	}
 	var extracts []classics.ExtractRow
 	for rows.Next() {
 		var r classics.ExtractRow
-		if err := rows.Scan(&r.Material, &r.Char, &r.Pinyin, &r.Meaning, &r.Work,
-			&r.Chapter, &r.Sentence, &r.Wuxing, &r.Gender); err != nil {
+		if err := rows.Scan(&r.Material, &r.Char, &r.Work, &r.Chapter, &r.Sentence); err != nil {
 			_ = rows.Close()
 			return fmt.Errorf("扫描 classics_extracts 行失败: %w", err)
 		}

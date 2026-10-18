@@ -3,6 +3,9 @@ package sqlite
 import (
 	"database/sql"
 	"fmt"
+	"strings"
+
+	"name/internal/infrastructure/logger"
 )
 
 // 本文件定义物料的规范化表结构（docs/31 ADR-008 / ADR-010）。
@@ -130,12 +133,16 @@ var materialTableDDL = []string{
 		lucky_numbers  TEXT NOT NULL DEFAULT '[]'
 	)`,
 
-	// 经典语料三表（docs/31 ADR-008：经典物料接入统一导入器，
-	// 建表语句随物料表一并收敛到本文件，不再散落在 createTables）
+	// 经典语料两表（docs/31 ADR-008：经典物料接入统一导入器，
+// 建表语句随物料表一并收敛到本文件，不再散落在 createTables）
 	//
 	//   classics_books      - 书籍级元数据（如《诗经》《论语》）
 	//   classics_sections   - 篇章级（国风·周南 / 学而篇）
-	//   classics_paragraphs - 段落级（具体诗文）
+	//
+	// 原先的 classics_paragraphs（段落级全文）已删除（docs/34 阶段 E-B）：
+	// 它没有任何运行期读者，却以 114139 行承载了与 classics_poem_entries
+	// 重复 42.2% 的诗文文本，实测占库体积 8%。诗文全文以 classics_poem_entries
+	// 的 content 为单一真源。
 	`CREATE TABLE IF NOT EXISTS classics_books (
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
 		file_name  TEXT NOT NULL,
@@ -161,29 +168,21 @@ var materialTableDDL = []string{
 		sort_order  INTEGER DEFAULT 0
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_classics_sections_book ON classics_sections(book_id)`,
-	`CREATE TABLE IF NOT EXISTS classics_paragraphs (
-		id              INTEGER PRIMARY KEY AUTOINCREMENT,
-		section_id      INTEGER NOT NULL REFERENCES classics_sections(id),
-		content         TEXT NOT NULL,
-		paragraph_index INTEGER DEFAULT 0,
-		char_count      INTEGER DEFAULT 0
-	)`,
-	`CREATE INDEX IF NOT EXISTS idx_classics_paragraphs_section ON classics_paragraphs(section_id)`,
 
 	// 经典字集物化表：导入期由 extractFromEntries 算出、运行期逐行还原，
 	// 使运行期不再需要从 classics_* 三表二次实现提取规则（docs/31 ADR-008）。
 	// seq 保留 extractFromEntries 的码点升序（下游候选池注入顺序依赖它）。
+	//
+	// 只落「诗词侧」属性；pinyin/meaning/wuxing/gender 是 hanzi_data 的列，
+	// 不在此反规范化（docs/34 阶段 E-A）：实测 18 组字集把每个汉字平均抄了
+	// 3.3 遍，单是 meaning 一列就占全库 11.5%。
 	`CREATE TABLE IF NOT EXISTS classics_extracts (
 		material TEXT NOT NULL,
 		seq      INTEGER NOT NULL DEFAULT 0,
 		char     TEXT NOT NULL,
-		pinyin   TEXT NOT NULL DEFAULT '',
-		meaning  TEXT NOT NULL DEFAULT '',
 		work     TEXT NOT NULL DEFAULT '',
 		chapter  TEXT NOT NULL DEFAULT '',
 		sentence TEXT NOT NULL DEFAULT '',
-		wuxing   TEXT NOT NULL DEFAULT '',
-		gender   TEXT NOT NULL DEFAULT '',
 		PRIMARY KEY (material, char)
 	)`,
 
@@ -243,8 +242,7 @@ var materialTables = []string{
 	"name_frequency", "name_bigram", "naming_gate", "forbidden_combos",
 	"allowlist", "compliance_redline", "yijing_hexagrams", "zodiac",
 	"curated_names",
-	"classics_books", "classics_sections", "classics_paragraphs",
-	"classics_extracts", "classics_poem_entries",
+	"classics_books", "classics_sections", "classics_extracts", "classics_poem_entries",
 	"materials_state",
 }
 
@@ -264,7 +262,122 @@ func createMaterialTables(db *sql.DB) error {
 	if err := migrateCuratedNamesColumns(db); err != nil {
 		return err
 	}
+	if err := migrateClassicsSchema(db); err != nil {
+		return err
+	}
 	return nil
+}
+
+// classicExtractsLegacyColumns classics_extracts 已废弃的冗余列
+//
+// 这四列是 hanzi_data 的反规范化副本（docs/34 阶段 E-A）。它们携带的 meaning
+// 还与 hanzi_data 存在口径差异（物化时取自未截断的原始 namer.json，字库表
+// 则是 200 rune 截断版），一并消除。
+var classicExtractsLegacyColumns = []string{"pinyin", "meaning", "wuxing", "gender"}
+
+// migrateClassicsSchema 经典物料表结构演进：去冗余列 + 清理已废弃表
+//
+//  1. classics_extracts 若仍带 legacy 列，按「建新表 → 迁数据 → 换名」重建。
+//     用重建而非 ALTER DROP COLUMN：后者对被索引/被外键引用的列有限制，
+//     跨 SQLite 版本行为也不一致。
+//  2. classics_paragraphs 已整体废弃（无运行期读者 + 42.2% 文本重复），
+//     直接 DROP。该语句幂等，新库上是无操作。
+func migrateClassicsSchema(db *sql.DB) error {
+	existing, err := tableColumns(db, "classics_extracts")
+	if err != nil {
+		return err
+	}
+
+	changed := false
+
+	needsRebuild := false
+	for _, c := range classicExtractsLegacyColumns {
+		if existing[c] {
+			needsRebuild = true
+			break
+		}
+	}
+	if needsRebuild {
+		for _, q := range []string{
+			`CREATE TABLE classics_extracts_new (
+				material TEXT NOT NULL,
+				seq      INTEGER NOT NULL DEFAULT 0,
+				char     TEXT NOT NULL,
+				work     TEXT NOT NULL DEFAULT '',
+				chapter  TEXT NOT NULL DEFAULT '',
+				sentence TEXT NOT NULL DEFAULT '',
+				PRIMARY KEY (material, char)
+			)`,
+			`INSERT OR REPLACE INTO classics_extracts_new (material, seq, char, work, chapter, sentence)
+			 SELECT material, seq, char, work, chapter, sentence FROM classics_extracts`,
+			`DROP TABLE classics_extracts`,
+			`ALTER TABLE classics_extracts_new RENAME TO classics_extracts`,
+		} {
+			if _, err := db.Exec(q); err != nil {
+				return fmt.Errorf("重建 classics_extracts 失败（%s）: %w", q, err)
+			}
+		}
+		changed = true
+		logger.Info("sqlite: classics_extracts 已去除冗余列",
+			logger.String("移除", strings.Join(classicExtractsLegacyColumns, ",")))
+	}
+
+	// 幂等语句；先探测表是否真的存在，避免每次启动都白跑一次 DROP + VACUUM
+	if hasTable(db, "classics_paragraphs") {
+		if _, err := db.Exec(`DROP TABLE classics_paragraphs`); err != nil {
+			return fmt.Errorf("清理已废弃的 classics_paragraphs 失败: %w", err)
+		}
+		changed = true
+		logger.Info("sqlite: 已删除无读取方的 classics_paragraphs")
+	}
+
+	if !changed {
+		return nil
+	}
+
+	// 结构变更后回收空间：DROP TABLE / 重建表只把页还给 freelist，文件不会变小。
+	// 实测删除 classics_paragraphs + 压缩 extracts 后空闲页达 56.6%（48MB → 51MB
+	// 不降反升）。VACUUM 重建库文件回收；因只在结构真的变化时执行，属一次性成本。
+	if _, err := db.Exec(`VACUUM`); err != nil {
+		// VACUUM 失败不影响正确性（只是文件没变小），仅告警
+		logger.Warn("sqlite: 经典表结构迁移后回收空间失败（库文件未缩小）", logger.ErrField(err))
+	}
+	return nil
+}
+
+// hasTable 判断表是否存在
+func hasTable(db *sql.DB, table string) bool {
+	var n int
+	return db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&n) == nil && n > 0
+}
+
+// tableColumns 读出表的列名集合（表不存在时返回空集合，不报错）
+func tableColumns(db *sql.DB, table string) (map[string]bool, error) {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return nil, fmt.Errorf("读取 %s 表结构失败: %w", table, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make(map[string]bool)
+	for rows.Next() {
+		var (
+			cid       int
+			col       string
+			ctype     sql.NullString
+			notNull   sql.NullInt64
+			dfltValue sql.NullString
+			pk        sql.NullInt64
+		)
+		if err := rows.Scan(&cid, &col, &ctype, &notNull, &dfltValue, &pk); err != nil {
+			return nil, fmt.Errorf("解析 %s 表结构失败: %w", table, err)
+		}
+		out[col] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("遍历 %s 表结构失败: %w", table, err)
+	}
+	return out, nil
 }
 
 // migrateCuratedNamesColumns 给已存在的 curated_names 表补齐缺失的新列

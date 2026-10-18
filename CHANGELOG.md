@@ -5,6 +5,66 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.18.15]
+
+**数据集去冗余与结构瘦身：classics_extracts 去字典属性、删除无读取方的 classics_paragraphs、统一归一化口径（48.0 MB → 22.1 MB）**
+
+### ✨ New Features 新增功能
+
+- 【经典语料】`classics_extracts` 去除 `pinyin`/`meaning`/`wuxing`/`gender`
+  四个反规范化列（`hanzi_data` 的副本，18 组字集平均把每个汉字抄 3.30 遍，
+  单是 `meaning` 一列即占全库 11.5%）；运行期由 `LoadExtractSets` 按 `char`
+  从字库补全，取值与缺省口径同 `extractFromEntry`
+- 【经典语料】`importClassics` 不再需要预先装载字库（字典属性既不落库，
+  原先的 `hanzi.LoadNamerFromJSON` 隐性依赖随之消除）
+- 【经典语料】`LoadClassicsFromDB` 新增前置条件守卫：字库未装载即报错，
+  避免静默补出空属性导致释义评分整体失效
+- 【经典语料】新增 `migrateClassicsSchema`：存量库按「建新表 → 迁数据 → 换名」
+  重建 `classics_extracts`、DROP `classics_paragraphs`，并在结构变化后执行
+  一次 `VACUUM` 回收空间
+
+### ⚠️ Breaking Changes 破坏性变更
+
+- 【表结构】删除 `classics_paragraphs` 表：全仓无任何 SELECT 读者，却以
+  114,139 行承载与 `classics_poem_entries.content` 重复 42.2% 的诗文文本。
+  诗文全文以 `classics_poem_entries.content` 为单一真源
+- 【表结构】`baijiaxing.json` 的 `origin`（姓 → 地）与 `qianziwen.json` 的
+  `spells`（拼音）原本只落在段落表中，现随表移除；二者均非运行期消费数据
+- 【运行期】诗词出典的 `PoetryChar.Meaning` 由未截断原文改为与 `hanzi_data`
+  一致的 200 rune 截断版（口径统一，释义评分有微幅变化）
+
+### 🐛 Bug Fixes 问题修复
+
+- 【口径分裂】`LoadNamerFromJSON` 与导入期 `normalize.Word` 各做各的归一化，
+  同字两值：`Meaning` 为 200 rune 截断 vs 262~276 rune 原文；`StyleTags`/
+  `NamingCategories` 为排序 vs 源序。现归一**就地**做一次，两个下游共用
+- 【进程级单例】`classics.loadShiCiOnce`（`sync.Once` + 单通道）改为按
+  dataDir 去重 + 每次装载独立完成通道。此前同进程第二次 `LoadFromJSON`
+  拿不到 shici 却不再发起装载，使对拍测试静默丢掉 6950 条覆盖而不报错
+- 【进程级单例】`hanzi.freqDB.loaded` 布尔闩增加 `dir` 字段，改为同目录短路、
+  换目录重装。此前换目录后函数直接返回，而 `LoadNamerFromJSON` 依赖它把
+  档位合并进刚重建的 `HanziData`，导致同进程内第二次装载字库时所有字
+  `NameFreqTier` 静默变 0
+
+### 📈 Improvements 性能/体验优化
+
+- 【表结构】经典语料由三表收敛为两表 + 两张物化表；
+  `store_classics.go` 四组 importer 简化为只写书籍/篇章骨架，
+  随之失效的 `splitSentences` 一并移除
+- 【体积】库体积 48.0 MB → 22.1 MB（-54%）；结构迁移后 `VACUUM` 回收空闲页
+  （DROP 只把页还给 freelist，实测迁移后空闲页达 56.6%、文件不降反升）
+
+### 📚 Docs 文档更新
+
+- `docs/34` 追加阶段 E-8（去冗余与结构瘦身），含 E-8-A~E-8-E 各项取舍与实测数据
+
+### ✅ Tests 测试
+
+- 对拍守护由「8 个字库字段」扩到**24 个字段逐字段逐字** + 18 组字集
+  （33,539 条）+ 诗词条目（12,474 条），JSON 路径与库路径零差异
+- 新增守护：`classics_paragraphs` 已废弃、`classics_extracts` 无冗余列、
+  字集字典属性由字库补全且与 `hanzi_data` 一致
+- `golden_names.json` 基线按预期重建（JSON 路径释义/标签口径变化的直接结果）
 ## [2026.10.18.14]
 
 **统一规范 SQLite 数据集结构：curated/classics 接入统一导入器，运行期彻底只读库**

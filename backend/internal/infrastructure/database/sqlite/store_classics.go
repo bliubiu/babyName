@@ -14,13 +14,16 @@ import (
 
 // 经典语料解析与落库（docs/31 ADR-008：经典物料接入统一导入器）
 //
-// 统一的三表设计：
+// 两表设计（docs/34 阶段 E-B）：
 //
-//	classics_books      - 书籍级别元数据（如《诗经》《论语》《唐诗三百首》）
-//	classics_sections   - 篇章级别（如"国风·周南"、"学而篇"）
-//	classics_paragraphs - 段落/句子级别（具体诗文内容）
+//	classics_books    - 书籍级元数据（如《诗经》《论语》《唐诗三百首》）
+//	classics_sections - 篇章级（国风·周南 / 学而篇）
 //
-// 另有两张物化表（classics_extracts / classics_poem_entries）承载运行期真正
+// 原三表中的 classics_paragraphs（段落级全文）已删除：它没有任何运行期读者，
+// 却以 11 万余行承载了与 classics_poem_entries.content 重复 42.2% 的诗文文本。
+// 诗文全文以 classics_poem_entries 为单一真源，本文件只负责书籍/篇章骨架。
+//
+// 另有 classics_extracts / classics_poem_entries 两张物化表承载运行期真正
 // 消费的经典字集与诗词索引，由 importClassics 在同一事务内一并写入，
 // 提取逻辑复用 classics 域的 extractFromEntries（见 classics/snapshot.go）。
 
@@ -234,7 +237,7 @@ func classicsDataVersion(dataDir string) string {
 	return fmt.Sprintf("n=%d;size=%d;%s", len(files), total, h.String())
 }
 
-// importClassicsFile 在给定事务内导入单个经典 JSON 文件，返回写入行数
+// importClassicsFile 在给定事务内导入单个经典 JSON 文件的书籍/篇章骨架，返回写入行数
 func importClassicsFile(tx *sql.Tx, filePath, fileName, category string) (int, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -298,7 +301,6 @@ func importArrayWorks(tx *sql.Tx, works []arrayWork, fileName, category string) 
 	}
 	bookID, _ := bookResult.LastInsertId()
 
-	// 准备 section 和 paragraph 插入语句
 	secStmt, err := tx.Prepare(
 		`INSERT INTO classics_sections (book_id, title, chapter, section, author, source, sort_order)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -308,53 +310,18 @@ func importArrayWorks(tx *sql.Tx, works []arrayWork, fileName, category string) 
 	}
 	defer func() { _ = secStmt.Close() }()
 
-	paraStmt, err := tx.Prepare(
-		`INSERT INTO classics_paragraphs (section_id, content, paragraph_index, char_count)
-		 VALUES (?, ?, ?, ?)`,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("预编译 paragraph 插入失败: %w", err)
-	}
-	defer func() { _ = paraStmt.Close() }()
-
 	rows := 0
 	for i, work := range works {
 		// 写入 section（每个 array 元素是一条作品/篇章）
-		secResult, err := secStmt.Exec(
+		if _, err := secStmt.Exec(
 			bookID, work.Title, work.Chapter, work.Section, work.Author, work.Source, i,
-		)
-		if err != nil {
+		); err != nil {
 			logger.Warn("插入 section 失败，跳过",
 				logger.String("title", work.Title),
 				logger.ErrField(err))
 			continue
 		}
-		secID, _ := secResult.LastInsertId()
-
-		// 获取段落内容（兼容 content 或 paragraphs 字段）
-		lines := work.Content
-		if len(lines) == 0 {
-			lines = work.Paragraphs
-		}
-		// 如果 content 是单段长文本（辞赋/乐府），按句号分句
-		if len(lines) == 1 && len([]rune(lines[0])) > 100 {
-			lines = splitSentences(lines[0])
-		}
-
-		for j, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			if _, err := paraStmt.Exec(secID, line, j, len([]rune(line))); err != nil {
-				logger.Warn("插入 paragraph 失败",
-					logger.String("title", work.Title),
-					logger.Int("index", j),
-					logger.ErrField(err))
-				continue
-			}
-			rows++
-		}
+		rows++
 	}
 
 	return rows, nil
@@ -383,15 +350,6 @@ func importBookObject(tx *sql.Tx, book *bookObject, fileName, category string) (
 	}
 	defer func() { _ = secStmt.Close() }()
 
-	paraStmt, err := tx.Prepare(
-		`INSERT INTO classics_paragraphs (section_id, content, paragraph_index, char_count)
-		 VALUES (?, ?, ?, ?)`,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("预编译 paragraph 插入失败: %w", err)
-	}
-	defer func() { _ = paraStmt.Close() }()
-
 	rows := 0
 	for i, ch := range book.Content {
 		// 确定章节标题
@@ -399,32 +357,15 @@ func importBookObject(tx *sql.Tx, book *bookObject, fileName, category string) (
 		if secTitle == "" {
 			secTitle = ch.Title
 		}
-
-		secResult, err := secStmt.Exec(
+		if _, err := secStmt.Exec(
 			bookID, secTitle, ch.Chapter, ch.Author, ch.Source, i,
-		)
-		if err != nil {
+		); err != nil {
 			logger.Warn("插入 section 失败，跳过",
 				logger.String("chapter", ch.Chapter),
 				logger.ErrField(err))
 			continue
 		}
-		secID, _ := secResult.LastInsertId()
-
-		for j, line := range ch.Paragraphs {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			if _, err := paraStmt.Exec(secID, line, j, len([]rune(line))); err != nil {
-				logger.Warn("插入 paragraph 失败",
-					logger.String("chapter", ch.Chapter),
-					logger.Int("index", j),
-					logger.ErrField(err))
-				continue
-			}
-			rows++
-		}
+		rows++
 	}
 
 	return rows, nil
@@ -433,6 +374,9 @@ func importBookObject(tx *sql.Tx, book *bookObject, fileName, category string) (
 // --- 特殊结构导入 ---
 
 // importBaijiaxing 处理百家姓（origin: [{surname, place}]）
+//
+// 只登记姓氏分节骨架：origin 的「姓（地）」正文原落在已废弃的
+// classics_paragraphs，现随该表一并移除（docs/34 阶段 E-B）。
 func importBaijiaxing(tx *sql.Tx, data []byte, fileName, category string) (int, error) {
 	var book baijiaxing
 	if err := json.Unmarshal(data, &book); err != nil {
@@ -458,38 +402,14 @@ func importBaijiaxing(tx *sql.Tx, data []byte, fileName, category string) (int, 
 	}
 	defer func() { _ = secStmt.Close() }()
 
-	paraStmt, err := tx.Prepare(
-		`INSERT INTO classics_paragraphs (section_id, content, paragraph_index, char_count)
-		 VALUES (?, ?, ?, ?)`,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("预编译 paragraph 插入失败: %w", err)
-	}
-	defer func() { _ = paraStmt.Close() }()
-
 	// 按姓氏分节（每 20 个姓氏一节）
-	batchSize := 20
+	const batchSize = 20
 	rows := 0
 	for i := 0; i < len(book.Origin); i += batchSize {
-		end := i + batchSize
-		if end > len(book.Origin) {
-			end = len(book.Origin)
-		}
-		batch := book.Origin[i:end]
-
-		secResult, err := secStmt.Exec(bookID, fmt.Sprintf("姓氏-%d", i/batchSize+1), i/batchSize)
-		if err != nil {
+		if _, err := secStmt.Exec(bookID, fmt.Sprintf("姓氏-%d", i/batchSize+1), i/batchSize); err != nil {
 			continue
 		}
-		secID, _ := secResult.LastInsertId()
-
-		for j, origin := range batch {
-			line := fmt.Sprintf("%s（%s）", origin.Surname, origin.Place)
-			if _, err := paraStmt.Exec(secID, line, j, len([]rune(line))); err != nil {
-				continue
-			}
-			rows++
-		}
+		rows++
 	}
 
 	return rows, nil
@@ -521,72 +441,25 @@ func importQianziwen(tx *sql.Tx, data []byte, fileName, category string) (int, e
 	}
 	defer func() { _ = secStmt.Close() }()
 
-	paraStmt, err := tx.Prepare(
-		`INSERT INTO classics_paragraphs (section_id, content, paragraph_index, char_count)
-		 VALUES (?, ?, ?, ?)`,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("预编译 paragraph 插入失败: %w", err)
-	}
-	defer func() { _ = paraStmt.Close() }()
-
 	rows := 0
 
 	// Section 1: 拼音
-	secResult1, err := secStmt.Exec(bookID, "千字文·拼音", 0)
-	if err == nil {
-		secID1, _ := secResult1.LastInsertId()
-		for i, spell := range book.Spells {
-			if _, err := paraStmt.Exec(secID1, spell, i, len([]rune(spell))); err != nil {
-				continue
-			}
-			rows++
-		}
+	if _, err := secStmt.Exec(bookID, "千字文·拼音", 0); err == nil {
+		rows++
 	}
 
 	// Section 2+: content 章节
 	for i, ch := range book.Content {
-		secResult, err := secStmt.Exec(bookID, ch.Chapter, i+1)
-		if err != nil {
+		if _, err := secStmt.Exec(bookID, ch.Chapter, i+1); err != nil {
 			continue
 		}
-		secID, _ := secResult.LastInsertId()
-
-		for j, line := range ch.Paragraphs {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			if _, err := paraStmt.Exec(secID, line, j, len([]rune(line))); err != nil {
-				continue
-			}
-			rows++
-		}
+		rows++
 	}
 
 	return rows, nil
 }
 
-// --- 工具函数 ---
-
-// splitSentences 按句末标点分句，用于处理单段长文本（cifu, yuefu）
-func splitSentences(text string) []string {
-	var result []string
-	// 按句号、问号、感叹号、分号、换行分句，保留分隔符
-	line := strings.Builder{}
-	for _, r := range text {
-		line.WriteRune(r)
-		if r == '。' || r == '？' || r == '！' || r == '\n' || r == '；' {
-			s := strings.TrimSpace(line.String())
-			if s != "" {
-				result = append(result, s)
-			}
-			line.Reset()
-		}
-	}
-	// 剩余部分
-	if remain := strings.TrimSpace(line.String()); remain != "" {
-		result = append(result, remain)
-	}
-	return result
-}
+// 注：原 splitSentences（把辞赋/乐府的单段长文本按句末标点切分）随
+// classics_paragraphs 一并移除 —— 它的唯一调用点就是把切分结果写进段落表。
+// 诗文全文现以 classics_poem_entries.content 为单一真源，由 classics 域
+// 的 extractCharsFromContent / buildSentenceMap 自行按需切句。
