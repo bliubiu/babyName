@@ -30,6 +30,7 @@ import (
 	"name/internal/domain/fate"
 	"name/internal/domain/name"
 	"name/internal/infrastructure/data"
+	"name/internal/testutil"
 )
 
 var (
@@ -38,21 +39,18 @@ var (
 	fateServiceE2EInitErr error
 )
 
-// e2eDataDir 基于本文件位置定位 backend/data 目录（不依赖运行 CWD）
-//
-// 文件位于 backend/internal/application/services/，需要 ../ × 3 才能到 backend 根。
-func e2eDataDir() string {
+// e2eDataDir 基于本文件位置向上探测物料数据目录（不依赖运行 CWD）
+func e2eDataDir(t *testing.T) string {
+	t.Helper()
 	_, file, _, _ := runtime.Caller(0)
-	// filepath.Dir(file) = .../backend/internal/application/services
-	// 上一级 = application，再上一级 = internal，再上一级 = backend 根
-	return filepath.Join(filepath.Dir(file), "..", "..", "..", "data")
+	return testutil.MustDataDir(t, file)
 }
 
 // setupFateNameServiceE2E 装配 FateNameService 实例（与 cmd/server 同序）
 func setupFateNameServiceE2E(t *testing.T) *FateNameService {
 	t.Helper()
 	fateServiceE2EOnce.Do(func() {
-		dataDir := e2eDataDir()
+		dataDir := e2eDataDir(t)
 
 		// 1. 加载全部数据（kangxi → namer → yijing → classic → zodiac → 门禁 → 禁忌组合）
 		if err := data.Init(dataDir); err != nil {

@@ -1,13 +1,23 @@
 package hanzi
 
 import (
+	"runtime"
 	"testing"
+
+	"name/internal/testutil"
 )
+
+// dataDirFor 返回物料数据目录（按 namer.json 向上探测，不依赖固定目录层级）
+func dataDirFor(t testing.TB) string {
+	t.Helper()
+	_, file, _, _ := runtime.Caller(0)
+	return testutil.MustDataDir(t, file)
+}
 
 // TestLoadNamerGroups 验证 namer.json 顶层 charGroups（精选偏旁分组）被正确加载，
 // 取代独立的 standard_chars.json 独立文件。
 func TestLoadNamerGroups(t *testing.T) {
-	dataDir := "../../../data/"
+	dataDir := dataDirFor(t)
 	if err := LoadNamerFromJSON(dataDir); err != nil {
 		t.Fatalf("LoadNamerFromJSON 失败: %v", err)
 	}
@@ -30,8 +40,7 @@ func TestLoadNamerGroups(t *testing.T) {
 
 // TestGetCharRadicalFromNamer 验证从 namer 数据查询汉字的偏旁（取代盘上 standard_chars.json）。
 func TestGetCharRadicalFromNamer(t *testing.T) {
-	dataDir := "../../../data/"
-	_ = LoadNamerFromJSON(dataDir)
+	_ = LoadNamerFromJSON(dataDirFor(t))
 
 	// 「林」字在标准字表内，radical 应为木
 	if r := GetCharRadicalFromNamer("林"); r == "" {
@@ -76,8 +85,7 @@ func TestNormalizeGenderChineseEnums(t *testing.T) {
 // TestLoadNamerGenderNormalized 验证加载真实数据后：中文字符"男"/"女"枚举的
 // 好字在内存中的 Gender 已变为 male/female（即与 filter 判定对齐）。
 func TestLoadNamerGenderNormalized(t *testing.T) {
-	dataDir := "../../../data/"
-	if err := LoadNamerFromJSON(dataDir); err != nil {
+	if err := LoadNamerFromJSON(dataDirFor(t)); err != nil {
 		t.Fatalf("LoadNamerFromJSON 失败: %v", err)
 	}
 	mu.RLock()

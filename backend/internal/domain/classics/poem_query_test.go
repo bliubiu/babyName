@@ -1,24 +1,23 @@
 package classics
 
 import (
+	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"name/internal/testutil"
 )
 
-func packageDir() string {
-	_, file, _, _ := runtime.Caller(0)
-	return filepath.Dir(file)
-}
-
-func dataDir() string {
-	return filepath.Join(packageDir(), "..", "..", "..", "data")
-}
-
 func TestMain(m *testing.M) {
-	if err := LoadFromJSON(dataDir()); err != nil {
+	_, file, _, _ := runtime.Caller(0)
+	dataDir := testutil.DataDir(file)
+	if dataDir == "" {
+		fmt.Fprintln(os.Stderr, "未找到物料数据目录，classics 包测试无法运行")
+		os.Exit(1)
+	}
+	if err := LoadFromJSON(dataDir); err != nil {
 		// 诗经/楚辞等核心失败时仍继续，由各用例自行判断数据是否就绪
 	}
 	os.Exit(m.Run())

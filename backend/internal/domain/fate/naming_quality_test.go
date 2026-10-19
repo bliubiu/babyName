@@ -2,11 +2,12 @@ package fate
 
 import (
 	"math"
-	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"name/internal/domain/classics"
+	"name/internal/testutil"
 )
 
 // TestIsNonNamingChar 名字用字质量门禁判断
@@ -703,7 +704,8 @@ func TestForbiddenComboReload(t *testing.T) {
 		t.Skip("禁忌组合表未加载，跳过")
 	}
 	// 二次加载（同一份文件）
-	dataDir := filepath.Join(packageDir(), "..", "..", "..", "data")
+	_, file, _, _ := runtime.Caller(0)
+	dataDir := testutil.MustDataDir(t, file)
 	if err := LoadForbiddenCombosFromJSON(dataDir); err != nil {
 		t.Fatalf("二次加载失败: %v", err)
 	}

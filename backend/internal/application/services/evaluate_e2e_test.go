@@ -9,8 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"path/filepath"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -29,7 +27,7 @@ var (
 func setupNameServiceE2E(t *testing.T) *NameService {
 	t.Helper()
 	nameSvcE2EOnce.Do(func() {
-		dataDir := e2eDataDir()
+		dataDir := e2eDataDir(t)
 		if err := data.Init(dataDir); err != nil {
 			nameSvcE2EInitErr = err
 			return
@@ -285,8 +283,6 @@ func TestTaskService_E2E_SubmitAndPoll(t *testing.T) {
 	}
 }
 
-// guard：确保 json/os/filepath/runtime 引用（与既有 e2e 辅助共享文件时避免 import 漂移）
+// guard：确保 json/os 引用（与既有 e2e 辅助共享文件时避免 import 漂移）
 var _ = json.Marshal
 var _ = os.Getenv
-var _ = filepath.Join
-var _ = runtime.Caller

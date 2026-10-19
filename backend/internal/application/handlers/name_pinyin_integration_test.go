@@ -12,6 +12,7 @@ import (
 	"name/internal/application/services"
 	"name/internal/domain/fate"
 	"name/internal/infrastructure/data"
+	"name/internal/testutil"
 )
 
 // 本文件将此前的人工验证固化为自动化回归：
@@ -24,11 +25,11 @@ var (
 	fateInitErr error
 )
 
-// locateBackendDataDir 基于本文件位置定位 backend/data 目录（不依赖运行 CWD）
+// locateBackendDataDir 基于本文件位置向上探测物料数据目录（不依赖运行 CWD）
 func locateBackendDataDir(t *testing.T) string {
 	t.Helper()
 	_, file, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(file), "..", "..", "..", "data")
+	return testutil.MustDataDir(t, file)
 }
 
 // setupFateNameService 按与 cmd/server、cmd/namer-cli 一致的顺序装配带 fate 引擎的 NameService。

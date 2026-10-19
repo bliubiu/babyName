@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -14,13 +16,19 @@ import (
 	"name/internal/infrastructure/database/memory"
 	"name/internal/infrastructure/logger"
 	"name/internal/infrastructure/pdf"
+	"name/internal/testutil"
 )
 
 func TestMain(m *testing.M) {
 	_ = logger.InitProduction()
 	gin.SetMode(gin.TestMode)
 	// 加载汉字数据（测试依赖完整字库时提供基础数据）
-	dataDir := "../../../data/"
+	_, file, _, _ := runtime.Caller(0)
+	dataDir := testutil.DataDir(file)
+	if dataDir == "" {
+		fmt.Fprintln(os.Stderr, "未找到物料数据目录，handlers 包测试无法运行")
+		os.Exit(1)
+	}
 	if err := hanzi.LoadNamerFromJSON(dataDir); err != nil {
 		// 非关键：仅在未加载数据时影响依赖完整字库的用例
 		_ = err

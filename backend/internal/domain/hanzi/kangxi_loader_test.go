@@ -1,16 +1,8 @@
 package hanzi
 
 import (
-	"path/filepath"
-	"runtime"
 	"testing"
 )
-
-// packageDir 测试包所在目录（不依赖运行 CWD）
-func kangxiPackageDir() string {
-	_, file, _, _ := runtime.Caller(0)
-	return filepath.Dir(file)
-}
 
 // TestLoadKangxiStrokesFromCSV 康熙笔画表加载
 //
@@ -68,8 +60,7 @@ func TestLoadKangxiStrokesReload(t *testing.T) {
 	}
 
 	n1 := KangxiStrokesCount()
-	dataDir := filepath.Join(kangxiPackageDir(), "..", "..", "..", "data")
-	if err := LoadKangxiStrokesFromCSV(dataDir); err != nil {
+	if err := LoadKangxiStrokesFromCSV(dataDirFor(t)); err != nil {
 		t.Fatalf("二次加载失败: %v", err)
 	}
 	if KangxiStrokesCount() != n1 {

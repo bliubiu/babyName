@@ -3,23 +3,23 @@ package namestat
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
 	"testing"
 
 	"name/internal/domain/hanzi"
+	"name/internal/testutil"
 )
 
-// packageDir 返回本测试文件所在目录（不依赖运行 CWD）
-func packageDir() string {
-	_, file, _, _ := runtime.Caller(0)
-	return filepath.Dir(file)
-}
-
-// TestMain 加载人名频率数据库（backend/data/name_frequency.json 等）
+// TestMain 加载人名频率数据库（data/name_frequency.json 等）
 func TestMain(m *testing.M) {
-	dataDir := filepath.Join(packageDir(), "..", "..", "..", "data")
+	_, file, _, _ := runtime.Caller(0)
+	dataDir := testutil.DataDir(file)
+	if dataDir == "" {
+		fmt.Fprintln(os.Stderr, "未找到物料数据目录，namestat 包测试无法运行")
+		os.Exit(1)
+	}
 	if err := hanzi.LoadFrequencyDB(dataDir); err != nil {
 		os.Exit(1)
 	}

@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"name/internal/testutil"
 )
 
 // 本文件将此前的人工冒烟验证固化为自动化端到端回归：
@@ -23,7 +25,7 @@ type cliJSONResponse struct {
 	} `json:"names"`
 }
 
-// locateBackendRoot 基于本文件位置定位 backend 根目录（CLI 需在其下运行以找到 ./data）
+// locateBackendRoot 基于本文件位置定位 backend 根目录
 func locateBackendRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, _ := runtime.Caller(0)
@@ -48,10 +50,16 @@ func TestCLIBinaryJSONOutputPinyinFilled(t *testing.T) {
 	defer func() { _ = os.Remove(exePath) }()
 
 	// 2. 执行一次完整生成（JSON 输出）
+	//
+	// 显式传 --data 而非依赖 CLI 默认的 ./data：默认值按 CWD 解析，
+	// 而数据目录已不在 backend/ 下（曾随目录重组迁移），靠 CWD 命中属脆弱耦合。
+	_, thisFile, _, _ := runtime.Caller(0)
+	dataDir := testutil.MustDataDir(t, thisFile)
 	runArgs := []string{
 		"-surname", "王", "-gender", "male",
 		"-birth_year", "2024", "-birth_month", "1", "-birth_day", "15", "-birth_hour", "12",
 		"-format", "json", "-count", "5",
+		"-data", dataDir,
 	}
 	cmd := exec.Command(exePath, runArgs...)
 	cmd.Dir = backendRoot // 数据目录默认 ./data，必须在 backend 下运行

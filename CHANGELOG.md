@@ -5,6 +5,35 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.19.1]
+
+**消除测试对 `backend/data` 固定层级的硬编码：新增 `testutil.DataDir` 向上探测，数据目录重组不再导致全仓测试静默失效**
+
+### 🐛 Bug Fixes 问题修复
+
+- 【测试基建】16 个测试文件各自硬算 `../../../data` 定位物料数据目录，
+  目录一旦重组（如 `backend/data` 迁至仓库根 `data/`）即**全线静默失败**。
+  静默是关键：多数用例在字库加载失败时只告警不阻断，跑出来的是"数据为空"
+  而非"测试失败"，与真实缺陷的表现完全一致，排查成本极高。新增
+  `internal/testutil` 的 `DataDir(callerFile)` / `MustDataDir(t, callerFile)`：
+  以 `namer.json` 为标记自调用方源文件目录向上逐级探测，同时兼容
+  `backend/data` 与仓库根 `data/` 两种布局及后续任何一次重组
+- 【测试基建】探测失败时 `MustDataDir` 直接 `t.Fatalf` 并附中文说明。这与
+  `DataDir` 返回空串后由调用方"继续跑空数据"是刻意的分层：数据是用例前提
+  的场景应当立即失败，而不是带着空字库跑出一片无意义的绿
+- 【CLI 集成测试】`cmd/namer-cli` 集成测试改用 `-data` 显式传入探测到的
+  数据目录，不再依赖 CLI 默认值 `./data` 按 CWD 解析。CLI 默认值语义保留
+  不变（面向交互式使用），仅测试侧消除对 CWD 的脆弱耦合
+
+### 📈 Improvements 性能/体验优化
+
+- 【代码结构】`internal/testutil` 提供共用的测试数据目录解析，替代分散在
+  `domain/hanzi`、`domain/fate`、`domain/name`、`domain/yijing`、
+  `domain/namestat`、`domain/classics`、`application/handlers`、
+  `application/services`、`database/sqlite`、`cmd/namer-cli` 中的重复实现，
+  顺带消除各包自建的 `packageDir` / `dataDir` / `e2eDataDir` /
+  `locateBackendDataDir` 等同义 helper
+
 ## [2026.10.19.0]
 
 **服务启动期物料 fail-fast：必需物料缺失一律拒绝启动并打印导入指引，根治"healthz 200 但全部起名请求 400"的假健康态**

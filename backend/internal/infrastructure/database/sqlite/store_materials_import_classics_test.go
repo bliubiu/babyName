@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"name/internal/domain/hanzi"
 	"name/internal/infrastructure/data"
 	"name/internal/materials/schema"
+	"name/internal/testutil"
 )
 
 // 本文件守护经典语料物料（docs/31 ADR-008）的物化与还原语义：
@@ -347,9 +349,10 @@ func TestImportClassics_真实数据下库路径与JSON路径等价(t *testing.T
 	if testing.Short() {
 		t.Skip("短跑模式跳过真实数据对拍")
 	}
-	realData := filepath.Join("..", "..", "..", "..", "data")
-	if _, err := os.Stat(filepath.Join(realData, "namer.json")); err != nil {
-		t.Skipf("未找到真实数据目录，跳过对拍: %v", err)
+	_, thisFile, _, _ := runtime.Caller(0)
+	realData := testutil.DataDir(thisFile)
+	if realData == "" {
+		t.Skip("未找到物料数据目录（向上探测 namer.json 失败），跳过对拍")
 	}
 
 	s := newTestStore(t)

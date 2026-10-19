@@ -8,6 +8,7 @@ import (
 	"name/internal/application/services"
 	"name/internal/domain/fate"
 	"name/internal/infrastructure/data"
+	"name/internal/testutil"
 )
 
 // 接口守卫：*Store 必须实现 services.SQLiteCharStore（SQLite 下沉装配契约）
@@ -21,8 +22,7 @@ var _ services.SQLiteCharStore = (*Store)(nil)
 func mustSetupStore(t *testing.T) *Store {
 	t.Helper()
 	_, thisFile, _, _ := runtime.Caller(0)
-	backendRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..")
-	dataDir := filepath.Join(backendRoot, "data")
+	dataDir := testutil.MustDataDir(t, thisFile)
 
 	if err := data.Init(dataDir); err != nil {
 		t.Skipf("data.Init 失败（raw 数据缺失），跳过: %v", err)
