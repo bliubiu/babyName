@@ -20,73 +20,17 @@ func writeMarker(t *testing.T, dir string) {
 	}
 }
 
-// TestDataDir_当前目录即数据目录 情形一：callerFile 所在目录直接含 namer.json
-func TestDataDir_当前目录即数据目录(t *testing.T) {
-	dir := t.TempDir()
-	writeMarker(t, dir)
-
-	got := DataDir(filepath.Join(dir, "some_test.go"))
-	if got != dir {
-		t.Fatalf("DataDir = %q, 期望 %q", got, dir)
-	}
-}
-
-// TestDataDir_命中data子目录 情形二：仓库根布局，namer.json 位于 data/ 子目录
-func TestDataDir_命中data子目录(t *testing.T) {
+// TestDataDir_委托探测逻辑可用 DataDir 包装 paths.FindDataDir，命中场景应透传结果
+//
+// 探测的各分支（命中当前目录、命中 data/ 子目录、向上多级、未命中）由
+// internal/paths 的单测覆盖，此处只验证包装层确实走通委托。
+func TestDataDir_委托探测逻辑可用(t *testing.T) {
 	root := t.TempDir()
 	writeMarker(t, filepath.Join(root, "data"))
 
-	got := DataDir(filepath.Join(root, "backend", "internal", "domain", "hanzi", "x_test.go"))
+	got := DataDir(filepath.Join(root, "backend", "internal", "hanzi", "x_test.go"))
 	if want := filepath.Join(root, "data"); got != want {
 		t.Fatalf("DataDir = %q, 期望 %q", got, want)
-	}
-}
-
-// TestDataDir_向上多级探测 不依赖固定层级，中间目录无标记也能逐级上溯
-func TestDataDir_向上多级探测(t *testing.T) {
-	root := t.TempDir()
-	writeMarker(t, root)
-
-	deep := filepath.Join(root, "a", "b", "c", "d", "e")
-	if err := os.MkdirAll(deep, 0o755); err != nil {
-		t.Fatalf("创建目录失败: %v", err)
-	}
-	got := DataDir(filepath.Join(deep, "deep_test.go"))
-	if got != root {
-		t.Fatalf("DataDir = %q, 期望 %q", got, root)
-	}
-}
-
-// TestDataDir_优先就近原则 存在多级数据目录时返回最近的一级
-func TestDataDir_优先就近原则(t *testing.T) {
-	root := t.TempDir()
-	writeMarker(t, root)
-	near := filepath.Join(root, "backend", "data")
-	writeMarker(t, near)
-
-	got := DataDir(filepath.Join(near, "pkg", "x_test.go"))
-	if got != near {
-		t.Fatalf("DataDir = %q, 期望就近的 %q", got, near)
-	}
-}
-
-// TestDataDir_未找到返回空串 找不到 namer.json 时返回空串而非错误路径
-func TestDataDir_未找到返回空串(t *testing.T) {
-	// 临时目录向上直至文件系统根均无 namer.json，可稳定覆盖未命中分支
-	dir := t.TempDir()
-	if got := DataDir(filepath.Join(dir, "x_test.go")); got != "" {
-		t.Fatalf("DataDir = %q, 期望空串", got)
-	}
-}
-
-// TestDataDir_无标记的data子目录不误判 data/ 存在但其中没有 namer.json，不应视为数据目录
-func TestDataDir_无标记的data子目录不误判(t *testing.T) {
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "data"), 0o755); err != nil {
-		t.Fatalf("创建目录失败: %v", err)
-	}
-	if got := DataDir(filepath.Join(root, "data", "sub", "x_test.go")); got != "" {
-		t.Fatalf("DataDir = %q, 期望空串（data/ 下无 namer.json）", got)
 	}
 }
 

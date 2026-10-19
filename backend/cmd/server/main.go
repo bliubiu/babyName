@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"name/internal/infrastructure/logger"
 	"name/internal/infrastructure/middleware"
 	"name/internal/infrastructure/server"
+	"name/internal/paths"
 )
 
 var (
@@ -41,13 +43,35 @@ var (
 	configFile   = flag.String("config", "", "配置文件路径 (默认: application.yml)")
 )
 
+// mainSourceFile 定位本包源文件，作为 cwdDataDir 向上探测仓库根 data/ 的起点
+//
+// 提取为包级变量是为了可测：模拟容器内「无仓库结构、探测无果」的场景时，
+// 测试可替换为临时目录中的路径，不必依赖真实仓库布局。
+var mainSourceFile = func() string {
+	_, file, _, _ := runtime.Caller(0)
+	return file
+}
+
 // cwdDataDir 解析传统文化数据的目录（docs/29 B12）
 //
-// 优先级：DATA_DIR 环境变量 > 工作目录下的 data/。
-// docker-entrypoint.sh 按 DATA_DIR 播种字库，本函数与之保持同源；
+// 优先级：DATA_DIR 环境变量 > 向上探测到的仓库根 data/ > 工作目录下的 data/。
+//
+// ★ docs/29 B12：compose 与 docker-entrypoint.sh 都按 DATA_DIR 环境变量播种
+// 字库。两者不一致时，字库被播种到 A 目录、应用却去 B 目录读 —— 服务正常启动、
+// healthz 通过，生成接口全部返回空结果。故此处以 DATA_DIR 为准。
+//
+// ★ 仓库根布局：物料源文件位于仓库根 data/ 而非 backend/data。无 DATA_DIR 时
+// 若只回落 cwd/data，从 backend/ 启动即指向已不存在的 backend/data，并连带让
+// fail-fast 的导入指引指向该空目录——用户照抄后导入失败。故先向上探测仓库根
+// data/（与测试侧共用 paths.FindDataDir）；探测无果（容器内 /app 无仓库结构）
+// 再回落 cwd/data，与入口脚本的 `DATA_DIR=${DATA_DIR:-/app/data}` 同源。
+//
 // 分离成独立函数是为了可被测试直接覆盖。
 func cwdDataDir(cwd string) string {
 	if dir := strings.TrimSpace(os.Getenv("DATA_DIR")); dir != "" {
+		return dir
+	}
+	if dir := paths.FindDataDir(mainSourceFile()); dir != "" {
 		return dir
 	}
 	return filepath.Join(cwd, "data")

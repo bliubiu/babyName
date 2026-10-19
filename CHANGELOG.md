@@ -5,6 +5,32 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.19.2]
+
+**服务端默认数据目录改为向上探测仓库根 `data/`：无 `DATA_DIR` 时不再指向已迁走的 `backend/data`，并连带修正 fail-fast 导入指引的路径**
+
+### 🐛 Bug Fixes 问题修复
+
+- 【服务启动】`cwdDataDir` 在未设 `DATA_DIR` 时固定回落 `cwd/data`，而物料
+  源文件已从 `backend/data` 迁至仓库根 `data/`。后果是从 `backend/` 启动且
+  不设环境变量时服务 fail-fast 拒绝启动，**且打印的恢复命令指向那个不存在的
+  目录**——用户照抄 `materials import --data "…\backend\data"` 只会导入失败。
+  现改为先向上探测仓库根 `data/`（与测试侧共用 `internal/paths.FindDataDir`），
+  探测无果再回落 `cwd/data`
+- 【部署同源】探测无果时的回落保持 `cwd/data` 不变，与入口脚本
+  `DATA_DIR=${DATA_DIR:-/app/data}` 的契约继续一致：容器内 `/app` 无仓库结构，
+  行为与改动前完全相同，仅本地开发受益
+
+### 📈 Improvements 性能/体验优化
+
+- 【代码结构】新增零依赖的 `internal/paths` 包承载数据目录探测规则，
+  `internal/testutil.DataDir` 改为委托它、`cmd/server` 直接复用它，消除
+  「测试侧一套、进程侧一套」的分叉。`cwdDataDir` 的探测起点提取为包级变量
+  `mainSourceFile`，使「容器内无仓库结构」的场景可被测试稳定模拟
+- 【测试】新增 `TestCwdDataDir_仓库内探测到仓库根` 覆盖真实仓库布局；
+  `TestCwdDataDir` 与入口脚本契约测试补上探测起点替换，分别覆盖回落分支与
+  探测命中分支
+
 ## [2026.10.19.1]
 
 **消除测试对 `backend/data` 固定层级的硬编码：新增 `testutil.DataDir` 向上探测，数据目录重组不再导致全仓测试静默失效**
