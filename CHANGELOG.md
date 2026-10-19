@@ -5,6 +5,44 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.19.0]
+
+**服务启动期物料 fail-fast：必需物料缺失一律拒绝启动并打印导入指引，根治"healthz 200 但全部起名请求 400"的假健康态**
+
+### 🐛 Bug Fixes 问题修复
+
+- 【服务启动】`cmd/server` 装载传统文化物料失败时由 `logger.Warn` 后继续改为
+  **拒绝启动**（exit 1）。原行为下物料库为空（未执行 `materials import`）服务
+  照常监听、`/healthz` 返回 200，但每个起名请求都 400——监控看到"服务健康"
+  而业务 100% 不可用，比启动失败难排查得多。与 docs/31 ADR-008
+  「运行时 SQLite 唯一真源 + 必需物料缺料 fail-fast」对齐：`materials load`
+  早已退出码 1，服务端此前却把同一类错误降级成 warn
+- 【启动指引】拒绝启动时向 stderr 打印完整恢复命令
+  `go run ./cmd/materials import --data "<dataDir>" --db "<dbPath>"`，路径取
+  当前进程实际生效的 `DATA_DIR` 与 `database.path`，用户照抄即可补救
+- 【指引可用性】指引命令用普通双引号而非 `%q`：`%q` 是 Go 语法转义，会把
+  Windows 路径写成 `"D:\\19-..."`，复制到 cmd/PowerShell 会指向错误目录；
+  该产出是 shell 命令而非 Go 字面量
+
+### ⚠️ Breaking Changes 破坏性变更
+
+- 【服务启动】原先依赖"物料缺失仍能降级启动"的部署（如先起服务、后补物料）
+  现会启动失败。请在启动前执行 `materials import`，或改用
+  `materials load` 作为启动前置探针
+
+### 📈 Improvements 性能/体验优化
+
+- 【代码结构】`loadCulturalData` 拆出 `loadCulturalDataFromDB`（可直接用
+  `data.DBLoader` 假实现测试，不必构造整个 `database.Store`）与
+  `materialsImportHint`（指引命令构造，纯函数可测）
+
+### 📚 Docs 文档更新
+
+- 【测试】`cmd/server/main_test.go` 新增 5 个用例：指引命令构造（含
+  Windows 路径不转义回归守护）、空物料库返回错误且含缺料原因与恢复命令、
+  错误保留底层缺料原因不被包装吞掉、无库场景不附带 `materials import` 指引
+  （该场景修复动作是补数据文件而非导入，给出 import 命令是误导）
+
 ## [2026.10.18.16]
 
 **校验器(validator)汉字判定改用 `unicode.Is(unicode.Han)`，根治"合法中文字符被误拒"——附 GBK 测试伪象排查**

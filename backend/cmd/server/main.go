@@ -132,17 +132,22 @@ func main() {
 	// 再把库内物料灌进内存索引。initStore 不会写物料表（只建表与用户数据）。
 	store := initStore(cfg.Database.Path, dataDir)
 
-	// 2. 加载传统文化物料（优先读 SQLite 物料库，缺料回落 JSON/CSV 源文件）
+	// 2. 加载传统文化物料（以 SQLite 物料库为唯一真源，docs/31 ADR-008）
 	//
 	// ★ docs/29 B12：原先固定 `filepath.Join(cwd, "data")`，但 compose 与
 	// docker-entrypoint.sh 都按 DATA_DIR 环境变量播种字库。两者不一致时，
 	// 字库被播种到 A 目录、应用却去 B 目录读 —— 服务正常启动、healthz 通过，
 	// 生成接口全部返回空结果。故此处以 DATA_DIR 为准（缺省才回落到 cwd/data）。
-	if err := loadCulturalData(dataDir, store); err != nil {
-		logger.Warn("加载传统文化物料失败，将使用内置降级数据", logger.ErrField(err))
-	} else {
-		logger.Info("传统文化物料已装载", logger.String("数据目录", dataDir))
+	//
+	// ★ ADR-008 fail-fast：物料缺失一律拒绝启动并给出导入指引。此前此处只
+	// Warn 后继续，后果是字库为空时服务照常监听、healthz 返回 200，但每个
+	// 起名请求都 400 —— 监控看到「服务健康」而业务 100% 不可用，比启动失败
+	// 难排查得多。
+	if err := loadCulturalData(dataDir, cfg.Database.Path, store); err != nil {
+		fmt.Fprintf(os.Stderr, "\n错误: 物料加载失败，服务拒绝启动\n  原因: %v\n\n", err)
+		logger.Fatal("加载传统文化物料失败，服务拒绝启动", logger.ErrField(err))
 	}
+	logger.Info("传统文化物料已装载", logger.String("数据目录", dataDir))
 
 	// 3. 检查静态文件目录（仅 all 模式需要：api 模式下静态页由前端容器/nginx
 	// 提供，容器内对不存在的静态路径强制 mkdir 只会 Fatal——docs/30 §六 C10）
@@ -532,11 +537,32 @@ func startServer(router *gin.Engine, addr, cwd string, store database.Store, rat
 // loadCulturalData 装载传统文化物料
 //
 // db 为 nil 时走纯 JSON 路径；非 nil 时优先从 SQLite 物料库读（ADR-008）。
-func loadCulturalData(dataDir string, db database.Store) error {
+// SQLite 路径下必需物料缺失会返回错误并附带 materials import 恢复命令，
+// 由调用方拒绝启动（ADR-008 fail-fast）。
+func loadCulturalData(dataDir, dbPath string, db database.Store) error {
 	if loader, ok := db.(data.DBLoader); ok {
-		return data.InitWithDB(dataDir, loader)
+		return loadCulturalDataFromDB(dataDir, dbPath, loader)
 	}
 	return data.Init(dataDir)
+}
+
+// loadCulturalDataFromDB 从 SQLite 物料库装载，失败时在错误中附带恢复命令
+//
+// 单独拆出是为了可直接用 data.DBLoader 假实现测试，不必构造整个 database.Store。
+func loadCulturalDataFromDB(dataDir, dbPath string, loader data.DBLoader) error {
+	if err := data.InitWithDB(dataDir, loader); err != nil {
+		return fmt.Errorf("%w；恢复命令: %s", err, materialsImportHint(dataDir, dbPath))
+	}
+	return nil
+}
+
+// materialsImportHint 构造物料导入指引命令
+//
+// 参数与 cmd/materials 的 import 子命令保持一致：--data 源文件目录、--db 目标库。
+// 用普通双引号而非 %q：%q 是 Go 语法转义，会把 Windows 路径写成
+// `D:\\19-...`，用户照抄到 shell 里是错的；此处产出的是 shell 命令。
+func materialsImportHint(dataDir, dbPath string) string {
+	return fmt.Sprintf(`go run ./cmd/materials import --data "%s" --db "%s"`, dataDir, dbPath)
 }
 
 // loadCuratedNamesForFate 从库读取策展名的 name 字段，返回策展好名列表
