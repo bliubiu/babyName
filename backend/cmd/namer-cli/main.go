@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"name/internal/application/services"
@@ -31,11 +32,12 @@ import (
 	"name/internal/infrastructure/data"
 	"name/internal/infrastructure/database/sqlite"
 	"name/internal/infrastructure/logger"
+	"name/internal/paths"
 )
 
 var (
 	configFile = flag.String("config", "", "TOML 配置文件路径（可选，命令行参数优先级更高）")
-	dataFlag   = flag.String("data", "./data", "文化数据 JSON 文件目录（未指定 --db 时使用）")
+	dataFlag   = flag.String("data", "", "文化数据 JSON 文件目录（未指定时自动探测仓库根 data/，再回落 ./data）")
 	dbFlag     = flag.String("db", "", "SQLite 物料库路径（指定后从库装载，与服务端一致）")
 	help       = flag.Bool("help", false, "显示帮助")
 
@@ -109,7 +111,7 @@ func main() {
 	}
 
 	// 5. 初始化数据与服务，执行生成
-	resp, err := generate(params.ToRequest(), *dataFlag, *dbFlag)
+	resp, err := generate(params.ToRequest(), resolveDataDir(*dataFlag), *dbFlag)
 	if err != nil {
 		fail(err)
 	}
@@ -155,6 +157,33 @@ func buildFlagOverrides() *Params {
 		Count:              *fCount,
 		Format:             strings.TrimSpace(*fFormat),
 	}
+}
+
+// cliSourceFile 定位本包源文件，作为 resolveDataDir 向上探测仓库根 data/ 的起点
+//
+// 提取为包级变量是为了可测：模拟「仅解压可执行文件、无仓库结构」的场景时，
+// 测试可替换为临时目录中的路径。
+var cliSourceFile = func() string {
+	_, file, _, _ := runtime.Caller(0)
+	return file
+}
+
+// resolveDataDir 解析物料数据目录
+//
+// 优先级：--data 显式传入 > 向上探测到的仓库根 data/ > ./data。
+//
+// 物料源文件已从 backend/data 迁至仓库根 data/，--data 若只回落 ./data，
+// 从 backend/ 运行即指向已不存在的 backend/data。故显式值之外先向上探测
+// 仓库根 data/（与 cmd/server、测试侧共用 paths.FindDataDir）；探测无果
+// （仅解压可执行文件、无仓库结构）再回落 ./data，保留历史上的相对路径语义。
+func resolveDataDir(flagValue string) string {
+	if dir := strings.TrimSpace(flagValue); dir != "" {
+		return dir
+	}
+	if dir := paths.FindDataDir(cliSourceFile()); dir != "" {
+		return dir
+	}
+	return "./data"
 }
 
 // generate 初始化数据与领域服务后执行生成
