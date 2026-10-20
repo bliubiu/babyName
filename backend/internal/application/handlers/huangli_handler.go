@@ -177,3 +177,48 @@ func (h *HuangliHandler) GetLunarCalendar(c *gin.Context) {
 
 	response.SuccessJSON(c, lunar)
 }
+
+// GetLunarMonthCalendar 获取某公历年月的逐日节气与农历节日标注
+// @Summary 获取公历月的节气与农历节日
+// @Description 根据年、月返回该月每一天的 24 节气与农历传统节日标注，用于万年历视图
+// @Tags 黄历
+// @Accept json
+// @Produce json
+// @Param year query int true "年份"
+// @Param month query int true "月份"
+// @Success 200 {object} bazi.LunarMonthDay "成功"
+// @Failure 400 {object} response.Response "请求参数错误"
+// @Router /lunar/month [get]
+func (h *HuangliHandler) GetLunarMonthCalendar(c *gin.Context) {
+	yearStr := c.Query("year")
+	monthStr := c.Query("month")
+
+	year, err := strconv.Atoi(yearStr)
+	if err != nil {
+		response.ErrorJSON(c, 400, "年份参数错误")
+		return
+	}
+	month, err := strconv.Atoi(monthStr)
+	if err != nil || month < 1 || month > 12 {
+		response.ErrorJSON(c, 400, "月份参数错误")
+		return
+	}
+	if year < 1900 || year > 2100 {
+		response.ErrorJSON(c, 400, "年份必须在1900-2100之间")
+		return
+	}
+
+	calendar := bazi.GetLunarMonthCalendar(year, month)
+	if calendar == nil {
+		// 仅当月份非法时 GetLunarMonthCalendar 返回 nil，但上面已校验，此处为兜底
+		response.ErrorJSON(c, 400, "该月份无法换算农历，请检查年月")
+		return
+	}
+
+	logger.Info("GetLunarMonthCalendar called", zap.Int("year", year), zap.Int("month", month), zap.Int("days", len(calendar)))
+	response.SuccessJSON(c, gin.H{
+		"year":  year,
+		"month": month,
+		"days":  calendar,
+	})
+}

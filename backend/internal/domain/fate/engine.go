@@ -697,14 +697,23 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	// 用于展示生成规模统计，语义为「已评分组合数」而非「总尝试组合数」（B11）。
 	var totalCount atomic.Int64
 
-	if nameLen == 1 {
-		// 单名：仅迭代第一个字（候选集小，串行足够快）
-		s.setStage(sessionStageScore, 30)
-		s.generateSingleName(ctx, infos, table, &totalCount, fateData, surnamePinyin)
-	} else {
-		// 双名：迭代 Char1 × Char2（全量枚举，按外层 Char1 分片并行）
-		// 合并结果**就地写入**传入的 table，不再重造（docs/28 W6）。
-		s.generateDoubleName(ctx, infos, table, &totalCount, fateData, surnamePinyin, topCount, xiSet)
+	// 用户显式指定字辈（Generation）时走「固定槽位 × 自由枚举」分支：
+	// 字辈字固定占一个槽位，其余槽位仍从候选池自由枚举。
+	// 该分支返回 handled=false 表示字辈字不合法（多字/查库失败），回退常规枚举。
+	handled := false
+	if input.Generation != "" {
+		infos, handled = s.generateWithGeneration(ctx, input, infos, table, &totalCount, fateData, surnamePinyin)
+	}
+	if !handled {
+		if nameLen == 1 {
+			// 单名：仅迭代第一个字（候选集小，串行足够快）
+			s.setStage(sessionStageScore, 30)
+			s.generateSingleName(ctx, infos, table, &totalCount, fateData, surnamePinyin)
+		} else {
+			// 双名：迭代 Char1 × Char2（全量枚举，按外层 Char1 分片并行）
+			// 合并结果**就地写入**传入的 table，不再重造（docs/28 W6）。
+			s.generateDoubleName(ctx, infos, table, &totalCount, fateData, surnamePinyin, topCount, xiSet)
+		}
 	}
 
 	// 7. 构建 TopNames 输出（过滤禁止的国家机关单位名称）

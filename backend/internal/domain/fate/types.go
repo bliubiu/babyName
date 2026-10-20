@@ -34,9 +34,12 @@ const (
 type Input struct {
 	Surname    string          `json:"surname"`    // 姓氏
 	Generation string          `json:"generation"` // 字辈（可选）
-	Gender     Gender          `json:"gender"`     // 性别
-	Born       time.Time       `json:"born"`       // 出生时间
-	Options    GenerateOptions `json:"options"`    // 生成选项
+	// GenerationPosition 字辈在名字中的位置（可选，仅 Generation 非空时生效）
+	// 取值：middle（默认，字辈为名的第一个字）/ tail（字辈为名的最后一个字）
+	GenerationPosition string          `json:"generation_position,omitempty"`
+	Gender             Gender          `json:"gender"` // 性别
+	Born               time.Time       `json:"born"`   // 出生时间
+	Options            GenerateOptions `json:"options"` // 生成选项
 
 	// 避讳长辈姓名列表（父系/母系直系长辈，建议往上两代）
 	// 引擎将排除这些姓名中的同形字与同音字

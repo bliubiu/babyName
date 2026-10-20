@@ -462,6 +462,7 @@ func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store
 
 		api.GET("/huangli", h.huangli.GetHuangli)
 		api.GET("/lunar", h.huangli.GetLunarCalendar)
+		api.GET("/lunar/month", h.huangli.GetLunarMonthCalendar)
 
 		// 汉字/偏旁数据
 		api.GET("/characters/groups", h.character.GetCharGroups)

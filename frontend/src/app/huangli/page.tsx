@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { getHuangli, getLunarCalendar } from '@/lib/api';
-import { useQueries } from '@tanstack/react-query';
+import { getHuangli, getLunarCalendar, getLunarMonthCalendar } from '@/lib/api';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { Spinner } from '@/components/Spinner';
 import Navigation from '@/components/Navigation';
 import type { HuangliData, LunarCalendarData } from './types';
@@ -30,6 +30,13 @@ const HuangliPage = () => {
   const lunarData = (lunarQuery.data?.data ?? null) as LunarCalendarData | null;
   const loading = huangliQuery.isLoading || lunarQuery.isLoading;
   const error = huangliQuery.error || lunarQuery.error ? '获取数据失败，请重试' : null;
+
+  // 万年历逐日节气 / 农历节日标注（按年月拉取整月，减少请求数）
+  const monthLunarQuery = useQuery({
+    queryKey: ['lunar-month', year, month],
+    queryFn: () => getLunarMonthCalendar(year, month),
+  });
+  const monthLunar = monthLunarQuery.data?.data ?? null;
 
   const goToPrevDay = useCallback(() => {
     const d = new Date(selectedDate);
@@ -194,6 +201,7 @@ const HuangliPage = () => {
               currentYear={currentYear}
               currentMonth={currentMonth}
               selectedDate={selectedDate}
+              monthLunar={monthLunar}
               onDateSelect={setSelectedDate}
               onTodayClick={goToToday}
             />

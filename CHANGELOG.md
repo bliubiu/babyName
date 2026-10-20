@@ -5,6 +5,33 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.20.1]
+
+**万年历展示 24 节气与农历节日、JSON 查看器统一为新中式皮肤，并接入 E2E 框架、新增字辈(Generation)生成分支**
+
+### 🐛 Bug Fixes 问题修复
+
+- 【万年历】新增后端 `/api/v1/lunar/month` 逐日节气 / 农历节日批量接口与前端标注渲染，修复万年历不显示 24 节气（清明、谷雨、寒露、霜降…）与农历节日（重阳节、上巳节…）的问题；农历节日优先、节气次之
+- 【导航】修正首页顶部「JSON」按钮图标：原仅画两个松散花括号被误读为 "{}JSON"，改为「文档 + `</>` 代码」图标
+- 【前端】修复 `WannianliView` 漏导入 `useMemo` 导致的运行时崩溃，以及 `huangli/page.tsx` 中 `monthLunarQuery` 在 `currentYear/currentMonth` 声明前引用引发的 TDZ 500
+
+### ✨ Features 新功能
+
+- 【起名引擎】`fate` 引擎新增「字辈(Generation)」生成分支：用户显式指定字辈时，字辈字固定占一个槽位、其余槽位仍从候选池自由枚举；字辈不合法时回退常规枚举（`generateWithGeneration`，以 `handled` 返回值控制分支）
+- 【测试】接入 tester-army/e2e v0.21.2 框架：新增 `e2e.config.api.ts` / `e2e.config.ts`、`frontend/tests/` 主链路用例、`backend/webui_e2e_test.py`，并补充 `docs/35-e2e框架接入指南.md`；`next.config.js` 加 `allowedDevOrigins: ['127.0.0.1']` 修复 E2E 浏览器经跨源打开时 "渲染但不水合" 的问题
+
+### 📈 Improvements 性能/体验优化
+
+- 【JSON 查看器】`public/json4matter.html` 离线工具重皮肤为「新中式·墨韵宣纸」调色板（朱红 / 金 / 青 + 宣纸底），字体统一 Noto Sans SC，拖拽遮罩与错误色改朱红；新增 `syncParentTheme()` 跟随父页面明暗模式；宿主页 `json-viewer` 改为云纹底 + 卡片框 iframe，与主应用风格统一
+
+### 🔧 Chore / 基建
+
+- 【物料】收尾 `backend/data/*` → 仓库根 `data/` 的迁移：删除仓库内残留的 `backend/data/*.json` 跟踪项；`.gitignore` 追加 `data/`
+- 【依赖】`frontend` 新增 e2e 相关 devDependencies（`e2e`、`@e2e-dev/web`），更新 `pnpm-lock.yaml`
+- 【数据】`frontend/public/gate-data/` 纳入门禁数据静态资源（随导出发布）
+
+> 验证：后端 `go test ./internal/domain/bazi/ -run 'TestGetSolarTermExact|TestGetLunarFestivalName|TestGetLunarMonthCalendar'` 通过；`/api/v1/lunar/month` 返回 2026-10 寒露/重阳节/霜降、2026-04 清明/上巳节/谷雨；前端 `next dev`(3000) 下 `/huangli`、`/json-viewer` 均 200 无编译错误；E2E 两份用例（API 契约 + UI 主链路）复跑全绿。
+
 ## [2026.10.19.3]
 
 **CLI `--data` 默认值同步改为向上探测仓库根 `data/`：补齐与服务端同一缺陷，消除「从 backend/ 运行即找不到物料」**

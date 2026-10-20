@@ -744,3 +744,66 @@ func GetCurrentJieQi(year, month, day int) string {
 	prevTerm := solarDay.GetTermDay().GetSolarTerm()
 	return prevTerm.GetName()
 }
+
+// GetSolarTermExact 精确判断公历日期是否为节气交接日。
+//
+// 与 GetCurrentJieQi 不同：GetCurrentJieQi 在非节气日会回退到「上一个节气」，
+// 用于单日黄历展示尚可；但万年历需要逐格标注，必须只在「当天恰好是节气日」时
+// 才返回节气名，否则每一天都会带上节气、喧宾夺主。本函数即用于此场景。
+func GetSolarTermExact(year, month, day int) string {
+	solarDay, err := tyme.SolarDay{}.FromYmd(year, month, day)
+	if err != nil || solarDay == nil {
+		return ""
+	}
+	term := solarDay.GetTerm()
+	termDay := term.GetSolarDay()
+	if termDay.GetYear() == year && termDay.GetMonth() == month && termDay.GetDay() == day {
+		return term.GetName()
+	}
+	return ""
+}
+
+// GetLunarFestivalName 返回公历日期对应的农历传统节日名（如"重阳节""春节""除夕"），
+// 无传统节日则返回空串。内部先将公历换算为农历，再匹配国家标准《农历的编算和颁行》
+// GB/T 33661-2017 的节日表（tyme.LunarFestival）。
+func GetLunarFestivalName(year, month, day int) string {
+	solarDay, err := tyme.SolarDay{}.FromYmd(year, month, day)
+	if err != nil || solarDay == nil {
+		return ""
+	}
+	lunarDay := solarDay.GetLunarDay()
+	festival, err := tyme.LunarFestival{}.FromYmd(
+		lunarDay.GetYear(),
+		lunarDay.GetLunarMonth().GetMonthWithLeap(),
+		lunarDay.GetDay(),
+	)
+	if err != nil || festival == nil {
+		return ""
+	}
+	return festival.GetName()
+}
+
+// LunarMonthDay 某公历月内单日的节气与农历节日标注
+type LunarMonthDay struct {
+	Day           int    `json:"day"`           // 公历日（1-31）
+	SolarTerm     string `json:"solarTerm"`     // 24 节气名，非节气日为空串
+	LunarFestival string `json:"lunarFestival"` // 农历传统节日名（春节/重阳节等），无则为空串
+}
+
+// GetLunarMonthCalendar 返回指定公历年月的逐日节气与农历节日标注，供万年历视图使用。
+// 每月最多 31 次换算，结果已按日升序排列。
+func GetLunarMonthCalendar(year, month int) []LunarMonthDay {
+	if month < 1 || month > 12 {
+		return nil
+	}
+	days := time.Date(year, time.Month(month)+1, 0, 0, 0, 0, 0, time.UTC).Day()
+	result := make([]LunarMonthDay, 0, days)
+	for d := 1; d <= days; d++ {
+		result = append(result, LunarMonthDay{
+			Day:           d,
+			SolarTerm:     GetSolarTermExact(year, month, d),
+			LunarFestival: GetLunarFestivalName(year, month, d),
+		})
+	}
+	return result
+}

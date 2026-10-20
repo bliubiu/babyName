@@ -138,3 +138,16 @@ export function IconChevronUp({ className, size = 18 }: IconProps) {
     </svg>
   );
 }
+
+// JSON 美化查看器入口图标（文档 + 代码符号，避免单独花括号被误读为 "{}" 文本）
+export function IconJson({ className, size = 18 }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 3 14 8 19 8" />
+      <polyline points="9 12 7 14 9 16" />
+      <polyline points="15 12 17 14 15 16" />
+      <line x1="11" y1="18" x2="13" y2="10" />
+    </svg>
+  );
+}

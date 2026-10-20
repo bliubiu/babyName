@@ -410,7 +410,15 @@ export async function deleteHistory(id: string): Promise<HistoryResponse> {
 
 export async function getFavorites(): Promise<FavoritesResponse> {
   const response = await fetchWithRetry(`${API_BASE_URL}/v1/favorites`);
-  return await handleResponse<FavoritesResponse>(response);
+  const resp = await handleResponse<{
+    success: boolean;
+    message?: string;
+    data?: { data?: FavoriteData[]; records?: FavoriteData[] };
+  }>(response);
+  // 后端 GET /api/v1/favorites 返回分页信封 data: {data/records, total, page, limit}，
+  // 归一化为 data: FavoriteData[]，供前端统一按数组消费
+  const list = resp?.data?.data ?? resp?.data?.records ?? [];
+  return { success: resp?.success ?? false, message: resp?.message, data: Array.isArray(list) ? list : [] };
 }
 
 export async function saveFavorite(data: FavoriteData): Promise<FavoritesResponse> {
@@ -462,6 +470,37 @@ export async function getHuangli(year: number, month: number, day: number): Prom
   }
 
   const response = await fetchWithRetry(`${API_BASE_URL}/v1/huangli?year=${safeYear}&month=${safeMonth}&day=${safeDay}`);
+  return await handleResponse(response);
+}
+
+export interface LunarMonthDay {
+  day: number;
+  solarTerm: string;
+  lunarFestival: string;
+}
+
+export interface LunarMonthCalendar {
+  year: number;
+  month: number;
+  days: LunarMonthDay[];
+}
+
+/**
+ * 获取某公历年月的逐日节气与农历节日标注（用于万年历网格展示）。
+ * 返回 data.days：[{ day, solarTerm, lunarFestival }]，非节气/非节日字段为空串。
+ */
+export async function getLunarMonthCalendar(year: number, month: number): Promise<APIResponse<LunarMonthCalendar>> {
+  const safeYear = safeParseInt(year);
+  const safeMonth = safeParseInt(month);
+
+  if (safeYear < 1900 || safeYear > 2100) {
+    throw new ValidationError('年份必须在1900-2100之间');
+  }
+  if (safeMonth < 1 || safeMonth > 12) {
+    throw new ValidationError('月份必须在1-12之间');
+  }
+
+  const response = await fetchWithRetry(`${API_BASE_URL}/v1/lunar/month?year=${safeYear}&month=${safeMonth}`);
   return await handleResponse(response);
 }
 

@@ -1,17 +1,22 @@
+import { useMemo } from 'react';
+import type { LunarMonthCalendar } from '@/lib/api';
+
 interface WannianliViewProps {
   currentYear: number;
   currentMonth: number;
   selectedDate: Date;
+  monthLunar?: LunarMonthCalendar | null;
   onDateSelect: (date: Date) => void;
   onTodayClick: () => void;
 }
 
-export function WannianliView({ currentYear, currentMonth, selectedDate, onDateSelect, onTodayClick }: WannianliViewProps) {
+export function WannianliView({ currentYear, currentMonth, selectedDate, monthLunar, onDateSelect, onTodayClick }: WannianliViewProps) {
   const daysInMonth = Array.from({ length: new Date(currentYear, currentMonth, 0).getDate() }, (_, i) => i + 1);
   const firstDayOfMonth = new Date(currentYear, currentMonth - 1, 1).getDay();
   const emptySlots = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
   const weekDays = ['一', '二', '三', '四', '五', '六', '日'];
 
+  // 公历法定节假日（与农历节日、节气并列展示）
   const getHoliday = (month: number, day: number): string => {
     const holidays: Record<string, string> = {
       '1-1': '元旦', '3-8': '妇女节', '5-1': '劳动节', '6-1': '儿童节',
@@ -19,6 +24,15 @@ export function WannianliView({ currentYear, currentMonth, selectedDate, onDateS
     };
     return holidays[`${month}-${day}`] || '';
   };
+
+  // 由后端返回的逐日节气 / 农历节日标注构建 day -> 标注 的映射
+  const lunarMarkMap = useMemo(() => {
+    const map: Record<number, { solarTerm: string; lunarFestival: string }> = {};
+    (monthLunar?.days ?? []).forEach((d) => {
+      map[d.day] = { solarTerm: d.solarTerm, lunarFestival: d.lunarFestival };
+    });
+    return map;
+  }, [monthLunar]);
 
   return (
     <div className="card animate-fade-in-up">
@@ -62,6 +76,10 @@ export function WannianliView({ currentYear, currentMonth, selectedDate, onDateS
           const isToday = date.toDateString() === new Date().toDateString();
           const isSelected = date.toDateString() === selectedDate.toDateString();
           const holiday = getHoliday(currentMonth, day);
+          // 节气 / 农历节日：传统节日（重阳节等）优先，否则展示 24 节气（清明等）
+          const mark = lunarMarkMap[day];
+          const festivalMark = mark?.lunarFestival || mark?.solarTerm || '';
+          const showMark = festivalMark || holiday;
 
           return (
             <div
@@ -74,11 +92,20 @@ export function WannianliView({ currentYear, currentMonth, selectedDate, onDateS
                     : 'hover:bg-warm-white/80 text-ink'
               }`}
               onClick={() => onDateSelect(date)}
+              title={showMark ? showMark : undefined}
             >
-              <div className="text-sm font-medium">{day}</div>
-              {holiday && (
-                <div className={`text-[10px] ${isSelected ? 'text-white/80' : 'text-crimson/60'}`}>
-                  {holiday}
+              <div className="text-sm font-medium leading-none">{day}</div>
+              {showMark && (
+                <div className={`mt-0.5 text-[10px] leading-none truncate max-w-[3.5rem] text-center ${
+                  isSelected
+                    ? 'text-white/85'
+                    : mark?.lunarFestival
+                      ? 'text-amber-600'
+                      : holiday
+                        ? 'text-crimson/70'
+                        : 'text-emerald-600'
+                }`}>
+                  {festivalMark || holiday}
                 </div>
               )}
             </div>

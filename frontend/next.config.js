@@ -3,6 +3,9 @@ const nextConfig = {
   reactStrictMode: true,
   output: 'export',
   distDir: 'out',
+  // Next.js 16 会拦截跨源 dev 资源：E2E 浏览器引擎经 127.0.0.1 打开页面时，
+  // next dev 自我标识为 localhost，不加白名单会"渲染但不水合"（React 事件全部失效）。
+  allowedDevOrigins: ['127.0.0.1'],
   images: {
     unoptimized: true,
   },

@@ -26,6 +26,8 @@ frontend/build/
 frontend/.turbo/
 frontend/.cache/
 frontend/coverage/
+# E2E 生成报告（非源码，可随时复跑生成）
+frontend/.e2e/
 
 # ===== 数据文件 (运行时生成) =====
 # SQLite 数据库
@@ -36,6 +38,7 @@ frontend/coverage/
 *.sqlite3
 backend/data/
 *.backup
+data/
 
 # 日志文件
 logs/
