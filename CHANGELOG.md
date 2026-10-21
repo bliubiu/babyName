@@ -5,6 +5,20 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.21.2]
+
+**新增 backend/bin/start-server 一键启动脚本（缺失或源码更新时自动重建）**
+
+### ✨ Features 新功能
+- 【部署】新增 `backend/bin/start-server.sh` 一键启动脚本：启动前检测 `backend/bin/namer-server.exe` 是否存在、以及 backend 下源码/依赖（`*.go`/`go.mod`/`go.sum`）与配置（`*.yml`）的 mtime 是否比二进制更新；任一条件满足（或传 `--rebuild`）则自动 `go build -o bin/namer-server.exe ./cmd/server`，否则跳过构建。随后前台启动服务（绑定 `127.0.0.1:8080`，Ctrl+C 优雅关闭），日志落 `backend/bin/logs/`。支持 `--rebuild` 强制重建、`--check` 仅校验/构建不启动
+- 【部署】附 `backend/bin/start-server.bat` 薄封装，双击即可经 Git Bash 委托运行同一脚本（Windows 一键入口）
+- 【部署】二进制构建产物统一落 `backend/bin/namer-server.exe`（已被 `.gitignore` 的 `*.exe` 忽略，属本地产物，脚本按需再生，不纳入版本库）
+
+### 🧪 验证
+- 脚本三态实测：①二进制最新 → 跳过构建；②`touch` 任一 `.go` → 自动重建（go build 成功）；③重建后再次运行 → 跳过（无死循环）
+- 经脚本启动服务，`/healthz`、`/readyz` 均 200；物料载入正确（康熙笔画 7,838 / 经典字集 46,691 / 字库 8,105），与权威库一致
+- 注意：`find -exec stat` 会因派生进程过多被沙箱 SIGTERM，已改用 `find -print0 | xargs -0 stat` 批处理
+
 ## [2026.10.21.1]
 
 **修复 fate 构建断点（已核实无误）、千家诗字集静默遗漏，并新增经典语料巡检报告**
