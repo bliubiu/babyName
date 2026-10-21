@@ -220,9 +220,11 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 		if nr.PoetryFrom != "" {
 			na.PoetrySource = nr.PoetryFrom
 		}
-		// 出典完整结构化回填（作品·篇目·原句·作者·朝代·全诗），
-		// 供前端"可点击回链"展开完整出处面板
-		enrichPoetrySource(na, nr.GivenName)
+		// 出典完整结构化回填（作品·篇目·原句·作者·朝代·全诗·命中字），
+		// 供前端"可点击回链"展开完整出处面板。
+		// 传入 req.SourceClassic：用户选了经典来源时，出处限定在该来源族内，
+		// 避免出现「选唐诗宋词、出处却显示诗经」的脱节。
+		enrichPoetrySource(na, nr.GivenName, req.SourceClassic)
 		names = append(names, na)
 	}
 
@@ -358,12 +360,24 @@ type poetryBackfill struct {
 	Author   string
 	Dynasty  string
 	FullText string
+	// MatchedChars 命中的名字用字（仅实际出现在诗句中的字）。
+	// 出典匹配为「任一字命中即算有出典」，此字段供前端高亮命中字。
+	MatchedChars []string
 }
 
 // resolvePoetry 按名字反查 classics.PoemIndex 的结构化出处；查不到时返回 ok=false。
 // 命中时 Source/Chapter 仅在原数据非空时填充（保留调用方预填的引擎原句兜底语义）。
-func resolvePoetry(givenName string) (poetryBackfill, bool) {
-	result := classics.QueryNamePoetry(givenName)
+//
+// sourceClassic 为用户选择的经典来源（如「唐诗宋词」）：非空时出处查询限定在
+// 该来源族内，使「选唐诗宋词 → 出处显示唐诗宋词」成立（否则展示层在全库匹配，
+// 会返回与用户选择无关的出处）。该族内无命中时由查询函数回退全库。
+func resolvePoetry(givenName, sourceClassic string) (poetryBackfill, bool) {
+	var result *classics.NamePoetryResult
+	if sourceClassic != "" {
+		result = classics.QueryNamePoetryBySource(givenName, sourceClassic)
+	} else {
+		result = classics.QueryNamePoetry(givenName)
+	}
 	if result == nil || result.BestMatch == nil || result.BestMatch.Poem == nil {
 		return poetryBackfill{}, false
 	}
@@ -384,6 +398,9 @@ func resolvePoetry(givenName string) (poetryBackfill, bool) {
 	if match.Quote != "" {
 		b.Sentence = match.Quote
 	}
+	if len(match.MatchedChars) > 0 {
+		b.MatchedChars = match.MatchedChars
+	}
 	return b, true
 }
 
@@ -399,14 +416,17 @@ func resolvePoetry(givenName string) (poetryBackfill, bool) {
 //   - PoetryAuthor  ：作者（诗经多为佚名）
 //   - PoetryDynasty ：朝代（先秦/唐/宋等）
 //   - PoetryFullText：完整诗篇（前端可点击展开全诗）
+//   - PoetryMatchedChars：实际命中的名字用字（前端高亮用）
+//
+// sourceClassic 非空时出处查询限定在该来源族内（见 resolvePoetry）。
 //
 // 查不到时（硬编码库命中但 JSON 未覆盖）：原 PoetrySource/Chapter 留空，
 // PoetrySentence 兜底为引擎原 PoetryFrom，确保至少展示原句文本。
-func enrichPoetrySource(na *name.NameAnalysis, givenName string) {
+func enrichPoetrySource(na *name.NameAnalysis, givenName, sourceClassic string) {
 	if na == nil || givenName == "" {
 		return
 	}
-	b, ok := resolvePoetry(givenName)
+	b, ok := resolvePoetry(givenName, sourceClassic)
 	if !ok {
 		// JSON 索引未覆盖：出处名留空，引擎原句挪到 PoetrySentence 兜底展示。
 		//
@@ -433,16 +453,17 @@ func enrichPoetrySource(na *name.NameAnalysis, givenName string) {
 	na.PoetryAuthor = b.Author
 	na.PoetryDynasty = b.Dynasty
 	na.PoetryFullText = b.FullText
+	na.PoetryMatchedChars = b.MatchedChars
 }
 
 // enrichPoetryForName 与 enrichPoetrySource 同语义，作用于 Generate 路径的 name.Name：
 // 旧路径此前只把引擎格式化原句「…」塞入 PoetrySource，前端渲染成《「…」》格式错误；
 // 复用结构化回填后 PoetrySource 恒为典籍名，原句走 PoetrySentence。
-func enrichPoetryForName(n *name.Name, givenName string) {
+func enrichPoetryForName(n *name.Name, givenName, sourceClassic string) {
 	if n == nil || givenName == "" {
 		return
 	}
-	b, ok := resolvePoetry(givenName)
+	b, ok := resolvePoetry(givenName, sourceClassic)
 	if !ok {
 		// JSON 索引未覆盖：出处名留空，引擎原句挪到 PoetrySentence 兜底展示。
 		// 同 enrichPoetrySource：必须显式清空 PoetrySource，否则调用方预填的
@@ -467,6 +488,7 @@ func enrichPoetryForName(n *name.Name, givenName string) {
 	n.PoetryAuthor = b.Author
 	n.PoetryDynasty = b.Dynasty
 	n.PoetryFullText = b.FullText
+	n.PoetryMatchedChars = b.MatchedChars
 }
 
 // resolveExtraChars 根据请求的诗词/经典来源解析额外候选字

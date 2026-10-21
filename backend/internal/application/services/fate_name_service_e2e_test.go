@@ -516,7 +516,7 @@ func TestEnrichPoetrySource(t *testing.T) {
 		GivenName:    "窈窕",
 		PoetrySource: "诗经", // 引擎已设
 	}
-	enrichPoetrySource(na, "窈窕")
+	enrichPoetrySource(na, "窈窕", "")
 
 	if na.PoetrySource != "诗经" {
 		t.Errorf("PoetrySource 被覆盖，原值诗经 → %q", na.PoetrySource)

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Name } from '@/types';
+import { splitByMatchedChars } from '@/lib/poetryHighlight';
 import { IconChevronDown, IconChevronUp } from './Icons';
 
 interface NameDetailProps {
@@ -12,6 +13,35 @@ interface DimConfig {
   key: string;
   label: string;
   color: string;
+}
+
+/**
+ * HighlightedSentence 在诗句中高亮「实际命中的名字用字」。
+ *
+ * 出典匹配是「任一字命中即算有出典」——例如「荔嘉」命中的是「嘉」，
+ * 「荔」并不在这句里。高亮让用户一眼看出到底是哪一字带来了这处出处，
+ * 避免误以为整个名字都出自该典籍。
+ *
+ * 后端未透出 poetry_matched_chars 时退化为纯文本（不改变原有展示）。
+ */
+function HighlightedSentence({ text, matchedChars }: { text: string; matchedChars?: string[] }) {
+  if (!text) return null;
+  const segments = splitByMatchedChars(text, matchedChars);
+  if (segments.length === 0) return null;
+
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.hit ? (
+          <span key={i} className="font-semibold text-crimson underline decoration-crimson/40 decoration-2 underline-offset-2">
+            {seg.text}
+          </span>
+        ) : (
+          <span key={i}>{seg.text}</span>
+        )
+      )}
+    </>
+  );
 }
 
 export default function NameDetail({ name }: NameDetailProps) {
@@ -73,7 +103,11 @@ export default function NameDetail({ name }: NameDetailProps) {
               <p className="text-ink text-sm leading-relaxed cursor-pointer" onClick={() => setShowPoetryDetail(!showPoetryDetail)}>
                 出自《{name.poetry_source}》
                 {name.poetry_chapter && <>《{name.poetry_chapter}》</>}
-                {name.poetry_sentence && <span className="text-jade">：{name.poetry_sentence}</span>}
+                {name.poetry_sentence && (
+                  <span className="text-jade">
+                    ：<HighlightedSentence text={name.poetry_sentence} matchedChars={name.poetry_matched_chars} />
+                  </span>
+                )}
                 <span className="ml-1 text-crimson/70 text-xs">
                   {showPoetryDetail ? <IconChevronUp size={12} /> : <IconChevronDown size={12} />}
                 </span>
@@ -88,7 +122,10 @@ export default function NameDetail({ name }: NameDetailProps) {
                     {name.poetry_source}《{name.poetry_chapter}》
                   </p>
                   <p className="text-ink/80 whitespace-pre-wrap">
-                    {name.poetry_full_text.split('｜').join('\n')}
+                    <HighlightedSentence
+                      text={name.poetry_full_text.split('｜').join('\n')}
+                      matchedChars={name.poetry_matched_chars}
+                    />
                   </p>
                 </div>
               )}

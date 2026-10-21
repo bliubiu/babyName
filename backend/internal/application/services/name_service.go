@@ -402,7 +402,7 @@ func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateReq
 	// 未上过榜的候选，与本次结果零交集。
 	generationID := s.registerExploreContext(output, req)
 
-	return convertFateToNameNames(output.TopNames, req.Gender), generationID, nil
+	return convertFateToNameNames(output.TopNames, req.Gender, req.SourceClassic), generationID, nil
 }
 
 // registerExploreContext 把本轮生成的候选表登记进探索缓存，返回 generationID。
@@ -467,7 +467,7 @@ func newGenerationID() string {
 // 保留 fate 的多维度评分（Items 映射到各分数字段），以便 buildResponse 和前端能正常渲染
 // gender 为请求方性别（fate.NameResult 无该字段），并同步做诗词出处结构化回填
 // （enrichPoetryForName，与 GenerateWithAnalysis 路径对齐）。
-func convertFateToNameNames(results []fate.NameResult, gender string) []name.Name {
+func convertFateToNameNames(results []fate.NameResult, gender string, sourceClassic string) []name.Name {
 	names := make([]name.Name, len(results))
 	for i, nr := range results {
 		n := name.Name{
@@ -489,8 +489,9 @@ func convertFateToNameNames(results []fate.NameResult, gender string) []name.Nam
 				n.Meaning = "出自" + nr.PoetryFrom
 			}
 		}
-		// 出典完整结构化回填（作品·篇目·原句·作者·朝代·全诗），与 analysis 路径一致
-		enrichPoetryForName(&n, nr.GivenName)
+		// 出典完整结构化回填（作品·篇目·原句·作者·朝代·全诗·命中字），与 analysis 路径一致。
+		// 传入 sourceClassic：用户选了经典来源时，出处限定在该来源族内。
+		enrichPoetryForName(&n, nr.GivenName, sourceClassic)
 		// 多维度评分映射：Items 分数 + Details 依据文字 + score_detail 明细，
 		// 统一由 applyFateScoreDetail 处理，与 /generate/analysis 路径同源。
 		// （此前 /generate 只映射了分数、丢弃了依据文字，导致前端

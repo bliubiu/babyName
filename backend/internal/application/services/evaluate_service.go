@@ -110,7 +110,7 @@ func (s *NameService) Evaluate(ctx context.Context, req *EvaluateRequest) (*Eval
 	}
 
 	// 4. 组装 name.Name（与 convertFateToNameNames 同构的转换，供前端直接复用组件）
-	n := assembleEvaluatedName(provider, req.Surname, given, req.Gender, cand, score)
+	n := assembleEvaluatedName(provider, req.Surname, given, req.Gender, cand, score, "")
 
 	// 5. 风险体检
 	risks := fate.AssessNameRisks(provider, req.Surname, given)
@@ -138,7 +138,7 @@ func (s *NameService) Evaluate(ctx context.Context, req *EvaluateRequest) (*Eval
 
 // assembleEvaluatedName 把 RateGivenName 的结果组装为 name.Name
 // （与 /generate 的 names[] 元素同构），供测名与探索模式共用。
-func assembleEvaluatedName(provider *HanziDataProvider, surname, given, gender string, cand *fate.NameCandidate, score fate.NameScore) name.Name {
+func assembleEvaluatedName(provider *HanziDataProvider, surname, given, gender string, cand *fate.NameCandidate, score fate.NameScore, sourceClassic string) name.Name {
 	n := name.Name{
 		ID:         1,
 		Surname:    surname,
@@ -160,7 +160,7 @@ func assembleEvaluatedName(provider *HanziDataProvider, surname, given, gender s
 			n.Meaning = "出自" + cand.PoetryFrom
 		}
 	}
-	enrichPoetryForName(&n, given)
+	enrichPoetryForName(&n, given, sourceClassic)
 	// 八维分数 + 依据文字 + score_detail，与 /generate、/generate/analysis 同源映射
 	applyFateScoreDetail(&n, score)
 	return n

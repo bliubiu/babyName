@@ -80,7 +80,7 @@ func (s *NameService) ExploreNames(ctx context.Context, req *ExploreRequest) (*E
 			// 个别条目回算失败（如字库异常）不影响整批，跳过即可
 			continue
 		}
-		n := assembleEvaluatedName(provider, ec.surname, given, ec.gender, cand, score)
+		n := assembleEvaluatedName(provider, ec.surname, given, ec.gender, cand, score, "")
 		names = append(names, n)
 	}
 

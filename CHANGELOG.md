@@ -5,6 +5,27 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.21.6]
+
+**诗词出处高亮命中字 + 修复「选了唐诗宋词却显示诗经出处」的脱节**
+
+### ✨ Features 功能增强
+- 【前端】诗词典故的**原句与全诗展开**中，高亮「实际命中的名字用字」（`text-crimson` + 下划线）。出典匹配是「任一字命中即算有出典」——例如「荔嘉」命中的是「嘉」，「荔」并不在这句里；高亮让用户一眼看出是哪一字带来了这处出处，避免误以为整个名字都出自该典籍。
+- 【前端】新增 `src/lib/poetryHighlight.ts` 纯函数 `splitByMatchedChars(text, matchedChars)`（短字优先切分、不含于原句的命中字忽略、无命中字退化为纯文本），配套单测 `poetryHighlight.test.ts`（8 例）。
+- 【后端】新增 `poetry_matched_chars` 字段（`name.Name` 与 `name.NameAnalysis`），透出 `classics.PoetryMatch.MatchedChars` 供前端高亮。
+
+### 🐛 Bug Fixes 问题修复
+- 【后端】修复**经典来源选择与出处展示脱节**：此前 `source_classic` 只作用于候选池（`GetPoetryCharList`）与文化印象加分，而出处回填走的是**不筛来源**的 `QueryNamePoetry`，导致用户选「唐诗宋词」却看到「诗经《南有嘉鱼》」这类无关出处。现新增 `classics.QueryNamePoetryBySource(name, source)`，出处查询先按来源族筛选再排序；该族内无命中时回退全库（不丢失出处）。
+- 【后端】新增 `classics.sourceFamilyGroups` 来源族映射表，解决候选池侧与展示层两套来源命名体系的对应关系：用户可选入口「唐诗宋词」在展示层对应 7 个子集（唐诗三百首/宋词三百首/元曲/乐府诗集/水墨唐诗/辞赋/唐诗补录），「诗经」「楚辞」「论语」等为一对一。
+- 【后端】`resolvePoetry` / `enrichPoetrySource` / `enrichPoetryForName` 增加 `sourceClassic` 参数并贯穿 `/generate`、`/generate/analysis`、`/evaluate`、`/names/generate/explore` 四条链路。
+
+### 🧪 验证
+- 后端：`go test ./internal/domain/classics/... ./internal/domain/name/... ./internal/application/services/... ./internal/infrastructure/server/...` 全绿；新增 `TestQueryNamePoetryBySource`（含「选唐诗宋词不应返回诗经出处」「族内无命中回退全库」「MatchedChars 必须真的出现在引句中且是名字用字」）与 `TestSourceFamilyMembers`。
+- 前端：`pnpm test` 53 例全绿（6 文件）；`tsc --noEmit` 0 错误；`next build` 成功（11 路由静态生成）。
+- 端到端（真实 API）：`source_classic=诗经` → 出处全部为诗经（《小明》《静女》《桑柔》），且 `poetry_matched_chars` 明确标出命中字（`['明']`/`['炜']`/`['宝']` —— 单字命中）；`source_classic=唐诗宋词` → 出处为辞赋/乐府诗集（属该族）；不选 → 全库最优。
+- 产物核验：chunk `0690b2m-65x62.js` 含 `poetry_matched_chars` 传参与高亮 span；CSS 含 `.underline` / `.underline-offset-2` / `.decoration-crimson\/40`。
+- 回归：E2E 巡检 **18/18 通过**（退出 0），含「source_classic 生效（Top10 差异 3 个）」。
+
 ## [2026.10.21.5]
 
 **start-server 脚本纳入前端资源构建 + 修复 `/json-viewer` 等根级静态资源 404**

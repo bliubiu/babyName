@@ -120,6 +120,7 @@ export interface Name extends NameBase {
   poetry_author?: string;       // 诗词作者
   poetry_dynasty?: string;      // 诗词朝代
   poetry_full_text?: string;    // 完整诗篇（竖线分隔各句）
+  poetry_matched_chars?: string[]; // 实际命中的名字用字（前端据此高亮）
   // 统一评分体系：8 维评分
   total_score?: number;      // 综合总分（0-100）
   wuxing_score?: number;     // 五行匹配分

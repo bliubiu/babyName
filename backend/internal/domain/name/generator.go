@@ -7,31 +7,35 @@ import (
 
 // Name 名字结构
 type Name struct {
-	ID              int64    `json:"id"`
-	Surname         string   `json:"surname"`
-	Generation      string   `json:"generation"`
-	GivenName       string   `json:"given_name"`
-	FullName        string   `json:"full_name"`
-	Pinyin          string   `json:"pinyin"`
-	Meaning         string   `json:"meaning"`
-	Wuxing          string   `json:"wuxing"`
-	Nayin           string   `json:"nayin"`
-	Strokes         int      `json:"strokes"`
-	Gender          string   `json:"gender"`
-	BaZiScore       int      `json:"bazi_score"`
-	Huangli         string   `json:"huangli"`
-	Xiang           string   `json:"xiang"`
-	PoetrySource    string   `json:"poetry_source"`
-	PoetryChapter   string   `json:"poetry_chapter"`
-	PoetrySentence  string   `json:"poetry_sentence"`
-	PoetryAuthor    string   `json:"poetry_author,omitempty"`
-	PoetryDynasty   string   `json:"poetry_dynasty,omitempty"`
-	PoetryFullText  string   `json:"poetry_full_text,omitempty"`
-	WuxingAnalysis  string   `json:"wuxing_analysis"`
-	MeaningDetail   string   `json:"meaning_detail"` // 字义内涵依据文字（文化印象维度）
-	BaziScoreDetail string   `json:"bazi_score_detail"`
-	Yinyun          string   `json:"yinyun"`
-	Reasons         []string `json:"reasons"`
+	ID             int64  `json:"id"`
+	Surname        string `json:"surname"`
+	Generation     string `json:"generation"`
+	GivenName      string `json:"given_name"`
+	FullName       string `json:"full_name"`
+	Pinyin         string `json:"pinyin"`
+	Meaning        string `json:"meaning"`
+	Wuxing         string `json:"wuxing"`
+	Nayin          string `json:"nayin"`
+	Strokes        int    `json:"strokes"`
+	Gender         string `json:"gender"`
+	BaZiScore      int    `json:"bazi_score"`
+	Huangli        string `json:"huangli"`
+	Xiang          string `json:"xiang"`
+	PoetrySource   string `json:"poetry_source"`
+	PoetryChapter  string `json:"poetry_chapter"`
+	PoetrySentence string `json:"poetry_sentence"`
+	PoetryAuthor   string `json:"poetry_author,omitempty"`
+	PoetryDynasty  string `json:"poetry_dynasty,omitempty"`
+	PoetryFullText string `json:"poetry_full_text,omitempty"`
+	// PoetryMatchedChars 命中的名字用字（仅实际在诗句/全诗中出现的字）。
+	// 出典匹配是「任一字命中即算有出典」，此字段让前端能高亮到底是哪一字
+	// 命中，避免用户误以为整个名字都出自该典籍。
+	PoetryMatchedChars []string `json:"poetry_matched_chars,omitempty"`
+	WuxingAnalysis     string   `json:"wuxing_analysis"`
+	MeaningDetail      string   `json:"meaning_detail"` // 字义内涵依据文字（文化印象维度）
+	BaziScoreDetail    string   `json:"bazi_score_detail"`
+	Yinyun             string   `json:"yinyun"`
+	Reasons            []string `json:"reasons"`
 
 	// 统一评分体系（多维度综合评分）
 	TotalScore      float64 `json:"total_score"`      // 综合评分（0-100）
@@ -135,6 +139,10 @@ type NameAnalysis struct {
 	PoetryAuthor   string `json:"poetry_author,omitempty"`
 	PoetryDynasty  string `json:"poetry_dynasty,omitempty"`
 	PoetryFullText string `json:"poetry_full_text,omitempty"`
+
+	// PoetryMatchedChars 命中的名字用字（仅实际在诗句/全诗中出现的字）。
+	// 前端据此高亮命中字；为空表示未透出（前端应退化为不高亮）。
+	PoetryMatchedChars []string `json:"poetry_matched_chars,omitempty"`
 
 	// ScoreDetail 各维度评分明细（确定性评分 UI 的数据基础）
 	ScoreDetail []ScoreDetailItem `json:"score_detail"`
