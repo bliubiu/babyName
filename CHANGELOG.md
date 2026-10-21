@@ -5,6 +5,21 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.21.4]
+
+**修复结果页 `I.some is not a function` 控制台崩溃（前端构建产物过期）**
+
+### 🐛 Bug Fixes 问题修复
+- 【前端】结果页 `/result` 控制台报 `I.some is not a function`：根因是 `frontend/out/`（Next.js `output:'export'` 静态产物）自 2026-10-19 起**从未重新构建**，浏览器仍运行旧的未归一化 `getFavorites`——它把后端分页信封 `{code,success,data:{data,records,total,page,limit}}` 原样返回，使结果页 `cachedFavorites`（即 `I`）取到**对象而非数组**，触发 `.some` 崩溃。
+- 【前端】重新执行 `next build` 重建 `out/`，使产物反映已修复的源码（`api.ts` 的 `getFavorites` 已做 `data: Array.isArray(list)?list:[]` 归一化，返回恒为数组）。
+- 【前端】`src/app/result/page.tsx` 的 `cachedFavorites` 与 `getCachedFavorites` 增加 `Array.isArray` 防御兜底，即使接口偶发返回信封对象也不会再崩溃（双保险）。
+- 注：`out/json4matter.html` 等静态资产来自 `frontend/public/`，`next build` 会自动复制，重建不会丢失；`json4matter.html` 顺带刷新为 `public/` 内更新版本（10-20）。
+
+### 🧪 验证
+- 构建：`next build` 退出 0，11 个路由全部静态生成，`out/` 刷新至 16:04。
+- 产物核验：重建后 chunk 内 `getFavorites` 为 `s=t?.data?.data??t?.data?.records??[];return{...data:Array.isArray(s)?s:[]}`；结果页 `I=(0,s.useMemo)(()=>D.data?.success&&Array.isArray(D.data.data)?D.data.data:y,[D.data])`。
+- 运行核验：经 `start-server.sh`（自动重建二进制+启动）起服务，`curl` 命中结果页 chunk 含上述守卫；`/api/v1/favorites` 返回 `data.data` 为数组，归一化链路闭环。
+
 ## [2026.10.21.3]
 
 **修复 start-server.bat 双击黑框一闪即逝**

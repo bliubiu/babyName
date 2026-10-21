@@ -40,7 +40,7 @@ const sameFavoriteStatus = (a: Record<string, boolean>, b: Record<string, boolea
 // 从缓存中提取收藏列表（缓存类型为 FavoritesResponse，需取 .data）
 const getCachedFavorites = (queryClient: ReturnType<typeof useQueryClient>): FavoriteData[] => {
   const cached = queryClient.getQueryData<FavoritesResponse>(['favorites']);
-  return cached?.success ? cached.data ?? [] : [];
+  return cached?.success && Array.isArray(cached.data) ? cached.data : [];
 };
 
 export default function ResultPage() {
@@ -64,8 +64,14 @@ export default function ResultPage() {
   // 收藏查询失败（isError、data 为 undefined）且页面已有结果时形成
   // 「重渲染 → 新 [] → effect 重跑 → setState → 再重渲染」死循环，
   // 最终 "Maximum update depth exceeded" 让 ErrorBoundary 整页白屏。
-  const cachedFavorites = useMemo<FavoriteData[]>(
-    () => (favoritesQuery.data?.success ? favoritesQuery.data.data ?? EMPTY_FAVORITES : EMPTY_FAVORITES),
+  // 防御：收藏接口理论上恒返回数组（getFavorites 已归一化），但旧构建产物曾
+// 原样返回分页信封 {data,records,total,...} 对象，导致此处 I.some 崩溃
+// （I.some is not a function）。加 Array.isArray 兜底，杜绝该静默崩溃。
+const cachedFavorites = useMemo<FavoriteData[]>(
+    () =>
+      favoritesQuery.data?.success && Array.isArray(favoritesQuery.data.data)
+        ? favoritesQuery.data.data
+        : EMPTY_FAVORITES,
     [favoritesQuery.data]
   );
 
