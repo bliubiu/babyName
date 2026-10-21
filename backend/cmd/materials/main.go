@@ -19,9 +19,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
+	"name/internal/domain/classics"
 	"name/internal/domain/fate"
 	"name/internal/infrastructure/config"
 	"name/internal/infrastructure/data"
@@ -179,6 +181,12 @@ func runImport(args []string) error {
 		printImportReport(report, elapsed, *dryRun)
 	}
 
+	// 经典语料字集/条目统计（docs/39 巡检增强）：仅写库后报告真实落库结果，
+	// dry-run 未落库，反映的会是旧库状态，故跳过以免误导。
+	if !*dryRun && !*asJSON {
+		printClassicsReport(store)
+	}
+
 	if report.Failed > 0 {
 		return fmt.Errorf("有 %d 项物料导入失败", report.Failed)
 	}
@@ -210,6 +218,52 @@ func printImportReport(report *sqlite.ImportReport, elapsed time.Duration, dryRu
 	fmt.Println(strings.Repeat("-", 92))
 	fmt.Printf("合计: 写入 %d 项 / 跳过 %d 项 / 失败 %d 项，耗时 %s\n",
 		report.Written, report.Skipped, report.Failed, elapsed.Round(time.Millisecond))
+}
+
+// printClassicsReport 打印经典语料字集/条目统计，并标记「已登记物料但字集缺失」的静默遗漏。
+//
+// 这是 docs/39 的巡检增强：此前元曲/乐府/辞赋仅在诗词展示索引（classics_poem_entries）
+// 出现，却未进入出典加分字集（classics_extracts），属于「索引齐全但字集缺失」，
+// 巡检中无任何信号。现逐 material 核对字集行数，缺失即告警，使此类遗漏可被肉眼发现。
+func printClassicsReport(s *sqlite.Store) {
+	stats := s.ClassicsStats()
+	if len(stats.ExtractByMaterial) == 0 && len(stats.PoemBySource) == 0 {
+		fmt.Println("\n（经典语料未导入：classics_extracts / classics_poem_entries 均为空，请先执行 materials import）")
+		return
+	}
+
+	fmt.Println("\n=== 经典字集提取数 (classics_extracts) ===")
+	var missing []string
+	for _, m := range classics.RegisteredMaterials() {
+		n := stats.ExtractByMaterial[m]
+		mark := ""
+		if n == 0 {
+			mark = "  ⚠ 缺失"
+			missing = append(missing, m)
+		}
+		fmt.Printf("  %-22s %8d%s\n", m, n, mark)
+	}
+	fmt.Printf("  合计字集条目: %d\n", stats.TotalExtracts)
+
+	fmt.Println("\n=== 经典诗词条目数 (classics_poem_entries) ===")
+	for _, src := range sortedStringKeys(stats.PoemBySource) {
+		fmt.Printf("  %-12s %8d\n", src, stats.PoemBySource[src])
+	}
+	fmt.Printf("  合计诗词条目: %d\n", stats.TotalPoems)
+
+	if len(missing) > 0 {
+		fmt.Printf("\n⚠ 以下已登记字集物料在库中字集行数为 0（出典加分静默遗漏风险）：%s\n", strings.Join(missing, ", "))
+	}
+}
+
+// sortedStringKeys 返回 map 的键按字典序排序后的切片（巡检报告稳定输出用）
+func sortedStringKeys(m map[string]int) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // runLoad 从库装载物料到进程内内存索引（运行期装载路径的独立验证入口）
@@ -286,6 +340,10 @@ func runStatus(args []string) error {
 	if len(states) == 0 {
 		fmt.Println("(库中暂无物料记录，请先执行 materials import)")
 	}
+
+	// 经典语料字集/条目统计（docs/39 巡检增强）：逐 material 核对字集是否落库，
+	// 标记「已登记物料但字集缺失」的静默遗漏（元曲/乐府/辞赋曾属此类）。
+	printClassicsReport(store)
 	return nil
 }
 

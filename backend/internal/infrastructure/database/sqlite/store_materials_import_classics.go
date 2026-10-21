@@ -131,6 +131,59 @@ func (s *Store) importClassics(def schema.Definition, _ string, res ImportResult
 	return *out
 }
 
+// ClassicsStats 统计经典语料在库中的字集提取数与诗词条目数（巡检用，docs/39）。
+//
+// 两个维度：
+//   - ExtractByMaterial：classics_extracts 按 material 分组的字集行数；
+//     任一已登记字集物料（classics.RegisteredMaterials）在此为 0，即表示
+//     「索引齐全但字集缺失」的静默遗漏——诗词展示索引可能有、出典加分字集却为空。
+//   - PoemBySource：classics_poem_entries 按 source 分组的整首诗词条目数。
+//
+// 库未导入经典语料（表不存在或为空）时返回空统计，不报错。读写连接均可用，
+// 因导入提交后即可被读连接（WAL）观察到，故可在 import / status 任一路径调用。
+type ClassicsStats struct {
+	ExtractByMaterial map[string]int
+	PoemBySource      map[string]int
+	TotalExtracts     int
+	TotalPoems        int
+}
+
+func (s *Store) ClassicsStats() *ClassicsStats {
+	st := &ClassicsStats{
+		ExtractByMaterial: make(map[string]int),
+		PoemBySource:      make(map[string]int),
+	}
+	if s.tableHasRows("classics_extracts") {
+		if rows, err := s.db.Query(`SELECT material, COUNT(*) FROM classics_extracts GROUP BY material`); err == nil {
+			for rows.Next() {
+				var m string
+				var c int
+				if err := rows.Scan(&m, &c); err != nil {
+					break
+				}
+				st.ExtractByMaterial[m] = c
+				st.TotalExtracts += c
+			}
+			_ = rows.Close()
+		}
+	}
+	if s.tableHasRows("classics_poem_entries") {
+		if rows, err := s.db.Query(`SELECT source, COUNT(*) FROM classics_poem_entries GROUP BY source`); err == nil {
+			for rows.Next() {
+				var src string
+				var c int
+				if err := rows.Scan(&src, &c); err != nil {
+					break
+				}
+				st.PoemBySource[src] = c
+				st.TotalPoems += c
+			}
+			_ = rows.Close()
+		}
+	}
+	return st
+}
+
 // LoadClassicsFromDB 从库装载经典语料（运行期唯一数据源，docs/31 ADR-008）
 //
 // 覆盖三类运行期状态：18 组经典字集、全局诗词索引。任一为空即视为库未导入，

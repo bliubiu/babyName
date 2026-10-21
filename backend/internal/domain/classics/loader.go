@@ -58,7 +58,10 @@ func LoadFromJSON(dataDir string) error {
 	loadClassicSafe(dataDir, "zengguangxianwen.json", "增广贤文", &ZengguangxianwenExtracted)
 	loadClassicSafe(dataDir, "shenglvqimeng.json", "声律启蒙", &ShenglvqimengExtracted)
 	loadClassicSafe(dataDir, "zhuzijiaxun.json", "朱子家训", &ZhuzijiaxunExtracted)
-	loadClassicSafe(dataDir, "qianjiashi.json", "千家诗", &QianjiashiExtracted)
+	// 千家诗：paragraphs 含嵌套形态，需专用加载器展平（修复字集静默遗漏）
+	if err := loadQianjiashiFromJSON(dataDir); err != nil {
+		logger.Warn("千家诗加载跳过", zap.Error(err))
+	}
 	loadClassicSafe(dataDir, "wenzimengqiu.json", "文字蒙求", &WenzimengqiuExtracted)
 	loadClassicSafe(dataDir, "baijiaxing.json", "百家姓", &BaijiaxingExtracted)
 

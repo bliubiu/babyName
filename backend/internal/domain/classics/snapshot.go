@@ -189,6 +189,20 @@ func extractTargetOf(material string) *[]PoetryChar {
 	return nil
 }
 
+// RegisteredMaterials 返回全部已登记字集物料标识（按装载顺序）。
+//
+// 巡检用：materials status / import 据此逐 material 核对 classics_extracts
+// 是否落库。任一登记物料在库中字集行数为 0，即视为「索引齐全但字集缺失」的
+// 静默遗漏——诗词展示索引可能有、出典加分字集却为空（E2 修复前的元曲/乐府/辞赋
+// 正是此情形）。注意 yijing 是独立的卦象结构化物料（yijing_hexagrams），不在此列。
+func RegisteredMaterials() []string {
+	out := make([]string, 0, len(extractTargets))
+	for _, t := range extractTargets {
+		out = append(out, t.material)
+	}
+	return out
+}
+
 // ExportPoemEntries 导出全局诗词索引条目（导入期物化用）
 //
 // 未构建过索引时返回空切片（调用方据此判定「无诗词语料」）。

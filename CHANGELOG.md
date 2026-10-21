@@ -5,6 +5,20 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.21.1]
+
+**修复 fate 构建断点（已核实无误）、千家诗字集静默遗漏，并新增经典语料巡检报告**
+
+### ✨ Features 新功能
+- 【巡检】`materials import` 与 `materials status` 新增「经典字集提取数 / 诗词条目数」报告：`classics_extracts` 按已登记 material 逐行列出字集提取数，`classics_poem_entries` 按 source 列出诗词条目数；任一已登记字集物料在库中字集行数为 0 时显式告警 `⚠ 缺失（出典加分静默遗漏风险）`，使「索引齐全但字集缺失」类遗漏可在巡检中被发现
+
+### 🐛 Bug Fixes 问题修复
+- 【经典语料】修复千家诗（qianjiashi.json）字集静默遗漏：该文件部分分章诗篇（其一/其二）的 `paragraphs` 为嵌套对象 `[{subchapter, paragraphs}]`，通用 `loadClassicFromJSON` 整文件反序列化失败 → 千家诗 0 字集。新增 `loadQianjiashiFromJSON` + `flattenParagraphs` 兼容平铺/嵌套两种结构，字集由 0 → 1,626 字（与元曲/乐府/辞赋同口径进入 `classics_extracts`）
+- 【构建】`fate` 引擎 `generateWithGeneration`（字辈分支）经核实已实现完整，整仓 `go build ./...` 与 `go vet ./...` 全绿，`cmd/materials` 可正常构建并跑通 `import` 端到端验证闭环（此前 `2026.10.21.0` 误记为未定义断点，特此更正）
+
+### 📈 Improvements 性能/体验优化
+- 【数据库】重新执行整仓 `materials import` 重建权威库 `backend/namer.db`，使其与当前代码完全对齐：`kangxi_strokes` 裁剪至 7,838 行（0 孤儿）、`classics_extracts` 21 类经典字集全部非空（合计 46,691 字，含千家诗 1,626 / 元曲 4,828 / 乐府 2,515 / 辞赋 4,183）
+
 ## [2026.10.21.0]
 
 **确立单一权威库消除双库分叉、kangxi_strokes 按字集裁剪、补齐元曲/乐府/辞赋起名字集**
@@ -20,7 +34,7 @@
 - 【数据库】`kangxi_strokes` 裁剪后文件 22,904 → 21,488 KB，运行期内存字集零影响（缺失笔画返回 0 优雅降级）
 
 ### 🔧 Dependencies 依赖更新
-- 【已知阻塞】`internal/domain/fate/engine.go:705` 调用未定义的 `generateWithGeneration`，导致 `go build ./cmd/materials ./cmd/server` 暂不可构建；`materials import` 端到端验证待该断点修复后补跑（live 库已用真实 Go 提取结果过渡回写，重导即权威重建）
+- 【已知阻塞·已解决】`engine.go:705` 的 `generateWithGeneration` 经 `2026.10.21.1` 核实已实现完整，整仓构建与 `materials import` 端到端验证均已跑通，先前记录有误；权威库已整仓重建对齐（见 `2026.10.21.1`）
 
 ## [2026.10.20.1]
 

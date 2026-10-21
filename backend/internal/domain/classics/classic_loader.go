@@ -410,6 +410,80 @@ func loadCiFuFromJSON(dataDir string) error {
 	return nil
 }
 
+// loadQianjiashiFromJSON 从 qianjiashi.json 提取起名用字（修复千家诗字集静默遗漏）
+//
+// qianjiashi.json 的 paragraphs 字段存在两种形态：
+//   - 平铺：["句一","句二"]（大多数诗篇）
+//   - 嵌套：[{"subchapter":"其一","paragraphs":["...","..."]}, ...]（个别分「其一/其二」的诗篇）
+//
+// 通用 loadClassicFromJSON 把 paragraphs 反序列化为 []string，遇到嵌套形态会
+// 整文件 unmarshal 失败 → 整本千家诗 0 字集（正是「索引齐全但字集缺失」的静默遗漏，
+// 此前仅在巡检中无信号）。现用 json.RawMessage 兼容两种结构，展平后再交给
+// extractFromEntries，与诗经/楚辞/元曲同口径落入字集。
+func loadQianjiashiFromJSON(dataDir string) error {
+	path := filepath.Join(dataDir, "qianjiashi.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("读取 qianjiashi.json 失败: %w", err)
+	}
+	var raw struct {
+		Content []struct {
+			Chapter    string          `json:"chapter"`
+			Author     string          `json:"author"`
+			Paragraphs json.RawMessage `json:"paragraphs"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("解析 qianjiashi.json 失败: %w", err)
+	}
+
+	entries := make([]poemEntry, 0, len(raw.Content))
+	for _, ch := range raw.Content {
+		paras := flattenParagraphs(ch.Paragraphs)
+		if len(paras) == 0 {
+			continue
+		}
+		title := ch.Chapter
+		if title == "" {
+			title = "千家诗"
+		}
+		entries = append(entries, ClassicSection{
+			Title:   title,
+			Content: paras,
+			Source:  "千家诗",
+		})
+	}
+
+	extracted := extractFromEntries(entries)
+	setExtracted(&QianjiashiExtracted, extracted)
+	logger.Info("已从千家诗提取起名用字", zap.Int("sections", len(entries)), zap.Int("chars", len(extracted)))
+	return nil
+}
+
+// flattenParagraphs 兼容 qianjiashi.json 的两种 paragraphs 结构：
+//   - 平铺：["句一","句二"]
+//   - 嵌套（分「其一/其二」）：[{"subchapter":"其一","paragraphs":["...","..."]}, ...]
+//
+// 两种都展平为纯字符串切片再交 extractFromEntries；均无法解析时返回 nil。
+func flattenParagraphs(raw json.RawMessage) []string {
+	var flat []string
+	if err := json.Unmarshal(raw, &flat); err == nil {
+		return flat
+	}
+	var nested []struct {
+		Subchapter string   `json:"subchapter"`
+		Paragraphs []string `json:"paragraphs"`
+	}
+	if err := json.Unmarshal(raw, &nested); err == nil {
+		out := make([]string, 0, len(nested)*2)
+		for _, n := range nested {
+			out = append(out, n.Paragraphs...)
+		}
+		return out
+	}
+	return nil
+}
+
 // loadClassicFromJSON 加载标准格式的经典文件
 // 格式: { content: [{ chapter: "...", paragraphs: ["..."] }] }
 // target: 存放提取结果的指针
