@@ -84,9 +84,54 @@ func setupFileSystemStatic(router *gin.Engine, cfg StaticConfig) {
 	}
 
 	// 页面路由
-	pages := []string{"index", "compare", "evaluate", "favorites", "history", "result", "huangli", "stat"}
+	pages := []string{"index", "compare", "evaluate", "favorites", "history", "result", "huangli", "stat", "json-viewer"}
 	for _, page := range pages {
 		registerPageRoute(staticGroup, page, mode, cfg.Root)
+	}
+
+	// 根级静态资源（Next.js 静态导出产物直接落在 out/ 根目录）
+	// 例：public/json4matter.html、manifest.json、sw.js、gate-data/ 等。
+	// 这些不在 _next/ 或 static/ 下，必须单独注册，否则 404。
+	registerRootStaticAssets(staticGroup, mode, cfg.Root)
+}
+
+// rootStaticFiles 根级静态资源文件名白名单
+// 说明：只放行明确由 public/ 引入的产物，避免把 out/ 下的临时文件全部暴露出去。
+var rootStaticFiles = []string{
+	"json4matter.html", // 离线单文件 JSON 美化查看器（/json-viewer 页面的 iframe 内容）
+	"manifest.json",    // PWA manifest
+	"sw.js",            // service worker
+}
+
+// rootStaticDirs 根级静态资源目录
+var rootStaticDirs = []string{
+	"gate-data", // 门禁表 JSON 数据
+}
+
+// registerRootStaticAssets 注册 out/ 根目录下的静态资源与目录。
+// Next.js output:'export' 会把 public/ 的内容原样复制到产物根目录，
+// 但 gin 的 StaticFS("/") 语义会把根目录整体挂载；此处按文件名/目录精确注册，
+// 避免误将 .txt 等内部产物暴露，同时保证 /json4matter.html 等可访问。
+func registerRootStaticAssets(group *gin.RouterGroup, mode, root string) {
+	base := root
+	if mode == "standalone" {
+		base = filepath.Join(root, "public")
+	}
+
+	for _, name := range rootStaticFiles {
+		file := filepath.Join(base, name)
+		if _, err := os.Stat(file); err != nil {
+			continue // 产物中不存在该文件则跳过（如 public/ 未提供）
+		}
+		group.StaticFile("/"+name, file)
+	}
+
+	for _, dir := range rootStaticDirs {
+		dirPath := filepath.Join(base, dir)
+		if st, err := os.Stat(dirPath); err != nil || !st.IsDir() {
+			continue
+		}
+		group.Static("/"+dir, dirPath)
 	}
 }
 
@@ -112,14 +157,15 @@ type cacheRule func(*gin.Context)
 
 func getCacheRules() map[string]cacheRule {
 	return map[string]cacheRule{
-		"/":          noCache,
-		"/compare":   noCache,
-		"/favorites": noCache,
-		"/history":   noCache,
-		"/result":    noCache,
-		"/huangli":   noCache,
-		"/evaluate":  noCache,
-		"/stat":      noCache,
+		"/":            noCache,
+		"/compare":     noCache,
+		"/favorites":   noCache,
+		"/history":     noCache,
+		"/result":      noCache,
+		"/huangli":     noCache,
+		"/evaluate":    noCache,
+		"/stat":        noCache,
+		"/json-viewer": noCache,
 	}
 }
 

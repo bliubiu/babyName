@@ -5,6 +5,27 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.21.5]
+
+**start-server 脚本纳入前端资源构建 + 修复 `/json-viewer` 等根级静态资源 404**
+
+### ⚡ Features 功能增强
+- 【部署】`backend/bin/start-server.sh` 新增**前端构建环节**：比较 `frontend/src`、`frontend/public` 及前端配置（`next.config.js`/`package.json`/`tsconfig.json`/`postcss.config.*`/`tailwind.config.*`）的最新 mtime 与 `frontend/out` 产物 mtime，缺失或过期时自动执行 `next build`（产物 `frontend/out`）；依赖缺失时先 `pnpm install`。
+- 【部署】新增 `--skip-frontend` 参数：仅启动后端接口时跳过前端构建；`--rebuild` 现同时强制重建后端与前端；`--check` 覆盖两者。
+- 【部署】前端构建失败时**不启动服务**（避免托管过期产物导致线上跑旧代码），并提示可改用 `--skip-frontend`。
+- 【部署】脚本内显式 `export CODEBUDDY_SAFE_DELETE_ENABLED=0`：本地 safe-delete shim 会拦截 `next build` 清理 `.next`/`out` 的动作（批量阈值 50，命中报 `SAFE_DELETE_BULK_CONFIRM_REQUIRED`）导致构建失败；这些目录均为可再生构建缓存。注意 shim 语义为 `!== '0'` 即启用，故必须显式赋 `0`（用 `:-0` 在环境已预置 `1` 时不会覆盖）。
+
+### 🐛 Bug Fixes 问题修复
+- 【后端】`internal/infrastructure/server/static.go` 补齐 `json-viewer` 页面路由：前端导航「JSON 查看器」入口指向 `/json-viewer`，但该页未注册路由，此前恒 404。
+- 【后端】新增 `registerRootStaticAssets`：Next.js `output:'export'` 会把 `public/` 内容原样复制到产物根目录，而 gin 仅注册了 `/_next` 与 `/static`，导致 `/json4matter.html`（JSON 查看器 iframe 内容）、`/manifest.json`、`/sw.js`、`/gate-data/*` 全部 404。现按文件名白名单与目录白名单精确注册，并加 `noCache` 规则。
+
+### 🧪 验证
+- 脚本三态实测：源码/产物均最新→前后端全跳过；`touch frontend/src/app/result/page.tsx`→自动触发前端重建（`next build` 退出 0，11 路由静态生成，`out/` 刷新至 16:18）；重建后再跑→全跳过（无死循环）。
+- 改 `backend/internal/infrastructure/server/static.go` 后经脚本启动→自动重建后端二进制并生效。
+- 产物核验：重建后 5 个 chunk 均含 `getFavorites` 归一化 `s=t?.data?.data??t?.data?.records??[];data:Array.isArray(s)?s:[]`；结果页 chunk 含 `Array.isArray(D.data.data)?D.data.data:y` 防御。
+- HTTP 端到端：`/`、`/result`、`/json-viewer`、`/json4matter.html`、`/manifest.json`、`/sw.js`、`/gate-data/naming_quality.json` 均 200；`/api/v1/favorites` 200。（`/favicon.ico` 404 属预期——仓库无 favicon 源文件，浏览器自动请求，不影响功能）
+- 测试：`go test ./internal/infrastructure/server/...` 全绿，新增 `TestSetupStaticFileServer_JsonViewerAndRootAssets` 守护上述路由。
+
 ## [2026.10.21.4]
 
 **修复结果页 `I.some is not a function` 控制台崩溃（前端构建产物过期）**

@@ -7,6 +7,15 @@ REM RELATIVE script name. Passing a Windows backslash path (e.g.
 REM C:\Users\...\start-server.sh) straight to bash turns the backslashes into
 REM escape characters, so bash cannot find the script and the console flashes
 REM and closes instantly. A relative name has no backslashes, so it works.
+REM
+REM The script auto-rebuilds BOTH the Go backend binary and the Next.js
+REM frontend (frontend/out) when they are missing or out of date, then starts
+REM the server in the foreground.
+REM
+REM Extra args are forwarded to the shell script, e.g.:
+REM   start-server.bat --rebuild        force rebuild of backend + frontend
+REM   start-server.bat --skip-frontend  skip the frontend build
+REM   start-server.bat --check          build only, do not start the server
 REM ============================================================================
 setlocal EnableExtensions
 
