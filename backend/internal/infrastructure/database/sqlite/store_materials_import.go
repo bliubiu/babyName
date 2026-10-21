@@ -83,6 +83,9 @@ type ImportReport struct {
 	// 派生维护（syncNameFreqTier / pruneKangxiStrokes）失败 —— 库内主数据
 	// 与派生列处于不一致半态。CLI 应提示用 --lenient 重建修复。
 	PartialCommitted bool `json:"partialCommitted,omitempty"`
+	// Elapsed（docs/40 B6）整次 Import 的服务端耗时：deps 预解析 + 写入 +
+	// 派生维护 + 失败上抛全链路均计入；JSON 报告供 CI 消费耗时位。
+	Elapsed string `json:"elapsed,omitempty"`
 }
 
 // Import 把全部（或指定）物料导入 SQLite
@@ -113,7 +116,8 @@ func (s *Store) Import(opt ImportOptions) (*ImportReport, error) {
 	}
 	opt.deps = deps
 
-	report := &ImportReport{DryRun: opt.DryRun, StartedAt: time.Now().Format("2006-01-02 15:04:05")}
+	alImportStart := time.Now()
+	report := &ImportReport{DryRun: opt.DryRun, StartedAt: alImportStart.Format("2006-01-02 15:04:05")}
 	for _, name := range order {
 		def := schema.Registry[name]
 		r := s.importOne(def, opt)
@@ -135,9 +139,11 @@ func (s *Store) Import(opt ImportOptions) (*ImportReport, error) {
 			// 孤儿康熙行），不回滚已落库主数据 —— 明确标记半态，交由调用方
 			// （CLI/CI）提示修复路径。
 			report.PartialCommitted = true
+			report.Elapsed = time.Since(alImportStart).String()
 			return report, fmt.Errorf("派生维护失败（物料已提交，属部分提交状态，建议 --lenient 重建）: %w", err)
 		}
 	}
+	report.Elapsed = time.Since(alImportStart).String()
 	return report, nil
 }
 

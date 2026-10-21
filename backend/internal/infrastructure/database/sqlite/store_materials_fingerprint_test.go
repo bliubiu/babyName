@@ -170,3 +170,106 @@ func TestImport_康熙依赖解析失败硬停止且无脏数据(t *testing.T) {
 		t.Fatalf("namer 应正常落库，实得 Err=%q Skipped=%v", r.Err, r.Skipped)
 	}
 }
+
+// T-A4：派生维护失败（docs/40 A3）必须标记 PartialCommitted 且不回滚物料本体；
+// 重开 Store（建表修复缺失表）+ lenient 全量重灌后恢复纯提交态。
+// 破坏方式：ALTER name_frequency RENAME char → 仅 --only namer 导入 —— namer
+// 物料指纹未变被短路（物料本体确已落库），派生维护 UPDATE 的对位谓词
+// 「name_frequency.char」因列缺失必报错（CREATE 的 IF NOT EXISTS/J 不会修复改名到此极端度）。
+func TestImport_派生维护失败标记部分提交且重建恢复(t *testing.T) {
+	dir := writeMinimalMaterials(t)
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	s, err := NewStore(dbPath, dir)
+	if err != nil {
+		t.Fatalf("创建 Store 失败: %v", err)
+	}
+	first, err := s.Import(ImportOptions{DataDir: dir})
+	if err != nil {
+		t.Fatalf("正常导入不应失败: %v", err)
+	}
+	if first.PartialCommitted {
+		t.Fatal("正常导入不应标记 PartialCommitted")
+	}
+	_ = s.Close()
+
+	// 破坏派生依赖列后触发导入
+	s, err = NewStore(dbPath, dir)
+	if err != nil {
+		t.Fatalf("重开 Store 失败: %v", err)
+	}
+	if _, err := s.writeDB.Exec("ALTER TABLE name_frequency RENAME COLUMN char TO char_x"); err != nil {
+		t.Fatalf("改名列失败: %v", err)
+	}
+
+	bad, err := s.Import(ImportOptions{DataDir: dir, Materials: []string{schema.NamerMaterial}})
+	if err == nil {
+		t.Fatal("派生维护失败应上抛错误")
+	}
+	if !strings.Contains(err.Error(), "归一化人名频率档位失败") && !strings.Contains(err.Error(), "派生维护失败") {
+		t.Fatalf("错误信息应指向派生维护失败，实得 %v", err)
+	}
+	if !bad.PartialCommitted {
+		t.Fatal("派生维护失败应标记 PartialCommitted")
+	}
+	// 半态守护：物料本体已落库、指纹已登记（A3 承诺「不回滚物料提交」）
+	if !s.HasMaterial(schema.NamerMaterial) {
+		t.Fatal("派生失败不应回滚物料本体：namer 应已落库")
+	}
+	_ = s.Close()
+
+	// 恢复路径：DROP 表 → 重开 Store（createMaterialTables 重建）→ lenient 全量重灌
+	s, err = NewStore(dbPath, dir)
+	if err != nil {
+		t.Fatalf("重建 Store 失败: %v", err)
+	}
+	if _, err := s.writeDB.Exec("DROP TABLE name_frequency"); err != nil {
+		t.Fatalf("DROP name_frequency 失败: %v", err)
+	}
+	_ = s.Close()
+	s, err = NewStore(dbPath, dir)
+	if err != nil {
+		t.Fatalf("重建 Store 失败: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	fixed, err := s.Import(ImportOptions{DataDir: dir, Lenient: true})
+	if err != nil {
+		t.Fatalf("lenient 重建应成功: %v", err)
+	}
+	if fixed.PartialCommitted {
+		t.Fatal("lenient 重建后不应再标记 PartialCommitted")
+	}
+	var n int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM name_frequency").Scan(&n); err != nil {
+		t.Fatalf("查询 name_frequency 失败: %v", err)
+	}
+	if n == 0 {
+		t.Fatal("lenient 重建后 name_frequency 应重新填充")
+	}
+}
+
+// T-A5：ReadPing 读路径探活（docs/40 A5）。
+// 正常库 nil；必建表（materials_state）缺失/库损坏时返回错误 ——
+// readyz handler 据此收敛 503（cmd/server/main.go 分支已按同口径实现）。
+func TestReadPing_正常库nil且异常报错(t *testing.T) {
+	dir := writeMinimalMaterials(t)
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	s, err := NewStore(dbPath, dir)
+	if err != nil {
+		t.Fatalf("创建 Store 失败: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+
+	if err := s.ReadPing(); err != nil {
+		t.Fatalf("正常库 ReadPing 应为 nil，实得 %v", err)
+	}
+
+	// 异态：materials_state 必建表被删（等价持久层读路径破坏）
+	if _, err := s.writeDB.Exec("DROP TABLE materials_state"); err != nil {
+		t.Fatalf("DROP materials_state 失败: %v", err)
+	}
+	if err := s.ReadPing(); err == nil {
+		t.Fatal("materials_state 缺失时 ReadPing 应报错（readyz 才会收敛 503）")
+	}
+}
