@@ -1,30 +1,55 @@
 @echo off
 REM ============================================================================
-REM 一键启动 namer 后端服务（Windows 双击入口）
-REM 委托 Git Bash 运行同目录的 start-server.sh（自动按需重建并启动）。
-REM 若 PATH 中无 bash，则尝试常见 Git 安装路径。
+REM One-click launcher for the namer backend server (Windows double-click entry).
+REM
+REM Why cd first: we change into the script directory and then call bash with a
+REM RELATIVE script name. Passing a Windows backslash path (e.g.
+REM C:\Users\...\start-server.sh) straight to bash turns the backslashes into
+REM escape characters, so bash cannot find the script and the console flashes
+REM and closes instantly. A relative name has no backslashes, so it works.
 REM ============================================================================
-setlocal
-set "SCRIPT_DIR=%~dp0"
+setlocal EnableExtensions
 
+REM Use UTF-8 codepage so the server's Chinese logs render correctly.
+chcp 65001 >nul 2>nul
+
+REM Change to the script directory (trailing dot avoids the "\"+quote quirk).
+cd /d "%~dp0."
+
+REM 1) derive bash from git location first (most reliable for exec'ing the .exe)
+for /f "delims=" %%G in ('where git 2^>nul') do (
+  if exist "%%~dpG..\bin\bash.exe" (
+    "%%~dpG..\bin\bash.exe" start-server.sh %*
+    goto :eof
+  )
+  if exist "%%~dpG..\usr\bin\bash.exe" (
+    "%%~dpG..\usr\bin\bash.exe" start-server.sh %*
+    goto :eof
+  )
+)
+
+REM 2) bash on PATH
 where bash >nul 2>nul
 if %ERRORLEVEL%==0 (
-  bash "%SCRIPT_DIR%start-server.sh" %*
+  bash start-server.sh %*
   goto :eof
 )
 
-set "GIT_BASH=C:\Program Files\Git\bin\bash.exe"
-if exist "%GIT_BASH%" (
-  "%GIT_BASH%" "%SCRIPT_DIR%start-server.sh" %*
-  goto :eof
+REM 3) common install locations
+for %%P in (
+  "C:\Program Files\Git\bin\bash.exe"
+  "C:\Program Files\Git\usr\bin\bash.exe"
+  "C:\Program Files (x86)\Git\bin\bash.exe"
+) do (
+  if exist %%P (
+    %%P start-server.sh %*
+    goto :eof
+  )
 )
 
-set "GIT_BASH2=C:\Program Files\Git\usr\bin\bash.exe"
-if exist "%GIT_BASH2%" (
-  "%GIT_BASH2%" "%SCRIPT_DIR%start-server.sh" %*
-  goto :eof
-)
-
-echo 错误: 未找到 bash。请安装 Git for Windows 并将 bash 加入 PATH，
-echo       或直接在 Git Bash 中运行: bash "%SCRIPT_DIR%start-server.sh"
+echo.
+echo ERROR: bash not found. Install Git for Windows and add bash to PATH,
+echo        or run in Git Bash: bash "%~dp0start-server.sh"
+echo.
+pause
 exit /b 1

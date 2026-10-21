@@ -5,6 +5,14 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.21.3]
+
+**修复 start-server.bat 双击黑框一闪即逝**
+
+### 🐛 Bug Fixes 问题修复
+- 【部署】`start-server.bat` 原先把 Windows 反斜杠绝对路径（`C:\...\start-server.sh`）直接传给 `bash`，bash 将 `\` 当作转义符导致找不到脚本、控制台立即退出。改为先 `cd /d "%~dp0."` 切到脚本目录，再以相对名 `bash start-server.sh` 调用（与 Git Bash 验证通过的等价命令一致）
+- 【部署】`.bat` 内容改为纯 ASCII（中文 Windows GBK 代码页下 UTF-8 含中文的 .bat 会被乱码破坏），并加 `chcp 65001` 让服务日志中文正常显示；bash 查找优先级调整为 git 推导路径优先于 PATH，兜底常见安装目录；失败时 `pause` 让黑框停留显示错误而非闪退
+
 ## [2026.10.21.2]
 
 **新增 backend/bin/start-server 一键启动脚本（缺失或源码更新时自动重建）**
