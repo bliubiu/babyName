@@ -84,6 +84,24 @@ func (s *Store) HasMaterial(material string) bool {
 	return err == nil && count > 0
 }
 
+// ReadPing 探活 SQLite 读路径（docs/40 A5）
+//
+// 在只读连接池执行轻量查询校验「持久层读路径真实可用」：
+// 库文件损坏、只读连接被锁、磁盘故障都会在此暴露错误。
+// 用途补充：materials_state 为导入管线必建表（createMaterialTables），
+// 其可达性代表物料装载链路的最小可用状态。
+//
+// 专用于 /readyz：GetHanziByChar 打的是启动期预载的内存 map，持久层故障
+// 也照样成功，探活失真（docs/40 A5 问题根因）。
+func (s *Store) ReadPing() error {
+	rows, err := s.db.Query(`SELECT 1 FROM materials_state LIMIT 1`)
+	if err != nil {
+		return fmt.Errorf("sqlite 读路径探活失败: %w", err)
+	}
+	rows.Close()
+	return nil
+}
+
 // queryStrings 读取单列字符串结果集
 func (s *Store) queryStrings(query string, args ...any) ([]string, error) {
 	rows, err := s.db.Query(query, args...)

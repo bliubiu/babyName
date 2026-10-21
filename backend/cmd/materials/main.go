@@ -203,8 +203,9 @@ func printImportReport(report *sqlite.ImportReport, elapsed time.Duration, dryRu
 	} else {
 		fmt.Println("=== 导入完成 ===")
 	}
-	fmt.Printf("%-16s %-34s %8s  %s\n", "物料", "版本", "行数", "结果")
-	fmt.Println(strings.Repeat("-", 92))
+	// 耗时列（docs/40 B6）：物料级耗时下钻，此前只有汇总耗时，慢物料无法定位。
+	fmt.Printf("%-16s %-34s %8s  %10s  %s\n", "物料", "版本", "行数", "耗时", "结果")
+	fmt.Println(strings.Repeat("-", 104))
 	for _, r := range report.Results {
 		result := "已导入"
 		switch {
@@ -213,9 +214,13 @@ func printImportReport(report *sqlite.ImportReport, elapsed time.Duration, dryRu
 		case r.Skipped:
 			result = "跳过：" + r.Reason
 		}
-		fmt.Printf("%-16s %-34s %8d  %s\n", r.Material, truncate(r.Version, 34), r.Rows, result)
+		fmt.Printf("%-16s %-34s %8d  %10s  %s\n",
+			r.Material, truncate(r.Version, 34), r.Rows, r.Elapsed, result)
 	}
-	fmt.Println(strings.Repeat("-", 92))
+	fmt.Println(strings.Repeat("-", 104))
+	if report.PartialCommitted {
+		fmt.Println("\n⚠ 部分提交：物料本体已落库，但派生维护失败 —— 建议 --lenient 重建修复派生列")
+	}
 	fmt.Printf("合计: 写入 %d 项 / 跳过 %d 项 / 失败 %d 项，耗时 %s\n",
 		report.Written, report.Skipped, report.Failed, elapsed.Round(time.Millisecond))
 }

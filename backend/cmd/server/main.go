@@ -413,10 +413,11 @@ func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store
 		c.JSON(200, gin.H{"status": "ok", "timestamp": time.Now().Unix()})
 	})
 	router.GET("/readyz", func(c *gin.Context) {
-		// 检查数据库是否可用
+		// 探活口径（docs/40 A5）：优先 ReadPing 打持久层读连接 —— 此前的
+		// GetHanziByChar 探的是启动期预载的内存 map，SQLite 读路径损坏/被锁
+		// 依然 200，readyz 失真。内存库存储的 ReadPing 恒 nil（无磁盘依赖）。
 		if store != nil {
-			// 尝试执行轻量查询验证连通性
-			if store.GetHanziByChar("一") != nil {
+			if err := store.ReadPing(); err == nil {
 				c.JSON(200, gin.H{"status": "ready", "db": "connected"})
 				return
 			}

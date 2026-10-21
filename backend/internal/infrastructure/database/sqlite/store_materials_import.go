@@ -65,8 +65,10 @@ type ImportResult struct {
 	Version  string `json:"version"`
 	Rows     int    `json:"rows"`
 	Skipped  bool   `json:"skipped"`
-	Reason   string `json:"reason,omitempty"`
-	Err      string `json:"error,omitempty"`
+	// Elapsed 本物料导入全耗时（含指纹计算，B6 观测口径，docs/40）
+	Elapsed string `json:"elapsed,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	Err     string `json:"error,omitempty"`
 }
 
 // ImportReport 一次 import 命令的完整报告
@@ -77,6 +79,10 @@ type ImportReport struct {
 	Failed    int            `json:"failed"`
 	DryRun    bool           `json:"dryRun"`
 	StartedAt string         `json:"startedAt"`
+	// PartialCommitted（docs/40 A3）：物料本体事务已全部提交，但随后的
+	// 派生维护（syncNameFreqTier / pruneKangxiStrokes）失败 —— 库内主数据
+	// 与派生列处于不一致半态。CLI 应提示用 --lenient 重建修复。
+	PartialCommitted bool `json:"partialCommitted,omitempty"`
 }
 
 // Import 把全部（或指定）物料导入 SQLite
@@ -98,7 +104,14 @@ func (s *Store) Import(opt ImportOptions) (*ImportReport, error) {
 
 	// 预解析跨物料依赖：康熙笔画由源文件直接解析后注入，importNamer 不再回读库
 	// （docs/34 阶段 A2，见 importDeps 注释）。
-	opt.deps = s.resolveImportDeps(order, opt.DataDir)
+	// docs/40 A4：解析失败改为硬失败。此前「留空 map 不阻断」会让 namer 把
+	// kangxi_strokes=0 落库并登记指纹，之后无论修复 CSV 还是重灌 kangxi，
+	// 指纹短路都会让 namer 的 0 列永久存在 —— 静默降级制造不可自愈的脏数据。
+	deps, err := s.resolveImportDeps(order, opt.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	opt.deps = deps
 
 	report := &ImportReport{DryRun: opt.DryRun, StartedAt: time.Now().Format("2006-01-02 15:04:05")}
 	for _, name := range order {
@@ -115,61 +128,81 @@ func (s *Store) Import(opt ImportOptions) (*ImportReport, error) {
 		}
 	}
 
-	// name_freq_tier 单一来源归一化（docs/34 阶段 A3）：
-	// 以 name_frequency 表为唯一真源重算派生列，替代原先
-	// 「importNamer 回读 + importCharFreq UPDATE」两处维护。
-	// 无论哪一侧物料变更或被指纹短路跳过，派生链都不断。
+	// 派生维护：独立事务的收尾步骤（docs/40 A3）
 	if !opt.DryRun {
-		if err := s.syncNameFreqTier(); err != nil {
-			return nil, fmt.Errorf("归一化人名频率档位失败: %w", err)
-		}
-		// kangxi_strokes 裁剪到 hanzi_data 字符集（docs/37 E1）：
-		// CSV 含 6.3 万条，仅约 7.8 千属于字库，其余为孤儿，运行期候选池
-		// 永不命中（LoadKangxiStrokesFromDB 全表入内存，每条查不到）。落库后
-		// 按字集裁剪既缩小库体积与内存，又不影响消费方（GetKangxiStrokes 对
-		// 缺失字返回 0，与裁剪前行为一致）。必须放在所有物料写入完成之后——
-		// 拓扑上 kangxi 先于 namer，此处二者均已落库，裁剪安全；hanzi_data
-		// 为空时跳过，避免误删全部康熙数据。
-		if err := s.pruneKangxiStrokes(); err != nil {
-			return nil, fmt.Errorf("裁剪康熙笔画孤儿行失败: %w", err)
+		if err := s.runDerivedMaintenance(); err != nil {
+			// 物料本体事务已全部提交，此处失败只影响派生列（name_freq_tier /
+			// 孤儿康熙行），不回滚已落库主数据 —— 明确标记半态，交由调用方
+			// （CLI/CI）提示修复路径。
+			report.PartialCommitted = true
+			return report, fmt.Errorf("派生维护失败（物料已提交，属部分提交状态，建议 --lenient 重建）: %w", err)
 		}
 	}
 	return report, nil
 }
 
-// pruneKangxiStrokes 将 kangxi_strokes 裁剪到 hanzi_data 字符集（docs/37 E1）。
+// runDerivedMaintenance 所有物料事务提交后的派生维护（docs/40 A3）
 //
-// 康熙笔画 CSV 含 6.3 万条，仅约 7.8 千属于字库；其余为孤儿，运行期候选池
-// 永不命中（LoadKangxiStrokesFromDB 全表入内存，每条查不到）。落库后按字集
-// 裁剪，既缩小库体积与内存，又不影响任何消费方（GetKangxiStrokes 对缺失字
-// 返回 0，与裁剪前行为一致）。
+// 独立 BEGIN IMMEDIATE 事务包裹，原子执行：
+//  1. name_freq_tier 单一来源归一化（docs/34 阶段 A3）：
+//     以 name_frequency 表为唯一真源重算派生列，无论哪一侧物料变更或被
+//     指纹短路跳过，派生链都不断。
+//  2. kangxi_strokes 裁剪到 hanzi_data 字符集（docs/37 E1）：
+//     CSV 含 6.3 万条，仅约 7.8 千属于字库，其余为孤儿，运行期候选池永不
+//     命中（LoadKangxiStrokesFromDB 全表入内存，每条查不到）。落库后按字集
+//     裁剪既缩小库体积与内存，又不影响消费方（GetKangxiStrokes 对缺失字
+//     返回 0，与裁剪前行为一致）。必须放在所有物料写入完成之后——拓扑上
+//     kangxi 先于 namer，此处二者均已落库，裁剪安全；hanzi_data 为空时跳过，
+//     避免误删全部康熙数据。
 //
-// 在 Import() 末尾执行：此时 kangxi_strokes 与 hanzi_data 均已全量落库，
-// 拓扑上 kangxi 先于 namer（namer 依赖 kangxi），故此处裁剪安全。
-// 必须放在所有物料写入完成之后，且 hanzi_data 为空时跳过，避免误删全部康熙数据。
-func (s *Store) pruneKangxiStrokes() error {
-	var n int
-	if err := s.writeDB.QueryRow("SELECT COUNT(*) FROM hanzi_data").Scan(&n); err != nil {
+// 与旧实现的差异（docs/40 A3）：原先两个步骤在无事务保护下裸执行，失败时
+// 物料已提交、派生列不一致，调用方无从感知半态。
+func (s *Store) runDerivedMaintenance() error {
+	tx, err := s.writeDB.Begin()
+	if err != nil {
+		return fmt.Errorf("开启派生维护事务失败: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(`UPDATE hanzi_data SET name_freq_tier = COALESCE(
+		(SELECT tier FROM name_frequency
+		 WHERE name_frequency.char = hanzi_data.char AND tier >= 2), 0)`); err != nil {
+		return fmt.Errorf("归一化人名频率档位失败: %w", err)
+	}
+
+	// 裁剪前置保护（沿用旧 pruneKangxiStrokes 语义）：hanzi_data 为空时
+	// `NOT IN (空集合)` 恒真，会误删全部康熙数据 —— 先计数再裁剪。
+	var hanziRows int
+	if err := tx.QueryRow("SELECT COUNT(*) FROM hanzi_data").Scan(&hanziRows); err != nil {
 		return fmt.Errorf("查询 hanzi_data 行数失败: %w", err)
 	}
-	if n == 0 {
-		return nil
+	if hanziRows > 0 {
+		res, err := tx.Exec(`DELETE FROM kangxi_strokes
+			WHERE char NOT IN (SELECT char FROM hanzi_data)`)
+		if err != nil {
+			return fmt.Errorf("裁剪康熙笔画孤儿行失败: %w", err)
+		}
+		if affected, e := res.RowsAffected(); e == nil && affected > 0 {
+			logger.Infof("已裁剪 kangxi_strokes 孤儿行: %d", affected)
+		}
 	}
-	res, err := s.writeDB.Exec("DELETE FROM kangxi_strokes WHERE char NOT IN (SELECT char FROM hanzi_data)")
-	if err != nil {
-		return fmt.Errorf("裁剪 kangxi_strokes 孤儿行失败: %w", err)
-	}
-	if affected, e := res.RowsAffected(); e == nil && affected > 0 {
-		logger.Infof("已裁剪 kangxi_strokes 孤儿行: %d", affected)
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("提交派生维护事务失败: %w", err)
 	}
 	return nil
 }
 
 // resolveImportDeps 预解析导入顺序中各物料对外暴露的依赖数据
 //
-// 只解析「被其它物料合并消费」的依赖（当前仅康熙笔画），解析失败不阻断——
-// 对应物料自身的 importXxx 会给出可归因的错误，此处留空 map 即可。
-func (s *Store) resolveImportDeps(order []string, dataDir string) *importDeps {
+// 只解析「被其它物料合并消费」的依赖（当前仅康熙笔画）。docs/40 A4：
+// 解析失败改为硬失败（返回 error 中止整次导入）—— 静默降级会让 importNamer
+// 把 kangxi_strokes=0 落库并登记指纹，之后无论修复 CSV 还是重灌 kangxi，
+// 指纹短路都会让 namer 的 0 列永久存在，属于不可自愈的脏数据。
+//
+// 注意：order 中不存在 kangxi 物料时依赖留空（显式排除场景），由 importNamer
+// 自行按其 Required 语义处理，不算解析失败。
+func (s *Store) resolveImportDeps(order []string, dataDir string) (*importDeps, error) {
 	deps := &importDeps{kangxi: map[string]int{}}
 	for _, name := range order {
 		if name != schema.KangxiMaterial {
@@ -180,11 +213,13 @@ func (s *Store) resolveImportDeps(order []string, dataDir string) *importDeps {
 			continue
 		}
 		src := filepath.Join(dataDir, filepath.FromSlash(def.Source))
-		if m, err := parseKangxiFile(src); err == nil {
-			deps.kangxi = m
+		m, err := parseKangxiFile(src)
+		if err != nil {
+			return nil, fmt.Errorf("解析依赖源文件失败（%s）: %w", src, err)
 		}
+		deps.kangxi = m
 	}
-	return deps
+	return deps, nil
 }
 
 // parseKangxiFile 解析康熙笔画 CSV 为 char → strokes 映射
@@ -200,20 +235,6 @@ func parseKangxiFile(src string) (map[string]int, error) {
 		out[c] = normalize.Stroke(v)
 	}
 	return out, nil
-}
-
-// syncNameFreqTier 以 name_frequency 为唯一真源，归一化 hanzi_data.name_freq_tier
-//
-// 口径与 JSON 运行时路径一致：仅 Tier ≥ 2 回填（LoadFrequencyDB 过滤口径），
-// 其余置 0。单条 UPSERT 式 UPDATE 同时完成清零与回填，天然幂等（ADR-011）。
-func (s *Store) syncNameFreqTier() error {
-	_, err := s.writeDB.Exec(`UPDATE hanzi_data SET name_freq_tier = COALESCE(
-		(SELECT tier FROM name_frequency
-		 WHERE name_frequency.char = hanzi_data.char AND tier >= 2), 0)`)
-	if err != nil {
-		return fmt.Errorf("重算人名频率档位失败: %w", err)
-	}
-	return nil
 }
 
 // resolveMaterials 按名称过滤物料定义，并自动补齐依赖闭包
@@ -271,6 +292,16 @@ func resolveMaterials(names []string) ([]schema.Definition, error) {
 // importOne 导入单个物料
 func (s *Store) importOne(def schema.Definition, opt ImportOptions) ImportResult {
 	res := ImportResult{Material: def.Name, Source: def.Source}
+	startedAt := time.Now()
+
+	// classics 特化目录指纹（docs/40 A1）：
+	// classics 的源是 dataDir 下多个 JSON（classicsSourceFiles 扫描，稳定序），
+	// 而非 def.Source 登记的单文件。旧实现指纹只取 shijing.json，任一其余
+	// 文件变更都不触发重灌 —— 指纹门控对 classics 形同虚设。
+	// 此处提前走目录指纹路径：校验全部文件存在性 + 合并 sha256。
+	if def.Name == schema.ClassicsMaterial {
+		return s.importOneClassics(def, opt, res, startedAt)
+	}
 
 	src := filepath.Join(opt.DataDir, filepath.FromSlash(def.Source))
 	if _, err := os.Stat(src); err != nil {
@@ -280,6 +311,7 @@ func (s *Store) importOne(def schema.Definition, opt ImportOptions) ImportResult
 			res.Skipped = true
 			res.Reason = "可选物料源缺失，跳过"
 		}
+		res.Elapsed = time.Since(startedAt).String()
 		return res
 	}
 
@@ -296,6 +328,7 @@ func (s *Store) importOne(def schema.Definition, opt ImportOptions) ImportResult
 		res.Reason = "指纹未变更，跳过重灌"
 		res.Rows = s.materialRowCount(def.Name)
 		res.Version = s.storedMaterialVersion(def.Name)
+		res.Elapsed = time.Since(startedAt).String()
 		return res
 	}
 
@@ -305,7 +338,55 @@ func (s *Store) importOne(def schema.Definition, opt ImportOptions) ImportResult
 		res.Err = fmt.Sprintf("物料 %s 未登记导入实现（见 store_material_registry.go）", def.Name)
 		return res
 	}
-	return m.Import(s, src, res, opt)
+	out := m.Import(s, src, res, opt)
+	out.Elapsed = time.Since(startedAt).String()
+	return out
+}
+
+// importOneClassics classics 目录指纹特化路径（docs/40 A1）
+//
+// 指纹 = classicsSourceFiles 稳定序扫描 → checksum.Files 合并；
+// 保留旧门控语义：def.Source 哨兵文件（shijing.json）缺失 → 物料级跳过
+// （classics 为 Required=false，可选源缺失不阻断）。哨兵存在后目录扫描
+// 才启动；任一目录文件缺失即整体中断。
+func (s *Store) importOneClassics(def schema.Definition, opt ImportOptions, res ImportResult, startedAt time.Time) ImportResult {
+	sentinel := filepath.Join(opt.DataDir, filepath.FromSlash(def.Source))
+	if _, err := os.Stat(sentinel); err != nil {
+		res.Skipped = true
+		res.Reason = "可选物料源缺失，跳过"
+		return res
+	}
+
+	files := classicsSourceFiles(opt.DataDir)
+	if len(files) == 0 {
+		res.Err = fmt.Sprintf("经典语料扫描为空（目录 %s 无登记 JSON 或不可读）", opt.DataDir)
+		return res
+	}
+	for _, f := range files {
+		if _, err := os.Stat(filepath.Join(opt.DataDir, f)); err != nil {
+			res.Err = fmt.Sprintf("经典语料源文件缺失: %s: %v", f, err)
+			return res
+		}
+	}
+	sum, err := checksum.Files(opt.DataDir, files)
+	if err != nil {
+		res.Err = err.Error()
+		return res
+	}
+	res.Checksum = sum
+
+	if !opt.DryRun && !opt.Lenient && s.materialUnchanged(def.Name, sum) {
+		res.Skipped = true
+		res.Reason = "指纹未变更，跳过重灌"
+		res.Rows = s.materialRowCount(def.Name)
+		res.Version = s.storedMaterialVersion(def.Name)
+		res.Elapsed = time.Since(startedAt).String()
+		return res
+	}
+
+	out := s.importClassics(def, def.Source, res, opt)
+	out.Elapsed = time.Since(startedAt).String()
+	return out
 }
 
 // materialUnchanged 判断库内记录的指纹是否与传入一致且主表非空

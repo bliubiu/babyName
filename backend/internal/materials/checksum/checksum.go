@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 // File 计算单个文件内容的 sha256 指纹
@@ -30,6 +31,24 @@ func File(path string) (string, error) {
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", fmt.Errorf("读取文件计算指纹失败 %s: %w", path, err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// Files 计算多文件目录指纹（docs/40 A1）
+//
+// 把每个文件的「相对路径 + 内容 sha256」按传入顺序串接后整体 sha256：
+// 任一文件字节变化、任一文件增删（需要调用方传入新清单）都会改变结果。
+// 传入清单应已稳定排序，否则同一内容集会得到不同指纹——导入侧
+// classicsSourceFiles 已按字典序排序；其余调用方遵守同一约定。
+func Files(dir string, relPaths []string) (string, error) {
+	h := sha256.New()
+	for _, rel := range relPaths {
+		sum, err := File(filepath.Join(dir, filepath.FromSlash(rel)))
+		if err != nil {
+			return "", fmt.Errorf("目录指纹-子文件失败 %s: %w", rel, err)
+		}
+		fmt.Fprintf(h, "%s\x00%s\x00", rel, sum)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }

@@ -332,6 +332,11 @@ func (s *Store) GetZodiacs() []zodiac.Zodiac {
 
 // --- HanziStore (memory mode 使用内存汉字库) ---
 
+// ReadPing 探活持久化读路径（docs/40 A5）。内存库无磁盘依赖，恒可用。
+func (s *Store) ReadPing() error {
+	return nil
+}
+
 func (s *Store) GetHanziByChar(char string) *database.Hanzi {
 	if h, ok := hanzi.GetHanzi(char); ok {
 		return &database.Hanzi{

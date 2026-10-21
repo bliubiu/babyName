@@ -24,6 +24,10 @@ import (
 //     ExportExtractSets/ExportPoemEntries —— 与旧运行期 JSON 路径**同一份实现**，
 //     物化只是搬运结果，杜绝两套提取规则漂移。
 
+// partialChecksumSuffix 解析失败物料登记指纹的打点后缀（docs/40 A2）。
+// 追加后与纯目录指纹永不相等 → materialUnchanged 恒 false → 下次导入必然重解析。
+const partialChecksumSuffix = "/partial"
+
 // importClassics 导入经典语料（书籍/篇章骨架 + 两张物化表）
 func (s *Store) importClassics(def schema.Definition, _ string, res ImportResult, opt ImportOptions) ImportResult {
 	dataDir := opt.DataDir
@@ -71,6 +75,12 @@ func (s *Store) importClassics(def schema.Definition, _ string, res ImportResult
 		if len(skipped) > 0 {
 			res.Reason = "以下文件结构无法识别已跳过: " + strings.Join(skipped, ",")
 			logger.Warn("经典语料存在无法解析的文件", logger.String("文件", strings.Join(skipped, ",")))
+			// 失败不登记纯指纹（docs/40 A2）：把登记指纹追加 "/partial" 后缀，
+			// 使其与纯目录指纹永不相等 → materialUnchanged 恒 false → 下次
+			// 导入必然重解析。修复了解析器/数据后，缺失文件在下次导入自动
+			// 补齐；全绿后登记回纯指纹恢复短路。runImport 的登记在回调
+			// 执行后进行，此处改写 res.Checksum 即可影响登记值。
+			res.Checksum += partialChecksumSuffix
 		}
 
 		// 2. 字集物化：只落诗词侧属性。拼音/释义/五行/性别是 hanzi_data 的列，

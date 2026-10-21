@@ -163,6 +163,13 @@ type Store interface {
 	ZodiacStore
 	CuratedStore
 	NameStatStore
+
+	// ReadPing 探活持久化存储的读路径（docs/40 A5）。
+	//
+	// 语义与 GetHanziByChar 不同：后者探的是运行时内存 map（预载快照），
+	// 持久层损坏照样返回非 nil；ReadPing 直接在持久层执行轻量查询，
+	// 用于 /readyz 真探活。内存库实现恒返回 nil（无磁盘依赖）。
+	ReadPing() error
 }
 
 // HistoryRecord 历史记录结构

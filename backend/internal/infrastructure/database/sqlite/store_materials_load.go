@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"name/internal/domain/fate"
 	"name/internal/domain/hanzi"
@@ -22,39 +23,42 @@ import (
 //
 // 采用「DB 优先、物料级降级」策略：某物料在库中缺失时只跳过该物料并记 warn，
 // 不影响其他物料装载；调用方可据此回落到 JSON 路径（见 data.SourcePolicy）。
+//
+// 每物料附计时日志（docs/40 B6）：冷启动装载是启动耗时主成分之一，此前
+// 全链无 time 计量，变慢无法定位。elapsed 语义为全链路（含 COUNT + SELECT）。
 func (s *Store) LoadMaterialsFromDB() []string {
 	loaded := make([]string, 0, len(MaterialTables()))
+	loadStart := time.Now()
 
-	if s.loadKangxiFromDB() {
-		loaded = append(loaded, "kangxi")
+	for _, step := range []struct {
+		name string
+		run  func() bool
+	}{
+		{"kangxi", s.loadKangxiFromDB},
+		{"namer", s.loadHanziFromDB},
+		{"name_frequency", s.loadCharFreqFromDB},
+		{"name_bigram", s.loadBigramFromDB},
+		{"naming_gate", s.loadGateFromDB},
+		{"forbidden_combos", s.loadForbiddenFromDB},
+		{"allowlist", s.loadAllowlistFromDB},
+		{"compliance_redline", s.loadComplianceRedlineFromDB},
+		{"yijing", s.loadYijingFromDB},
+		{"zodiac", s.loadZodiacFromDB},
+	} {
+		stepStart := time.Now()
+		ok := step.run()
+		if ok {
+			loaded = append(loaded, step.name)
+		}
+		logger.Info("sqlite: 物料装载步骤完成",
+			logger.String("物料", step.name),
+			logger.String("耗时", time.Since(stepStart).Round(time.Microsecond).String()),
+			logger.Bool("成功", ok))
 	}
-	if s.loadHanziFromDB() {
-		loaded = append(loaded, "namer")
-	}
-	if s.loadCharFreqFromDB() {
-		loaded = append(loaded, "name_frequency")
-	}
-	if s.loadBigramFromDB() {
-		loaded = append(loaded, "name_bigram")
-	}
-	if s.loadGateFromDB() {
-		loaded = append(loaded, "naming_gate")
-	}
-	if s.loadForbiddenFromDB() {
-		loaded = append(loaded, "forbidden_combos")
-	}
-	if s.loadAllowlistFromDB() {
-		loaded = append(loaded, "allowlist")
-	}
-	if s.loadComplianceRedlineFromDB() {
-		loaded = append(loaded, "compliance_redline")
-	}
-	if s.loadYijingFromDB() {
-		loaded = append(loaded, "yijing")
-	}
-	if s.loadZodiacFromDB() {
-		loaded = append(loaded, "zodiac")
-	}
+
+	logger.Info("sqlite: 物料装载全部完成",
+		logger.Int("装载物料数", len(loaded)),
+		logger.String("总耗时", time.Since(loadStart).Round(time.Millisecond).String()))
 	return loaded
 }
 
