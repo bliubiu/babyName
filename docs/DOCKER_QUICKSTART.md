@@ -24,15 +24,16 @@ cp .env.example .env.production
 vim .env.production
 ```
 
-**必须修改的关键配置：**
-- `NGINX_DOMAIN`: 您的域名
-- `NGINX_SSL_EMAIL`: Let's Encrypt 证书申请邮箱
-- `NEXT_PUBLIC_API_BASE`: 前端调用的 API 地址
+**必须修改的关键配置（2026.10.21 死配置清理后）：**
+- `.env.production` 中的 `COMPOSE_PROJECT_NAME` / `TZ` / 端口等按需修改
+- `NEXT_PUBLIC_API_URL`（可选）：前端调用的跨域 API 完整前缀（含 `/api`）——
+  留空走同源推导（推荐，见 docker-compose.yml frontend build.args）；
+  该变量为**构建期**注入，静态导出后无法运行时覆盖
 
 > ⚠️ **安全提示（docs/29 B14）**：当前版本后端**没有任何鉴权**（无 JWT、无
-> Session、无 API Key），`/api/*` 全部接口公开可读写。`JWT_SECRET` /
-> `JWT_EXPIRE` 是历史遗留的死配置，代码里没有任何引用，设置它们**不会**产生
-> 任何保护作用。
+> Session、无 API Key），`/api/*` 全部接口公开可读写。历史上曾有 `JWT_SECRET` /
+> `JWT_EXPIRE` 死配置，已于 2026.10.21 连同 `NGINX_*` / `NEXT_PUBLIC_WS_BASE` /
+> `NEXT_PUBLIC_APP_NAME` / `NEXT_PUBLIC_APP_VERSION` 一并清理。
 >
 > 因此：**请勿将后端端口直接暴露到公网**。如需公网访问，必须在 Nginx 层
 > （`nginx/conf.d/`）或云网关/WAF 上自行加访问控制（IP 白名单、Basic Auth、

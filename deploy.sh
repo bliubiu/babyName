@@ -37,17 +37,13 @@ check_files() {
     fi
     
     if [[ ! -f "$ENV_FILE" ]]; then
-        log_error "未找到 $ENV_FILE，请从 .env.production.example 复制并修改"
+        log_error "未找到 $ENV_FILE，请从 .env.example 复制并修改"
         exit 1
     fi
-    
-    # 检查必要的环境变量
-    source "$ENV_FILE"
-    if [[ -z "${JWT_SECRET:-}" ]] || [[ "$JWT_SECRET" == *"change-me"* ]]; then
-        log_error "请在 $ENV_FILE 中设置强随机 JWT_SECRET (至少 32 字符)"
-        exit 1
-    fi
-    
+
+    # 安全校验见 compose 头部注释：后端零鉴权（docs/29 B14），
+    # 应用层无 JWT/密码等秘密变量需要检查；公网部署须在 Nginx/网关层做访问控制。
+
     log_success "文件检查通过"
 }
 

@@ -26,8 +26,6 @@ services:
       - CONFIG_DIR=/app/config
       - LOG_LEVEL=debug
       - LOG_DIR=/app/logs
-      - JWT_SECRET=dev-secret-key-change-in-production
-      - JWT_EXPIRE=24h
     volumes:
       - ./backend:/app                    # 源码挂载 (热重载)
       - /app/tmp                          # 避免覆盖容器内编译产物
@@ -66,10 +64,10 @@ services:
     command: pnpm run dev  # Next.js 热重载
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_API_BASE=http://localhost:8080
-      - NEXT_PUBLIC_WS_BASE=ws://localhost:8080
-      - NEXT_PUBLIC_APP_NAME=起名工具 (开发版)
-      - NEXT_PUBLIC_APP_VERSION=dev
+      # 变量与 frontend/src/lib/api.ts 消费名一致（NEXT_PUBLIC_API_URL）。
+      # dev 模式下 NEXT_PUBLIC_* 来自 dev server 启动环境，运行时 env 生效。
+      # 注意 prod 静态导出不适用运行时 environment（见 docker-compose.yml build.args）。
+      - NEXT_PUBLIC_API_URL=http://localhost:8080/api
       - WATCHPACK_POLLING=true  # 启用轮询模式 (解决 Docker 卷文件监听问题)
       - CHOKIDAR_USEPOLLING=true
     volumes:

@@ -304,10 +304,6 @@ LOG_DIR=/app/logs
 # REDIS_PASSWORD=
 # REDIS_DB=0
 
-# JWT 认证
-JWT_SECRET=your-32-character-secret-key-here
-JWT_EXPIRE=24h
-
 # 邮件/通知 (可选)
 # SMTP_HOST=smtp.example.com
 # SMTP_PORT=587
@@ -315,15 +311,13 @@ JWT_EXPIRE=24h
 # SMTP_PASSWORD=
 
 # ===== 前端 =====
-NODE_ENV=production
-NEXT_PUBLIC_API_BASE=https://api.your-domain.com
-NEXT_PUBLIC_WS_BASE=wss://api.your-domain.com
-NEXT_PUBLIC_APP_NAME=起名工具
-NEXT_PUBLIC_APP_VERSION=1.0.0
+# NEXT_PUBLIC_API_URL 为构建期变量（frontend Dockerfile ARG + compose
+# build.args 注入，静态导出烘焙进产物 JS）；留空走同源推导（推荐），
+# 跨域 API 才需要完整前缀（含 /api）
+# NEXT_PUBLIC_API_URL=https://api.your-domain.com/api
 
-# ===== Nginx =====
-NGINX_SSL_EMAIL=admin@your-domain.com
-NGINX_DOMAIN=your-domain.com
+# 注：JWT_SECRET / JWT_EXPIRE 与 NGINX_SSL_EMAIL / NGINX_DOMAIN 为历史死
+# 配置，2026.10.21 清理：后端零鉴权（docs/29 B14），公网须在网关层做访问控制。
 ```
 
 ### 开发环境 (`.env.development`)
@@ -335,9 +329,8 @@ PORT=8080
 DATA_DIR=/app/data
 LOG_LEVEL=debug
 
-NODE_ENV=development
-NEXT_PUBLIC_API_BASE=http://localhost:8080
-NEXT_PUBLIC_WS_BASE=ws://localhost:8080
+# dev（next dev）运行时 env 生效；prod 静态导出必须构建期注入
+NEXT_PUBLIC_API_URL=http://localhost:8080/api
 ```
 
 **使用方式:**

@@ -51,6 +51,13 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
+# NEXT_PUBLIC_* 是构建期变量：output:'export' 静态导出在 build 时把它烘焙进
+# 产物 JS，运行时 environment 对其无效（2026.10.21 死配置清理）。
+# 留空 → api.ts 走同源 window.location 推导（docs/08）；
+# 跨域给完整前缀（含 /api），如 https://api.example.com/api
+ARG NEXT_PUBLIC_API_URL=
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
 # 构建应用
 # 输出: out/（静态导出：HTML + _next/static 资源）
 RUN pnpm run build
