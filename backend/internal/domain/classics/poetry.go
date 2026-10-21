@@ -291,6 +291,8 @@ var sourceAlias = map[string]string{
 	"唐诗": "唐诗", "tangshi": "唐诗",
 	"宋词": "宋词", "songci": "宋词",
 	"乐府": "乐府", "yuefu": "乐府",
+	"元曲": "元曲", "yuanqu": "元曲",
+	"辞赋": "辞赋", "cifu": "辞赋",
 	"古文观止": "古文观止", "guwen": "古文观止", "guwenguanzhi": "古文观止",
 	"论语": "论语", "lunyu": "论语",
 	"孟子": "孟子", "mengzi": "孟子",
@@ -373,6 +375,12 @@ func GetPoetryCharList(source string) []PoetryChar {
 		return copyExtracted(&WenzimengqiuExtracted)
 	case "百家姓":
 		return copyExtracted(&BaijiaxingExtracted)
+	case "元曲":
+		return copyExtracted(&YuanQuExtracted)
+	case "乐府":
+		return copyExtracted(&YueFuExtracted)
+	case "辞赋":
+		return copyExtracted(&CiFuExtracted)
 	}
 
 	return nil
@@ -389,6 +397,7 @@ func appendAllExtracted(chars []PoetryChar) []PoetryChar {
 		&YouxueqionglinExtracted, &ZengguangxianwenExtracted, &ShenglvqimengExtracted,
 		&ZhuzijiaxunExtracted, &QianjiashiExtracted, &WenzimengqiuExtracted,
 		&BaijiaxingExtracted,
+		&YuanQuExtracted, &YueFuExtracted, &CiFuExtracted,
 	}
 	for _, extracted := range allExtracted {
 		chars = append(chars, copyExtracted(extracted)...)
@@ -397,7 +406,7 @@ func appendAllExtracted(chars []PoetryChar) []PoetryChar {
 }
 
 func GetPoetrySourceNames() []string {
-	return []string{"诗经", "楚辞", "唐诗", "宋词", "乐府", "古文名句",
+	return []string{"诗经", "楚辞", "唐诗", "宋词", "元曲", "乐府", "辞赋", "古文名句",
 		"古文观止", "唐诗宋词",
 		"论语", "孟子", "大学", "中庸",
 		"三字经", "千字文", "弟子规", "声律启蒙", "增广贤文",

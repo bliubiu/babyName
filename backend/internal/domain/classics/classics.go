@@ -77,6 +77,15 @@ var WenzimengqiuExtracted []PoetryChar
 // BaijiaxingExtracted 百家姓
 var BaijiaxingExtracted []PoetryChar
 
+// YuanQuExtracted 元曲（E2：补齐起名字集提取，修复出典加分遗漏）
+var YuanQuExtracted []PoetryChar
+
+// YueFuExtracted 乐府（E2）
+var YueFuExtracted []PoetryChar
+
+// CiFuExtracted 辞赋（E2）
+var CiFuExtracted []PoetryChar
+
 // setExtracted 设置提取结果（写锁保护，供 loader 使用）
 func setExtracted(target *[]PoetryChar, val []PoetryChar) {
 	classicsMu.Lock()

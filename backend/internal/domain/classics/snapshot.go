@@ -42,6 +42,9 @@ const (
 	MaterialQianjiashi       = "qianjiashi"
 	MaterialWenzimengqiu     = "wenzimengqiu"
 	MaterialBaijiaxing       = "baijiaxing"
+	MaterialYuanQu           = "yuanqu"
+	MaterialYueFu            = "yuefu"
+	MaterialCiFu             = "cifu"
 )
 
 // extractTargets 字集物料标识 → 包级结果变量的对应关系（唯一映射真源）
@@ -69,6 +72,9 @@ var extractTargets = []struct {
 	{MaterialQianjiashi, &QianjiashiExtracted},
 	{MaterialWenzimengqiu, &WenzimengqiuExtracted},
 	{MaterialBaijiaxing, &BaijiaxingExtracted},
+	{MaterialYuanQu, &YuanQuExtracted},
+	{MaterialYueFu, &YueFuExtracted},
+	{MaterialCiFu, &CiFuExtracted},
 }
 
 // ExtractSet 一个经典字集（导入期物化的最小单元）

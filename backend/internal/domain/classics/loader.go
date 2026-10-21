@@ -26,6 +26,17 @@ func LoadFromJSON(dataDir string) error {
 	// shici.json（6.7MB）→ 后台异步加载，不阻塞 HTTP 启动
 	loadShiCiAsync(dataDir)
 
+	// 元曲 / 乐府 / 辞赋：补齐起名字集提取，修复出典加分遗漏（E2）
+	if err := loadYuanQuFromJSON(dataDir); err != nil {
+		logger.Warn("元曲加载跳过", zap.Error(err))
+	}
+	if err := loadYueFuFromJSON(dataDir); err != nil {
+		logger.Warn("乐府加载跳过", zap.Error(err))
+	}
+	if err := loadCiFuFromJSON(dataDir); err != nil {
+		logger.Warn("辞赋加载跳过", zap.Error(err))
+	}
+
 	// 构建增强的诗词索引（支持从名字反查诗词出处）
 	if err := BuildPoemIndexFromJSON(dataDir); err != nil {
 		logger.Warn("诗词索引构建失败", zap.Error(err))

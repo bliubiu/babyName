@@ -125,6 +125,7 @@ var shiciLoadTimeout = 30 * time.Second
 //   - 同进程内多次 LoadFromJSON（如导入器与守护测试各跑一次）时，第二次
 //     调用拿到的是空字集，却因 once 已消费而不再发起装载 —— 对拍测试正是
 //     因此在同批用例里静默丢掉 shici 覆盖。
+//
 // 现改为「同目录不重复起协程、目录变化则重新装载并等待新任务」。
 var (
 	shiciMu   sync.Mutex
@@ -301,6 +302,111 @@ func loadShiCiFromJSON(dataDir string) error {
 	extracted := extractFromEntries(toPoemEntries(entries))
 	setExtracted(&ShiCiExtracted, extracted)
 	logger.Info("已从唐诗宋词提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
+	return nil
+}
+
+// ============================================================
+// 元曲 / 乐府 / 辞赋 条目与加载（E2：补齐起名字集提取，修复出典加分遗漏）
+//
+// 此三类此前仅进入 classics_poem_entries（展示索引），未进入 classics_extracts
+// （起名字集）——导致用其中文字起名时 poetryFound=false，拿不到出典加分。
+// 现与诗经/楚辞/诗词同口径，经 extractFromEntries 提取后落入字集。
+// 字段差异：yuanqu 用 paragraphs([]string)，yuefu/cifu 的 content 是单条长字符串，
+// 需包成 []string 再交给 extractFromEntry（其内部会按句末标点切句）。
+// ============================================================
+
+// YuanQuEntry 元曲 JSON 条目（yuanqu.json：dynasty/author/paragraphs/title）
+type YuanQuEntry struct {
+	Title      string   `json:"title"`
+	Author     string   `json:"author"`
+	Dynasty    string   `json:"dynasty"`
+	Paragraphs []string `json:"paragraphs"`
+}
+
+func (e YuanQuEntry) GetTitle() string     { return e.Title }
+func (e YuanQuEntry) GetContent() []string { return e.Paragraphs }
+func (e YuanQuEntry) GetSource() string    { return "元曲" }
+
+// YueFuEntry 乐府 JSON 条目（yuefu.json：content 为完整长字符串，需包成切片）
+type YueFuEntry struct {
+	Title   string `json:"title"`
+	Author  string `json:"author"`
+	Book    string `json:"book"`
+	Dynasty string `json:"dynasty"`
+	Content string `json:"content"`
+}
+
+func (e YueFuEntry) GetTitle() string     { return e.Title }
+func (e YueFuEntry) GetContent() []string { return []string{e.Content} }
+func (e YueFuEntry) GetSource() string    { return "乐府" }
+
+// CiFuEntry 辞赋 JSON 条目（cifu.json：content 为完整长字符串）
+type CiFuEntry struct {
+	Title   string `json:"title"`
+	Author  string `json:"author"`
+	Book    string `json:"book"`
+	Dynasty string `json:"dynasty"`
+	Content string `json:"content"`
+}
+
+func (e CiFuEntry) GetTitle() string     { return e.Title }
+func (e CiFuEntry) GetContent() []string { return []string{e.Content} }
+func (e CiFuEntry) GetSource() string    { return "辞赋" }
+
+// loadYuanQuFromJSON 从 yuanqu.json 提取起名用字
+func loadYuanQuFromJSON(dataDir string) error {
+	path := filepath.Join(dataDir, "yuanqu.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("读取 yuanqu.json 失败: %w", err)
+	}
+
+	var entries []YuanQuEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return fmt.Errorf("解析 yuanqu.json 失败: %w", err)
+	}
+
+	extracted := extractFromEntries(toPoemEntries(entries))
+	setExtracted(&YuanQuExtracted, extracted)
+	logger.Info("已从元曲提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
+	return nil
+}
+
+// loadYueFuFromJSON 从 yuefu.json 提取起名用字
+func loadYueFuFromJSON(dataDir string) error {
+	path := filepath.Join(dataDir, "yuefu.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("读取 yuefu.json 失败: %w", err)
+	}
+
+	var entries []YueFuEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return fmt.Errorf("解析 yuefu.json 失败: %w", err)
+	}
+
+	extracted := extractFromEntries(toPoemEntries(entries))
+	setExtracted(&YueFuExtracted, extracted)
+	logger.Info("已从乐府提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
+	return nil
+}
+
+// loadCiFuFromJSON 从 cifu.json 提取起名用字
+func loadCiFuFromJSON(dataDir string) error {
+	path := filepath.Join(dataDir, "cifu.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("读取 cifu.json 失败: %w", err)
+	}
+
+	var entries []CiFuEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return fmt.Errorf("解析 cifu.json 失败: %w", err)
+	}
+
+	extracted := extractFromEntries(toPoemEntries(entries))
+	setExtracted(&CiFuExtracted, extracted)
+	logger.Info("已从辞赋提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
 	return nil
 }
 

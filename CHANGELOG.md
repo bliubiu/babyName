@@ -5,6 +5,23 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.21.0]
+
+**确立单一权威库消除双库分叉、kangxi_strokes 按字集裁剪、补齐元曲/乐府/辞赋起名字集**
+
+### ✨ Features 新功能
+- 【经典语料】补齐 `classic_loader.go` 的 `loadYuanQu`/`loadYueFu`/`loadCiFu`，使元曲/乐府/辞赋进入 `classics_extracts` 起名字集（此前仅进展示索引），修复用这三类字起名时无出典加分的遗漏；同步登记 `buildPoetryIndex`/`extractTargets`/`appendAllExtracted`/`GetPoetryCharList` 等清单
+
+### 🐛 Bug Fixes 问题修复
+- 【数据库】确立 `backend/namer.db` 为唯一权威库（`application.yml` 的 `database.path` 改为绝对路径，dev/prod 容器均经 `NAME_DATABASE_PATH` 指定）；`cmd/materials` 6 处 `--db` 默认值收敛到配置路径；清理 backend 库孤儿表 `words`(14809行)/`data_meta` 并移走根目录分叉副本
+- 【数据库】`kangxi_strokes` 按 `hanzi_data` 字符集裁剪：63,696 → 7,838 行（删除 55,858 孤儿行），导入管线 `Import()` 末尾新增 `pruneKangxiStrokes()` 持久化该裁剪
+
+### 📈 Improvements 性能/体验优化
+- 【数据库】`kangxi_strokes` 裁剪后文件 22,904 → 21,488 KB，运行期内存字集零影响（缺失笔画返回 0 优雅降级）
+
+### 🔧 Dependencies 依赖更新
+- 【已知阻塞】`internal/domain/fate/engine.go:705` 调用未定义的 `generateWithGeneration`，导致 `go build ./cmd/materials ./cmd/server` 暂不可构建；`materials import` 端到端验证待该断点修复后补跑（live 库已用真实 Go 提取结果过渡回写，重导即权威重建）
+
 ## [2026.10.20.1]
 
 **万年历展示 24 节气与农历节日、JSON 查看器统一为新中式皮肤，并接入 E2E 框架、新增字辈(Generation)生成分支**

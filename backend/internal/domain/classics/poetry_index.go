@@ -40,6 +40,11 @@ func buildPoetryIndex() {
 	ensureShiCiLoaded()
 	indexExtracted(copyExtracted(&ShiCiExtracted))
 
+	// 元曲 / 乐府 / 辞赋（E2：补齐起名字集，使出典加分类查询能命中）
+	indexExtracted(copyExtracted(&YuanQuExtracted))
+	indexExtracted(copyExtracted(&YueFuExtracted))
+	indexExtracted(copyExtracted(&CiFuExtracted))
+
 	// P2/P3 经典
 	indexExtracted(copyExtracted(&LunyuExtracted))
 	indexExtracted(copyExtracted(&MengziExtracted))

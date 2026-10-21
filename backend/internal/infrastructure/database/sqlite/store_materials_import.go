@@ -123,8 +123,46 @@ func (s *Store) Import(opt ImportOptions) (*ImportReport, error) {
 		if err := s.syncNameFreqTier(); err != nil {
 			return nil, fmt.Errorf("归一化人名频率档位失败: %w", err)
 		}
+		// kangxi_strokes 裁剪到 hanzi_data 字符集（docs/37 E1）：
+		// CSV 含 6.3 万条，仅约 7.8 千属于字库，其余为孤儿，运行期候选池
+		// 永不命中（LoadKangxiStrokesFromDB 全表入内存，每条查不到）。落库后
+		// 按字集裁剪既缩小库体积与内存，又不影响消费方（GetKangxiStrokes 对
+		// 缺失字返回 0，与裁剪前行为一致）。必须放在所有物料写入完成之后——
+		// 拓扑上 kangxi 先于 namer，此处二者均已落库，裁剪安全；hanzi_data
+		// 为空时跳过，避免误删全部康熙数据。
+		if err := s.pruneKangxiStrokes(); err != nil {
+			return nil, fmt.Errorf("裁剪康熙笔画孤儿行失败: %w", err)
+		}
 	}
 	return report, nil
+}
+
+// pruneKangxiStrokes 将 kangxi_strokes 裁剪到 hanzi_data 字符集（docs/37 E1）。
+//
+// 康熙笔画 CSV 含 6.3 万条，仅约 7.8 千属于字库；其余为孤儿，运行期候选池
+// 永不命中（LoadKangxiStrokesFromDB 全表入内存，每条查不到）。落库后按字集
+// 裁剪，既缩小库体积与内存，又不影响任何消费方（GetKangxiStrokes 对缺失字
+// 返回 0，与裁剪前行为一致）。
+//
+// 在 Import() 末尾执行：此时 kangxi_strokes 与 hanzi_data 均已全量落库，
+// 拓扑上 kangxi 先于 namer（namer 依赖 kangxi），故此处裁剪安全。
+// 必须放在所有物料写入完成之后，且 hanzi_data 为空时跳过，避免误删全部康熙数据。
+func (s *Store) pruneKangxiStrokes() error {
+	var n int
+	if err := s.writeDB.QueryRow("SELECT COUNT(*) FROM hanzi_data").Scan(&n); err != nil {
+		return fmt.Errorf("查询 hanzi_data 行数失败: %w", err)
+	}
+	if n == 0 {
+		return nil
+	}
+	res, err := s.writeDB.Exec("DELETE FROM kangxi_strokes WHERE char NOT IN (SELECT char FROM hanzi_data)")
+	if err != nil {
+		return fmt.Errorf("裁剪 kangxi_strokes 孤儿行失败: %w", err)
+	}
+	if affected, e := res.RowsAffected(); e == nil && affected > 0 {
+		logger.Infof("已裁剪 kangxi_strokes 孤儿行: %d", affected)
+	}
+	return nil
 }
 
 // resolveImportDeps 预解析导入顺序中各物料对外暴露的依赖数据
