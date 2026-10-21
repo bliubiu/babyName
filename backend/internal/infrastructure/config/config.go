@@ -93,7 +93,10 @@ func Load(configPath string) (*AppConfig, error) {
 	v.SetDefault("static", "")
 	v.SetDefault("log.level", "debug")
 	v.SetDefault("log.format", "console")
-	v.SetDefault("log.output_path", "namer.log")
+	// 语义为「日志目录」：空值固定「项目根/logs/」（go.mod 锚定，与 cwd 无关），
+	// 文件名 namer-YYYYMMDD.log 按天轮转（docs/36 日志路径锚定）。
+	// 相对路径只建议在显式传参时使用（相对 cwd 会随启动目录漂移）。
+	v.SetDefault("log.output_path", "")
 	v.SetDefault("database.driver", "sqlite")
 	v.SetDefault("database.path", "namer.db")
 	v.SetDefault("rate_limit.capacity", 100)

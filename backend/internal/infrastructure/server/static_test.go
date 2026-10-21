@@ -12,8 +12,18 @@ import (
 	"name/internal/infrastructure/logger"
 )
 
+// logTestDir 测试用日志目录：固定 logs 目录后 Init 总会落盘，
+// 测试侧统一重定向到临时缓存区，避免测试产物写入真实 logs/。
+var logTestDir = func() string {
+	dir, err := os.MkdirTemp("", "namer-server-logs")
+	if err != nil {
+		return os.TempDir()
+	}
+	return dir
+}()
+
 func init() {
-	_ = logger.Init(&logger.Config{Level: "error", OutputPath: ""})
+	_ = logger.Init(&logger.Config{Level: "error", OutputPath: logTestDir})
 }
 
 func TestSetupStaticFileServer_EvaluateStatRoutes(t *testing.T) {

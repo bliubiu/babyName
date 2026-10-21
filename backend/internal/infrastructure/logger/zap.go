@@ -3,12 +3,10 @@ package logger
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
@@ -17,17 +15,19 @@ var (
 )
 
 type Config struct {
-	Level      string `mapstructure:"level"`
-	Format     string `mapstructure:"format"`
+	Level  string `mapstructure:"level"`
+	Format string `mapstructure:"format"`
+	// OutputPath 日志**目录**（语义变更，docs/36 日志路径锚定）：
+	// 绝对路径原样使用，相对路径相对 cwd；空值固定「项目根/logs/」。
+	// 文件名固定 namer-YYYYMMDD.log，按天轮转，由 dailySink 统一管理。
 	OutputPath string `mapstructure:"output_path"`
 }
 
 func Init(cfg *Config) error {
 	if cfg == nil {
 		cfg = &Config{
-			Level:      "debug",
-			Format:     "console",
-			OutputPath: "logs/app.log",
+			Level:  "debug",
+			Format: "console",
 		}
 	}
 
@@ -51,37 +51,32 @@ func Init(cfg *Config) error {
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 
+	// 解析日志目录：空值（配置缺省）固定「项目根/logs/」（AGENTS.md 日志约定，
+	// docs/36 日志路径锚定）；绝对路径原样使用；相对路径相对 cwd。
+	dir := ResolveLogDir(cfg.OutputPath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("创建日志目录 %s 失败: %w", dir, err)
+	}
+
 	var encoder zapcore.Encoder
 	if cfg.Format == "json" {
 		encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
 		encoder = zapcore.NewJSONEncoder(encoderConfig)
 	} else {
-		// 如果输出到文件，不使用颜色代码
-		if cfg.OutputPath != "" {
-			encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
-		}
+		// 终端与文件共用同一编码器：文件不支持 ANSI 颜色，
+		// 故统一关闭颜色（终端失去彩色，换取文件里干净的可 grep 文本）
+		encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
 		encoder = zapcore.NewConsoleEncoder(encoderConfig)
 	}
 
-	var writeSyncer zapcore.WriteSyncer
-	if cfg.OutputPath != "" {
-		// 提取日志文件所在目录
-		dir := filepath.Dir(cfg.OutputPath)
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return err
-		}
-		// 使用 lumberjack 实现日志轮转
-		lj := &lumberjack.Logger{
-			Filename:   cfg.OutputPath,
-			MaxSize:    100,  // MB，单文件最大大小
-			MaxBackups: 32,   // 保留旧文件最大个数（与 MaxAge 一致，满足 AGENTS.md 保留 32 天要求）
-			MaxAge:     32,   // 保留旧文件最大天数
-			Compress:   true, // 压缩旧文件
-		}
-		writeSyncer = zapcore.AddSync(lj)
-	} else {
-		writeSyncer = zapcore.AddSync(os.Stdout)
-	}
+	// 按天轮转落盘：文件名 namer-YYYYMMDD.log 由 dailySink 维护，
+	// 跨天自动切换 + 保留 32 天清理（超过该职责的收入不再交给调用方）。
+	sink := newDailySink(dir, time.Now)
+
+	writeSyncer := zapcore.NewMultiWriteSyncer(
+		zapcore.AddSync(sink),
+		zapcore.AddSync(os.Stdout),
+	)
 
 	core := zapcore.NewCore(
 		encoder,
@@ -95,7 +90,11 @@ func Init(cfg *Config) error {
 	return nil
 }
 
-func InitProduction() error {
+// InitProduction 生产级初始化：JSON 格式 + 同时落盘与标准输出
+//
+// dir 为日志目录（语义同 Config.OutputPath）；空值 → DefaultLogDir。
+// 全部测试环境调用方应传入临时目录，避免测试产物写入真实 logs/。
+func InitProduction(dir string) error {
 	cfg := zapcore.EncoderConfig{
 		TimeKey:        "time",
 		LevelKey:       "level",
@@ -111,18 +110,14 @@ func InitProduction() error {
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 
-	// 生产环境同时输出到文件和标准输出
-	lj := &lumberjack.Logger{
-		Filename:   "logs/app.log",
-		MaxSize:    100,
-		MaxBackups: 32,
-		MaxAge:     32,
-		Compress:   true,
+	// 生产环境同时输出到固定日志目录（按天轮转）和标准输出
+	if err := os.MkdirAll(ResolveLogDir(dir), 0o755); err != nil {
+		return err
 	}
-	_ = os.MkdirAll("logs", 0755)
+	sink := newDailySink(ResolveLogDir(dir), time.Now)
 
 	writeSyncer := zapcore.NewMultiWriteSyncer(
-		zapcore.AddSync(lj),
+		zapcore.AddSync(sink),
 		zapcore.AddSync(os.Stdout),
 	)
 

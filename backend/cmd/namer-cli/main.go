@@ -210,10 +210,10 @@ func generate(req *services.GenerateRequest, dataDir string, dbPath string) (*se
 	}
 
 	// 2. 日志初始化到文件，避免污染终端结果输出
+	//    OutputPath 空值 → 固定「项目根/logs/」，文件名 namer-YYYYMMDD.log（与 server 同一套）
 	if logErr := logger.Init(&logger.Config{
-		Level:      "info",
-		Format:     "console",
-		OutputPath: "namer-cli.log",
+		Level:  "info",
+		Format: "console",
 	}); logErr != nil {
 		fmt.Fprintf(os.Stderr, "警告: 日志系统初始化失败(%v)，使用标准输出\n", logErr)
 	}

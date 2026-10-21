@@ -20,6 +20,10 @@ services:
       - GIN_MODE=debug
       - PORT=8080
       - DATA_DIR=/app/data
+      # 单一权威库（docs/36 双库分叉治理）：明确绝对路径，避免默认相对 namer.db
+      # 在容器内落到非挂载目录（重建即丢）。与 prod compose 保持一致。
+      - NAME_DATABASE_PATH=/app/data/namer.db
+      - CONFIG_DIR=/app/config
       - LOG_LEVEL=debug
       - LOG_DIR=/app/logs
       - JWT_SECRET=dev-secret-key-change-in-production

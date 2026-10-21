@@ -1323,6 +1323,188 @@ func (s *sessionImpl) fillEntryDetails(
 //   - IsNonNamingChar 兜底（单名字是名字的全部，门禁字必须剔除）
 //   - 无 IsBadCombo / IsHistoricalFigureCombo（单字无组合级过滤）
 //   - 无早停（候选集小，全枚举 + RateName 性能可接受）
+//
+// generateWithGeneration 字辈固定槽位 × 自由枚举（generate 的字辈分支）
+//
+// 语义（engine.go:700 注释所述分支的完整实现）：
+//   - 字辈字固定占一个槽位（GenerationPosition：middle=名的第一个字，默认；
+//     tail=名的最后一个字），其余槽位从候选池自由枚举；
+//   - handled=false（回退常规枚举）只发生在字辈字不合法时：
+//     多字、候选池未命中、门禁字或单笔画过滤拒绝；
+//   - 成功时全部候选已写入 table 并 Finalize，调用方不再走
+//     generateSingleName / generateDoubleName。
+//
+// 组合级过滤与评分口径完全复用 generateDoubleName 内循环的一套门禁
+// （CheckStrokePair / isComboExcluded / IsBadCombo / IsHistoricalFigureCombo /
+// 门禁字 / PairBlacklist），保证字辈路径与常规路径的评分与淘汰口径一致；
+// 枚举期只算总分不构造明细文案（与常规路径同一约定）。
+//
+// 串行执行：固定字 × 候选池 ≤ 8105 组合，单请求规模可控，不再引入分片并发。
+func (s *sessionImpl) generateWithGeneration(
+	ctx context.Context,
+	input *Input,
+	infos []charInfo,
+	table *ExcellentTable,
+	totalCount *atomic.Int64,
+	fateData *FateData,
+	surnamePinyin string,
+) ([]charInfo, bool) {
+	genRunes := []rune(strings.TrimSpace(input.Generation))
+	if len(genRunes) != 1 {
+		return infos, false
+	}
+	genChar := string(genRunes[0])
+
+	// 字辈字必须命中候选池（才能拿到笔画/拼音/诗典/释义画像），查不到即回退
+	genIdx := -1
+	for i := range infos {
+		if infos[i].ch.Char == genChar {
+			genIdx = i
+			break
+		}
+	}
+	if genIdx < 0 {
+		return infos, false
+	}
+	genInfo := infos[genIdx]
+
+	// 字辈字本身是门禁字（虚词/排行字/口语物名/数字量词等）无命名价值，
+	// 按约定回退常规枚举（常规路径也会把该字从候选池剔除，行为一致）。
+	if IsNonNamingChar(genChar) {
+		return infos, false
+	}
+
+	s.setStage(sessionStageScore, 30)
+
+	nameLen := input.Options.NameLength
+	if nameLen <= 0 {
+		nameLen = 2
+	}
+
+	if nameLen == 1 {
+		// 单名 + 字辈：字辈字即是名的固定内容，无自由槽位
+		if !s.filter.CheckStrokePair(genInfo.stroke, 0) {
+			return infos, false
+		}
+		total := RateNameScore(singleNameCandidate(genInfo, surnamePinyin), fateData, s.raters)
+		table.TryPush(ExcellentEntry{
+			Char1:         genInfo.ch.Char,
+			Pinyin1:       genInfo.pinyin,
+			Meaning1:      genInfo.ch.Meaning,
+			Score:         total,
+			Grade:         scoreToGrade(total),
+			WuXing1:       genInfo.ch.WuXing,
+			Stroke1:       genInfo.stroke,
+			KangxiStroke1: genInfo.ch.KangxiStroke,
+			HasPoetry:     genInfo.poetryFound,
+			PoetryFrom:    genInfo.poetryDesc,
+			NameFreqTier1: genInfo.ch.NameFreqTier,
+			idx1:          genIdx,
+			idx2:          -1,
+		})
+		totalCount.Add(1)
+		table.Finalize()
+		return infos, true
+	}
+
+	// 双名：字辈固定占一个槽位，其余槽位从候选池自由枚举
+	genFirst := input.GenerationPosition != "tail"
+	pool := float64(max(len(infos), 1))
+	done := 0
+	for j := range infos {
+		if cancelled(ctx) {
+			break
+		}
+		// 双名不用重复字：字辈字已固定，另一槽位须为不同字
+		if infos[j].ch.Char == genChar {
+			continue
+		}
+
+		var a, b charInfo
+		if genFirst {
+			a, b = genInfo, infos[j]
+		} else {
+			a, b = infos[j], genInfo
+		}
+
+		if !s.filter.CheckStrokePair(a.stroke, b.stroke) {
+			continue
+		}
+
+		// 负面反馈：排除组合（读取不可变快照，无锁）
+		if s.isComboExcluded(a.ch.Char, b.ch.Char) {
+			continue
+		}
+
+		// 负面语义：组合禁忌（亲属称谓/物名/动词等）
+		if IsBadCombo(a.ch.Char, b.ch.Char) {
+			continue
+		}
+
+		// 历史人物字/号专名：剔除与历史人物撞车的组合
+		if IsHistoricalFigureCombo(a.ch.Char, b.ch.Char) {
+			continue
+		}
+
+		// 名字用字质量门禁（纯语义）：任一位置为门禁字即剔除
+		if IsNonNamingChar(a.ch.Char) || IsNonNamingChar(b.ch.Char) {
+			continue
+		}
+
+		// 数据层搭配黑名单：策展标注的 PairBlacklist 双向剔除
+		if hasPairBlacklist(a.ch, b.ch.Char) || hasPairBlacklist(b.ch, a.ch.Char) {
+			continue
+		}
+
+		poetryFound := a.poetryFound || b.poetryFound
+		poetryDesc := ""
+		if poetryFound {
+			if a.poetryFound {
+				poetryDesc = a.poetryDesc
+			} else {
+				poetryDesc = b.poetryDesc
+			}
+		}
+
+		// 枚举期只算总分：不构造 Items/Details 与各维度解释文案
+		total := RateNameScore(doubleNameCandidate(a, b, poetryFound, poetryDesc, surnamePinyin, s.bigramCache), fateData, s.raters)
+
+		idxFirst, idxSecond := j, genIdx
+		if genFirst {
+			idxFirst, idxSecond = genIdx, j
+		}
+		table.TryPush(ExcellentEntry{
+			Char1:         a.ch.Char,
+			Char2:         b.ch.Char,
+			Pinyin1:       a.pinyin,
+			Pinyin2:       b.pinyin,
+			Meaning1:      a.ch.Meaning,
+			Meaning2:      b.ch.Meaning,
+			Score:         total,
+			Grade:         scoreToGrade(total),
+			WuXing1:       a.ch.WuXing,
+			WuXing2:       b.ch.WuXing,
+			Stroke1:       a.stroke,
+			Stroke2:       b.stroke,
+			KangxiStroke1: a.ch.KangxiStroke,
+			KangxiStroke2: b.ch.KangxiStroke,
+			HasPoetry:     poetryFound,
+			PoetryFrom:    poetryDesc,
+			NameFreqTier1: a.ch.NameFreqTier,
+			NameFreqTier2: b.ch.NameFreqTier,
+			idx1:          idxFirst,
+			idx2:          idxSecond,
+		})
+		totalCount.Add(1)
+
+		done++
+		// 进度：评分阶段 30% 起步推进到 85%（与常规枚举阶段口径一致）
+		s.percentX.Store(int64((30 + 55*float64(done)/pool) * 100))
+	}
+	table.Finalize()
+	return infos, true
+}
+
 func (s *sessionImpl) generateSingleName(
 	ctx context.Context,
 	infos []charInfo,

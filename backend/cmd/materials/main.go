@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"name/internal/domain/fate"
+	"name/internal/infrastructure/config"
 	"name/internal/infrastructure/data"
 	"name/internal/infrastructure/database/sqlite"
 	"name/internal/materials/review"
@@ -99,21 +100,21 @@ func printHelp() {
 
 import 选项:
   --data    string   物料源目录（默认 ./data）
-  --db      string   SQLite 库路径（默认 ./namer.db）
+  --db      string   SQLite 库路径（默认读配置 database.path 的绝对路径；可显式覆盖）
   --only    string   只导入指定物料，逗号分隔（默认全部）
   --lenient          校验问题仅记录不阻断（数据清洗期取证用）
   --dry-run          只校验与统计，不写库
   --json             以 JSON 输出报告（供 CI 消费）
 
 load 选项:
-  --db      string   SQLite 库路径（默认 ./namer.db）
+  --db      string   SQLite 库路径（默认读配置 database.path 的绝对路径；可显式覆盖）
   --data    string   物料源目录（仅用于错误提示；运行期不读 JSON）
   --json             以 JSON 输出装载报告（供 CI 消费）
 
   必需物料在库中缺失时命令以非 0 退出码结束并提示执行 materials import。
 
 status 选项:
-  --db      string   SQLite 库路径（默认 ./namer.db）
+  --db      string   SQLite 库路径（默认读配置 database.path 的绝对路径；可显式覆盖）
 
 订阅管线选项（docs/33 门禁层 M5）:
   lock-init:   --data ./data --out ./data/materials.lock --version 1.0 [--source naming_gate=repo@commit,...]
@@ -128,9 +129,9 @@ status 选项:
   abort:    --material allowlist --data ./data [--lock ./data/materials.lock] [--to <指纹>]
 
 复审队列选项（docs/33 门禁层 M6）:
-  review list:   --db ./namer.db [--status pending|confirmed|false_positive|border] [--limit N]
-  review decide: --db ./namer.db --id <条目ID> --status confirmed|false_positive|border [--note 备注]
-  review export: --db ./namer.db [--out gate_patch.jsonl]   # 已落定条目 → gate_patch 补丁
+  review list:   --db <库路径> [--status pending|confirmed|false_positive|border] [--limit N]
+  review decide: --db <库路径> --id <条目ID> --status confirmed|false_positive|border [--note 备注]
+  review export: --db <库路径> [--out gate_patch.jsonl]   # 已落定条目 → gate_patch 补丁
 
 说明:
   · 写入语义为「单事务 DELETE + INSERT 全量重建」，同输入多次导入结果等价（ADR-011）
@@ -143,7 +144,7 @@ status 选项:
 func runImport(args []string) error {
 	fs := flag.NewFlagSet("import", flag.ExitOnError)
 	dataDir := fs.String("data", "./data", "物料源目录")
-	dbPath := fs.String("db", "./namer.db", "SQLite 库路径")
+	dbPath := fs.String("db", "", "SQLite 库路径（默认读配置 database.path 的绝对路径）")
 	only := fs.String("only", "", "只导入指定物料（逗号分隔）")
 	lenient := fs.Bool("lenient", false, "校验问题仅记录不阻断")
 	dryRun := fs.Bool("dry-run", false, "只校验不写库")
@@ -159,7 +160,7 @@ func runImport(args []string) error {
 		DryRun:    *dryRun,
 	}
 
-	store, err := openStore(*dbPath, *dataDir, !*dryRun)
+	store, err := openStore(resolveDBPath(*dbPath), *dataDir, !*dryRun)
 	if err != nil {
 		return err
 	}
@@ -221,14 +222,14 @@ func printImportReport(report *sqlite.ImportReport, elapsed time.Duration, dryRu
 // 若库缺经典语料会明确报错，不会回落 JSON。
 func runLoad(args []string) error {
 	fs := flag.NewFlagSet("load", flag.ExitOnError)
-	dbPath := fs.String("db", "./namer.db", "SQLite 库路径")
+	dbPath := fs.String("db", "", "SQLite 库路径（默认读配置 database.path 的绝对路径）")
 	dataDir := fs.String("data", "./data", "物料源目录（仅用于错误提示，不读 JSON）")
 	asJSON := fs.Bool("json", false, "以 JSON 输出装载报告（供 CI 消费）")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	store, err := openStore(*dbPath, *dataDir, false)
+	store, err := openStore(resolveDBPath(*dbPath), *dataDir, false)
 	if err != nil {
 		return err
 	}
@@ -262,12 +263,12 @@ func runLoad(args []string) error {
 
 func runStatus(args []string) error {
 	fs := flag.NewFlagSet("status", flag.ExitOnError)
-	dbPath := fs.String("db", "./namer.db", "SQLite 库路径")
+	dbPath := fs.String("db", "", "SQLite 库路径（默认读配置 database.path 的绝对路径）")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	store, err := openStore(*dbPath, "", false)
+	store, err := openStore(resolveDBPath(*dbPath), "", false)
 	if err != nil {
 		return err
 	}
@@ -301,6 +302,22 @@ func openStore(dbPath, dataDir string, writable bool) (*sqlite.Store, error) {
 		}
 	}
 	return sqlite.NewStore(dbPath, dataDir)
+}
+
+// resolveDBPath 把 --db 的空默认值收敛到单一权威库路径（docs/36 双库分叉治理）。
+//
+// 优先级：显式 --db > 配置文件 database.path（现为绝对路径）> 兜底 backend/namer.db。
+// 这样无论从仓库根还是 backend/ 目录运行 materials 子命令，都连同一个库，
+// 杜绝 "./namer.db" 相对路径随 cwd 漂移造成双库分叉。配置读取失败或路径非绝对时
+// 回落到 backend/namer.db（相对当前 cwd 解析为 <根>/backend/namer.db）。
+func resolveDBPath(dbPath string) string {
+	if dbPath != "" {
+		return dbPath
+	}
+	if cfg, err := config.Load(""); err == nil && cfg.Database.Path != "" && filepath.IsAbs(cfg.Database.Path) {
+		return cfg.Database.Path
+	}
+	return filepath.Join("backend", "namer.db")
 }
 
 func splitList(s string) []string {
@@ -642,7 +659,7 @@ func runReview(args []string) error {
 // runReviewList 列出复审候选
 func runReviewList(args []string) error {
 	fs := flag.NewFlagSet("review list", flag.ExitOnError)
-	dbPath := fs.String("db", "./namer.db", "SQLite 库路径")
+	dbPath := fs.String("db", "", "SQLite 库路径（默认读配置 database.path 的绝对路径）")
 	status := fs.String("status", "", "按状态过滤：pending|confirmed|false_positive|border（缺省全部）")
 	limit := fs.Int("limit", 0, "最多显示条数（0=全部）")
 	if err := fs.Parse(args); err != nil {
@@ -652,7 +669,7 @@ func runReviewList(args []string) error {
 		return fmt.Errorf("非法状态: %s", *status)
 	}
 
-	store, err := openStore(*dbPath, "", true)
+	store, err := openStore(resolveDBPath(*dbPath), "", true)
 	if err != nil {
 		return err
 	}
@@ -678,7 +695,7 @@ func runReviewList(args []string) error {
 // runReviewDecide 落定一条复审结论
 func runReviewDecide(args []string) error {
 	fs := flag.NewFlagSet("review decide", flag.ExitOnError)
-	dbPath := fs.String("db", "./namer.db", "SQLite 库路径")
+	dbPath := fs.String("db", "", "SQLite 库路径（默认读配置 database.path 的绝对路径）")
 	id := fs.String("id", "", "复审条目 ID")
 	status := fs.String("status", "", "结论：confirmed|false_positive|border")
 	note := fs.String("note", "", "备注")
@@ -692,7 +709,7 @@ func runReviewDecide(args []string) error {
 		return fmt.Errorf("非法结论: %s（可用 confirmed|false_positive|border）", *status)
 	}
 
-	store, err := openStore(*dbPath, "", true)
+	store, err := openStore(resolveDBPath(*dbPath), "", true)
 	if err != nil {
 		return err
 	}
@@ -708,13 +725,13 @@ func runReviewDecide(args []string) error {
 // runReviewExport 把已落定条目导出为 gate_patch.jsonl
 func runReviewExport(args []string) error {
 	fs := flag.NewFlagSet("review export", flag.ExitOnError)
-	dbPath := fs.String("db", "./namer.db", "SQLite 库路径")
+	dbPath := fs.String("db", "", "SQLite 库路径（默认读配置 database.path 的绝对路径）")
 	out := fs.String("out", "", "补丁输出路径（缺省打印到标准输出）")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	store, err := openStore(*dbPath, "", true)
+	store, err := openStore(resolveDBPath(*dbPath), "", true)
 	if err != nil {
 		return err
 	}

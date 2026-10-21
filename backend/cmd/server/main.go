@@ -36,7 +36,7 @@ var (
 	mode         = flag.String("mode", "", "Run mode: backend or all (覆盖配置文件)")
 	static       = flag.String("static", "", "Static files directory (覆盖配置文件)")
 	help         = flag.Bool("help", false, "Show help")
-	logPath      = flag.String("log", "", "Log file path (覆盖配置文件)")
+	logPath      = flag.String("log", "", "Log dir (覆盖配置文件；空 = 项目根/logs，文件名 namer-YYYYMMDD.log 按天)")
 	dbPath       = flag.String("db", "", "SQLite database file path (覆盖配置文件)")
 	rateCapacity = flag.Float64("rate-capacity", 0, "Rate limiter capacity (覆盖配置文件)")
 	rateRate     = flag.Float64("rate-rate", 0, "Rate limiter rate (覆盖配置文件)")

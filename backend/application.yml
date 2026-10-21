@@ -16,12 +16,19 @@ static: ""  # 默认为 frontend/out
 log:
   level: "debug"        # 日志级别: debug, info, error
   format: "console"     # 日志格式: console, json
-  output_path: "namer.log"  # 日志文件路径
+  # ★ 日志目录（docs/36 日志路径锚定）：空值固定「项目根/logs/」（以 backend
+  # go.mod 为锚，与启动 cwd 无关），文件名 namer-YYYYMMDD.log 按天轮转，
+  # 超过 32 天自动清理。自定义时填绝对路径；相对路径会随启动目录漂移，不建议。
+  output_path: ""       # 日志目录（空 = 项目根/logs/）
 
 # 数据库配置
 database:
   driver: "sqlite"      # 数据库驱动: sqlite, memory
-  path: "namer.db" # SQLite 数据库文件路径
+  # ★ 单一权威库（docs/36 双库分叉治理）：必须使用绝对路径，避免 server 从不同
+  # cwd 启动（backend/ 或仓库根）时各自生成 ./namer.db 造成双库分叉。
+  # 本机权威库为 backend/namer.db（已清理 words/data_meta 孤儿表）。
+  # 容器部署由 NAME_DATABASE_PATH 环境变量覆盖为 /app/data/namer.db（挂卷），无需改动此处。
+  path: "D:/19-Training/learngo/name/backend/namer.db" # SQLite 数据库绝对路径
 
 # 限流配置
 rate_limit:

@@ -20,7 +20,8 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	_ = logger.InitProduction()
+	// 测试日志一律落临时目录，避免污染真实 logs/（Init 现固定落盘）
+	_ = logger.InitProduction(os.TempDir())
 	gin.SetMode(gin.TestMode)
 	// 加载汉字数据（测试依赖完整字库时提供基础数据）
 	_, file, _, _ := runtime.Caller(0)
