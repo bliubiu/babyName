@@ -344,6 +344,39 @@ docker compose --env-file .env.development -f docker-compose.yml -f docker-compo
 
 ---
 
+## 局域网部署（无域名 / 内网虚拟机，如 192.168.10.180）
+
+主 `nginx.conf` 绑定 `your-domain.com` 且强制 Let's Encrypt 证书路径——在无域名、
+无证书的内网虚拟机上，nginx 容器会因 `cannot load certificate` 启动崩溃循环。
+此场景使用局域网变体：
+
+```bash
+# 同一 compose 主文件叠加 lan 变体（仅覆盖 nginx 配置挂载）
+docker compose --env-file .env.production \
+  -f docker-compose.yml -f docker-compose.lan.yml up -d --build
+```
+
+**差异点**（`nginx/nginx-lan.conf`）：
+- 纯 HTTP :80，`server_name _` + `default_server` → 支持 **IP 直访**
+- 无 SSL/证书/ACME 路径/HSTS（内网明文可接受；如需加密自行换证书形态）
+- 生成接口限流放宽为 30r/min
+
+**访问方式**（宿主浏览器 → 虚拟机）：
+```text
+页面        http://<虚拟机IP>/            ← 唯一入口，nginx :80
+API         http://<虚拟机IP>/api/...     ← nginx 反代 backend:8080
+探活        http://<虚拟机IP>/healthz-backend
+```
+
+> ⚠ 三个服务中**只有 nginx 发布宿主端口（80/443）**；backend 8080、frontend
+> 3000 仅在内部网络互通，浏览器**无法**直接访问 `IP:8080` / `IP:3000`。
+> `localhost:8080` 仅 dev 编排（docker-compose.dev.yml）且只在虚拟机本机成立。
+
+Windows 宿主机上浏览器地址栏输入 `http://192.168.10.180/` 即可（确认虚拟机
+防火墙放行 80：`sudo ufw allow 80/tcp` 或 firewalld `--add-service=http`）。
+
+---
+
 ## Nginx 反向代理配置
 
 ### 核心功能

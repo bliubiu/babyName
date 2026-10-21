@@ -1,0 +1,17 @@
+# docker-compose.lan.yml
+# ============================================================
+# 起名项目 - 局域网部署变体（无域名 / 无 SSL 证书）
+# 场景：192.168.x.x 内网虚拟机，浏览器 IP 直访 http://<虚拟机IP>/
+# 启动: docker compose --env-file .env.production \
+#         -f docker-compose.yml -f docker-compose.lan.yml up -d --build
+# ============================================================
+
+version: '3.8'
+
+services:
+  nginx:
+    # 注：443:443 端口映射由主文件保留（lan 配置不监听 443，映射空转无害）
+    volumes:
+      # compose v2 对 volumes 以容器内路径为合并键，同 target 覆盖主文件的挂载
+      - ./nginx/nginx-lan.conf:/etc/nginx/nginx.conf:ro
+      # letsencrypt 挂载目录可不存在：lan 配置无证书引用，不触发 emerg
