@@ -1,0 +1,24 @@
+# docker-compose.lan-https.yml
+# ============================================================
+# 起名项目 - 局域网 HTTPS 变体（自签名证书）
+# 前置：生成自签证书并放入 nginx/lan-certs/（不要提交 Git）
+#   mkdir -p nginx/lan-certs && openssl req -x509 -nodes -newkey rsa:2048 \
+#     -days 825 -keyout nginx/lan-certs/server.key -out nginx/lan-certs/server.crt \
+#     -subj "/CN=namer.lan" \
+#     -addext "subjectAltName=IP:192.168.10.180,DNS:namer.lan"
+# 启动: docker compose --env-file .env.production \
+#         -f docker-compose.yml -f docker-compose.lan-https.yml up -d --build
+# 访问: https://<虚拟机IP>/  （首次访问浏览器提示证书不受信任 → 手动继续）
+# ============================================================
+
+version: '3.8'
+
+services:
+  nginx:
+    volumes:
+      # compose v2 对 volumes 以容器内路径为合并键，同 target 覆盖主文件挂载
+      - ./nginx/nginx-lan-https.conf:/etc/nginx/nginx.conf:ro
+      # 自签证书（宿主 nginx/lan-certs/，二进制产物不入 Git）
+      - ./nginx/lan-certs/server.crt:/etc/nginx/lan-certs/server.crt:ro
+      - ./nginx/lan-certs/server.key:/etc/nginx/lan-certs/server.key:ro
+      # letsencrypt 空目录挂载（主文件保留）对本变体无实效，无证书引用不触发 emerg

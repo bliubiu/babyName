@@ -375,6 +375,28 @@ API         http://<虚拟机IP>/api/...     ← nginx 反代 backend:8080
 Windows 宿主机上浏览器地址栏输入 `http://192.168.10.180/` 即可（确认虚拟机
 防火墙放行 80：`sudo ufw allow 80/tcp` 或 firewalld `--add-service=http`）。
 
+### 局域网 HTTPS（自签名证书，可选）
+
+nginx 支持自签名证书——TLS 终结不关心签发者，差别仅在浏览器提示「不受信任」。
+生成证书（**SAN 必须含真实 IP**，现代浏览器只认 SAN 不认 CN）：
+
+```bash
+mkdir -p nginx/lan-certs
+openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
+  -keyout nginx/lan-certs/server.key -out nginx/lan-certs/server.crt \
+  -subj "/CN=namer.lan" \
+  -addext "subjectAltName=IP:192.168.10.180,DNS:namer.lan"
+
+docker compose --env-file .env.production \
+  -f docker-compose.yml -f docker-compose.lan-https.yml up -d --build
+```
+
+- 访问 `https://192.168.10.180/`：首次提示证书不受信任 → 点「高级/继续访问」；
+  或把 `server.crt` 导入 Windows「受信任的根证书颁发机构」消除警告
+- `:80` 自动 301 跳转 `:443`；探活 `http://…/healthz` 两个端口都在
+- 证书文件按 `.gitignore`（`*.crt/*.key`）设计**不入 Git**；换机重生成即可
+- 需要域名+真证书时回退主 `nginx.conf`（Let's Encrypt 形态）
+
 ---
 
 ## Nginx 反向代理配置
