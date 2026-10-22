@@ -5,6 +5,30 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.22.1]
+
+**质量验证工具链落地 + 五行判定收敛到单一真源**
+
+### ✨ New Features 新增功能
+- 【质量防线】新增一键质量验证脚本 `scripts/verify-quality.sh`，固化四道防线：① 单元层（`fate` 评分正确性 / golden 快照防漂移 / 八维 `score_detail` 透传）② 门禁表覆盖审计（`gate_audit -static-only`）②+ 专项维度巡检（`dim_audit`）③ 端到端（`e2e_check` 八大段 18 项，需先起服务）。退出码非 0 便于接入 CI。
+  - 支持三种用法：`bash scripts/verify-quality.sh`（全量，自动构建并拉起服务）、`SKIP_SERVER=1`（仅单元+门禁+dim_audit，不启服务，pre-push 用）、`SERVER_URL=http://127.0.0.1:8080`（复用已起服务）。
+- 【质量防线】新增专项维度巡检工具 `backend/tools/dim_audit`（Go CLI），直接吃真实 domain 逻辑、用「已知答案 fixtures + 结构不变量」校验四大维度，共 **147 项断言全绿**（八字 41 / 生肖 33 / 五行 43 / 诗词出典 30）：
+  - 八字：立春换年边界、年支↔生肖跨维度一致性、四柱合法干支、日主五行/强弱/喜用神合法、可复现；
+  - 生肖：`GetZodiacByYear` 已知答案、五行属性、ID/Name 自洽、12 生肖齐全；
+  - 五行：`GetCharacterWuxing` 与 `HanziData.Wuxing` **双重口径**校验 + 收敛不变式（见下）；
+  - 诗词出典：基于 `QueryNamePoetryBySource` + `MatchedSourceMembers` 校验「选某来源族→出处落在族内（不回退全库）」+ 命中字⊆名字 + 引文含命中字。
+- 【质量防线】新增 git pre-push hook `.githooks/pre-push`（运行 `verify-quality.sh` 快路径），打印阶段明细，任一阶段失败即阻断推送；`SKIP_VERIFY=1` 或 `git push --no-verify` 可跳过。已 `git config core.hooksPath .githooks` 生效。
+- 【质量防线】新增 CI workflow `.github/workflows/quality.yml` 两个 job：`quality-fast`（CI 无需服务/库，跑单元+门禁+dim_audit）、`quality-e2e`（先 `go run ./cmd/materials import --data ../data --db ./namer.db` 建库，再跑全量含 E2E 18 项）。
+
+### 🐛 Bug Fixes 问题修复
+- 【五行】`GetCharacterWuxing`（`hanzi/radical_wuxing.go`）收敛为 `ResolveWuxing` 的薄封装，**消除与单一真源 `ResolveWuxing`（覆盖表 > namer.json 校正 > 部首推导）的双口径矛盾**。此前该函数的优先级是「覆盖表 > 部首推导 > 校正兜底」，会把部首推导值压过人工校正五行，导致部首≠校正的字判定错误，已修正 6 字：明→水（原火）、马→水（原火）、石→金（原土）、玉→木（原土）、不→水（原土）、冲→金（原水）。无任何生产热路径依赖旧「部首优先」行为（引擎走 `fate`/`materials` 装配链，不经 `GetCharacterWuxing`）。
+
+### 🧪 验证
+- 专项巡检：`go run ./tools/dim_audit` → **147/147 通过**（八字 41 / 生肖 33 / 五行 43 / 诗词出典 30）。
+- 单元测试：`go test ./internal/domain/hanzi/...` 全绿；`wuxing_verify_test.go` 同步修正 6 个用例期望，并新增**收敛不变式**断言 `GetCharacterWuxing(ch) == ResolveWuxing(ch, HanziData[ch].Wuxing, radical)`，守护双口径不再分叉。
+- 质量闸门：`SKIP_SERVER=1 bash scripts/verify-quality.sh` → EXIT=0（单元 + 门禁审计 + dim_audit 全 PASS，E2E 按预期跳过）；全量（含 E2E 18/18）→ EXIT=0。
+- pre-push hook 模拟运行（空 stdin）→ EXIT=0，打印「✓ 全部质量防线通过，允许推送」。
+
 ## [2026.10.21.7]
 
 **物料管线 docs/40 本期（A1-A5+B6）落地收尾：验收缺口闭合**

@@ -69,10 +69,10 @@ func TestGetCharacterWuxing(t *testing.T) {
 		{"木", "木"}, {"林", "木"}, {"梅", "木"}, {"梓", "木"},
 		{"花", "木"}, {"英", "木"}, {"芳", "木"}, {"芬", "木"},
 		// 火类
-		{"火", "火"}, {"日", "火"}, {"光", "火"}, {"明", "火"},
-		{"龙", "火"}, {"马", "火"},
+		{"火", "火"}, {"日", "火"}, {"光", "火"}, {"明", "水"}, // 明=部首日→火，但 namer.json 校正=水，收敛后取校正
+		{"龙", "火"}, {"马", "水"}, // 马=部首马→火，校正=水，收敛后取校正
 		// 土类
-		{"土", "土"}, {"山", "土"}, {"石", "土"}, {"玉", "土"},
+		{"土", "土"}, {"山", "土"}, {"石", "金"}, {"玉", "木"}, // 石/玉 校正五行优先于部首推导（石部首土→校正金、玉部首土→校正木）
 		{"安", "土"}, {"家", "木"}, // 家=宀+豕, 覆盖表特例=木
 		// 金类
 		{"金", "金"}, {"铭", "金"}, {"钰", "金"}, {"锐", "金"},
@@ -93,7 +93,7 @@ func TestGetCharacterWuxing(t *testing.T) {
 		{"克", "木"}, {"卓", "金"}, {"南", "火"},
 		{"宇", "土"}, {"全", "火"},
 		{"文", "水"}, {"方", "水"}, {"无", "水"},
-		{"不", "土"}, {"冰", "水"}, {"冲", "水"}, // 不=部首一→土
+		{"不", "水"}, {"冰", "水"}, {"冲", "金"}, // 不/冲 校正五行优先于部首推导（不部首一→土校正水；冲部首冫→水校正金）
 	}
 	for _, tc := range tests {
 		t.Run(tc.char, func(t *testing.T) {
@@ -102,6 +102,14 @@ func TestGetCharacterWuxing(t *testing.T) {
 				if data, ok := HanziData[tc.char]; ok && data.Wuxing != tc.want {
 					t.Errorf("GetCharacterWuxing(%q) = %q, 期望 %q; HanziData.Wuxing = %q",
 						tc.char, got, tc.want, data.Wuxing)
+				}
+			}
+			// 收敛不变式：GetCharacterWuxing 必须等价于 ResolveWuxing（单一真源），
+			// 杜绝两套五行判定口径再次分叉（docs/33 遗留双口径问题）。
+			if data, ok := HanziData[tc.char]; ok {
+				if want2 := ResolveWuxing(tc.char, data.Wuxing, data.Radical); GetCharacterWuxing(tc.char) != want2 {
+					t.Errorf("GetCharacterWuxing(%q)=%q 与 ResolveWuxing=%q 不一致（双口径分叉）",
+						tc.char, GetCharacterWuxing(tc.char), want2)
 				}
 			}
 		})

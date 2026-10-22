@@ -1,0 +1,62 @@
+name: 起名质量与解析说明验证
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+  workflow_dispatch:
+
+# 取消同一分支上仍在运行的老工作流，节省 CI 资源
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 快路径（无需服务/数据库）：单元 + 门禁审计 + 专项维度巡检
+  # 覆盖：评分正确性、评分快照防漂移、八维 score_detail 透传、
+  #       门禁表覆盖、八字/五行/生肖/诗词出典准确性（dim_audit）
+  # ---------------------------------------------------------------------------
+  quality-fast:
+    name: 质量快路径（单元+门禁+专项维度）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: 运行快路径验证（SKIP_SERVER=1）
+        working-directory: ${{ github.workspace }}
+        env:
+          SKIP_SERVER: "1"
+        run: bash scripts/verify-quality.sh
+
+  # ---------------------------------------------------------------------------
+  # 全量（含端到端 E2E 18 项）：自动构建后端、导入物料库、启动服务后跑 e2e_check
+  # 需要构建 namer.db；耗时较长，作为独立 job 以便并发/按需执行
+  # ---------------------------------------------------------------------------
+  quality-e2e:
+    name: 全量（含 E2E 端到端 18 项）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: 构建物料库 namer.db
+        working-directory: backend
+        run: go run ./cmd/materials import --data ../data --db ./namer.db
+
+      - name: 运行全量验证（自动构建+启服务+E2E）
+        working-directory: ${{ github.workspace }}
+        run: bash scripts/verify-quality.sh

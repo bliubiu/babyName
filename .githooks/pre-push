@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# =============================================================================
+# .githooks/pre-push — 推送前质量闸门
+#
+# 作用：在 `git push` 前跑「快路径」质量验证（单元 + 门禁审计 + 专项维度巡检），
+#       任一阶段失败即阻断推送（退出码非 0），把问题挡在本地。
+#
+# 快路径不含端到端 E2E（E2E 需启服务，慢），E2E 交给 CI 全量跑：
+#   - 单元/门禁/专项维度：本 hook（SKIP_SERVER=1）
+#   - 端到端 18 项       ：CI workflow（.github/workflows/quality.yml）
+#
+# 跳过方式：
+#   SKIP_VERIFY=1 git push            # 临时跳过本 hook
+#   git push --no-verify              # git 原生跳过所有 hook
+#
+# 安装（二选一）：
+#   git config core.hooksPath .githooks        # 推荐：整仓库启用
+#   # 或把本文件软链/复制到 .git/hooks/pre-push
+# =============================================================================
+
+set -uo pipefail
+
+# 允许临时跳过
+if [ "${SKIP_VERIFY:-0}" = "1" ]; then
+  echo "[pre-push] SKIP_VERIFY=1：跳过质量验证"
+  exit 0
+fi
+
+# 解析仓库根目录（hook 由 git 在仓库内调用，但用绝对路径更稳）
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$REPO_ROOT" ]; then
+  echo "[pre-push] 无法定位 git 仓库根目录，跳过验证" >&2
+  exit 0
+fi
+
+SCRIPT="$REPO_ROOT/scripts/verify-quality.sh"
+if [ ! -f "$SCRIPT" ]; then
+  echo "[pre-push] 未找到 $SCRIPT，跳过验证" >&2
+  exit 0
+fi
+
+# 消费 git 通过 stdin 传入的引用列表（避免某些 git 版本下阻塞）
+while read -r _local_ref _local_sha _remote_ref _remote_sha; do
+  : # 本 hook 不区分具体分支，统一做全量快路径验证
+done
+
+echo "=================================================================="
+echo "[pre-push] 运行推送前质量验证（快路径：单元 + 门禁 + 专项维度巡检）"
+echo "=================================================================="
+
+# 快路径：不启动服务（跳过 E2E）
+if SKIP_SERVER=1 bash "$SCRIPT"; then
+  echo "[pre-push] ✅ 质量验证通过，允许推送"
+  exit 0
+else
+  echo "" >&2
+  echo "[pre-push] ❌ 质量验证未通过，已阻断推送。" >&2
+  echo "[pre-push] 请先本地修复上述失败项；如需临时跳过用：SKIP_VERIFY=1 git push" >&2
+  exit 1
+fi

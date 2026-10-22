@@ -366,20 +366,23 @@ var CharacterWuxingOverride = map[string]string{
 	"霞": "水", // 霞
 }
 
-// GetCharacterWuxing 获取汉字五行
-// 先查覆盖表（字义法优先），再按部首映射表推算
+// GetCharacterWuxing 获取汉字五行。
+//
+// 本函数现已收敛为 ResolveWuxing 的薄封装，是唯一的五行判定口径，
+// 消除此前「覆盖表>部首>校正」（本函数旧版）与 ResolveWuxing「覆盖表>已校正>部首」
+// 的双口径矛盾——旧版会让部首推导值压过 namer.json 人工校正（如「明」部首=火、
+// 校正=水 时旧版返回火）。收敛后两者完全一致，优先级：
+//   1. CharacterWuxingOverride（字义法覆盖表）— 无条件应用
+//   2. HanziData.Wuxing（namer.json 人工校正）— 保留
+//   3. 部首映射表（字形法）— 仅对空值兜底
+//
+// 该口径与物料导入路径（sqlite.Store.Import → hanzi.ResolveWuxing）完全一致，
+// 内存路径与 SQL 路径五行判定不再分叉（filter_integration_test 守护）。
+// 走 GetHanzi 持读锁，避免与热更新写并发（docs/29 B9）。
 func GetCharacterWuxing(char string) string {
-	// 1. 先查覆盖表
-	if wx, ok := CharacterWuxingOverride[char]; ok {
-		return wx
+	data, ok := GetHanzi(char)
+	if !ok {
+		return ""
 	}
-
-	// 2. 查部首映射表（走 GetHanzi 持读锁，避免与热更新写并发，docs/29 B9）
-	if data, ok := GetHanzi(char); ok {
-		if wx := GetWuxingByRadical(data.Radical); wx != "" {
-			return wx
-		}
-	}
-
-	return ""
+	return ResolveWuxing(char, data.Wuxing, data.Radical)
 }
