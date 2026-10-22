@@ -141,6 +141,7 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 			RequiredChars:   req.SelectedChars,
 			PinyinInitial:   req.PinyinInitial,
 			ExtraChars:      s.resolveExtraChars(req),
+			EnableCantonese: req.EnableCantonese,
 		},
 		AvoidElderNames: req.AvoidElderNames,
 	}
@@ -216,6 +217,15 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 		// 顺序与 DefaultRaters 权重降序一致，确保推荐名展示稳定。
 		// 提取自 buildScoreDetail，与 /generate 路径同源，避免两套顺序漂移。
 		na.ScoreDetail = buildScoreDetail(nr.Score.Items, nr.Score.Details)
+		// 粤拼标注回填（与粤语评分开关无关，始终透传）
+		if nr.Jyutping != "" {
+			na.Jyutping = nr.Jyutping
+		}
+		// 独立粤语分回填（仅在开启粤语评分时非空）
+		if nr.CantoneseScore != nil {
+			na.CantoneseScore = nr.CantoneseScore.Total
+			na.CantoneseScoreDetail = buildCantoneseScoreDetail(nr.CantoneseScore)
+		}
 		// 诗词出处回填（engine 构建 NameResult 时未设 PoetryFrom，需单独传递）
 		if nr.PoetryFrom != "" {
 			na.PoetrySource = nr.PoetryFrom
@@ -302,6 +312,28 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 	)
 
 	return response, nil
+}
+
+// buildCantoneseScoreDetail 把粤语分（粤语音律 + 粤语谐音）按固定顺序平铺为维度明细，
+// 与 buildScoreDetail 同构但独立成表，供前端粤语评分面板渲染。
+func buildCantoneseScoreDetail(cs *fate.NameScore) []name.ScoreDetailItem {
+	if cs == nil {
+		return nil
+	}
+	order := []string{"粤语音律", "粤语谐音"}
+	var out []name.ScoreDetailItem
+	for _, dim := range order {
+		score, ok := cs.Items[dim]
+		if !ok {
+			continue
+		}
+		out = append(out, name.ScoreDetailItem{
+			Name:   dim,
+			Score:  score,
+			Detail: cs.Details[dim],
+		})
+	}
+	return out
 }
 
 // hexagramForNames 梅花易数姓名卦：姓笔画→上卦，名笔画→下卦

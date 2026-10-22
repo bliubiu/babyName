@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"name/internal/domain/classics"
+	"name/internal/domain/yue"
 )
 
 // ——— 测名（给定姓名评分） ———
@@ -81,6 +82,7 @@ func RateGivenName(
 	}
 
 	surnamePinyin := firstPinyinForSurname(surname, provider)
+	surnameJyutping := yue.PrimaryJyutping(surname)
 
 	var cand *NameCandidate
 	if len(infos) == 2 {
@@ -93,9 +95,9 @@ func RateGivenName(
 		} else if b.poetryFound {
 			poetryDesc = b.poetryDesc
 		}
-		cand = doubleNameCandidate(a, b, poetryFound, poetryDesc, surnamePinyin, nil)
+		cand = doubleNameCandidate(a, b, poetryFound, poetryDesc, surnamePinyin, surnameJyutping, nil)
 	} else {
-		cand = singleNameCandidate(infos[0], surnamePinyin)
+		cand = singleNameCandidate(infos[0], surnamePinyin, surnameJyutping)
 	}
 
 	score := RateName(cand, fateData, raters)

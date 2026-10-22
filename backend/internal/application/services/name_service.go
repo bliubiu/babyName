@@ -131,6 +131,11 @@ type GenerateRequest struct {
 	SelectedChars []string `json:"selected_chars"`
 	PinyinInitial string   `json:"pinyin_initial"`
 
+	// EnableCantonese 是否开启粤语评分。
+	// 开启后结果附带独立「粤语分」（粤语音律 + 粤语谐音），并以固定权重轻量并入
+	// 综合分影响排序；关闭时综合分完全由普通话八维决定。粤拼标注始终返回。
+	EnableCantonese bool `json:"enable_cantonese"`
+
 	// 避讳长辈：父系/母系直系长辈姓名（建议往上两代）
 	// 生成名字时排除同形字与同音字，避免"压运"
 	AvoidElderNames []string `json:"avoid_elder_names"`

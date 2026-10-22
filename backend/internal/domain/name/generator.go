@@ -150,6 +150,15 @@ type NameAnalysis struct {
 	// 综合评分
 	TotalScore      float64  `json:"total_score"`
 	Recommendations []string `json:"recommendations"`
+
+	// Jyutping 粤拼标注（姓 + 名各字粤拼，空格组合），与粤语评分开关无关，始终透传。
+	Jyutping string `json:"jyutping,omitempty"`
+
+	// CantoneseScore 独立「粤语分」（0-100）；仅在开启粤语评分时非零。
+	// 由粤语音律 + 粤语谐音两项聚合，独立展示，不并入 ScoreDetail 的普通话各维度。
+	CantoneseScore float64 `json:"cantonese_score,omitempty"`
+	// CantoneseScoreDetail 粤语分维度明细（粤语音律/粤语谐音），仅在开启粤语评分时非空。
+	CantoneseScoreDetail []ScoreDetailItem `json:"cantonese_score_detail,omitempty"`
 }
 
 // NameChar 汉字字符

@@ -3,6 +3,8 @@ package fate
 import (
 	"fmt"
 	"strings"
+
+	"name/internal/domain/yue"
 )
 
 // ——— 风险体检清单 ———
@@ -200,6 +202,42 @@ func AssessNameRisks(provider CharacterProvider, surname, given string) []RiskIt
 						Detail:   desc,
 					})
 				}
+			}
+		}
+	}
+
+	// ——— 粤语谐音检查（粤语音系，独立于普通话谐音）———
+	//
+	// 普通话谐音风险由上方的「谐音」类别覆盖；此处补充「粤语特有」的不吉谐音与连读
+	// 不良词（如 柯→屙、朱→豬、史→屎、賴→癩、吳→唔 懒音歧义等）。这类风险在普通话
+	// 维度下可能是干净好字，但对粤语使用者是不雅联想，因此无条件纳入风险体检（属信息
+	// 提示性质，不依赖生成侧的粤语评分开关）。粤拼未收录时静默跳过（不误报）。
+	{
+		c1c, c2c, jp1, jp2 := "", "", "", ""
+		if len(chars) >= 1 && chars[0] != nil {
+			c1c = chars[0].Char
+			jp1 = yue.PrimaryJyutping(c1c)
+		}
+		if len(chars) >= 2 && chars[1] != nil {
+			c2c = chars[1].Char
+			jp2 = yue.PrimaryJyutping(c2c)
+		}
+		if jp1 != "" || jp2 != "" {
+			cc := &NameCandidate{
+				Char1: c1c, Char2: c2c,
+				Jyutping1: jp1, Jyutping2: jp2,
+				SurnameJyutping: yue.PrimaryJyutping(surname),
+			}
+			if hasFail, _, descs := CantoneseRiskSummary(cc); hasFail || len(descs) > 0 {
+				level := RiskWarn
+				if hasFail {
+					level = RiskFail
+				}
+				items = append(items, RiskItem{
+					Category: "粤语谐音",
+					Level:    level,
+					Detail:   joinCantoneseRisk(descs, "粤语读音无不良谐音"),
+				})
 			}
 		}
 	}

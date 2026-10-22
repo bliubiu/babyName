@@ -3,6 +3,7 @@ package fate
 import (
 	"context"
 	"fmt"
+	"math"
 	"runtime"
 	"sort"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"name/internal/domain/classics"
+	"name/internal/domain/yue"
 )
 
 // CharacterProvider 汉字数据提供接口
@@ -173,6 +175,11 @@ type sessionImpl struct {
 	// 用于减少 generate() 阶段 N×N 双名笛卡尔积中的 50 万次 RLock。
 	bigramCache *SessionBigramCache
 
+	// 粤语评分（开启 EnableCantonese 时装配）
+	enableCantonese bool    // 本会话是否开启粤语评分
+	cantoneseRaters []Rater // 粤语评分器（DefaultCantoneseRaters）
+	surnameJyutping string  // 姓氏粤拼（预计算，供候选组装注入）
+
 	// 负面反馈
 	//
 	// excludedChars/excludedCombos 是**可写副本**，仅在持有 s.mu 写锁时被修改；
@@ -238,6 +245,14 @@ func (s *sessionImpl) Start(ctx context.Context, input *Input) error {
 				break
 			}
 		}
+	}
+	// 粤语评分装配（per-request）：开启 EnableCantonese 时注入粤语评分器与姓氏粤拼。
+	// 粤拼标注（Jyutping1/2/SurnameJyutping）在候选组装阶段无条件预填（见
+	// singleNameCandidate/doubleNameCandidate），但粤语评分仅在开启开关时参与聚合。
+	if input.Options.EnableCantonese {
+		s.enableCantonese = true
+		s.cantoneseRaters = DefaultCantoneseRaters()
+		s.surnameJyutping = yue.PrimaryJyutping(input.Surname)
 	}
 	// 初始化 per-session 二字共现缓存（与 session 同生命周期）
 	s.bigramCache = newSessionBigramCache()
@@ -771,7 +786,7 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 			nameStroke2 = e.Stroke2
 		}
 		totalStrokes += nameStroke1 + nameStroke2
-		topNames = append(topNames, NameResult{
+		nr := NameResult{
 			Rank:      rank,
 			Surname:   input.Surname,
 			GivenName: givenName,
@@ -779,6 +794,8 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 			// 拼音回填：ExcellentEntry 已携带预计算的候选字读音，
 			// 双名以空格组合，单名仅首字读音（TrimSpace 清理尾随空格）
 			Pinyin: strings.TrimSpace(e.Pinyin1 + " " + e.Pinyin2),
+			// 粤拼标注回填：姓 + 名各字粤拼以空格组合（未收录字跳过，TrimSpace 清理）
+			Jyutping: strings.TrimSpace(e.SurnameJyutping + " " + e.Jyutping1 + " " + e.Jyutping2),
 			// 释义回填：候选字释义组合为名字寓意描述，
 			// 单名仅首字释义，双名以「；」连接；超长释义按 rune 截断防撑爆响应
 			Meaning: combineCharMeanings(e.Meaning1, e.Meaning2),
@@ -792,7 +809,17 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 				Items:   e.Items,
 				Details: e.Details,
 			},
-		})
+		}
+		// 粤语分透出：仅在开启粤语评分且已回算明细时附带（nil 表示未开启，JSON 省略）。
+		if s.enableCantonese && e.CantoneseItems != nil {
+			nr.CantoneseScore = &NameScore{
+				Total:   e.CantoneseTotal,
+				Grade:   scoreToGrade(e.CantoneseTotal),
+				Items:   e.CantoneseItems,
+				Details: e.CantoneseDetails,
+			}
+		}
+		topNames = append(topNames, nr)
 	}
 
 	s.setStage(sessionStageRank, 100)
@@ -1210,7 +1237,7 @@ func ensureWuxingDiversity(entries []ExcellentEntry, topCount int) []ExcellentEn
 // 字段与历史上两处内联构造逐一对齐（单名不注入 Meaning1/Radical/GenderHint/
 // bigramCache，以免无意改变 WenHuaRater 的「字义明确 +4」等分支结果）。
 // 抽成函数是为了让「枚举期评分」与「入榜后回算明细」走同一条构造路径。
-func singleNameCandidate(a charInfo, surnamePinyin string) *NameCandidate {
+func singleNameCandidate(a charInfo, surnamePinyin, surnameJyutping string) *NameCandidate {
 	return &NameCandidate{
 		Char1:          a.ch.Char,
 		Pinyin1:        a.pinyin,
@@ -1225,6 +1252,9 @@ func singleNameCandidate(a charInfo, surnamePinyin string) *NameCandidate {
 		IsCurated1:     a.ch.IsCurated,
 		PositiveScore1: a.ch.PositiveScore,
 		SurnamePinyin:  surnamePinyin,
+		// 粤拼（首次读音，未收录为空串）：供粤语音律分与粤语谐音风险分使用，并透出展示。
+		Jyutping1:       yue.PrimaryJyutping(a.ch.Char),
+		SurnameJyutping: surnameJyutping,
 		// 释义画像：单名无名2，仅注入字1画像（NoveltyRater 单名分支不比较重叠）
 		MeaningProfile1: a.meaningProfile,
 	}
@@ -1235,7 +1265,7 @@ func singleNameCandidate(a charInfo, surnamePinyin string) *NameCandidate {
 // poetryFound/poetryDesc 由调用方按「甲字||乙字任一有出典」预先合并后传入
 // （与引擎内层循环的既有语义一致）。
 func doubleNameCandidate(
-	a, b charInfo, poetryFound bool, poetryDesc, surnamePinyin string, bigramCache *SessionBigramCache,
+	a, b charInfo, poetryFound bool, poetryDesc, surnamePinyin, surnameJyutping string, bigramCache *SessionBigramCache,
 ) *NameCandidate {
 	return &NameCandidate{
 		Char1:         a.ch.Char,
@@ -1268,6 +1298,10 @@ func doubleNameCandidate(
 		PositiveScore2: b.ch.PositiveScore,
 		// 姓氏拼音取自 input，用于音韵评分器检测跨字谐音
 		SurnamePinyin: surnamePinyin,
+		// 粤拼（首次读音，未收录为空串）：供粤语音律分与粤语谐音风险分使用，并透出展示。
+		Jyutping1:       yue.PrimaryJyutping(a.ch.Char),
+		Jyutping2:       yue.PrimaryJyutping(b.ch.Char),
+		SurnameJyutping: surnameJyutping,
 		// 释义画像：按候选字预计算，消除 N² 次释义字符串扫描
 		MeaningProfile1: a.meaningProfile,
 		MeaningProfile2: b.meaningProfile,
@@ -1286,6 +1320,21 @@ func doubleNameCandidate(
 // 代价可忽略：条目数 ≤ topCount*10（约 500~1000），相对 N² 枚举量级约千分之一。
 // 回算结果的总分与枚举期一致（两条路径共用封顶判据与取整逻辑，
 // 由 TestRateNameScoreMatchesRateName 断言保证）。
+// blendScore 计算候选名的最终排序得分，并透出粤语子分。
+//
+// 开启粤语评分时，把粤语分（RateCantoneseScore）按固定权重 CantoneseBlendWeight
+// 并入主分，使粤语音律/谐音对排序有轻量但可见的影响；关闭时原样返回主分（零影响）。
+// 返回的 canto 为粤语分（0-100），供 ExcellentEntry.CantoneseTotal 透传展示。
+func (s *sessionImpl) blendScore(cand *NameCandidate, fateData *FateData) (finalScore float64, canto float64) {
+	mainTotal := RateNameScore(cand, fateData, s.raters)
+	if !s.enableCantonese || len(s.cantoneseRaters) == 0 {
+		return mainTotal, 0
+	}
+	canto = RateCantoneseScore(cand, fateData, s.cantoneseRaters)
+	blended := mainTotal*(1-CantoneseBlendWeight) + canto*CantoneseBlendWeight
+	return math.Round(blended*10) / 10, canto
+}
+
 func (s *sessionImpl) fillEntryDetails(
 	entries []ExcellentEntry, infos []charInfo, fateData *FateData, surnamePinyin string,
 ) {
@@ -1305,13 +1354,25 @@ func (s *sessionImpl) fillEntryDetails(
 			} else if b.poetryFound {
 				poetryDesc = b.poetryDesc
 			}
-			cand = doubleNameCandidate(a, b, poetryFound, poetryDesc, surnamePinyin, s.bigramCache)
+			cand = doubleNameCandidate(a, b, poetryFound, poetryDesc, surnamePinyin, s.surnameJyutping, s.bigramCache)
 		} else {
-			cand = singleNameCandidate(a, surnamePinyin)
+			cand = singleNameCandidate(a, surnamePinyin, s.surnameJyutping)
 		}
 		ns := RateName(cand, fateData, s.raters)
 		e.Items = ns.Items
 		e.Details = ns.Details
+		// 粤拼标注：始终回填（供前端展示，与粤语评分开关无关）
+		e.Jyutping1 = cand.Jyutping1
+		e.Jyutping2 = cand.Jyutping2
+		e.SurnameJyutping = cand.SurnameJyutping
+		// 粤语分明细：仅在开启粤语评分时回算（粤语音律 + 粤语谐音两项）。
+		// 总分在枚举期已按 CantoneseBlendWeight 并入 e.Score，此处补充分项文案。
+		if s.enableCantonese && len(s.cantoneseRaters) > 0 {
+			cs := RateCantonese(cand, fateData, s.cantoneseRaters)
+			e.CantoneseTotal = cs.Total
+			e.CantoneseItems = cs.Items
+			e.CantoneseDetails = cs.Details
+		}
 	}
 }
 
@@ -1386,21 +1447,23 @@ func (s *sessionImpl) generateWithGeneration(
 		if !s.filter.CheckStrokePair(genInfo.stroke, 0) {
 			return infos, false
 		}
-		total := RateNameScore(singleNameCandidate(genInfo, surnamePinyin), fateData, s.raters)
+		cand := singleNameCandidate(genInfo, surnamePinyin, s.surnameJyutping)
+		final, canto := s.blendScore(cand, fateData)
 		table.TryPush(ExcellentEntry{
-			Char1:         genInfo.ch.Char,
-			Pinyin1:       genInfo.pinyin,
-			Meaning1:      genInfo.ch.Meaning,
-			Score:         total,
-			Grade:         scoreToGrade(total),
-			WuXing1:       genInfo.ch.WuXing,
-			Stroke1:       genInfo.stroke,
-			KangxiStroke1: genInfo.ch.KangxiStroke,
-			HasPoetry:     genInfo.poetryFound,
-			PoetryFrom:    genInfo.poetryDesc,
-			NameFreqTier1: genInfo.ch.NameFreqTier,
-			idx1:          genIdx,
-			idx2:          -1,
+			Char1:          genInfo.ch.Char,
+			Pinyin1:        genInfo.pinyin,
+			Meaning1:       genInfo.ch.Meaning,
+			Score:          final,
+			Grade:          scoreToGrade(final),
+			WuXing1:        genInfo.ch.WuXing,
+			Stroke1:        genInfo.stroke,
+			KangxiStroke1:  genInfo.ch.KangxiStroke,
+			HasPoetry:      genInfo.poetryFound,
+			PoetryFrom:     genInfo.poetryDesc,
+			NameFreqTier1:  genInfo.ch.NameFreqTier,
+			CantoneseTotal: canto,
+			idx1:           genIdx,
+			idx2:           -1,
 		})
 		totalCount.Add(1)
 		table.Finalize()
@@ -1467,33 +1530,35 @@ func (s *sessionImpl) generateWithGeneration(
 		}
 
 		// 枚举期只算总分：不构造 Items/Details 与各维度解释文案
-		total := RateNameScore(doubleNameCandidate(a, b, poetryFound, poetryDesc, surnamePinyin, s.bigramCache), fateData, s.raters)
+		cand := doubleNameCandidate(a, b, poetryFound, poetryDesc, surnamePinyin, s.surnameJyutping, s.bigramCache)
+		final, canto := s.blendScore(cand, fateData)
 
 		idxFirst, idxSecond := j, genIdx
 		if genFirst {
 			idxFirst, idxSecond = genIdx, j
 		}
 		table.TryPush(ExcellentEntry{
-			Char1:         a.ch.Char,
-			Char2:         b.ch.Char,
-			Pinyin1:       a.pinyin,
-			Pinyin2:       b.pinyin,
-			Meaning1:      a.ch.Meaning,
-			Meaning2:      b.ch.Meaning,
-			Score:         total,
-			Grade:         scoreToGrade(total),
-			WuXing1:       a.ch.WuXing,
-			WuXing2:       b.ch.WuXing,
-			Stroke1:       a.stroke,
-			Stroke2:       b.stroke,
-			KangxiStroke1: a.ch.KangxiStroke,
-			KangxiStroke2: b.ch.KangxiStroke,
-			HasPoetry:     poetryFound,
-			PoetryFrom:    poetryDesc,
-			NameFreqTier1: a.ch.NameFreqTier,
-			NameFreqTier2: b.ch.NameFreqTier,
-			idx1:          idxFirst,
-			idx2:          idxSecond,
+			Char1:          a.ch.Char,
+			Char2:          b.ch.Char,
+			Pinyin1:        a.pinyin,
+			Pinyin2:        b.pinyin,
+			Meaning1:       a.ch.Meaning,
+			Meaning2:       b.ch.Meaning,
+			Score:          final,
+			Grade:          scoreToGrade(final),
+			WuXing1:        a.ch.WuXing,
+			WuXing2:        b.ch.WuXing,
+			Stroke1:        a.stroke,
+			Stroke2:        b.stroke,
+			KangxiStroke1:  a.ch.KangxiStroke,
+			KangxiStroke2:  b.ch.KangxiStroke,
+			HasPoetry:      poetryFound,
+			PoetryFrom:     poetryDesc,
+			NameFreqTier1:  a.ch.NameFreqTier,
+			NameFreqTier2:  b.ch.NameFreqTier,
+			CantoneseTotal: canto,
+			idx1:           idxFirst,
+			idx2:           idxSecond,
 		})
 		totalCount.Add(1)
 
@@ -1531,21 +1596,23 @@ func (s *sessionImpl) generateSingleName(
 
 		// 枚举期只算总分：不构造 Items/Details 与各维度解释文案
 		// （评分与解释分离，入榜后再按 idx1 回算完整明细）。
-		total := RateNameScore(singleNameCandidate(a, surnamePinyin), fateData, s.raters)
+		cand := singleNameCandidate(a, surnamePinyin, s.surnameJyutping)
+		final, canto := s.blendScore(cand, fateData)
 		entry := ExcellentEntry{
-			Char1:         a.ch.Char,
-			Pinyin1:       a.pinyin,
-			Meaning1:      a.ch.Meaning,
-			Score:         total,
-			Grade:         scoreToGrade(total),
-			WuXing1:       a.ch.WuXing,
-			Stroke1:       a.stroke,
-			KangxiStroke1: a.ch.KangxiStroke,
-			HasPoetry:     a.poetryFound,
-			PoetryFrom:    a.poetryDesc,
-			NameFreqTier1: a.ch.NameFreqTier,
-			idx1:          i,
-			idx2:          -1,
+			Char1:          a.ch.Char,
+			Pinyin1:        a.pinyin,
+			Meaning1:       a.ch.Meaning,
+			Score:          final,
+			Grade:          scoreToGrade(final),
+			WuXing1:        a.ch.WuXing,
+			Stroke1:        a.stroke,
+			KangxiStroke1:  a.ch.KangxiStroke,
+			HasPoetry:      a.poetryFound,
+			PoetryFrom:     a.poetryDesc,
+			NameFreqTier1:  a.ch.NameFreqTier,
+			CantoneseTotal: canto,
+			idx1:           i,
+			idx2:           -1,
 		}
 		table.TryPush(entry)
 		totalCount.Add(1)
@@ -1725,28 +1792,30 @@ func (s *sessionImpl) generateDoubleName(
 
 					// 枚举期只算总分：不构造 Items/Details 与各维度解释文案
 					// （评分与解释分离，入榜后再按 idx1/idx2 回算完整明细）。
-					total := RateNameScore(doubleNameCandidate(a, b, poetryFound, poetryDesc, surnamePinyin, s.bigramCache), fateData, s.raters)
+					cand := doubleNameCandidate(a, b, poetryFound, poetryDesc, surnamePinyin, s.surnameJyutping, s.bigramCache)
+					final, canto := s.blendScore(cand, fateData)
 					entry := ExcellentEntry{
-						Char1:         a.ch.Char,
-						Char2:         b.ch.Char,
-						Pinyin1:       a.pinyin,
-						Pinyin2:       b.pinyin,
-						Meaning1:      a.ch.Meaning,
-						Meaning2:      b.ch.Meaning,
-						Score:         total,
-						Grade:         scoreToGrade(total),
-						WuXing1:       a.ch.WuXing,
-						WuXing2:       b.ch.WuXing,
-						Stroke1:       a.stroke,
-						Stroke2:       b.stroke,
-						KangxiStroke1: a.ch.KangxiStroke,
-						KangxiStroke2: b.ch.KangxiStroke,
-						HasPoetry:     poetryFound,
-						PoetryFrom:    poetryDesc,
-						NameFreqTier1: a.ch.NameFreqTier,
-						NameFreqTier2: b.ch.NameFreqTier,
-						idx1:          i,
-						idx2:          j,
+						Char1:          a.ch.Char,
+						Char2:          b.ch.Char,
+						Pinyin1:        a.pinyin,
+						Pinyin2:        b.pinyin,
+						Meaning1:       a.ch.Meaning,
+						Meaning2:       b.ch.Meaning,
+						Score:          final,
+						Grade:          scoreToGrade(final),
+						WuXing1:        a.ch.WuXing,
+						WuXing2:        b.ch.WuXing,
+						Stroke1:        a.stroke,
+						Stroke2:        b.stroke,
+						KangxiStroke1:  a.ch.KangxiStroke,
+						KangxiStroke2:  b.ch.KangxiStroke,
+						HasPoetry:      poetryFound,
+						PoetryFrom:     poetryDesc,
+						NameFreqTier1:  a.ch.NameFreqTier,
+						NameFreqTier2:  b.ch.NameFreqTier,
+						CantoneseTotal: canto,
+						idx1:           i,
+						idx2:           j,
 					}
 					local.TryPush(entry)
 					totalCount.Add(1)

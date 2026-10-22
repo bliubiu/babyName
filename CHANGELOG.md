@@ -5,6 +5,32 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.22.2]
+
+**粤语多维度评分模型落地（评分内核 P0–P3 + 引擎集成）**
+
+在普通话八维评分体系之外，新增一套**平行、独立**的粤语评分链路：粤语音律分 + 粤语谐音风险分，聚合成独立「粤语分」透出展示，并在开关开启时以固定权重（0.10）轻量并入综合分影响排序；关闭时综合分完全由普通话八维决定（零影响）。
+
+### ✨ New Features 新增功能
+- 【粤语评分·数据层】新增 `internal/domain/yue` 包：`//go:embed jyutping.json` 静态嵌入粤拼映射（简体 12676 条，三源合并：yyzd 粤语字典 + HKSCS2016 + wordslist）。提供 `JyutpingOf/PrimaryJyutping/StripJyutpingTone/JyutpingTone/JyutpingInitial/JyutpingFinal/IsEnteringTone/ToneClass/ShengMuGroup` 等粤语音系算子。对起名候选字覆盖率：一级字 100%、总体 76%（核心起名用字全命中）。
+- 【粤语评分·谐音风险】新增 `yue/homophone.go`：粤语负面谐音词库三层设计——① `YueBadHomophones` 通用不吉字（带**本字豁免**，不误伤珠/思等同音好字）② `YueHomophonePairs` 明确「好字→不雅谐音」配对点名（朱→猪、柯→屙、苟→狗、史→屎、赖→癞 fail；吴→唔、陈→尘、黎→篱 warn）③ `YueBadCombos` 粤语连读不良词（滑窗查表 O(文本长度)）。含懒音近音歧义（n↔l、∅↔ng、t↔k）。
+- 【粤语评分·评分器】新增 `fate/yue_yinyun.go`（`YueYinYunRater` 粤语音律：声调平仄交替/声母冲突/韵母冲突/入声收束）与 `fate/yue_homophone.go`（`YueHomophoneRater` 粤语谐音：fail -25 / warn -8）。均实现 `Rater` 接口并兼容 `skipDetail` 热路径。
+- 【粤语评分·聚合】`rater.go` 新增 `RateCantonese`/`RateCantoneseScore`/`DefaultCantoneseRaters`/`CantoneseBlendWeight`。粤语两维权重内部归一（音律 0.6 + 谐音 0.4 = 1.0），与普通话八维权重体系互不干扰；粤语维度不参与「非策展双名封顶」。
+- 【粤语评分·引擎集成】`GenerateOptions.EnableCantonese` 开关；会话装配期注入粤语评分器与姓氏粤拼；候选组装无条件预填 `Jyutping1/2/SurnameJyutping`（粤拼标注始终透传，与开关无关）；枚举评分点经 `blendScore` 轻量并入影响排序；入榜条目回算粤语分明细。
+- 【粤语评分·API 透出】`NameResult` 新增 `CantoneseScore`（开启时非空）与 `Jyutping`；`NameAnalysis` 新增 `cantonese_score`/`cantonese_score_detail`/`jyutping` 字段；请求 DTO 新增 `enable_cantonese`。粤拼标注供前端展示粤拼与声调。
+- 【粤语评分·风险体检】`AssessNameRisks` 新增「粤语谐音」风险类别（普通话谐音之外补充粤语特有风险，如吴→唔、朱→猪，粤拼未收录时静默跳过）。
+
+### 🐛 Bug Fixes 问题修复
+- 【粤语谐音】`CheckNameYueHomophones` 懒音近音检测原会把**本字粤拼本身**也当作变体参与匹配，导致珠(zyu1) 这类与朱(zyu1)→猪 同音的好字被误报 warn。已改为排除本字本身，仅当**懒音变读**后才近似不雅字才记为 warn，贯彻「不误伤同音好字」原则。
+- 【粤语谐音】`YueHomophonePairs` 早期用繁体字形（吳/賴/陳/豬/籬），简体起名候选池（吴/赖/陈）永不命中。已统一改为简体，配对真正生效。
+- 【粤语连读】`CheckYueBadCombo` 连读索引键用带声调粤拼构建（`ng4dak1`），而运行时滑窗文本去声调（`ngdak`），口径不一致导致**永不命中**。已统一为无声调键。
+
+### 🧪 验证
+- 单元测试：新增 `yue` 包 `yue_test.go`/`homophone_test.go`（音系算子 + 谐音/连读 + 珠误伤回归 + 懒音变体）与 `fate` 包 `yue_rating_test.go`（粤语两维评分器 + `RateCantoneseScore`==`RateCantonese` 一致性 + `blendScore` 混合公式 + 端到端开关透出）全绿。
+- `go build ./...`、`go vet`（fate/yue/services/name）通过。
+- `go test ./...`：`fate`/`yue`/`services`/`name`/`handlers` 等全部涉及包通过；普通话八维评分与既有 golden 快照无回归（默认关闭粤语时 `blendScore` 原样返回主分）。
+- 已知预先存在且与本次无关：`cmd/namer-cli` 的 `TestCLIBinaryJSONOutputPinyinFilled` 在沙箱因日志目录不可写回退 stdout 污染 JSON 解析而失败（干净代码上同样失败，非本次改动引入）。
+
 ## [2026.10.22.1]
 
 **质量验证工具链落地 + 五行判定收敛到单一真源**

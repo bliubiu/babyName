@@ -32,13 +32,13 @@ const (
 
 // Input 命名会话输入参数
 type Input struct {
-	Surname    string          `json:"surname"`    // 姓氏
-	Generation string          `json:"generation"` // 字辈（可选）
+	Surname    string `json:"surname"`    // 姓氏
+	Generation string `json:"generation"` // 字辈（可选）
 	// GenerationPosition 字辈在名字中的位置（可选，仅 Generation 非空时生效）
 	// 取值：middle（默认，字辈为名的第一个字）/ tail（字辈为名的最后一个字）
 	GenerationPosition string          `json:"generation_position,omitempty"`
-	Gender             Gender          `json:"gender"` // 性别
-	Born               time.Time       `json:"born"`   // 出生时间
+	Gender             Gender          `json:"gender"`  // 性别
+	Born               time.Time       `json:"born"`    // 出生时间
 	Options            GenerateOptions `json:"options"` // 生成选项
 
 	// 避讳长辈姓名列表（父系/母系直系长辈，建议往上两代）
@@ -58,6 +58,13 @@ type GenerateOptions struct {
 	RequiredChars   []string     // 用户显式点选的用字（前端「按偏旁选字」结果）
 	PinyinInitial   string       // 拼音首字母
 	ExtraChars      []*Character // 外部注入的额外候选字（诗词/经典字库来源）
+
+	// EnableCantonese 是否开启粤语评分。
+	// 开启后：独立「粤语分」（粤语音律 + 粤语谐音）透出到结果，并以固定权重
+	// CantoneseBlendWeight 轻量并入综合分（影响排序）；关闭时综合分完全由
+	// 普通话八维决定（零影响）。粤拼标注（Jyutping1/2/SurnameJyutping）始终预填，
+	// 因此前端可无条件展示粤拼，无论开关状态。
+	EnableCantonese bool
 }
 
 // NameCandidate 名字候选（不含姓氏，仅名字部分）
@@ -108,6 +115,12 @@ type NameCandidate struct {
 	NamePenalty2 int // 字2 起名扣分（0=无）
 
 	SurnamePinyin string // 姓氏拼音，用于音韵评分器检测跨字谐音
+
+	// 粤拼（Jyutping）字段：供粤语音律分与粤语谐音风险分使用。
+	// 取值为 PrimaryJyutping（首个读音），无粤拼数据则空串（评分器降级处理）。
+	Jyutping1       string // 名字第一字粤拼
+	Jyutping2       string // 名字第二字粤拼（单名时为空）
+	SurnameJyutping string // 姓氏粤拼
 
 	// MeaningProfile1/MeaningProfile2 释义字符画像（由 engine 按候选字预计算注入）
 	//
@@ -177,12 +190,20 @@ type NameResult struct {
 	GivenName  string    `json:"given_name"`
 	FullName   string    `json:"full_name"`
 	Pinyin     string    `json:"pinyin"`
-	Strokes    int       `json:"strokes"`
+	// Jyutping 粤拼标注（Jyutping1/Jyutping2/SurnameJyutping 以空格组合，未收录为空）。
+	// 与粤语评分开关无关，始终透传供前端展示粤拼与声调。
+	Jyutping string    `json:"jyutping,omitempty"`
+	Strokes  int       `json:"strokes"`
 	WuXing     string    `json:"wu_xing"`
 	Score      NameScore `json:"score"`
 	Meaning    string    `json:"meaning,omitempty"`
 	PoetryFrom string    `json:"poetry_from,omitempty"`
 	Reasons    []string  `json:"reasons,omitempty"`
+
+	// CantoneseScore 独立「粤语分」（仅在开启粤语评分时非空，为 nil 表示未开启）。
+	// 由粤语音律 + 粤语谐音两项聚合而成，独立展示、不并入普通话各维度明细；
+	// 综合分 Total 已按其固定权重轻量并入（开关开启时）。
+	CantoneseScore *NameScore `json:"cantonese_score,omitempty"`
 }
 
 // Character 汉字简略信息（对外接口用，不绑定具体模型）

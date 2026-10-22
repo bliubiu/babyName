@@ -45,6 +45,17 @@ type ExcellentEntry struct {
 	// Details 各维度评分依据文字（维度名 → 文字解释），随流式 Top-N 透传给 NameResult
 	Details map[string]string `json:"details,omitempty"`
 
+	// 粤语分（开启粤语评分时非空）：独立维度聚合结果，透传给 NameResult.CantoneseScore。
+	CantoneseTotal   float64            `json:"-"`
+	CantoneseItems   map[string]float64 `json:"-"`
+	CantoneseDetails map[string]string  `json:"-"`
+
+	// 粤拼标注（首次读音，未收录为空串）：始终透传，供前端展示粤拼与声调，
+	// 与粤语评分开关无关（开关只决定粤语分是否参与聚合与展示）。
+	Jyutping1       string `json:"-"`
+	Jyutping2       string `json:"-"`
+	SurnameJyutping string `json:"-"`
+
 	// 人名频率档位（1-5，0=未收录），供前端展示频率信息
 	NameFreqTier1 int `json:"name_freq_tier1,omitempty"`
 	NameFreqTier2 int `json:"name_freq_tier2,omitempty"`
