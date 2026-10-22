@@ -5,6 +5,24 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.22.3]
+
+**粤语评分前端落地（开关 + 粤拼标注 + 粤语分明细 + TTS 试听）**
+
+后端粤语评分链路（2026.10.22.2）的前端消费层：表单开关、结果页粤拼标注与独立粤语分展示、粤语试听，与普通话八维评分 UI 视觉体系统一。
+
+### ✨ New Features 新增功能
+- 【粤语评分·表单开关】首页表单新增「开启粤语多维度评分」勾选（含说明文案），经 zustand store 持久化；提交时以 `enable_cantonese` 透传后端。
+- 【粤语评分·粤拼标注】新增 `lib/jyutping.ts`：粤拼音节解析（`parseJyutpingSyllables`）、六调中文名与调值说明（`toneLabel`，如「4 阳平（低降）」）、平仄二分（`toneClass`）、粤语 TTS 封装（`speakCantonese`/`cancelCantoneseSpeech`/`cantoneseTtsSupported`，Web Speech `zh-HK`）。
+- 【粤语评分·组件】新增 `components/CantoneseScore.tsx`：逐字粤拼芯片（汉字 + 粤拼 + 声调徽标，平/仄异色）、粤语分总览与「粤语分分解」（粤语音律/粤语谐音双条 + 依据文字）、粤拼声调体系说明、粤语试听按钮（不支持 Web Speech 时自动隐藏）。无声拼且无粤语分时整体不渲染。
+- 【粤语评分·结果展示】`NameCard` 新增粤拼行（`粤 wong4 zi2 man4`）与「粤语 xx」分徽标；`NameDetail` 接入粤语评分区块；`FullReport` 名字列表补粤拼行与粤语分徽标。
+- 【类型接线】`GenerateRequest.enable_cantonese`、`FormData.enableCantonese`、`Name.jyutping`/`cantonese_score`/`cantonese_score_detail`。
+
+### 🧪 验证
+- `vitest run` 全量 70 项通过（新增 `jyutping.test.ts` 12 项 + `CantoneseScore.test.tsx` 5 项，含无声拼降级、TTS 不支持降级断言）。
+- `tsc --noEmit` 通过；`eslint` 改动文件 0 error（仅存量 label-has-associated-control 警告）。
+- `next build` 成功，`out/` 产物已同步重建。
+
 ## [2026.10.22.2]
 
 **粤语多维度评分模型落地（评分内核 P0–P3 + 引擎集成）**

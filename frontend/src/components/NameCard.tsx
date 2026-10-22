@@ -133,6 +133,12 @@ function NameCard({
             </button>
           </div>
           <p className="text-xs text-jade/70 mt-0.5 ml-6">{name.pinyin}</p>
+          {/* 粤拼标注：后端始终透传（与粤语评分开关无关），无声拼数据时不渲染 */}
+          {name.jyutping && (
+            <p className="text-[10px] text-jade/50 mt-0.5 ml-6 font-mono tracking-wide" title={`粤拼：${name.jyutping}`}>
+              粤 {name.jyutping}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-1 flex-shrink-0">
@@ -173,6 +179,15 @@ function NameCard({
         <span className="text-xs px-2 py-0.5 bg-gold/10 text-gold-dark rounded-full font-medium">
           {score.toFixed(1)}分
         </span>
+        {/* 粤语分徽标：仅在开启粤语评分（后端返回非零粤语分）时展示 */}
+        {name.cantonese_score !== undefined && name.cantonese_score > 0 && (
+          <span
+            className="text-xs px-2 py-0.5 bg-sky-500/10 text-sky-700 rounded-full font-medium"
+            title={`粤语分（粤语音律 + 粤语谐音）${name.cantonese_score.toFixed(1)}`}
+          >
+            粤语 {name.cantonese_score.toFixed(0)}
+          </span>
+        )}
       </div>
 
       {/* 理由标签 */}

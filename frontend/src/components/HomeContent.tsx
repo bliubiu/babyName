@@ -139,6 +139,9 @@ export default function HomeContent() {
       // 人名频率过滤（来自 Chinese-Names-Corpus 语料统计）
       min_frequency_tier: formData.minFrequencyTier || undefined,
       max_frequency_tier: formData.maxFrequencyTier || undefined,
+      // 粤语评分开关：开启时后端追加粤语音律 + 粤语谐音两个维度，
+      // 独立「粤语分」透出展示，并以固定权重并入综合分影响排序
+      enable_cantonese: formData.enableCantonese || undefined,
     };
 
     generateNamesMutate(formDataForApi);

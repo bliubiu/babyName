@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Name } from '@/types';
 import { splitByMatchedChars } from '@/lib/poetryHighlight';
+import CantoneseScore from './CantoneseScore';
 import { IconChevronDown, IconChevronUp } from './Icons';
 
 interface NameDetailProps {
@@ -132,6 +133,11 @@ export default function NameDetail({ name }: NameDetailProps) {
             </div>
           </div>
         )}
+      </div>
+
+      {/* 粤语评分（粤拼标注 + 粤语分 + 试听）：无粤拼且无粤语分时不渲染 */}
+      <div className="pt-3 border-t border-paper/30">
+        <CantoneseScore name={name} />
       </div>
 
       {/* 综合评分 */}

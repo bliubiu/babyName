@@ -42,6 +42,7 @@ const initialFormData: FormData = {
   avoidElderNames: '',
   minFrequencyTier: 0,
   maxFrequencyTier: 0,
+  enableCantonese: false,
 };
 
 const createMyStore = () => {

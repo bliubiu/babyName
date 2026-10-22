@@ -252,9 +252,15 @@ export default function FullReport({ data, onClose, selectedNameIndex }: FullRep
                       <p className="font-serif text-lg text-ink">{name.surname}{name.given_name}</p>
                       <div className="flex items-center gap-2">
                         <span className="text-xs px-2 py-0.5 bg-gold/15 text-gold-dark rounded">{(name.total_score ?? name.score).toFixed(1)}分</span>
+                        {name.cantonese_score !== undefined && name.cantonese_score > 0 && (
+                          <span className="text-xs px-2 py-0.5 bg-sky-500/10 text-sky-700 rounded">粤语 {name.cantonese_score.toFixed(0)}</span>
+                        )}
                         <span className="text-xs px-2 py-0.5 bg-warm-white border border-paper text-jade rounded">{name.wuxing}</span>
                       </div>
                     </div>
+                    {name.jyutping && (
+                      <p className="text-[10px] text-jade/50 font-mono tracking-wide mb-2">粤 {name.jyutping}</p>
+                    )}
                     {(name.wuxing_score ?? 0) > 0 && (
                       <div className="flex flex-wrap gap-2 mt-2">
                         {[

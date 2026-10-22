@@ -207,6 +207,29 @@ export function NameForm({ isGenerating, onSubmit, sourceClassic, onSourceClassi
         />
       </div>
 
+      {/* 粤语评分开关 */}
+      <div className="space-y-1.5">
+        <label className="form-label" htmlFor="cantonese-toggle">粤语评分</label>
+        <div className="flex items-start gap-3 py-2.5 px-3.5 rounded-xl border border-paper/60 bg-white/50">
+          <input
+            id="cantonese-toggle"
+            type="checkbox"
+            checked={formData.enableCantonese}
+            onChange={(e) => setFormData({ enableCantonese: e.target.checked })}
+            aria-describedby="cantonese-toggle-hint"
+            className="mt-0.5 w-4 h-4 accent-crimson cursor-pointer flex-shrink-0"
+          />
+          <div className="flex-1 min-w-0">
+            <span className="text-sm text-ink">开启粤语多维度评分</span>
+            <p id="cantonese-toggle-hint" className="text-xs text-ink-light/50 mt-1 leading-relaxed">
+              按粤语音律（声调流畅度、声母/韵母冲突）与粤语谐音（不雅词汇近音检测）独立评出「粤语分」，
+              并以轻量权重并入综合分影响排序；关闭时综合分完全由普通话八维决定。
+              名字的粤拼标注不受开关影响，始终展示。
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* 展开偏旁选字 */}
       <div className="flex items-center justify-end">
         <button

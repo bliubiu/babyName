@@ -32,6 +32,9 @@ export interface GenerateRequest {
   // 人名频率过滤（来自 Chinese-Names-Corpus 语料统计）
   min_frequency_tier?: number; // 最小频率档位（1-5，0=不限）
   max_frequency_tier?: number; // 最大频率档位（1-5，0=不限）
+  // 开启粤语评分：粤语音律 + 粤语谐音独立成「粤语分」展示，
+  // 并以固定权重轻量并入综合分影响排序；关闭时综合分完全由普通话八维决定
+  enable_cantonese?: boolean;
 }
 
 export interface Bazi {
@@ -134,6 +137,16 @@ export interface Name extends NameBase {
   bigram_score?: number;     // 诗词共现评分
   frequency_score?: number;  // 人名频率评分（来自 Chinese-Names-Corpus 语料统计）
   sancai_analysis?: string;  // 三才分析描述
+  // 粤拼标注（姓 + 名各字粤拼，空格组合），与粤语评分开关无关，始终透传
+  jyutping?: string;
+  // 独立「粤语分」（0-100）；仅在开启粤语评分时非零
+  cantonese_score?: number;
+  // 粤语分维度明细（粤语音律/粤语谐音），仅在开启粤语评分时非空
+  cantonese_score_detail?: Array<{
+    name: string;
+    score: number;
+    detail: string;
+  }>;
   // 确定性评分：各维度分数 + 依据文字（后端 ScoreDetail 透传）
   score_detail?: Array<{
     name: string;
@@ -268,6 +281,8 @@ export interface FormData {
   // 人名频率过滤
   minFrequencyTier: number;
   maxFrequencyTier: number;
+  // 粤语评分开关：开启后结果页展示粤拼标注与独立粤语分（粤语音律 + 粤语谐音）
+  enableCantonese: boolean;
 }
 
 export interface APIResponse<T = unknown> {
