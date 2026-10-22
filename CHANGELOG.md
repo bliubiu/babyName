@@ -5,6 +5,18 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.22.5]
+
+**离线粤语 TTS 接入（Audio8 0.1B INT8 ONNX Runtime sidecar 代理）**
+
+需求：保证离线可用 + 保证粤语发音正确。评估结论 Audio8-TTS-0.1B-ONNX-INT8 是唯一同时满足两约束的引擎（Apache-2.0，官方 language 含 yue 粤语，原生 ONNX Runtime CPU 推理，~0.6GB 内存）；sherpa-onnx 无粤语 TTS 模型、Web Speech 不能离线且依赖本机粤语嗓音包，均排除。
+
+- **后端**：新增 `services/tts.go`（TTSSynthesizer 接口 + SidecarTTSSynthesizer 代理 + DisabledTTSSynthesizer 占位 + TTSService），`handlers/tts.go`（`GET /api/v1/tts` 健康检查、`POST /api/v1/tts {"jyutping":"..."}` 合成粤语 WAV）；`cmd/server/main.go` 装配并挂载路由。离线引擎未配置（`AUDIO8_TTS_URL` 缺省）时回 503 `TTS_UNAVAILABLE`，前端回退 Web Speech。
+- **前端**：`lib/api.ts` 加 `getTtsHealth()` / `synthesizeCantoneseAudio(jyutping)`；`CantoneseScore.tsx` 改为**离线引擎优先、Web Speech 兜底**：离线可用时优先拉 `/api/v1/tts` 播放 WAV，失败/未启用回退 Web Speech；按钮显隐同时考虑离线可用态与本机嗓音态。
+- **sidecar 启动脚本**：`backend/tts_sidecar/start.sh` + `start.ps1` 自动克隆官方 `onnx_runtime_0_1b_int8`、下载模型、注册默认音色并起服务（监听 127.0.0.1:8024）；`.gitignore` 排除克隆与模型。
+- **验证**：go build / go vet 全绿；前端 tsc / eslint 0 error；vitest 81 项通过（CantoneseScore 8 项含离线优先路径、jyutping 20 项）。
+- **待办（需联网机器）**：P0 发音验证——下载模型后实测 Jyutping（含声调数字）是否被 Audio8 G2P 正确发为粤语；确认 `/api/tts` 实际调用与延迟基准。
+
 ## [2026.10.22.4]
 
 **粤语 TTS 检测与降级逻辑补全（Web Speech）**

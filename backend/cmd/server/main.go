@@ -264,6 +264,7 @@ type appServices struct {
 	history  *services.HistoryService
 	favorite *services.FavoriteService
 	report   *services.ReportService
+	tts      *services.TTSService
 }
 
 func newServices(store database.Store, dataDir string) *appServices {
@@ -347,6 +348,7 @@ func newServices(store database.Store, dataDir string) *appServices {
 		report:   services.NewReportService(),
 		history:  services.NewHistoryService(store),
 		favorite: favSvc,
+		tts:      services.NewTTSService(),
 	}
 }
 
@@ -361,6 +363,7 @@ type appHandlers struct {
 	stat      *handlers.NameStatHandler
 	huangli   *handlers.HuangliHandler
 	character *handlers.CharacterHandler
+	tts       *handlers.TTSHandler
 }
 
 func newHandlers(svc *appServices, dataDir string) *appHandlers {
@@ -373,6 +376,7 @@ func newHandlers(svc *appServices, dataDir string) *appHandlers {
 		stat:      handlers.NewNameStatHandler(),
 		huangli:   handlers.NewHuangliHandler(),
 		character: handlers.NewCharacterHandler(svc.name.GetNameDB()),
+		tts:       handlers.NewTTSHandler(svc.tts),
 	}
 }
 
@@ -467,6 +471,11 @@ func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store
 
 		// 汉字/偏旁数据
 		api.GET("/characters/groups", h.character.GetCharGroups)
+
+		// 离线粤语 TTS（Audio8 0.1B INT8 ONNX Runtime sidecar 代理）：
+		// GET /tts 健康检查；POST /tts {"jyutping":"..."} 合成粤语读音 WAV
+		api.GET("/tts", h.tts.Health)
+		api.POST("/tts", h.tts.SynthesizeCantonese)
 	}
 
 	// 静态文件服务（仅 all 模式）

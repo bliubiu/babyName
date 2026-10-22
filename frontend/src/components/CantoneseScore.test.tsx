@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import CantoneseScore from './CantoneseScore';
@@ -93,8 +93,39 @@ describe('CantoneseScore', () => {
     const btn = await waitFor(() => screen.getByTitle('粤语试听'));
     expect(btn).not.toBeDisabled();
   });
+
+  it('离线引擎可用时优先走 /api/v1/tts POST（body 含 jyutping）', async () => {
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const isPost = init?.method === 'POST';
+      if (!isPost) {
+        return new Response(JSON.stringify({ available: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(new Blob([new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45])], {
+        type: 'audio/wav',
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'audio/wav' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<CantoneseScore name={{ ...baseName, jyutping: 'wong4 zi2 man4', cantonese_score: 70 }} />);
+    const btn = await waitFor(() => screen.getByTitle('粤语试听（离线引擎）'), { timeout: 4000 });
+    await act(async () => {
+      btn.click();
+    });
+    const postCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST');
+    expect(postCall).toBeTruthy();
+    expect(JSON.parse((postCall as [RequestInfo | URL, RequestInit])[1].body as string)).toEqual({
+      jyutping: 'wong4 zi2 man4',
+    });
+  });
 });
 
 afterEach(() => {
   delete (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
+  vi.unstubAllGlobals();
 });

@@ -559,3 +559,54 @@ export async function getTopNames(limit: number = 20): Promise<NameStat[]> {
   const result = await handleResponse<APIResponse<NameStat[]>>(response);
   return result.data || [];
 }
+
+// --- 离线粤语 TTS API（Audio8 0.1B INT8 ONNX Runtime sidecar） ---
+
+export interface TtsHealth {
+  available: boolean;
+}
+
+/** GET /api/v1/tts 健康检查：离线粤语引擎是否就绪。失败（含网络错误）一律视为不可用。 */
+export async function getTtsHealth(): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/v1/tts`, { method: 'GET' });
+    if (!response.ok) return false;
+    const data = (await response.json()) as TtsHealth;
+    return !!data.available;
+  } catch {
+    return false;
+  }
+}
+
+export interface CantoneseAudioResult {
+  ok: boolean;
+  audioUrl?: string;
+  unavailable?: boolean;
+  error?: string;
+}
+
+/**
+ * POST /api/v1/tts 合成粤语读音 WAV。
+ * 返回 ok=true 时 audioUrl 为 Blob 临时地址（调用方负责 revoke）；
+ * 503 表示离线引擎未启用（unavailable），由调用方回退 Web Speech。
+ */
+export async function synthesizeCantoneseAudio(jyutping: string): Promise<CantoneseAudioResult> {
+  if (!jyutping) return { ok: false, error: 'jyutping 为空' };
+  try {
+    const response = await fetch(`${API_BASE_URL}/v1/tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jyutping }),
+    });
+    if (response.status === 503) {
+      return { ok: false, unavailable: true };
+    }
+    if (!response.ok) {
+      return { ok: false, error: `TTS 请求失败（${response.status}）` };
+    }
+    const blob = await response.blob();
+    return { ok: true, audioUrl: URL.createObjectURL(blob) };
+  } catch {
+    return { ok: false, error: 'TTS 请求失败（网络错误）' };
+  }
+}
