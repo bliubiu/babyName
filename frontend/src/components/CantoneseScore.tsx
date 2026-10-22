@@ -48,6 +48,8 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
   const [ttsStatus, setTtsStatus] = useState<CantoneseTtsStatus | null>(null);
   // 离线粤语引擎（Audio8 sidecar）是否就绪：null=探测中，true=可用，false=不可用
   const [offlineAvailable, setOfflineAvailable] = useState<boolean | null>(null);
+  // 离线引擎合成中（CPU 推理单条约 45-60s）：禁用按钮并给出等待反馈，防止重复点击
+  const [synthesizing, setSynthesizing] = useState(false);
   const offlineAudioRef = useRef<HTMLAudioElement | null>(null);
   const fullName = name.full_name || `${name.surname}${name.given_name}`;
 
@@ -123,7 +125,13 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
     }
     // 优先走离线粤语引擎（保证断网可用 + 粤语发音正确），失败/未启用回退 Web Speech
     if (offlineAvailable && name.jyutping) {
-      const res = await synthesizeCantoneseAudio(name.jyutping);
+      setSynthesizing(true);
+      let res;
+      try {
+        res = await synthesizeCantoneseAudio(name.jyutping);
+      } finally {
+        setSynthesizing(false);
+      }
       if (res.ok && res.audioUrl) {
         playOfflineAudio(res.audioUrl);
         return;
@@ -173,24 +181,34 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
           {showTtsButton && (
             <button
               type="button"
-              disabled={ttsDisabled}
+              disabled={ttsDisabled || synthesizing}
               onClick={handleSpeak}
-              aria-label={speaking ? `停止朗读 ${fullName} 粤语读音` : `试听 ${fullName} 粤语读音`}
+              aria-label={
+                speaking
+                  ? `停止朗读 ${fullName} 粤语读音`
+                  : synthesizing
+                    ? `正在合成 ${fullName} 粤语读音`
+                    : `试听 ${fullName} 粤语读音`
+              }
               title={
                 speaking
                   ? '停止朗读'
-                  : offlineAvailable === true
-                    ? '粤语试听（离线引擎）'
-                    : ttsStatus?.state === 'no-voice'
-                      ? ttsStatus.message ?? '未安装粤语语音包，无法试听'
-                      : '粤语试听'
+                  : synthesizing
+                    ? '离线引擎合成中（CPU 推理约需 1 分钟）…'
+                    : offlineAvailable === true
+                      ? '粤语试听（离线引擎）'
+                      : ttsStatus?.state === 'no-voice'
+                        ? ttsStatus.message ?? '未安装粤语语音包，无法试听'
+                        : '粤语试听'
               }
-              className={`p-1.5 rounded-full transition-all duration-200 hover:scale-110 ${
+              className={`p-1.5 rounded-full transition-all duration-200 ${
                 speaking
-                  ? 'text-crimson bg-crimson/10'
-                  : ttsDisabled
-                    ? 'text-ink-light/20 cursor-not-allowed'
-                    : 'text-ink-light/30 hover:text-crimson'
+                  ? 'text-crimson bg-crimson/10 hover:scale-110'
+                  : synthesizing
+                    ? 'text-gold bg-gold/10 animate-pulse cursor-wait'
+                    : ttsDisabled
+                      ? 'text-ink-light/20 cursor-not-allowed'
+                      : 'text-ink-light/30 hover:text-crimson hover:scale-110'
               }`}
             >
               <IconVolume size={18} />

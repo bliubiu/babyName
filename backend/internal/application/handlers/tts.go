@@ -9,8 +9,10 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"name/internal/application/services"
 
@@ -35,6 +37,14 @@ type ttsRequest struct {
 	Jyutping string `json:"jyutping"`
 }
 
+// ttsRequestTimeout 离线粤语 TTS 的合成超时。
+// 全局 RequestTimeout 中间件（cmd/server/main.go）按同步起名端点标定为 30s，
+// 而 Audio8 CPU 推理单条实测 44-49s（max_new_tokens=256），继承请求 deadline
+// 会被误杀（客户端收到 503 TTS_UNAVAILABLE，sidecar 却仍在后台跑完合成）。
+// 故此处用独立上下文调用 sidecar；副作用是客户端断连不会中断合成（本地单用户
+// sidecar 可接受，且上限 300s 与 SidecarTTSSynthesizer 的 HTTP 客户端超时一致）。
+var ttsRequestTimeout = 300 * time.Second
+
 // SynthesizeCantonese POST /api/v1/tts —— 合成粤语读音 WAV。
 func (h *TTSHandler) SynthesizeCantonese(c *gin.Context) {
 	var req ttsRequest
@@ -47,7 +57,10 @@ func (h *TTSHandler) SynthesizeCantonese(c *gin.Context) {
 		return
 	}
 
-	audio, err := h.svc.SynthesizeCantonese(c.Request.Context(), req.Jyutping)
+	ctx, cancel := context.WithTimeout(context.Background(), ttsRequestTimeout)
+	defer cancel()
+
+	audio, err := h.svc.SynthesizeCantonese(ctx, req.Jyutping)
 	if errors.Is(err, services.ErrTTSUnavailable) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error": "离线粤语 TTS 引擎未启用（未配置 AUDIO8_TTS_URL 或 sidecar 未启动）",

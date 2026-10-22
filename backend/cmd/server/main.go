@@ -501,9 +501,12 @@ func startServer(router *gin.Engine, addr, cwd string, store database.Store, rat
 		Handler:           router,
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      60 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    1 << 20, // 1MB
+		// WriteTimeout 300s：为离线粤语 TTS（/api/v1/tts）的 CPU 合成留窗口
+		// （实测单条 44-49s，max_new_tokens=256）。其余路由仍由 RequestTimeout
+		// 中间件（30s + 503 兜底）保护，不受此值影响。
+		WriteTimeout: 300 * time.Second,
+		IdleTimeout:  120 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1MB
 	}
 
 	// errCh 用于将启动失败信号回传主流程，避免主流程在等信号时无法感知

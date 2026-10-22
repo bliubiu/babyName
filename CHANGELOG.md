@@ -5,6 +5,30 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.22.6]
+
+**离线粤语 TTS E2E 实测与超时缺陷修复（全链路贯通）**
+
+在实网环境完成模型下载 → 运行时获取 → 服务启动 → 合成的全链路 e2e 验证（报告见 `docs/41-离线粤语TTS-E2E验证报告.md`），并修复验证中暴露的 3 个产品缺陷。
+
+### 🐛 Bug Fixes 缺陷修复
+- 【TTS·30s 误杀】全局 `RequestTimeout(30s)` 中间件把请求上下文传给 sidecar 调用，CPU 合成实测 44-49s 必被取消（客户端收 503 `TTS_UNAVAILABLE`，sidecar 却仍在后台跑完）。`handlers/tts.go` 改用独立 300s 上下文调用 sidecar，不再继承请求 deadline。
+- 【TTS·客户端超时】`SidecarTTSSynthesizer` HTTP 客户端 60s→300s；新增 `max_new_tokens` 透传（`AUDIO8_TTS_MAX_TOKENS`，默认 256）把单条合成压到 44-49s（sidecar 默认 1024 步实测 >120s）；请求头补 `charset=utf-8`。
+- 【TTS·写入窗口】`cmd/server/main.go` `WriteTimeout` 60s→300s，为长合成留写入窗口（其余路由仍由 RequestTimeout 中间件 30s + 503 兜底保护，语义不变）。
+
+### ✨ New Features 新增功能
+- 【TTS·合成等待态】`CantoneseScore.tsx` 增加 `synthesizing` 状态：离线合成约 45-60s 期间按钮禁用 + 金色脉冲 + 「离线引擎合成中（CPU 推理约需 1 分钟）…」提示，修复等待期间无反馈且可重复点击并发拉起多条合成的问题。
+
+### 🔧 Changes 工程改动
+- 【sidecar 启动脚本重写】`start.sh`/`start.ps1`：① 克隆回退 `github.com`→`gh-proxy.com`（稀疏克隆只取 `onnx_runtime_0_1b_int8`）；② modelscope 入口改为 console script `modelscope download`（`python -m modelscope` 无 `__main__`）；③ 模型目录默认指向已落地的 `../model`（`MODEL_DIR` 可覆盖，服务经 `ARKTTS_MODEL_DIR` 感知）；④ Python 解析链 `ARKTTS_PYTHON > .venv > 系统 Python（依赖齐全时快速路径）> setup.sh`；⑤ 默认音色用官方 `register_default_voice.py` 注册（`reference_text` 取自 `runtime_manifest.json`，与 `reference_codes` 对齐），`FORCE_REGISTER=1` 可重建。
+- 清理 `backend/tts_sidecar/Audio8_TTS.tar.gz`（早期部分下载遗留物，已被完整克隆取代）。
+
+### 🧪 验证
+- **E2E 全链路通过**：`GET /api/v1/tts` → `{"available":true}`；`POST {"jyutping":"wong4 zi2 man4"}` → 200，audio/wav 1,048,620 字节（44.1kHz/11.89s/RMS 0.2551）；空值/非 JSON → 400；未配置 `AUDIO8_TTS_URL` → 503 `TTS_UNAVAILABLE`（设计行为）。
+- sidecar 契约：`/api/health` 200（int8 + fp16 + CPUExecutionProvider×3）；粤拼/汉字/中文输入均合成合法非静音 WAV（对比音频 3 条待人耳判定声调）。
+- `go vet` 三个包 + `go test` handlers/middleware/services 全绿；前端 `tsc --noEmit` 0 错误、`vitest` CantoneseScore 8/8、eslint 改动文件 0 error。
+- **待办**：粤语声调正确性需人耳听辨 `cmp_1_jyut_tone.wav`（`wong4 zi2 man4`）等 3 条对比音频（详见 docs/41 §6）。
+
 ## [2026.10.22.5]
 
 **离线粤语 TTS 接入（Audio8 0.1B INT8 ONNX Runtime sidecar 代理）**

@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -33,15 +34,16 @@ type TTSSynthesizer interface {
 
 // SidecarTTSSynthesizer 通过 HTTP 调用本地 Audio8 ONNX Runtime 服务。
 type SidecarTTSSynthesizer struct {
-	BaseURL    string
-	VoiceName  string
-	HTTPClient *http.Client
+	BaseURL      string
+	VoiceName    string
+	MaxNewTokens int
+	HTTPClient   *http.Client
 }
 
 func (s *SidecarTTSSynthesizer) Available() bool { return true }
 
 func (s *SidecarTTSSynthesizer) SynthesizeCantonese(ctx context.Context, jyutping string) ([]byte, error) {
-	body, err := json.Marshal(audio8TTSRequest{Text: jyutping, VoiceName: s.VoiceName})
+	body, err := json.Marshal(audio8TTSRequest{Text: jyutping, VoiceName: s.VoiceName, MaxNewTokens: s.MaxNewTokens})
 	if err != nil {
 		return nil, fmt.Errorf("marshal tts request: %w", err)
 	}
@@ -49,7 +51,7 @@ func (s *SidecarTTSSynthesizer) SynthesizeCantonese(ctx context.Context, jyutpin
 	if err != nil {
 		return nil, fmt.Errorf("build tts request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	resp, err := s.HTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: sidecar unreachable: %v", ErrTTSUnavailable, err)
@@ -72,6 +74,10 @@ func (s *SidecarTTSSynthesizer) SynthesizeCantonese(ctx context.Context, jyutpin
 type audio8TTSRequest struct {
 	Text      string `json:"text"`
 	VoiceName string `json:"voice_name"`
+	// MaxNewTokens 限制自回归生成步数：CPU 推理下单步约 0.2-0.3s，
+	// 不设上限时 sidecar 默认 1024 步，短文本也可能超过 120s（实测）。
+	// 粤拼短语（名字读音）256 步足够（实测 ~49s/条）。
+	MaxNewTokens int `json:"max_new_tokens,omitempty"`
 }
 
 // DisabledTTSSynthesizer 离线引擎未配置时的占位实现。
@@ -95,9 +101,13 @@ func (s *TTSService) SynthesizeCantonese(ctx context.Context, jyutping string) (
 
 // NewTTSService 按环境变量装配合成器。
 //
-//   - AUDIO8_TTS_URL：Audio8 ONNX Runtime 服务基址（默认 http://127.0.0.1:8024）。
-//     未设置则该服务视为未启用（降级到 Web Speech）。
+//   - AUDIO8_TTS_URL：Audio8 ONNX Runtime 服务基址（sidecar 约定监听 http://127.0.0.1:8024）。
+//     未设置则该服务视为未启用（降级到 Web Speech）——显式 opt-in，避免 sidecar 缺席时
+//     健康检查误报可用（SidecarTTSSynthesizer.Available 不探测 sidecar 存活）。
 //   - AUDIO8_TTS_VOICE：音色名（默认 default）。
+//   - AUDIO8_TTS_MAX_TOKENS：自回归生成步数上限（默认 256）。CPU 推理单步约 0.2-0.3s，
+//     粤拼名字读音 256 步实测约 49s；不设上限（sidecar 默认 1024）时短文本也可能超过 120s。
+//   - HTTP 客户端超时固定 300s：覆盖 CPU 上 256 步合成的上限，留足余量。
 func NewTTSService() *TTSService {
 	base := os.Getenv("AUDIO8_TTS_URL")
 	if base == "" {
@@ -107,9 +117,16 @@ func NewTTSService() *TTSService {
 	if voice == "" {
 		voice = "default"
 	}
+	maxTokens := 256
+	if v := os.Getenv("AUDIO8_TTS_MAX_TOKENS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxTokens = n
+		}
+	}
 	return &TTSService{synth: &SidecarTTSSynthesizer{
-		BaseURL:    base,
-		VoiceName:  voice,
-		HTTPClient: &http.Client{Timeout: 60 * time.Second},
+		BaseURL:       base,
+		VoiceName:     voice,
+		MaxNewTokens:  maxTokens,
+		HTTPClient:    &http.Client{Timeout: 300 * time.Second},
 	}}
 }
