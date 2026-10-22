@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Name } from '@/types';
-import { parseJyutpingSyllables, toneClass, toneLabel, speakCantonese, cantoneseTtsSupported, cancelCantoneseSpeech } from '@/lib/jyutping';
-import type { JyutpingSyllable } from '@/lib/jyutping';
+import { parseJyutpingSyllables, toneClass, toneLabel, speakCantonese, cantoneseTtsStatus, cancelCantoneseSpeech } from '@/lib/jyutping';
+import type { JyutpingSyllable, CantoneseTtsStatus } from '@/lib/jyutping';
 import { IconVolume } from './Icons';
 
 interface CantoneseScoreProps {
@@ -44,7 +44,20 @@ function SyllableChip({ char, jp }: { char?: string; jp: JyutpingSyllable }) {
  */
 export default function CantoneseScore({ name }: CantoneseScoreProps) {
   const [speaking, setSpeaking] = useState(false);
+  const [ttsStatus, setTtsStatus] = useState<CantoneseTtsStatus | null>(null);
   const fullName = name.full_name || `${name.surname}${name.given_name}`;
+
+  // 探测本机粤语 TTS 能力（嗓音可能异步填充，需等待 voiceschanged）；
+  // 必须在所有提前 return 之前调用，遵守 Hook 顺序规则
+  useEffect(() => {
+    let active = true;
+    cantoneseTtsStatus().then((s) => {
+      if (active) setTtsStatus(s);
+    });
+    return () => {
+      active = false;
+    };
+  }, [fullName]);
 
   const syllables = parseJyutpingSyllables(name.jyutping);
   const hasJyutping = syllables.length > 0;
@@ -59,13 +72,13 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
   const chars = Array.from(fullName);
   const aligned = hasJyutping && chars.length === syllables.length;
 
-  const handleSpeak = () => {
+  const handleSpeak = async () => {
     if (speaking) {
       cancelCantoneseSpeech();
       setSpeaking(false);
       return;
     }
-    const ok = speakCantonese(fullName);
+    const ok = await speakCantonese(fullName);
     if (!ok) return;
     setSpeaking(true);
     // Web Speech 无可靠结束事件时长预估，用文本长度粗估朗读时长后复位按钮态
@@ -73,7 +86,9 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
     window.setTimeout(() => setSpeaking(false), estimate);
   };
 
-  const ttsSupported = cantoneseTtsSupported();
+  // TTS 可用态：state 为 ok / no-voice 时渲染按钮（no-voice 禁用并提示）；
+  // unsupported 或尚未探测完成（null）时不渲染，避免给出无效入口
+  const ttsDisabled = ttsStatus?.state === 'no-voice';
 
   return (
     <div className="animate-fade-in-up space-y-4">
@@ -86,14 +101,25 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
               <span className="text-xs text-jade">粤语分</span>
             </div>
           )}
-          {ttsSupported && (
+          {ttsStatus && ttsStatus.state !== 'unsupported' && (
             <button
               type="button"
+              disabled={ttsDisabled}
               onClick={handleSpeak}
               aria-label={speaking ? `停止朗读 ${fullName} 粤语读音` : `试听 ${fullName} 粤语读音`}
-              title={speaking ? '停止朗读' : '粤语试听'}
+              title={
+                speaking
+                  ? '停止朗读'
+                  : ttsStatus?.state === 'no-voice'
+                    ? ttsStatus.message ?? '未安装粤语语音包，无法试听'
+                    : '粤语试听'
+              }
               className={`p-1.5 rounded-full transition-all duration-200 hover:scale-110 ${
-                speaking ? 'text-crimson bg-crimson/10' : 'text-ink-light/30 hover:text-crimson'
+                speaking
+                  ? 'text-crimson bg-crimson/10'
+                  : ttsDisabled
+                    ? 'text-ink-light/20 cursor-not-allowed'
+                    : 'text-ink-light/30 hover:text-crimson'
               }`}
             >
               <IconVolume size={18} />
@@ -101,6 +127,11 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
           )}
         </div>
       </div>
+
+      {/* 本机未安装粤语语音包时给出明确提示，避免用户误以为功能损坏 */}
+      {ttsStatus?.state === 'no-voice' && ttsStatus.message && (
+        <p className="text-[10px] text-amber-600/80 leading-relaxed">{ttsStatus.message}</p>
+      )}
 
       {/* 粤拼标注（逐字音节 + 声调） */}
       {hasJyutping && (

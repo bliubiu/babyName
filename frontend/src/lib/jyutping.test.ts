@@ -7,6 +7,9 @@ import {
   cantoneseTtsSupported,
   speakCantonese,
   cancelCantoneseSpeech,
+  pickCantoneseVoice,
+  resolveCantoneseVoice,
+  cantoneseTtsStatus,
 } from './jyutping';
 
 describe('parseJyutpingSyllables', () => {
@@ -71,17 +74,107 @@ describe('ttsTextFor', () => {
   });
 });
 
-describe('粤语 TTS（happy-dom 无 speechSynthesis）', () => {
-  it('不支持时 speakCantonese 返回 false', () => {
+describe('粤语 TTS 检测与降级', () => {
+  it('happy-dom 无 speechSynthesis 时 cantoneseTtsSupported 为 false', () => {
     expect(cantoneseTtsSupported()).toBe(false);
-    expect(speakCantonese('王梓文')).toBe(false);
+  });
+
+  it('不支持时 speakCantonese 返回 false（async）', async () => {
+    await expect(speakCantonese('王梓文')).resolves.toBe(false);
+  });
+
+  it('空文本不朗读', async () => {
+    await expect(speakCantonese('')).resolves.toBe(false);
   });
 
   it('cancelCantoneseSpeech 不支持时不抛错', () => {
     expect(() => cancelCantoneseSpeech()).not.toThrow();
   });
 
-  it('空文本不朗读', () => {
-    expect(speakCantonese('')).toBe(false);
+  it('pickCantoneseVoice 优先 zh-HK，其次中文回退', () => {
+    const zhOnly = [{ lang: 'en-US' }, { lang: 'zh-CN' }] as SpeechSynthesisVoice[];
+    expect(pickCantoneseVoice(zhOnly)?.lang).toBe('zh-CN');
+    const withHk = [{ lang: 'en-US' }, { lang: 'zh-HK' }] as SpeechSynthesisVoice[];
+    expect(pickCantoneseVoice(withHk)?.lang).toBe('zh-HK');
+    expect(pickCantoneseVoice([])).toBeNull();
+  });
+
+  it('resolveCantoneseVoice 在 getVoices 已有嗓音时立即返回', async () => {
+    const synth = {
+      getVoices: () => [{ lang: 'zh-HK' }, { lang: 'en-US' }] as SpeechSynthesisVoice[],
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      speak: () => undefined,
+      cancel: () => undefined,
+    };
+    (window as unknown as { speechSynthesis: typeof synth }).speechSynthesis = synth;
+    const v = await resolveCantoneseVoice(50);
+    expect(v?.lang).toBe('zh-HK');
+  });
+
+  it('resolveCantoneseVoice 监听 voiceschanged 后异步解析', async () => {
+    let current: SpeechSynthesisVoice[] = [];
+    const handlers: Array<() => void> = [];
+    const synth = {
+      getVoices: () => current,
+      addEventListener: (_e: string, cb: () => void) => handlers.push(cb),
+      removeEventListener: () => undefined,
+      speak: () => undefined,
+      cancel: () => undefined,
+    };
+    (window as unknown as { speechSynthesis: typeof synth }).speechSynthesis = synth;
+
+    const p = resolveCantoneseVoice(500);
+    current = [{ lang: 'zh-HK' }] as SpeechSynthesisVoice[];
+    handlers.forEach((cb) => cb());
+    const v = await p;
+    expect(v?.lang).toBe('zh-HK');
+  });
+
+  it('resolveCantoneseVoice 超时且无嗓音时返回 null', async () => {
+    const synth = {
+      getVoices: () => [] as SpeechSynthesisVoice[],
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      speak: () => undefined,
+      cancel: () => undefined,
+    };
+    (window as unknown as { speechSynthesis: typeof synth }).speechSynthesis = synth;
+    const v = await resolveCantoneseVoice(30);
+    expect(v).toBeNull();
+  });
+
+  it('cantoneseTtsStatus：无 API → unsupported', async () => {
+    // 清除前面测试注入的 mock，恢复“无 API”状态
+    delete (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
+    const status = await cantoneseTtsStatus();
+    expect(status.state).toBe('unsupported');
+  });
+
+  it('cantoneseTtsStatus：有 API 但无嗓音 → no-voice', async () => {
+    const synth = {
+      getVoices: () => [] as SpeechSynthesisVoice[],
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      speak: () => undefined,
+      cancel: () => undefined,
+    };
+    (window as unknown as { speechSynthesis: typeof synth }).speechSynthesis = synth;
+    const status = await cantoneseTtsStatus();
+    expect(status.state).toBe('no-voice');
+  });
+
+  it('cantoneseTtsStatus：命中粤语嗓音 → ok', async () => {
+    const synth = {
+      getVoices: () => [{ lang: 'zh-HK' }, { lang: 'en-US' }] as SpeechSynthesisVoice[],
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      speak: () => undefined,
+      cancel: () => undefined,
+    };
+    (window as unknown as { speechSynthesis: typeof synth }).speechSynthesis = synth;
+    const status = await cantoneseTtsStatus();
+    expect(status.state).toBe('ok');
+    expect(status.voice?.lang).toBe('zh-HK');
   });
 });

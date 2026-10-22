@@ -5,6 +5,21 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.22.4]
+
+**粤语 TTS 检测与降级逻辑补全（Web Speech）**
+
+补齐此前识别的 3 个 TTS 真实缺口：本机嗓音探测、voiceschanged 异步填充、显式指定嗓音避免退化。
+
+### ✨ New Features 新增功能
+- 【粤语 TTS·能力探测】`lib/jyutping.ts` 新增 `cantoneseTtsStatus()`（返回 `unsupported` / `no-voice` / `ok` 三态 + 用户提示）、`resolveCantoneseVoice()`（异步监听 `voiceschanged`，超时兜底）、`pickCantoneseVoice()`（优先 `zh-HK/yue`，回退中文嗓音）。
+- 【粤语 TTS·显式选嗓音】`speakCantonese` 改为 async，显式挑选本机粤语嗓音（不可用则回退中文），避免浏览器静默退化成错误的普通话嗓音；保留 `cancelCantoneseSpeech()`。`cantoneseTtsSupported()` 维持同步「API 是否存在」粗判。
+- 【粤语 TTS·UI 降级】`CantoneseScore` 在能力探测完成前不渲染试听按钮；`no-voice` 时渲染禁用态并显示「未安装粤语 / 中文语音包」提示；`unsupported` 时不渲染。
+
+### 🧪 验证
+- `vitest run` 全量 80 项通过（`jyutping.test.ts` 扩至 20 项覆盖三态 / voiceschanged / 超时；`CantoneseScore.test.tsx` 扩至 7 项含 no-voice 禁用 + ok 可用）。
+- `tsc --noEmit` 通过；`eslint` 改动文件 0 error。
+
 ## [2026.10.22.3]
 
 **粤语评分前端落地（开关 + 粤拼标注 + 粤语分明细 + TTS 试听）**

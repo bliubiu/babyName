@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import CantoneseScore from './CantoneseScore';
 import type { Name } from '@/types';
 
@@ -57,8 +57,44 @@ describe('CantoneseScore', () => {
     expect(screen.queryByText('粤语分分解')).not.toBeInTheDocument();
   });
 
-  it('happy-dom 无 speechSynthesis 时隐藏试听按钮', () => {
-    render(<CantoneseScore name={{ ...baseName, jyutping: 'wong4 zi2 man4', cantonese_score: 70 }} />);
+  it('happy-dom 无 speechSynthesis 时隐藏试听按钮', async () => {
+    await act(async () => {
+      render(<CantoneseScore name={{ ...baseName, jyutping: 'wong4 zi2 man4', cantonese_score: 70 }} />);
+    });
     expect(screen.queryByTitle('粤语试听')).not.toBeInTheDocument();
   });
+
+  it('本机无粤语嗓音（no-voice）时按钮禁用并给出提示', async () => {
+    const synth = {
+      getVoices: () => [] as SpeechSynthesisVoice[],
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      speak: () => undefined,
+      cancel: () => undefined,
+    };
+    (window as unknown as { speechSynthesis: typeof synth }).speechSynthesis = synth;
+
+    render(<CantoneseScore name={{ ...baseName, jyutping: 'wong4 zi2 man4', cantonese_score: 70 }} />);
+    const btn = await waitFor(() => screen.getByTitle(/未安装粤语语音包|无法朗读粤语/), { timeout: 4000 });
+    expect(btn).toBeDisabled();
+  });
+
+  it('本机有粤语嗓音（ok）时显示可用试听按钮', async () => {
+    const synth = {
+      getVoices: () => [{ lang: 'zh-HK' }, { lang: 'en-US' }] as SpeechSynthesisVoice[],
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      speak: () => undefined,
+      cancel: () => undefined,
+    };
+    (window as unknown as { speechSynthesis: typeof synth }).speechSynthesis = synth;
+
+    render(<CantoneseScore name={{ ...baseName, jyutping: 'wong4 zi2 man4', cantonese_score: 70 }} />);
+    const btn = await waitFor(() => screen.getByTitle('粤语试听'));
+    expect(btn).not.toBeDisabled();
+  });
+});
+
+afterEach(() => {
+  delete (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
 });
