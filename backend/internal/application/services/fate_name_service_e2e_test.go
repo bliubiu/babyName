@@ -450,6 +450,77 @@ func TestFateNameService_E2E_ScoreDetails(t *testing.T) {
 	}
 }
 
+// TestFateNameService_E2E_Cantonese 验证「开启粤语评分」端到端透传：
+// 服务层 NameAnalysis 必须填充 CantoneseScore（含分项：粤语音律/粤语谐音）与
+// Jyutping 粤拼标注；并序列化 JSON 确认对外字段名为 cantonese_score /
+// cantonese_score_detail / jyutping。关闭时 CantoneseScore 应为空（零影响）。
+func TestFateNameService_E2E_Cantonese(t *testing.T) {
+	svc := setupFateNameServiceE2E(t)
+	ctx := context.Background()
+
+	base := &GenerateRequest{
+		Surname:     "王",
+		Gender:      "male",
+		BirthYear:   2024,
+		BirthMonth:  1,
+		BirthDay:    15,
+		BirthHour:   12,
+		BirthMinute: 0,
+		NameLength:  2,
+	}
+
+	// ——— 开启粤语评分 ———
+	on := *base
+	on.EnableCantonese = true
+	respOn, err := svc.GenerateWithAnalysis(ctx, &on)
+	if err != nil {
+		t.Fatalf("GenerateWithAnalysis(粤语开) 失败: %v", err)
+	}
+	if len(respOn.Names) == 0 {
+		t.Fatal("应返回至少 1 个名字")
+	}
+	checked := 0
+	for _, n := range respOn.Names {
+		if n.Jyutping == "" {
+			t.Errorf("名字 %s 粤语开启但 Jyutping 为空（粤拼标注未透传）", n.FullName)
+		}
+		if n.CantoneseScore == 0 {
+			t.Errorf("名字 %s 粤语开启但 CantoneseScore 为 0", n.FullName)
+		}
+		if len(n.CantoneseScoreDetail) == 0 {
+			t.Errorf("名字 %s 粤语开启但 cantonese_score_detail 为空", n.FullName)
+		}
+		checked++
+		if checked >= 10 {
+			break
+		}
+	}
+	// JSON 字段名核对（API 契约）
+	raw, err := json.Marshal(respOn.Names[0])
+	if err != nil {
+		t.Fatalf("序列化失败: %v", err)
+	}
+	js := string(raw)
+	for _, key := range []string{`"cantonese_score"`, `"cantonese_score_detail"`, `"jyutping"`} {
+		if !strings.Contains(js, key) {
+			t.Errorf("NameAnalysis JSON 缺少字段 %s（实际: %s）", key, js)
+		}
+	}
+
+	// ——— 关闭粤语评分：综合分不应被粤语分干扰，CantoneseScore 应保持零值 ———
+	off := *base
+	off.EnableCantonese = false
+	respOff, err := svc.GenerateWithAnalysis(ctx, &off)
+	if err != nil {
+		t.Fatalf("GenerateWithAnalysis(粤语关) 失败: %v", err)
+	}
+	for _, n := range respOff.Names {
+		if n.CantoneseScore != 0 || len(n.CantoneseScoreDetail) != 0 {
+			t.Errorf("名字 %s 粤语关闭但 CantoneseScore 非空（应为零影响）", n.FullName)
+		}
+	}
+}
+
 // TestFateNameService_E2E_PoetryBackfill 出典回链：完整出处结构化回填
 //
 // 验证 GenerateWithAnalysis 对有诗词出典的名字，service 层通过 classics.PoemIndex
