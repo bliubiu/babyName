@@ -26,7 +26,7 @@ import (
 	"name/internal/infrastructure/gateaudit"
 	"name/internal/infrastructure/logger"
 	"name/internal/infrastructure/middleware"
-	"name/internal/infrastructure/server"
+	"name/internal/infrastructure/web"
 	"name/internal/paths"
 )
 
@@ -190,8 +190,15 @@ func main() {
 	// 创建处理器
 	h := newHandlers(svc, dataDir)
 
+	// 服务端渲染层（SSR 全栈：替代原前端容器，直接由 Gin 渲染页面）
+	wh, err := web.NewHandler(svc.name, svc.history, svc.favorite)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "错误: 初始化 web 渲染层失败: %v\n", err)
+		os.Exit(1)
+	}
+
 	// 路由配置
-	router, rateLimiter := setupRouter(h, cfg.Mode, cfg.Static, store, cfg.RateLimit.Capacity, cfg.RateLimit.Rate)
+	router, rateLimiter := setupRouter(h, wh, cfg.Mode, cfg.Static, store, cfg.RateLimit.Capacity, cfg.RateLimit.Rate)
 
 	// 启动服务器（优雅关闭）
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
@@ -378,7 +385,7 @@ func newHandlers(svc *appServices, dataDir string) *appHandlers {
 
 // --- 路由配置 ---
 
-func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store, rateCapacity, rateRate float64) (*gin.Engine, *middleware.IPRateLimiter) {
+func setupRouter(h *appHandlers, wh *web.Handler, runMode, staticDir string, store database.Store, rateCapacity, rateRate float64) (*gin.Engine, *middleware.IPRateLimiter) {
 	router := gin.New()
 
 	// 可信代理（docs/29 A10）：gin 默认信任所有代理并从 X-Forwarded-For
@@ -469,10 +476,11 @@ func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store
 		api.GET("/characters/groups", h.character.GetCharGroups)
 	}
 
-	// 静态文件服务（仅 all 模式）
-	if runMode == "all" {
-		server.SetupStaticFileServer(router, server.StaticConfig{Root: staticDir})
-	}
+	// 服务端渲染页面路由（SSR 全栈：首页/结果/收藏/历史/测名等由 web 包渲染）
+	web.RegisterRoutes(router, wh)
+
+	// 注：原前端容器静态服务（server.SetupStaticFileServer）已在 refactor/ssr-templates
+	// 分支移除，页面改由 Go 服务端模板渲染，不再依赖 Node/前端构建产物。
 
 	return router, rateLimiter
 }

@@ -1,0 +1,23 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-4">我的收藏</h1>
+{{if not .Favorites}}
+<div class="bg-white rounded shadow p-6 text-center text-slate-500">还没有收藏的名字。在结果页点击「收藏」即可加入。</div>
+{{else}}
+<div class="space-y-3">
+  {{range .Favorites}}
+  <article class="bg-white rounded shadow p-4 flex items-center justify-between">
+    <div>
+      <h3 class="text-lg font-bold">{{.Surname}}{{.GivenName}} <span class="text-sm text-slate-400">{{.Pinyin}}</span></h3>
+      <p class="text-xs text-slate-500">评分 {{.Score}} · {{.Gender}} · {{.Source}} · {{.CreatedAt.Format "2006-01-02 15:04"}}</p>
+    </div>
+    <form method="post" action="/favorites/delete" onsubmit="return confirm('确定取消收藏？')">
+      <input type="hidden" name="id" value="{{.ID}}">
+      <input type="hidden" name="page" value="{{$.Page}}">
+      <button type="submit" class="text-sm bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">取消收藏</button>
+    </form>
+  </article>
+  {{end}}
+</div>
+{{template "pagination" .}}
+{{end}}
+{{end}}

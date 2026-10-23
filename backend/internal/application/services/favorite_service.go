@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"time"
 
 	"name/internal/domain/name"
 	"name/internal/infrastructure/database"
@@ -42,14 +43,15 @@ func (s *FavoriteService) SetGateReviewRecorder(r GateReviewRecorder) {
 
 // FavoriteRecord 收藏记录
 type FavoriteRecord struct {
-	ID        string  `json:"id"`
-	Surname   string  `json:"surname"`
-	GivenName string  `json:"given_name"`
-	Pinyin    string  `json:"pinyin"`
-	Gender    string  `json:"gender"`
-	Score     float64 `json:"score"` // 与 name.Name.TotalScore 同口径（浮点）
-	Source    string  `json:"source"`
-	Notes     string  `json:"notes"`
+	ID        string    `json:"id"`
+	Surname   string    `json:"surname"`
+	GivenName string    `json:"given_name"`
+	Pinyin    string    `json:"pinyin"`
+	Gender    string    `json:"gender"`
+	Score     float64   `json:"score"` // 与 name.Name.TotalScore 同口径（浮点）
+	Source    string    `json:"source"`
+	Notes     string    `json:"notes"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // GetFavorites 获取收藏列表（全量，仅供内部/兼容调用）
@@ -92,6 +94,7 @@ func toFavoriteRecord(r *database.FavoriteRecord) *FavoriteRecord {
 		Score:     r.Score,
 		Source:    r.Source,
 		Notes:     r.Notes,
+		CreatedAt: r.CreatedAt,
 	}
 }
 

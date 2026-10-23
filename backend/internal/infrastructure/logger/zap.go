@@ -21,6 +21,13 @@ type Config struct {
 	// 绝对路径原样使用，相对路径相对 cwd；空值固定「项目根/logs/」。
 	// 文件名固定 namer-YYYYMMDD.log，按天轮转，由 dailySink 统一管理。
 	OutputPath string `mapstructure:"output_path"`
+	// FileOnly 只写日志文件，不再镜像到标准输出（默认 false，保持
+	// 「文件 + stdout」双路，server 依赖 stdout 在容器里可见）。
+	//
+	// CLI 必须开启：`-format json` 时 stdout 只能承载结果本体，
+	// 否则 INFO 日志与 JSON 混在一起，下游解析直接失败
+	// （namer-cli integration_test.go 的 TestCLIBinaryJSONOutputPinyinFilled）。
+	FileOnly bool `mapstructure:"file_only"`
 }
 
 func Init(cfg *Config) error {
@@ -73,10 +80,13 @@ func Init(cfg *Config) error {
 	// 跨天自动切换 + 保留 32 天清理（超过该职责的收入不再交给调用方）。
 	sink := newDailySink(dir, time.Now)
 
-	writeSyncer := zapcore.NewMultiWriteSyncer(
-		zapcore.AddSync(sink),
-		zapcore.AddSync(os.Stdout),
-	)
+	// 默认「文件 + 标准输出」双路：server 的 stdout 要进容器日志。
+	// FileOnly 关掉 stdout 镜像，供 CLI 的 json/text 结果输出专用。
+	sinks := []zapcore.WriteSyncer{zapcore.AddSync(sink)}
+	if !cfg.FileOnly {
+		sinks = append(sinks, zapcore.AddSync(os.Stdout))
+	}
+	writeSyncer := zapcore.NewMultiWriteSyncer(sinks...)
 
 	core := zapcore.NewCore(
 		encoder,

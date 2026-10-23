@@ -1,0 +1,99 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-1">测名</h1>
+<p class="text-slate-500 text-sm mb-5">对给定姓名做完整评分与风险体检（谐音/生僻字/多音字/负面联想/门禁字等）。</p>
+
+<form method="post" action="/evaluate" class="bg-white rounded shadow p-5 space-y-4">
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <label class="block">姓氏
+      <input name="surname" required class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+    <label class="block">名字（不含姓）
+      <input name="given_name" required placeholder="如 明澈" class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+    <label class="block">性别
+      <select name="gender" class="mt-1 w-full border rounded px-3 py-2">
+        <option value="男">男</option>
+        <option value="女">女</option>
+      </select>
+    </label>
+    <label class="block">出生年
+      <input name="birth_year" type="number" required class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+    <label class="block">出生月
+      <input name="birth_month" type="number" min="1" max="12" required class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+    <label class="block">出生日
+      <input name="birth_day" type="number" min="1" max="31" required class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+    <label class="block">出生时辰（0-23 时）
+      <input name="birth_hour" type="number" min="0" max="23" value="12" class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+    <label class="block">出生分钟（0-59 分）
+      <input name="birth_minute" type="number" min="0" max="59" value="0" class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+    <label class="block sm:col-span-2">出生地点
+      <input name="birth_location" placeholder="如 北京" class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+  </div>
+  <button type="submit" class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700">开始测名</button>
+</form>
+
+{{with .Evaluate}}
+<section class="bg-white rounded shadow p-5 mt-6">
+  <div class="flex items-baseline justify-between">
+    <h2 class="text-xl font-bold">{{.FullName}} <span class="text-sm text-slate-400">{{.Name.Pinyin}}</span>{{if .Name.Jyutping}} <span class="text-sm text-slate-400" title="粤拼">[粤: {{.Name.Jyutping}}]</span>{{end}}</h2>
+    <span class="text-lg font-semibold text-indigo-600">{{.Name.TotalScore}} 分</span>
+  </div>
+  <p class="text-sm text-slate-600 mt-1">寓意：{{.Name.Meaning}}</p>
+  <p class="text-sm text-slate-600">五行：{{.Name.Wuxing}} —— {{.Name.WuxingAnalysis}}</p>
+  {{if .Name.PoetrySource}}
+  <p class="text-sm text-slate-600">出处：{{.Name.PoetrySource}}「{{.Name.PoetrySentence}}」{{if .Name.PoetryAuthor}}（{{.Name.PoetryAuthor}}）{{end}}</p>
+  {{end}}
+
+  <h3 class="font-semibold mt-4 mb-2 text-indigo-700">评分明细</h3>
+  <div class="space-y-1">
+    {{range .Name.ScoreDetail}}
+    <div class="text-xs flex items-center gap-2">
+      <span class="w-20 shrink-0 text-slate-500">{{.Name}}</span>
+      <div class="flex-1 bg-slate-100 rounded h-2">
+        <div class="bg-indigo-500 h-2 rounded" style="width:{{.Score}}%"></div>
+      </div>
+      <span class="w-10 text-right text-slate-500">{{.Score}}</span>
+    </div>
+    {{end}}
+  </div>
+
+  <h3 class="font-semibold mt-4 mb-2 text-indigo-700">八字概要</h3>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 text-sm">
+    <div>四柱：{{.Bazi.Bazi.YearGanzhi}} {{.Bazi.Bazi.MonthGanzhi}} {{.Bazi.Bazi.DayGanzhi}} {{.Bazi.Bazi.HourGanzhi}}</div>
+    <div>生肖：{{.Zodiac}}</div>
+    <div>五行：金{{.Bazi.Wuxing.Jin}} 木{{.Bazi.Wuxing.Mu}} 水{{.Bazi.Wuxing.Shui}} 火{{.Bazi.Wuxing.Huo}} 土{{.Bazi.Wuxing.Tu}}</div>
+    <div>日主：{{.Bazi.DayMaster}}（{{.Bazi.DayMasterStrength}}）</div>
+  </div>
+
+  <h3 class="font-semibold mt-4 mb-2 text-indigo-700">风险体检（{{.RiskLevel}}）</h3>
+  {{if $.Risks}}
+  <ul class="text-sm space-y-1">
+    {{range $.Risks}}
+    <li class="flex gap-2">
+      <span class="shrink-0 rounded px-2 py-0.5 text-xs {{if eq .Level "fail"}}bg-red-100 text-red-700{{else if eq .Level "warn"}}bg-amber-100 text-amber-700{{else}}bg-emerald-100 text-emerald-700{{end}}">{{.Category}}</span>
+      <span class="text-slate-600">{{.Detail}}</span>
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="text-sm text-emerald-600">未发现风险项。</p>
+  {{end}}
+
+  <form method="post" action="/favorites" class="mt-4">
+    <input type="hidden" name="surname" value="{{.Name.Surname}}">
+    <input type="hidden" name="given_name" value="{{.Name.GivenName}}">
+    <input type="hidden" name="pinyin" value="{{.Name.Pinyin}}">
+    <input type="hidden" name="gender" value="{{.Name.Gender}}">
+    <input type="hidden" name="score" value="{{.Name.TotalScore}}">
+    <input type="hidden" name="source" value="测名">
+    <button type="submit" class="text-sm bg-amber-500 text-white px-3 py-1 rounded hover:bg-amber-600">收藏</button>
+  </form>
+</section>
+{{end}}
+{{end}}

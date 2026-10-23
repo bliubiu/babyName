@@ -1,0 +1,53 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-1">为宝宝起一个好名字</h1>
+<p class="text-slate-500 text-sm mb-5">基于八字五行、诗词典故与音形义综合评分，给出寓意美好的候选名。</p>
+
+<form method="post" action="/generate" class="bg-white rounded shadow p-5 space-y-4">
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <label class="block">姓氏
+      <input name="surname" required class="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+    </label>
+    <label class="block">性别
+      <select name="gender" class="mt-1 w-full border rounded px-3 py-2">
+        <option value="男">男</option>
+        <option value="女">女</option>
+      </select>
+    </label>
+    <label class="block">出生年
+      <input name="birth_year" type="number" required class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+    <label class="block">出生月
+      <input name="birth_month" type="number" min="1" max="12" required class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+    <label class="block">出生日
+      <input name="birth_day" type="number" min="1" max="31" required class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+    <label class="block">出生时辰（0-23 时）
+      <input name="birth_hour" type="number" min="0" max="23" value="12" class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+    <label class="block">出生分钟（0-59 分）
+      <input name="birth_minute" type="number" min="0" max="59" value="0" class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+    <label class="block">出生地点
+      <input name="birth_location" placeholder="如 北京" class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+    <label class="block">名字长度
+      <select name="name_length" class="mt-1 w-full border rounded px-3 py-2">
+        <option value="2">双字名</option>
+        <option value="1">单字名</option>
+      </select>
+    </label>
+  </div>
+
+  <label class="block">避讳长辈（逗号分隔）
+    <input name="avoid_elder_names" placeholder="如 李强,王芳" class="mt-1 w-full border rounded px-3 py-2">
+  </label>
+
+  <div class="flex gap-5 text-sm text-slate-600">
+    <label class="flex items-center gap-1"><input type="checkbox" name="exclude_rare" value="1"> 排除生僻字</label>
+    <label class="flex items-center gap-1"><input type="checkbox" name="enable_cantonese" value="1"> 启用粤语评分</label>
+  </div>
+
+  <button type="submit" class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700">开始起名</button>
+</form>
+{{end}}

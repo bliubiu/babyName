@@ -1,0 +1,23 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-4">历史记录</h1>
+{{if not .History}}
+<div class="bg-white rounded shadow p-6 text-center text-slate-500">还没有历史记录。生成名字后会自动保存。</div>
+{{else}}
+<div class="space-y-3">
+  {{range .History}}
+  <article class="bg-white rounded shadow p-4 flex items-center justify-between">
+    <div>
+      <h3 class="text-base font-semibold">{{.Surname}}（{{.Gender}}） · {{.BirthDate}} {{.BirthTime}}{{if .BirthLoc}} · {{.BirthLoc}}{{end}}</h3>
+      <p class="text-xs text-slate-500">{{.CreatedAt}} · 共 {{.NameCount}} 个名字{{if .TopName}} · 首选 {{.TopName}}{{end}}</p>
+    </div>
+    <form method="post" action="/history/delete" onsubmit="return confirm('确定删除这条历史？')">
+      <input type="hidden" name="id" value="{{.ID}}">
+      <input type="hidden" name="page" value="{{$.Page}}">
+      <button type="submit" class="text-sm bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">删除</button>
+    </form>
+  </article>
+  {{end}}
+</div>
+{{template "pagination" .}}
+{{end}}
+{{end}}

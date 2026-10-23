@@ -140,11 +140,16 @@ func (s *NameService) Evaluate(ctx context.Context, req *EvaluateRequest) (*Eval
 // （与 /generate 的 names[] 元素同构），供测名与探索模式共用。
 func assembleEvaluatedName(provider *HanziDataProvider, surname, given, gender string, cand *fate.NameCandidate, score fate.NameScore, sourceClassic string) name.Name {
 	n := name.Name{
-		ID:         1,
-		Surname:    surname,
-		GivenName:  given,
-		FullName:   surname + given,
-		Pinyin:     strings.TrimSpace(cand.Pinyin1 + " " + cand.Pinyin2),
+		ID:        1,
+		Surname:   surname,
+		GivenName: given,
+		FullName:  surname + given,
+		Pinyin:    strings.TrimSpace(cand.Pinyin1 + " " + cand.Pinyin2),
+		// 粤拼透传：与引擎 NameResult 同一组合口径（姓 + 名各字，空格连接）。
+		// 候选组装阶段无条件预填，与粤语评分开关无关。
+		// 粤语分本身不在此路径回算（RateGivenName 只用 DefaultRaters），
+		// 故 CantoneseScore 留空——换一批/测名不展示粤语分。
+		Jyutping:   strings.TrimSpace(cand.SurnameJyutping + " " + cand.Jyutping1 + " " + cand.Jyutping2),
 		Gender:     gender,
 		Meaning:    combineTwoMeanings(cand.Meaning1, cand.Meaning2),
 		Wuxing:     cand.WuXing1 + cand.WuXing2,

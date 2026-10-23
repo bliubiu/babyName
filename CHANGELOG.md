@@ -5,6 +5,36 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.23.1]
+
+**SSR 全栈重构收口：补齐测名/黄历/统计三页 + 修复粤语分开关漏传**
+
+在 `refactor/ssr-templates` 分支将前端从 React/Next/TS 迁移为 Go `html/template` 服务端渲染（Tailwind CDN、零 JS、PRG 模式）后，本迭代消除页面层全部缺口，达到两层 E2E 全绿。
+
+### ✨ New Features 新增功能
+- 【SSR·测名页】新增 `/evaluate`（GET 表单 / POST 评分）：复用 `NameService.Evaluate`，渲染与 `/generate` 同构的评分明细、八字概要、风险体检（fail/warn/pass 三色徽标），支持一键收藏。
+- 【SSR·黄历页】新增 `/huangli`：直读 `bazi.GetHuangli` 域层（与 `/api/v1/huangli` 同源），展示宜/忌、吉神凶煞、彭祖百忌、冲煞、五行等；缺省今天，非法日期（如 2 月 30 日）返回中文提示不 500。
+- 【SSR·统计页】新增 `/stat`：`namestat.GetTopNames` Top-N 高频名表格（排名/人数/占比条），支持 limit 20/50/100。
+- 【SSR·结果页】补紫微斗数区块（命宫/天柱/地纬/解析）与粤拼标注、粤语分维度条（关闭开关时仅透传粤拼、不渲染粤语分）。
+- 【SSR·首页】补 `birth_minute` 出生分钟输入框（此前 `parseGenerateForm` 读到分钟恒为 0，影响真太阳时校正精度）。
+
+### 🐛 Bug Fixes 问题修复
+- 【粤语评分】`NameService.Generate` 装配 `fate.GenerateOptions` 时漏传 `EnableCantonese`，导致请求开关永远到不了引擎、粤语分恒为空（`/api/v1/names/generate` 与 SSR 同受影响；`fate_name_service.go` 另一条装配链本就传了，属双口径漏配）。已补齐并对齐注释。
+- 【DTO 映射】`services.HistoryRecord` / `FavoriteRecord` 漏映射 `database` 层的 `CreatedAt`（收藏页模板渲染 `can't evaluate field CreatedAt` 的直接根因），已补齐为 `json:"created_at"`（对 JSON API 为增量字段）。
+- 【渲染健壮性】`renderPage` 改为先渲染到 `bytes.Buffer` 再一次性 `c.Data()` 输出：模板中途报错不再留下半页 HTML，也不再触发 "Headers were already written" 导致状态码改不动。
+- 【CLI】`logger.Init` 无条件把 `os.Stdout` 加为第二写目标，与 CLI"日志初始化到文件，避免污染终端结果输出"的意图相悖，导致 `-format json` 的 stdout 被 INFO 日志污染（既有红灯 `TestCLIBinaryJSONOutputPinyinFilled`）。新增 `logger.Config.FileOnly`（零值 false 保持 server 双路行为，完全向后兼容），CLI 显式开启。
+
+### 🧹 Code Cleanup 代码清理
+- 删除 SSR 层 `attachSurname`：服务层四条链路（`convertFateToNameNames` / `assembleEvaluatedName` / `fate_name_service`）早已回填 `Surname`/`FullName`（根源在 `domain/fate/engine.go`），渲染层拼接属纯冗余。
+- 收敛 SSR `session` 为 `map[string]*services.GenerateResponse`，删除只写不读的 `surname`/`generationID`/`createdAt` 字段与 `Handler.dataDir` 死字段。
+- `name.Name` 补 `Jyutping`/`CantoneseScore`/`CantoneseScoreDetail` 字段（此前仅 `NameAnalysis` 有），`convertFateToNameNames`/`assembleEvaluatedName` 透传；`buildScoreDetail` 重构为可传维度顺序（普通话八维与粤语两维各用各的顺序表，消除同名重复实现）。
+
+### 🧪 验证
+- `go build ./...` / `go vet ./...` / `gofmt -l`（改动目录）全部干净。
+- `go test ./...` 全绿（31 包 ok，含此前既有红灯 `TestCLIBinaryJSONOutputPinyinFilled` 转绿）。
+- 两层 E2E：`tools/e2e_check -strict` 18/18 通过；SSR 页面层冒烟 45/45 通过（首页→生成→结果→换一批→收藏→取消→历史→删除→测名→黄历→统计，含错误路径与无会话重定向）。
+- 粤语分开关语义实测：开启时粤拼+粤语分均渲染；关闭时粤拼仍透传（50 次）、粤语分 0 次不渲染。
+
 ## [2026.10.23.0]
 
 **移除离线粤语 TTS（Audio8 ONNX），保留 Web Speech zh-HK 试听**

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"name/internal/infrastructure/database"
 )
@@ -27,6 +28,7 @@ type HistoryRecord struct {
 	BirthTime     string          `json:"birth_time"`
 	BirthLocation string          `json:"birth_location"`
 	Results       json.RawMessage `json:"results"`
+	CreatedAt     time.Time       `json:"created_at"`
 }
 
 // SaveHistory 保存历史记录
@@ -77,6 +79,7 @@ func (s *HistoryService) GetHistory(ctx context.Context) ([]*HistoryRecord, erro
 			BirthTime:     r.BirthTime,
 			BirthLocation: r.BirthLocation,
 			Results:       json.RawMessage(r.Results),
+			CreatedAt:     r.CreatedAt,
 		}
 	}
 	return result, nil
@@ -98,6 +101,7 @@ func (s *HistoryService) GetHistoryPage(ctx context.Context, page, limit int) ([
 			BirthTime:     r.BirthTime,
 			BirthLocation: r.BirthLocation,
 			Results:       json.RawMessage(r.Results),
+			CreatedAt:     r.CreatedAt,
 		}
 	}
 	return result, total, nil

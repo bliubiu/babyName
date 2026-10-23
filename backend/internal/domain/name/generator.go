@@ -59,6 +59,21 @@ type Name struct {
 	// /names/generate/analysis 两条链路都能回答「为什么是这个分」，
 	// 前端无需硬编码维度即可通用渲染分数条 + 依据文字。
 	ScoreDetail []ScoreDetailItem `json:"score_detail,omitempty"`
+
+	// Jyutping 粤拼标注（姓 + 名各字粤拼，空格组合），与粤语评分开关无关，始终透传。
+	//
+	// 与 NameAnalysis.Jyutping 同构：此前只存在于 NameAnalysis，而
+	// /generate/analysis 路由已下线，导致 SSR 结果页拿不到粤拼。
+	// 由 fate.NameResult 透传（引擎候选组装阶段预填），补齐后两条链路同口径。
+	Jyutping string `json:"jyutping,omitempty"`
+
+	// CantoneseScore 独立「粤语分」（0-100）；仅在开启粤语评分时非零。
+	//
+	// 由粤语音律 + 粤语谐音两项聚合，独立展示，不并入 ScoreDetail 的普通话各维度。
+	CantoneseScore float64 `json:"cantonese_score,omitempty"`
+
+	// CantoneseScoreDetail 粤语分维度明细（粤语音律/粤语谐音），仅在开启粤语评分时非空。
+	CantoneseScoreDetail []ScoreDetailItem `json:"cantonese_score_detail,omitempty"`
 }
 
 // ScoreDetailItem 单维度评分明细（确定性评分数据载体）

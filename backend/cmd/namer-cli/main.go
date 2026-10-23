@@ -209,11 +209,13 @@ func generate(req *services.GenerateRequest, dataDir string, dbPath string) (*se
 		defer func() { _ = store.Close() }()
 	}
 
-	// 2. 日志初始化到文件，避免污染终端结果输出
+	// 2. 日志只落文件，不镜像 stdout——stdout 是结果输出通道
+	//    （-format json 时混入一行 INFO 就会让 JSON 解析失败）。
 	//    OutputPath 空值 → 固定「项目根/logs/」，文件名 namer-YYYYMMDD.log（与 server 同一套）
 	if logErr := logger.Init(&logger.Config{
-		Level:  "info",
-		Format: "console",
+		Level:    "info",
+		Format:   "console",
+		FileOnly: true,
 	}); logErr != nil {
 		fmt.Fprintf(os.Stderr, "警告: 日志系统初始化失败(%v)，使用标准输出\n", logErr)
 	}

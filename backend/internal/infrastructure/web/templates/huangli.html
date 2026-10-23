@@ -1,0 +1,67 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-1">黄历</h1>
+<p class="text-slate-500 text-sm mb-5">查询每日宜忌、吉神凶煞、彭祖百忌与农历信息（支持 1900-2100）。</p>
+
+<form method="get" action="/huangli" class="bg-white rounded shadow p-5 mb-6">
+  <div class="flex flex-wrap items-end gap-4">
+    <label class="block">年
+      <input name="year" type="number" min="1900" max="2100" value="{{if .Huangli}}{{.Huangli.Year}}{{end}}" class="mt-1 w-28 border rounded px-3 py-2">
+    </label>
+    <label class="block">月
+      <input name="month" type="number" min="1" max="12" class="mt-1 w-20 border rounded px-3 py-2">
+    </label>
+    <label class="block">日
+      <input name="day" type="number" min="1" max="31" class="mt-1 w-20 border rounded px-3 py-2">
+    </label>
+    <button type="submit" class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700">查询</button>
+  </div>
+</form>
+
+{{with .Huangli}}
+<section class="bg-white rounded shadow p-5">
+  <div class="flex items-baseline justify-between mb-4">
+    <h2 class="text-xl font-bold">{{.Date}}</h2>
+    <span class="text-slate-500 text-sm">农历 {{.Year}}年{{.Month}}{{.Day}}</span>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div class="rounded border border-emerald-200 bg-emerald-50 p-4">
+      <h3 class="font-semibold text-emerald-700 mb-2">宜</h3>
+      <div class="flex flex-wrap gap-1">
+        {{range .Yi}}<span class="inline-block bg-white text-emerald-700 rounded px-2 py-0.5 text-sm border border-emerald-200">{{.}}</span>{{end}}
+      </div>
+    </div>
+    <div class="rounded border border-red-200 bg-red-50 p-4">
+      <h3 class="font-semibold text-red-700 mb-2">忌</h3>
+      <div class="flex flex-wrap gap-1">
+        {{range .Ji}}<span class="inline-block bg-white text-red-700 rounded px-2 py-0.5 text-sm border border-red-200">{{.}}</span>{{end}}
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 text-sm mt-4">
+    <div>吉神宜趋：{{range .JiShen}}<span class="mr-1">{{.}}</span>{{end}}</div>
+    <div>凶神宜忌：{{range .XiongSha}}<span class="mr-1">{{.}}</span>{{end}}</div>
+    <div>彭祖百忌：{{.PengZhu}}</div>
+    <div>建除十二神：{{.JianChu}}</div>
+    <div>冲煞：{{.Chong}}（{{.Sha}}）</div>
+    <div>岁次五行：{{.YearWuxing}}</div>
+    <div>月五行：{{.MonthWuxing}}</div>
+    <div>日五行：{{.DayWuxing}}</div>
+    <div>纳音：{{.LiuYao}}</div>
+    <div>值神：{{.ZhiShen}}</div>
+    <div>胎神：{{.TaiShen}}</div>
+    <div>星宿：{{.XingXiu}}</div>
+    <div>喜神：{{.XiShen}}</div>
+    <div>福神：{{.FuShen}}</div>
+    <div>财神：{{.CaiShen}}</div>
+    <div>阳贵神：{{.YangGui}}</div>
+    <div>阴贵神：{{.YinGui}}</div>
+    <div>物候：{{.BaiCang}}</div>
+    <div>月令：{{.ZhangSong}}</div>
+    <div>大殓吉时：{{.Fu}}</div>
+    <div>时辰吉凶：{{.JieShen}}</div>
+  </div>
+</section>
+{{end}}
+{{end}}

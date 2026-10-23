@@ -1,0 +1,41 @@
+{{define "base"}}<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+  <header class="bg-white shadow">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+      <a href="/" class="text-xl font-bold text-indigo-700">起名 NameMaster</a>
+      <nav class="space-x-3 text-sm text-slate-600">
+        <a href="/" class="hover:text-indigo-600">首页</a>
+        <a href="/result" class="hover:text-indigo-600">结果</a>
+        <a href="/favorites" class="hover:text-indigo-600">收藏</a>
+        <a href="/history" class="hover:text-indigo-600">历史</a>
+        <a href="/evaluate" class="hover:text-indigo-600">测名</a>
+        <a href="/huangli" class="hover:text-indigo-600">黄历</a>
+        <a href="/stat" class="hover:text-indigo-600">统计</a>
+      </nav>
+    </div>
+  </header>
+  <main class="flex-1 max-w-5xl mx-auto w-full px-4 py-6">
+    {{if .Error}}<div class="bg-red-100 text-red-700 px-4 py-2 rounded mb-4">{{.Error}}</div>{{end}}
+    {{block "content" .}}{{end}}
+  </main>
+  <footer class="text-center text-xs text-slate-400 py-4">起名工具 · 仅供文化参考</footer>
+</body>
+</html>
+{{end}}
+
+{{define "pagination"}}
+{{if gt .TotalPages 1}}
+<div class="mt-6 flex items-center justify-center gap-2 text-sm">
+  {{if gt .PrevPage 0}}<a href="?page={{.PrevPage}}" class="px-3 py-1 rounded bg-white shadow hover:bg-indigo-50">上一页</a>{{end}}
+  <span class="px-3 py-1 text-slate-500">第 {{.Page}} / {{.TotalPages}} 页</span>
+  {{if lt .Page .TotalPages}}<a href="?page={{.NextPage}}" class="px-3 py-1 rounded bg-white shadow hover:bg-indigo-50">下一页</a>{{end}}
+</div>
+{{end}}
+{{end}}

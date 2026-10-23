@@ -356,6 +356,9 @@ func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateReq
 			RequiredChars:   req.SelectedChars,
 			PinyinInitial:   req.PinyinInitial,
 			ExtraChars:      extraChars,
+			// 粤语评分开关：与 fate_name_service.go 装配链保持一致（双链路对齐）。
+			// 漏传的后果是 req.EnableCantonese 永远到不了引擎，粤语分恒为空。
+			EnableCantonese: req.EnableCantonese,
 		},
 		AvoidElderNames: req.AvoidElderNames,
 	}
@@ -504,6 +507,15 @@ func convertFateToNameNames(results []fate.NameResult, gender string, sourceClas
 		//   FullReport 只能本地自造命理文案 —— docs/24 P2-5。）
 		applyFateScoreDetail(&n, nr.Score)
 		n.Reasons = nr.Reasons
+		// 粤拼标注透传：引擎候选组装阶段无条件预填（与开关无关），
+		// 使 SSR 结果页/前端无需再自行拼接罗马字。
+		n.Jyutping = nr.Jyutping
+		// 粤语分透传：仅在开启粤语评分时引擎才回算（nil 表示未开启）。
+		// 独立维度，不并入普通话 ScoreDetail。
+		if nr.CantoneseScore != nil {
+			n.CantoneseScore = nr.CantoneseScore.Total
+			n.CantoneseScoreDetail = buildCantoneseScoreDetail(nr.CantoneseScore)
+		}
 		names[i] = n
 	}
 	return names
@@ -687,9 +699,19 @@ func applyFateScoreDetail(n *name.Name, score fate.NameScore) {
 // 顺序与 DefaultRaters 权重降序一致，确保推荐名展示稳定；维度内聚为
 // 「维度名/分数/依据文字」，前端无需硬编码维度即可渲染评分分解。
 func buildScoreDetail(items map[string]float64, details map[string]string) []name.ScoreDetailItem {
-	detailOrder := []string{"五行八字", "文化印象", "音韵", "新颖度", "生肖", "共现", "三才", "人名频率"}
+	return buildScoreDetailOrdered(mandarinDimOrder, items, details)
+}
+
+// mandarinDimOrder 普通话八维的固定展示顺序（与 DefaultRaters 权重降序一致）。
+var mandarinDimOrder = []string{"五行八字", "文化印象", "音韵", "新颖度", "生肖", "共现", "三才", "人名频率"}
+
+// buildScoreDetailOrdered 按给定维度顺序输出明细；不在表中的维度不输出。
+//
+// 粤语分维度表与顺序见 buildCantoneseScoreDetail（fate_name_service.go）——
+// 粤语分与普通话分是两套独立维度体系，各用各的顺序表。
+func buildScoreDetailOrdered(dimOrder []string, items map[string]float64, details map[string]string) []name.ScoreDetailItem {
 	var out []name.ScoreDetailItem
-	for _, dim := range detailOrder {
+	for _, dim := range dimOrder {
 		score, ok := items[dim]
 		if !ok {
 			continue

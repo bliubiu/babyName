@@ -1,0 +1,47 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-1">姓名统计</h1>
+<p class="text-slate-500 text-sm mb-5">基于真实人名频率语料（Chinese-Names-Corpus）的高频名字排行，可作为撞名参考。</p>
+
+{{with .Stats}}
+<table class="w-full bg-white rounded shadow text-sm">
+  <thead>
+    <tr class="text-left text-slate-500 border-b">
+      <th class="px-4 py-2 w-16">排名</th>
+      <th class="px-4 py-2">名字</th>
+      <th class="px-4 py-2 w-32">人数</th>
+      <th class="px-4 py-2 w-40">占比</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .}}
+    <tr class="border-b last:border-0">
+      <td class="px-4 py-2 text-slate-500">{{.Rank}}</td>
+      <td class="px-4 py-2 font-semibold">{{.Name}}</td>
+      <td class="px-4 py-2">{{.Count}}</td>
+      <td class="px-4 py-2">
+        <div class="flex items-center gap-2">
+          <div class="flex-1 bg-slate-100 rounded h-2">
+            <div class="bg-indigo-500 h-2 rounded" style="width:{{.Rate}}%"></div>
+          </div>
+          <span class="text-xs text-slate-500 w-12 text-right">{{printf "%.4f" .Rate}}%</span>
+        </div>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="text-slate-500">暂无统计数据。</p>
+{{end}}
+
+<form method="get" action="/stat" class="mt-6 flex items-end gap-4">
+  <label class="block text-sm">显示数量
+    <select name="limit" class="mt-1 border rounded px-3 py-2">
+      <option value="20">Top 20</option>
+      <option value="50">Top 50</option>
+      <option value="100">Top 100</option>
+    </select>
+  </label>
+  <button type="submit" class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700">刷新</button>
+</form>
+{{end}}

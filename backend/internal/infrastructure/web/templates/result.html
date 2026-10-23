@@ -1,0 +1,84 @@
+{{define "content"}}
+{{with .Result}}
+<h1 class="text-2xl font-bold mb-4">起名结果</h1>
+
+<section class="bg-white rounded shadow p-5 mb-6">
+  <h2 class="font-semibold mb-3 text-indigo-700">八字五行</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 text-sm">
+    <div>四柱：{{.Bazi.Bazi.YearGanzhi}} {{.Bazi.Bazi.MonthGanzhi}} {{.Bazi.Bazi.DayGanzhi}} {{.Bazi.Bazi.HourGanzhi}}</div>
+    <div>生肖：{{.Zodiac}}</div>
+    <div>五行：金{{.Bazi.Wuxing.Jin}} 木{{.Bazi.Wuxing.Mu}} 水{{.Bazi.Wuxing.Shui}} 火{{.Bazi.Wuxing.Huo}} 土{{.Bazi.Wuxing.Tu}}</div>
+    <div>日主：{{.Bazi.DayMaster}}（{{.Bazi.DayMasterStrength}}）</div>
+    <div class="sm:col-span-2">喜用神：
+      {{range .Bazi.Xiyongshen}}<span class="inline-block bg-indigo-100 text-indigo-700 rounded px-2 py-0.5 mr-1">{{.}}</span>{{end}}
+    </div>
+    <div>年命纳音：{{.Nayin}}</div>
+  </div>
+  {{with .Hexagram}}
+  <div class="mt-3 text-sm">姓名卦：<b>{{.Name}}</b> —— {{.GuaCi}}</div>
+  {{end}}
+  {{with .Ziwei}}
+  <div class="mt-3 text-sm">
+    紫微斗数：命宫 <b>{{.Gongwei}}</b>{{if .Tianzhu}} · 天柱 {{.Tianzhu}}{{end}}{{if .Diwei}} · 地纬 {{.Diwei}}{{end}}{{if .Analysis}} —— {{.Analysis}}{{end}}
+  </div>
+  {{end}}
+</section>
+
+<form method="post" action="/explore" class="mb-5">
+  <input type="hidden" name="generation_id" value="{{.GenerationID}}">
+  <button type="submit" class="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700">换一批</button>
+</form>
+
+<section class="space-y-4">
+  {{range .Names}}
+  <article class="bg-white rounded shadow p-4">
+    <div class="flex items-baseline justify-between">
+      <h3 class="text-xl font-bold">{{.FullName}} <span class="text-sm text-slate-400">{{.Pinyin}}</span>{{if .Jyutping}} <span class="text-sm text-slate-400" title="粤拼">[粤: {{.Jyutping}}]</span>{{end}}</h3>
+      <span class="text-lg font-semibold text-indigo-600">{{.TotalScore}} 分</span>
+    </div>
+    <p class="text-sm text-slate-600 mt-1">寓意：{{.Meaning}}</p>
+    <p class="text-sm text-slate-600">五行：{{.Wuxing}} —— {{.WuxingAnalysis}}</p>
+    {{if .PoetrySource}}
+    <p class="text-sm text-slate-600">出处：{{.PoetrySource}}「{{.PoetrySentence}}」{{if .PoetryAuthor}}（{{.PoetryAuthor}}）{{end}}</p>
+    {{end}}
+    <div class="mt-3 space-y-1">
+      {{range .ScoreDetail}}
+      <div class="text-xs flex items-center gap-2">
+        <span class="w-16 shrink-0 text-slate-500">{{.Name}}</span>
+        <div class="flex-1 bg-slate-100 rounded h-2">
+          <div class="bg-indigo-500 h-2 rounded" style="width:{{.Score}}%"></div>
+        </div>
+        <span class="w-10 text-right text-slate-500">{{.Score}}</span>
+      </div>
+      {{end}}
+    </div>
+    {{if .CantoneseScore}}
+    <div class="mt-3">
+      <div class="text-xs text-slate-500 mb-1">粤语分：<b class="text-indigo-600">{{.CantoneseScore}}</b> 分</div>
+      <div class="space-y-1">
+        {{range .CantoneseScoreDetail}}
+        <div class="text-xs flex items-center gap-2">
+          <span class="w-16 shrink-0 text-slate-500">{{.Name}}</span>
+          <div class="flex-1 bg-slate-100 rounded h-2">
+            <div class="bg-amber-400 h-2 rounded" style="width:{{.Score}}%"></div>
+          </div>
+          <span class="w-10 text-right text-slate-500">{{.Score}}</span>
+        </div>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+    <form method="post" action="/favorites" class="mt-3">
+      <input type="hidden" name="surname" value="{{.Surname}}">
+      <input type="hidden" name="given_name" value="{{.GivenName}}">
+      <input type="hidden" name="pinyin" value="{{.Pinyin}}">
+      <input type="hidden" name="gender" value="{{.Gender}}">
+      <input type="hidden" name="score" value="{{.TotalScore}}">
+      <input type="hidden" name="source" value="生成">
+      <button type="submit" class="text-sm bg-amber-500 text-white px-3 py-1 rounded hover:bg-amber-600">收藏</button>
+    </form>
+  </article>
+  {{end}}
+</section>
+{{end}}
+{{end}}
