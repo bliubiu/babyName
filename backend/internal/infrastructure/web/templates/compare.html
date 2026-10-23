@@ -1,0 +1,63 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-4">名字对比</h1>
+
+{{if not .CompareNames}}
+<div class="bg-white rounded shadow p-6 text-center text-slate-500">
+  <p>请先选择至少 2 个名字进行对比</p>
+  <p class="text-xs mt-2">在结果页勾选名字卡片后点击「对比所选」</p>
+  <a href="/" class="inline-block mt-4 bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700">去起名</a>
+</div>
+{{else}}
+<div class="bg-white rounded shadow p-5 mb-6 overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-left text-slate-500 border-b">
+        <th class="px-3 py-2 w-28">指标</th>
+        {{range .CompareNames}}
+        <th class="px-3 py-2 font-bold text-slate-800">{{.FullName}}</th>
+        {{end}}
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="border-b">
+        <td class="px-3 py-2 text-slate-500">综合评分</td>
+        {{range .CompareNames}}
+        <td class="px-3 py-2">
+          <div class="font-semibold text-indigo-600">{{printf "%.1f" .TotalScore}} 分</div>
+          <div class="bg-slate-100 rounded h-1.5 mt-1"><div class="bg-indigo-500 h-1.5 rounded" style="width:{{.TotalScore}}%"></div></div>
+        </td>
+        {{end}}
+      </tr>
+      <tr class="border-b"><td class="px-3 py-2 text-slate-500">五行</td>{{range .CompareNames}}<td class="px-3 py-2">{{wuxingTags .Wuxing}}</td>{{end}}</tr>
+      <tr class="border-b"><td class="px-3 py-2 text-slate-500">五行匹配</td>{{range .CompareNames}}<td class="px-3 py-2">{{printf "%.1f" .WuxingScore}} 分</td>{{end}}</tr>
+      <tr class="border-b"><td class="px-3 py-2 text-slate-500">音韵律动</td>{{range .CompareNames}}<td class="px-3 py-2">{{printf "%.1f" .YinyunScore}} 分</td>{{end}}</tr>
+      <tr class="border-b"><td class="px-3 py-2 text-slate-500">字义内涵</td>{{range .CompareNames}}<td class="px-3 py-2">{{printf "%.1f" .MeaningScore}} 分</td>{{end}}</tr>
+      <tr class="border-b"><td class="px-3 py-2 text-slate-500">天地人三才</td>{{range .CompareNames}}<td class="px-3 py-2">{{printf "%.1f" .SancaiScore}} 分</td>{{end}}</tr>
+      <tr class="border-b"><td class="px-3 py-2 text-slate-500">生肖适配</td>{{range .CompareNames}}<td class="px-3 py-2">{{printf "%.1f" .ZodiacScore}} 分</td>{{end}}</tr>
+      <tr class="border-b"><td class="px-3 py-2 text-slate-500">笔画数</td>{{range .CompareNames}}<td class="px-3 py-2">{{.Strokes}} 画</td>{{end}}</tr>
+      <tr class="border-b"><td class="px-3 py-2 text-slate-500">拼音</td>{{range .CompareNames}}<td class="px-3 py-2">{{.Pinyin}}</td>{{end}}</tr>
+      <tr class="border-b"><td class="px-3 py-2 text-slate-500">字义</td>{{range .CompareNames}}<td class="px-3 py-2">{{.Meaning}}</td>{{end}}</tr>
+      <tr><td class="px-3 py-2 text-slate-500">性别</td>{{range .CompareNames}}<td class="px-3 py-2">{{genderLabel .Gender}}</td>{{end}}</tr>
+    </tbody>
+  </table>
+</div>
+
+<section>
+  <h2 class="font-semibold mb-3 text-indigo-700">综合分析</h2>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {{range .CompareNames}}
+    <div class="bg-white rounded shadow p-4 text-sm space-y-2">
+      <h3 class="font-bold">{{.FullName}}</h3>
+      <p class="text-slate-600"><span class="font-medium text-slate-700">五行：</span>{{.WuxingAnalysis}}</p>
+      <p class="text-slate-600"><span class="font-medium text-slate-700">八字：</span>{{.BaziScoreDetail}}</p>
+      <p class="text-slate-600"><span class="font-medium text-slate-700">音韵：</span>{{.Yinyun}}</p>
+    </div>
+    {{end}}
+  </div>
+</section>
+
+<div class="mt-6">
+  <a href="/result" class="text-indigo-600 hover:text-indigo-800 text-sm">← 返回结果页</a>
+</div>
+{{end}}
+{{end}}

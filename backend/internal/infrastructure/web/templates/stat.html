@@ -1,47 +1,91 @@
 {{define "content"}}
 <h1 class="text-2xl font-bold mb-1">姓名统计</h1>
-<p class="text-slate-500 text-sm mb-5">基于真实人名频率语料（Chinese-Names-Corpus）的高频名字排行，可作为撞名参考。</p>
+<p class="text-slate-500 text-sm mb-5">基于真实人名频率语料（Chinese-Names-Corpus），可查询具体名字的重名率，或浏览高频名字榜。</p>
 
-{{with .Stats}}
-<table class="w-full bg-white rounded shadow text-sm">
-  <thead>
-    <tr class="text-left text-slate-500 border-b">
-      <th class="px-4 py-2 w-16">排名</th>
-      <th class="px-4 py-2">名字</th>
-      <th class="px-4 py-2 w-32">人数</th>
-      <th class="px-4 py-2 w-40">占比</th>
-    </tr>
-  </thead>
-  <tbody>
-    {{range .}}
-    <tr class="border-b last:border-0">
-      <td class="px-4 py-2 text-slate-500">{{.Rank}}</td>
-      <td class="px-4 py-2 font-semibold">{{.Name}}</td>
-      <td class="px-4 py-2">{{.Count}}</td>
-      <td class="px-4 py-2">
-        <div class="flex items-center gap-2">
-          <div class="flex-1 bg-slate-100 rounded h-2">
-            <div class="bg-indigo-500 h-2 rounded" style="width:{{.Rate}}%"></div>
-          </div>
-          <span class="text-xs text-slate-500 w-12 text-right">{{printf "%.4f" .Rate}}%</span>
-        </div>
-      </td>
-    </tr>
-    {{end}}
-  </tbody>
-</table>
-{{else}}
-<p class="text-slate-500">暂无统计数据。</p>
+{{with .QueriedName}}
+<section class="bg-white rounded shadow p-5 mb-6">
+  <h2 class="font-semibold mb-3 text-indigo-700">「{{.}}」重名率</h2>
+  {{with $.NameStat}}
+  {{if .Count}}
+  <div class="flex flex-wrap items-end gap-6">
+    <div>
+      <div class="text-3xl font-bold text-indigo-600">{{printf "%.3f" .Rate}}%</div>
+      <div class="text-xs text-slate-500 mt-1">全国语料占比</div>
+    </div>
+    <div>
+      <div class="text-xl font-semibold">{{.Count}} 人</div>
+      <div class="text-xs text-slate-500 mt-1">语料出现次数</div>
+    </div>
+    <div>
+      <div class="text-xl font-semibold">#{{.Rank}}</div>
+      <div class="text-xs text-slate-500 mt-1">频率排名</div>
+    </div>
+    <div>
+      {{if ge .Rate 1.0}}<span class="inline-block bg-red-100 text-red-700 rounded px-3 py-1 text-sm font-semibold">重名度：极高</span>
+      {{else if ge .Rate 0.1}}<span class="inline-block bg-amber-100 text-amber-700 rounded px-3 py-1 text-sm font-semibold">重名度：较高</span>
+      {{else if ge .Rate 0.01}}<span class="inline-block bg-yellow-100 text-yellow-700 rounded px-3 py-1 text-sm font-semibold">重名度：一般</span>
+      {{else}}<span class="inline-block bg-emerald-100 text-emerald-700 rounded px-3 py-1 text-sm font-semibold">重名度：较低</span>
+      {{end}}
+    </div>
+  </div>
+  {{else}}
+  <p class="text-sm text-slate-500">语料库中未收录「{{.Name}}」，暂无重名数据（名字较罕见或不在统计范围内）。</p>
+  {{end}}
+  {{end}}
+</section>
 {{end}}
 
-<form method="get" action="/stat" class="mt-6 flex items-end gap-4">
-  <label class="block text-sm">显示数量
-    <select name="limit" class="mt-1 border rounded px-3 py-2">
-      <option value="20">Top 20</option>
-      <option value="50">Top 50</option>
-      <option value="100">Top 100</option>
-    </select>
-  </label>
-  <button type="submit" class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700">刷新</button>
-</form>
+<section class="mb-6">
+  <h2 class="font-semibold mb-3 text-indigo-700">高频名字榜</h2>
+  {{with .Stats}}
+  <table class="w-full bg-white rounded shadow text-sm">
+    <thead>
+      <tr class="text-left text-slate-500 border-b">
+        <th class="px-4 py-2 w-16">排名</th>
+        <th class="px-4 py-2">名字</th>
+        <th class="px-4 py-2 w-32">人数</th>
+        <th class="px-4 py-2 w-40">占比</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .}}
+      <tr class="border-b last:border-0">
+        <td class="px-4 py-2 text-slate-500">{{.Rank}}</td>
+        <td class="px-4 py-2 font-semibold">{{.Name}}</td>
+        <td class="px-4 py-2">{{.Count}}</td>
+        <td class="px-4 py-2">
+          <div class="flex items-center gap-2">
+            <div class="flex-1 bg-slate-100 rounded h-2">
+              <div class="bg-indigo-500 h-2 rounded" style="width:{{.Rate}}%"></div>
+            </div>
+            <span class="text-xs text-slate-500 w-12 text-right">{{printf "%.4f" .Rate}}%</span>
+          </div>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="text-slate-500">暂无统计数据。</p>
+  {{end}}
+</section>
+
+<div class="bg-white rounded shadow p-5 space-y-4">
+  <form method="get" action="/stat" class="flex flex-wrap items-end gap-4">
+    <label class="block text-sm">查询名字重名率
+      <input name="name" value="{{.QueriedName}}" placeholder="输入完整名字，如 张伟" class="mt-1 border rounded px-3 py-2 w-48">
+    </label>
+    <button type="submit" class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700">查询</button>
+  </form>
+  <form method="get" action="/stat" class="flex items-end gap-4">
+    <label class="block text-sm">榜单显示数量
+      <select name="limit" class="mt-1 border rounded px-3 py-2">
+        <option value="20">Top 20</option>
+        <option value="50">Top 50</option>
+        <option value="100">Top 100</option>
+      </select>
+    </label>
+    <button type="submit" class="bg-slate-600 text-white px-6 py-2 rounded hover:bg-slate-700">刷新榜单</button>
+  </form>
+</div>
 {{end}}

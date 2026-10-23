@@ -22,6 +22,8 @@ type HistoryServiceInterface interface {
 	SaveHistory(ctx context.Context, record *HistoryRecord) (string, error)
 	GetHistory(ctx context.Context) ([]*HistoryRecord, error)
 	GetHistoryPage(ctx context.Context, page, limit int) ([]*HistoryRecord, int, error)
+	// GetHistoryRecord 按 ID 获取单条历史记录（SSR「历史回看」用）
+	GetHistoryRecord(ctx context.Context, id string) (*HistoryRecord, error)
 	DeleteHistory(ctx context.Context, id string) error
 }
 

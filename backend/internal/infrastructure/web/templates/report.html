@@ -1,0 +1,80 @@
+{{define "content"}}
+{{with .Result}}
+<h1 class="text-2xl font-bold mb-1">起名完整报告</h1>
+<p class="text-slate-500 text-sm mb-5">八字分析、候选名详情与综合解读。可打印或另存为 PDF（浏览器打印即可）。</p>
+
+<section class="bg-white rounded shadow p-5 mb-6">
+  <h2 class="font-semibold mb-3 text-indigo-700">一、八字分析</h2>
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-sm">
+    <div class="rounded border p-3"><div class="text-xs text-slate-500">年柱</div><div class="text-lg font-bold">{{.Bazi.Bazi.YearGanzhi}}</div></div>
+    <div class="rounded border p-3"><div class="text-xs text-slate-500">月柱</div><div class="text-lg font-bold">{{.Bazi.Bazi.MonthGanzhi}}</div></div>
+    <div class="rounded border p-3"><div class="text-xs text-slate-500">日柱</div><div class="text-lg font-bold">{{.Bazi.Bazi.DayGanzhi}}</div></div>
+    <div class="rounded border p-3"><div class="text-xs text-slate-500">时柱</div><div class="text-lg font-bold">{{.Bazi.Bazi.HourGanzhi}}</div></div>
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+    <div>
+      <h3 class="text-sm font-medium text-slate-700 mb-2">五行分布</h3>
+      {{$max := max5 .Bazi.Wuxing.Jin .Bazi.Wuxing.Mu .Bazi.Wuxing.Shui .Bazi.Wuxing.Huo .Bazi.Wuxing.Tu}}
+      <div class="space-y-1 text-xs">
+        <div class="flex items-center gap-2"><span class="w-4 text-amber-600">金</span><div class="flex-1 bg-slate-100 rounded h-2"><div class="bg-amber-500 h-2 rounded" style="width:{{pct .Bazi.Wuxing.Jin $max}}%"></div></div><span class="w-6 text-right text-slate-500">{{.Bazi.Wuxing.Jin}}</span></div>
+        <div class="flex items-center gap-2"><span class="w-4 text-emerald-600">木</span><div class="flex-1 bg-slate-100 rounded h-2"><div class="bg-emerald-500 h-2 rounded" style="width:{{pct .Bazi.Wuxing.Mu $max}}%"></div></div><span class="w-6 text-right text-slate-500">{{.Bazi.Wuxing.Mu}}</span></div>
+        <div class="flex items-center gap-2"><span class="w-4 text-sky-600">水</span><div class="flex-1 bg-slate-100 rounded h-2"><div class="bg-sky-500 h-2 rounded" style="width:{{pct .Bazi.Wuxing.Shui $max}}%"></div></div><span class="w-6 text-right text-slate-500">{{.Bazi.Wuxing.Shui}}</span></div>
+        <div class="flex items-center gap-2"><span class="w-4 text-red-600">火</span><div class="flex-1 bg-slate-100 rounded h-2"><div class="bg-red-500 h-2 rounded" style="width:{{pct .Bazi.Wuxing.Huo $max}}%"></div></div><span class="w-6 text-right text-slate-500">{{.Bazi.Wuxing.Huo}}</span></div>
+        <div class="flex items-center gap-2"><span class="w-4 text-yellow-700">土</span><div class="flex-1 bg-slate-100 rounded h-2"><div class="bg-yellow-600 h-2 rounded" style="width:{{pct .Bazi.Wuxing.Tu $max}}%"></div></div><span class="w-6 text-right text-slate-500">{{.Bazi.Wuxing.Tu}}</span></div>
+      </div>
+    </div>
+    <div class="text-sm space-y-1">
+      <div>日主：{{.Bazi.DayMaster}}（{{.Bazi.DayMasterStrength}}）</div>
+      <div>生肖：{{.Zodiac}}</div>
+      <div>年命纳音：{{.Nayin}}</div>
+      <div>喜用神：{{range .Bazi.Xiyongshen}}<span class="inline-block bg-indigo-100 text-indigo-700 rounded px-2 py-0.5 mr-1">{{.}}</span>{{end}}</div>
+      {{with .Hexagram}}<div>姓名卦：<b>{{.Name}}</b> —— {{.GuaCi}}</div>{{end}}
+    </div>
+  </div>
+</section>
+
+<section class="bg-white rounded shadow p-5 mb-6">
+  <h2 class="font-semibold mb-3 text-indigo-700">二、候选名详情（{{len .Names}} 个）</h2>
+  <div class="space-y-3">
+    {{range .Names}}
+    <div class="rounded border p-3">
+      <div class="flex items-baseline justify-between">
+        <h3 class="font-bold">{{.FullName}} <span class="text-sm text-slate-400">{{.Pinyin}}</span>{{if .Jyutping}} <span class="text-sm text-slate-400">[粤: {{.Jyutping}}]</span>{{end}}</h3>
+        <span class="font-semibold text-indigo-600">{{.TotalScore}} 分</span>
+      </div>
+      <p class="text-xs text-slate-500 mt-0.5">五行 {{.Wuxing}} · {{.Strokes}} 画 · {{genderLabel .Gender}}{{if .CantoneseScore}} · 粤语分 {{.CantoneseScore}}{{end}}</p>
+      <p class="text-sm text-slate-600 mt-1">寓意：{{.Meaning}}</p>
+      {{if .PoetrySource}}<p class="text-sm text-slate-600">出处：{{.PoetrySource}}「{{.PoetrySentence}}」{{if .PoetryAuthor}}（{{.PoetryAuthor}}）{{end}}</p>{{end}}
+      <div class="mt-1 space-y-0.5">
+        {{range .ScoreDetail}}
+        <div class="text-xs flex items-center gap-2">
+          <span class="w-16 shrink-0 text-slate-500">{{.Name}}</span>
+          <div class="flex-1 bg-slate-100 rounded h-1.5"><div class="bg-indigo-500 h-1.5 rounded" style="width:{{.Score}}%"></div></div>
+          <span class="w-10 text-right text-slate-500">{{.Score}}</span>
+        </div>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+  </div>
+</section>
+
+{{with $.Report}}
+<section class="bg-white rounded shadow p-5 mb-6">
+  <h2 class="font-semibold mb-3 text-indigo-700">三、综合解读</h2>
+  <div class="text-sm text-slate-600 space-y-3 leading-relaxed">
+    <p><span class="font-medium text-slate-700">八字格局：</span>{{.BaziPattern}}</p>
+    <p><span class="font-medium text-slate-700">五行平衡：</span>{{.BalanceAnalysis}}</p>
+    <p><span class="font-medium text-slate-700">喜用神补益：</span>{{.XiyongshenAnalysis}}</p>
+    <p><span class="font-medium text-slate-700">生肖纳音：</span>{{.ZodiacNayin}}</p>
+    <p><span class="font-medium text-slate-700">名字质量：</span>{{.NamesAnalysis}}</p>
+  </div>
+</section>
+{{end}}
+
+<div class="flex gap-4 text-sm">
+  <a href="/result" class="text-indigo-600 hover:text-indigo-800">← 返回结果页</a>
+  <a href="/" class="text-slate-500 hover:text-slate-700">重新起名</a>
+</div>
+{{end}}
+{{end}}

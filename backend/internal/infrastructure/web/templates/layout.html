@@ -1,16 +1,47 @@
 {{define "base"}}<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN"{{if .Dark}} class="dark"{{end}}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Title}}</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'class' }</script>
+  <style>
+    /* 暗色模式：针对全站固定色板的覆盖（.dark 由 <html> 挂载，Tailwind darkMode:'class'）。
+       选择器特异性（0,2,0）高于 Tailwind 工具类（0,1,0），无需给每个元素加 dark: 变体。 */
+    .dark body { background-color: #0f172a; color: #e2e8f0; }
+    .dark .bg-white { background-color: #1e293b; }
+    .dark .bg-slate-50 { background-color: #0f172a; }
+    .dark .bg-slate-100 { background-color: #334155; }
+    .dark .bg-indigo-50 { background-color: #312e81; }
+    .dark .bg-indigo-100 { background-color: #3730a3; }
+    .dark .bg-emerald-50 { background-color: #064e3b; }
+    .dark .bg-amber-50 { background-color: #451a03; }
+    .dark .bg-amber-100 { background-color: #451a03; }
+    .dark .bg-red-50 { background-color: #450a0a; }
+    .dark .bg-red-100 { background-color: #450a0a; }
+    .dark .text-slate-800 { color: #e2e8f0; }
+    .dark .text-slate-700 { color: #cbd5e1; }
+    .dark .text-slate-600 { color: #94a3b8; }
+    .dark .text-slate-500 { color: #94a3b8; }
+    .dark .text-slate-400 { color: #64748b; }
+    .dark .text-indigo-700 { color: #a5b4fc; }
+    .dark .text-indigo-600 { color: #a5b4fc; }
+    .dark .text-emerald-700 { color: #6ee7b7; }
+    .dark .text-red-700 { color: #fca5a5; }
+    .dark .text-amber-700 { color: #fcd34d; }
+    .dark .border, .dark .border-slate-200, .dark .border-slate-300,
+    .dark .border-emerald-200, .dark .border-red-200, .dark .border-amber-200 { border-color: #334155; }
+    .dark .shadow { box-shadow: 0 1px 3px rgb(0 0 0 / 0.5); }
+    .dark input, .dark select, .dark textarea { background-color: #0f172a; color: #e2e8f0; border-color: #334155; }
+    .dark header { background-color: #1e293b; }
+  </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
   <header class="bg-white shadow">
     <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
       <a href="/" class="text-xl font-bold text-indigo-700">起名 NameMaster</a>
-      <nav class="space-x-3 text-sm text-slate-600">
+      <nav class="flex items-center gap-3 text-sm text-slate-600">
         <a href="/" class="hover:text-indigo-600">首页</a>
         <a href="/result" class="hover:text-indigo-600">结果</a>
         <a href="/favorites" class="hover:text-indigo-600">收藏</a>
@@ -18,11 +49,19 @@
         <a href="/evaluate" class="hover:text-indigo-600">测名</a>
         <a href="/huangli" class="hover:text-indigo-600">黄历</a>
         <a href="/stat" class="hover:text-indigo-600">统计</a>
+        <a href="/compare" class="hover:text-indigo-600">对比</a>
+        <a href="/json-viewer" class="hover:text-indigo-600">JSON</a>
+        <form method="post" action="/theme" class="inline">
+          <input type="hidden" name="redirect" value="{{.RedirectPath}}">
+          <input type="hidden" name="theme" value="{{if .Dark}}light{{else}}dark{{end}}">
+          <button type="submit" class="ml-1 px-2 py-1 rounded border bg-white hover:bg-slate-50" title="切换暗色模式">{{if .Dark}}☀️ 浅色{{else}}🌙 深色{{end}}</button>
+        </form>
       </nav>
     </div>
   </header>
   <main class="flex-1 max-w-5xl mx-auto w-full px-4 py-6">
     {{if .Error}}<div class="bg-red-100 text-red-700 px-4 py-2 rounded mb-4">{{.Error}}</div>{{end}}
+    {{if .Ok}}<div class="bg-emerald-100 text-emerald-700 px-4 py-2 rounded mb-4">{{.Ok}}</div>{{end}}
     {{block "content" .}}{{end}}
   </main>
   <footer class="text-center text-xs text-slate-400 py-4">起名工具 · 仅供文化参考</footer>

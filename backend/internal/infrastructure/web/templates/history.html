@@ -10,11 +10,14 @@
       <h3 class="text-base font-semibold">{{.Surname}}（{{.Gender}}） · {{.BirthDate}} {{.BirthTime}}{{if .BirthLoc}} · {{.BirthLoc}}{{end}}</h3>
       <p class="text-xs text-slate-500">{{.CreatedAt}} · 共 {{.NameCount}} 个名字{{if .TopName}} · 首选 {{.TopName}}{{end}}</p>
     </div>
-    <form method="post" action="/history/delete" onsubmit="return confirm('确定删除这条历史？')">
-      <input type="hidden" name="id" value="{{.ID}}">
-      <input type="hidden" name="page" value="{{$.Page}}">
-      <button type="submit" class="text-sm bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">删除</button>
-    </form>
+    <div class="flex items-center gap-2">
+      <a href="/history/view?id={{.ID}}" class="text-sm bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700">回看</a>
+      <form method="post" action="/history/delete" onsubmit="return confirm('确定删除这条历史？')">
+        <input type="hidden" name="id" value="{{.ID}}">
+        <input type="hidden" name="page" value="{{$.Page}}">
+        <button type="submit" class="text-sm bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">删除</button>
+      </form>
+    </div>
   </article>
   {{end}}
 </div>

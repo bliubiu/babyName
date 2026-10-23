@@ -180,6 +180,23 @@ func TestValidateGender(t *testing.T) {
 	}
 }
 
+// TestNormalizeGender 回归：三套性别表示归一为 canonical male/female
+// （SSR 表单男/女、API male/female、数字别名），未知输入原样返回。
+func TestNormalizeGender(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"男", "male"}, {"male", "male"}, {"M", "male"}, {" MALE ", "male"}, {"1", "male"},
+		{"女", "female"}, {"female", "female"}, {"F", "female"}, {"0", "female"}, {"2", "female"},
+		{"", ""}, {"unknown", "unknown"},
+	}
+	for _, tt := range tests {
+		if got := NormalizeGender(tt.in); got != tt.want {
+			t.Errorf("NormalizeGender(%q) = %q，期望 %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 // TestValidationError 验证错误结构体格式
 func TestValidationError(t *testing.T) {
 	ve := NewValidationError("surname", "姓氏不能为空")

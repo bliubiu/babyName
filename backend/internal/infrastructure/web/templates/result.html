@@ -2,6 +2,56 @@
 {{with .Result}}
 <h1 class="text-2xl font-bold mb-4">起名结果</h1>
 
+{{if $.FromHistory}}
+<div class="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-2 rounded mb-4 text-sm">
+  正在回看历史记录（候选池会话已结束，换一批/对比不可用；收藏仍可正常使用）。
+  <a href="/history" class="underline">返回历史列表</a>
+</div>
+{{end}}
+
+<a href="/report" class="inline-block mb-4 text-sm bg-white border rounded px-4 py-2 shadow hover:bg-indigo-50">查看完整报告 →</a>
+
+<form method="get" action="/result" class="bg-white rounded shadow p-4 mb-5">
+  <div class="flex flex-wrap items-end gap-3 text-sm">
+    <label class="block">性别
+      <select name="gender" class="mt-1 border rounded px-2 py-1">
+        <option value="">不限</option>
+        <option value="male" {{if eq $.Filter.Gender "male"}}selected{{end}}>男</option>
+        <option value="female" {{if eq $.Filter.Gender "female"}}selected{{end}}>女</option>
+      </select>
+    </label>
+    <label class="block">五行
+      <select name="wuxing" class="mt-1 border rounded px-2 py-1">
+        <option value="">不限</option>
+        <option value="金" {{if eq $.Filter.Wuxing "金"}}selected{{end}}>金</option>
+        <option value="木" {{if eq $.Filter.Wuxing "木"}}selected{{end}}>木</option>
+        <option value="水" {{if eq $.Filter.Wuxing "水"}}selected{{end}}>水</option>
+        <option value="火" {{if eq $.Filter.Wuxing "火"}}selected{{end}}>火</option>
+        <option value="土" {{if eq $.Filter.Wuxing "土"}}selected{{end}}>土</option>
+      </select>
+    </label>
+    <label class="block">笔画下限
+      <input name="min_strokes" type="number" min="1" value="{{$.Filter.MinStrokes}}" class="mt-1 border rounded px-2 py-1 w-20">
+    </label>
+    <label class="block">笔画上限
+      <input name="max_strokes" type="number" min="1" value="{{$.Filter.MaxStrokes}}" class="mt-1 border rounded px-2 py-1 w-20">
+    </label>
+    <label class="block">人名频率档位 ≥
+      <select name="min_tier" class="mt-1 border rounded px-2 py-1">
+        <option value="">不限</option>
+        <option value="1" {{if eq $.Filter.MinTier 1}}selected{{end}}>1（罕见）</option>
+        <option value="2" {{if eq $.Filter.MinTier 2}}selected{{end}}>2</option>
+        <option value="3" {{if eq $.Filter.MinTier 3}}selected{{end}}>3</option>
+        <option value="4" {{if eq $.Filter.MinTier 4}}selected{{end}}>4</option>
+        <option value="5" {{if eq $.Filter.MinTier 5}}selected{{end}}>5（高频）</option>
+      </select>
+    </label>
+    <button type="submit" class="bg-indigo-600 text-white px-4 py-1.5 rounded hover:bg-indigo-700">筛选</button>
+    {{if $.FilterQuery}}<a href="/result" class="px-3 py-1.5 rounded border bg-white hover:bg-slate-50">清除筛选</a>{{end}}
+  </div>
+  <div class="text-xs text-slate-400 mt-2">共 {{$.TotalCount}} 个候选{{if $.FilterQuery}}，筛选后 {{$.FilteredCount}} 个{{end}}</div>
+</form>
+
 <section class="bg-white rounded shadow p-5 mb-6">
   <h2 class="font-semibold mb-3 text-indigo-700">八字五行</h2>
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 text-sm">
@@ -24,23 +74,56 @@
   {{end}}
 </section>
 
+{{if not $.FromHistory}}
 <form method="post" action="/explore" class="mb-5">
   <input type="hidden" name="generation_id" value="{{.GenerationID}}">
+  <input type="hidden" name="rq" value="{{$.FilterQuery}}">
   <button type="submit" class="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700">换一批</button>
 </form>
+
+<form method="post" action="/compare" id="cmpForm" class="mb-5 flex items-center gap-3">
+  <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">对比所选</button>
+  <span class="text-xs text-slate-400">在下方候选卡中勾选 2-4 个名字（勾选状态随本页保持）</span>
+</form>
+{{end}}
 
 <section class="space-y-4">
   {{range .Names}}
   <article class="bg-white rounded shadow p-4">
     <div class="flex items-baseline justify-between">
       <h3 class="text-xl font-bold">{{.FullName}} <span class="text-sm text-slate-400">{{.Pinyin}}</span>{{if .Jyutping}} <span class="text-sm text-slate-400" title="粤拼">[粤: {{.Jyutping}}]</span>{{end}}</h3>
-      <span class="text-lg font-semibold text-indigo-600">{{.TotalScore}} 分</span>
+      <div class="flex items-center gap-3">
+        {{if not $.FromHistory}}<label class="flex items-center gap-1 text-xs text-slate-500"><input type="checkbox" name="compare" value="{{.GivenName}}" form="cmpForm"> 对比</label>{{end}}
+        <span class="text-lg font-semibold text-indigo-600">{{.TotalScore}} 分</span>
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-2 mt-1 text-sm">
+      <span class="inline-block bg-slate-100 text-slate-600 rounded px-2 py-0.5 text-xs">{{genderLabel .Gender}}</span>
+      <span class="inline-flex gap-0.5">{{wuxingTags .Wuxing}}</span>
+      <span class="text-xs text-slate-500">{{.Strokes}} 画</span>
+      {{if .CantoneseScore}}<span class="inline-block bg-amber-100 text-amber-700 rounded px-2 py-0.5 text-xs">粤语分 {{.CantoneseScore}}</span>{{end}}
+      {{range .Reasons}}<span class="inline-block bg-indigo-50 text-indigo-600 rounded px-2 py-0.5 text-xs">{{.}}</span>{{end}}
     </div>
     <p class="text-sm text-slate-600 mt-1">寓意：{{.Meaning}}</p>
     <p class="text-sm text-slate-600">五行：{{.Wuxing}} —— {{.WuxingAnalysis}}</p>
     {{if .PoetrySource}}
     <p class="text-sm text-slate-600">出处：{{.PoetrySource}}「{{.PoetrySentence}}」{{if .PoetryAuthor}}（{{.PoetryAuthor}}）{{end}}</p>
     {{end}}
+    {{if .PoetryFullText}}
+    <details class="mt-1 text-sm">
+      <summary class="cursor-pointer text-indigo-600">展开出处全文（加粗为命中的名字用字）</summary>
+      <p class="mt-1 text-slate-600 leading-relaxed">{{highlightPoetry .PoetryFullText .PoetryMatchedChars}}</p>
+    </details>
+    {{end}}
+    <details class="mt-1 text-sm">
+      <summary class="cursor-pointer text-indigo-600">评分依据详情</summary>
+      <dl class="mt-1 space-y-1 text-slate-600">
+        {{if .BaziScoreDetail}}<div><dt class="inline font-medium text-slate-700">八字：</dt><dd class="inline">{{.BaziScoreDetail}}</dd></div>{{end}}
+        {{if .MeaningDetail}}<div><dt class="inline font-medium text-slate-700">字义：</dt><dd class="inline">{{.MeaningDetail}}</dd></div>{{end}}
+        {{if .Yinyun}}<div><dt class="inline font-medium text-slate-700">音韵：</dt><dd class="inline">{{.Yinyun}}</dd></div>{{end}}
+        {{if .SancaiAnalysis}}<div><dt class="inline font-medium text-slate-700">三才：</dt><dd class="inline">{{.SancaiAnalysis}}</dd></div>{{end}}
+      </dl>
+    </details>
     <div class="mt-3 space-y-1">
       {{range .ScoreDetail}}
       <div class="text-xs flex items-center gap-2">
@@ -69,6 +152,7 @@
     </div>
     {{end}}
     <form method="post" action="/favorites" class="mt-3">
+      <input type="hidden" name="rq" value="{{$.FilterQuery}}">
       <input type="hidden" name="surname" value="{{.Surname}}">
       <input type="hidden" name="given_name" value="{{.GivenName}}">
       <input type="hidden" name="pinyin" value="{{.Pinyin}}">

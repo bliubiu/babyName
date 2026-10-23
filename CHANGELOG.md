@@ -5,6 +5,38 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.23.2]
+
+**SSR 差距补齐：首页高级选项 / 服务端筛选 / 对比 / 统计重名查询 / 诗词高亮 / 暗色模式 / 黄历万年历 / 历史回看 / 完整报告**
+
+延续 `2026.10.23.1`（用户选定"补齐所有零 JS 可闭合的差距"）：把 React 旧前端与 SSR 版的 P0 功能缺口与 P1 体验项全部闭合，全部为零 JS 纯表单/链接方案——对比勾选态改由服务端会话 + `rq` 隐藏字段跨 PRG 保持，取代 React 的 zustand 内存态（刷新/直入即丢的问题随之消失）。
+
+### ✨ New Features 新增功能
+- 【SSR·首页】补高级选项：字辈+位置、经典来源 9 选 1、寓意关键词、偏旁选字（`hanzi.GetNamerGroups()` 服务端渲染 checkbox + `<details>` 折叠组），出生分钟。
+- 【SSR·结果页】服务端筛选：性别/五行/笔画区间/人名频率档位（`parseNameFilter`，score→tier 映射与 React 同口径），筛选态经 `rq` 隐藏字段跨"换一批"重定向保持；诗词出处全文 `<details>` 展开 + 命中字高亮（`highlightPoetry`）；候选卡加"对比"勾选（HTML5 `form` 属性外挂 checkbox，零 JS 且避免表单嵌套）。
+- 【SSR·对比页】新增 `/compare`：勾选 2-4 个名字 POST 到服务端，从会话候选池按 `given_name` 取齐字段渲染 11 指标对比表 + 综合分析；空态直入、1 名、无会话三条路径均有中文引导（不再 500）。
+- 【SSR·统计页】按名查重名率（`namestat.GetNameStats`）：评级徽章/人数/语料占比/频率排名；未收录名字给明确提示而非空白。
+- 【SSR·黄历页】日期导航（上一天/下一天，`time.Date` 归一化进位）、`view=month` 万年历月格（`bazi.GetLunarMonthCalendar`，与 `/api/v1/lunar/month` 同源；周一开头、今天高亮、前后月链接）、日视图时辰吉凶 12 格。
+- 【SSR·历史页】每条记录加"回看"链接 `/history/view?id=`（`HistoryService.GetHistoryRecord`，不存在返回 `ErrCodeNotFound` 转中文提示不 500；回看态隐去换一批/对比入口）。
+- 【SSR·完整报告页】新增 `/report`：八字四柱卡片 + 五行分布条 + 候选名详情 + 五段综合解读（八字格局/五行平衡/喜用神补益/生肖纳音/名字质量）——`buildReportAnalysis` 由前端 `FullReport.tsx` 的 `generateDetailAnalysis` 移植为服务端计算，口径一致。
+- 【SSR·JSON 查看器】新增 `/json-viewer`：iframe 承载 `//go:embed` 内嵌的 `json4matter.html` 离线美化查看器（与旧前端同源）。
+- 【SSR·暗色模式】cookie `theme=dark`（365 天）+ Tailwind CDN `darkMode:'class'` + `.dark` CSS 覆盖块（选择器特异性 (0,2,0) 高于工具类，无需逐元素加 `dark:` 变体）；`POST /theme` 切换并回跳原页（redirect 限定站内路径）。
+- 【SSR·全局】flash 横幅（Error 红 / Ok 绿，`?error=`/`?ok=` 查询串驱动）；导航补齐"对比/JSON"两项 7 项无死链。
+
+### 🐛 Bug Fixes 问题修复
+- 【服务层】`HistoryServiceInterface` 新增 `GetHistoryRecord`，映射收敛到 `toHistoryRecord`（历史回看与列表/分页三处同口径，不再各写一份）。
+- 【测试】`web_test.go` 的 `mockHistoryService` 补 `GetHistoryRecord`（接口扩展后 mock 未同步，`go vet` 报不实现接口）。
+- 【格式化】`favorite_service.go` import 顺序回退（工作树引入）已 `gofmt -w` 修复。
+
+### 🧹 Code Cleanup 代码清理
+- `renderPage` 集中注入公共视图状态（Ok/Dark/RedirectPath），各 handler 不再重复拼装。
+- `resultRedirect(c, rq)` 收拢"筛选查询串跨 PRG 保持"的拼接逻辑（Explore/Favorite 共用）。
+
+### 🧪 验证
+- `go build ./...` / `go vet ./...` 干净；`go test ./...` 32 包全绿（含 web 包 SSR 单测）。
+- 页面层冒烟两层全绿：原 45 项回归（首页→生成→结果→换一批→收藏→取消→历史→删除→测名→黄历→统计，含错误路径与无会话重定向）+ 新增 77 项扩展（筛选五项/筛选跨换一批保持/对比四路径/JSON 查看器与内嵌资源/暗色切换与恢复/完整报告五段/历史回看三路径/统计命中与未收录/万年历前后月与非法月份/日视图时辰吉凶/flash 双横幅）。
+- `tools/e2e_check -strict` 18/18 通过（API 契约、评分一致性、并发吞吐、会话 FIFO 淘汰）。
+
 ## [2026.10.23.1]
 
 **SSR 全栈重构收口：补齐测名/黄历/统计三页 + 修复粤语分开关漏传**

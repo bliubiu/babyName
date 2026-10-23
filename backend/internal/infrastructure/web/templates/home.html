@@ -37,11 +37,55 @@
         <option value="1">单字名</option>
       </select>
     </label>
+    <label class="block">字辈（可选，单字）
+      <input name="generation" maxlength="1" placeholder="如 家" class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+    <label class="block">字辈位置（填了字辈才生效）
+      <select name="generation_position" class="mt-1 w-full border rounded px-3 py-2">
+        <option value="middle">固定中间（名的第一个字）</option>
+        <option value="tail">固定最后（名的最后一个字）</option>
+      </select>
+    </label>
   </div>
+
+  <label class="block">经典来源（可不选，默认综合所有经典）
+    <select name="source_classic" class="mt-1 w-full border rounded px-3 py-2">
+      <option value="">不指定</option>
+      <option value="诗经">诗经</option>
+      <option value="楚辞">楚辞</option>
+      <option value="唐诗宋词">唐诗宋词</option>
+      <option value="古文观止">古文观止</option>
+      <option value="论语">论语</option>
+      <option value="孟子">孟子</option>
+      <option value="三字经">三字经</option>
+      <option value="千字文">千字文</option>
+      <option value="声律启蒙">声律启蒙</option>
+    </select>
+  </label>
+
+  <label class="block">寓意关键词（逗号分隔，可选）
+    <input name="meaning_keywords" placeholder="如 清莲,竹韵,明德" class="mt-1 w-full border rounded px-3 py-2">
+  </label>
 
   <label class="block">避讳长辈（逗号分隔）
     <input name="avoid_elder_names" placeholder="如 李强,王芳" class="mt-1 w-full border rounded px-3 py-2">
   </label>
+
+  <details class="border rounded">
+    <summary class="px-3 py-2 cursor-pointer text-sm text-slate-600">偏旁选字（可选，点击展开；所选用字会优先进入候选）</summary>
+    <div class="p-3 space-y-3">
+      {{range .CharGroups}}
+      <div>
+        <div class="text-xs text-slate-500 mb-1">{{.Name}}（{{.Meaning}}）</div>
+        <div class="flex flex-wrap gap-x-3 gap-y-1">
+          {{range .Chars}}
+          <label class="flex items-center gap-1 text-sm"><input type="checkbox" name="selected_chars" value="{{.}}"> {{.}}</label>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </details>
 
   <div class="flex gap-5 text-sm text-slate-600">
     <label class="flex items-center gap-1"><input type="checkbox" name="exclude_rare" value="1"> 排除生僻字</label>

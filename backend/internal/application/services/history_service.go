@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	apperrors "name/internal/application/errors"
 	"name/internal/infrastructure/database"
 )
 
@@ -66,21 +67,27 @@ func (s *HistoryService) BatchSaveHistory(ctx context.Context, records []*Histor
 	return s.store.BatchSaveHistory(storeRecords), nil
 }
 
+// toHistoryRecord 存储层记录 → 应用层 DTO（GetHistory/GetHistoryPage/
+// GetHistoryRecord 三处共用，避免映射口径分叉）。
+func toHistoryRecord(r *database.HistoryRecord) *HistoryRecord {
+	return &HistoryRecord{
+		ID:            r.ID,
+		Surname:       r.Surname,
+		Gender:        r.Gender,
+		BirthDate:     r.BirthDate,
+		BirthTime:     r.BirthTime,
+		BirthLocation: r.BirthLocation,
+		Results:       json.RawMessage(r.Results),
+		CreatedAt:     r.CreatedAt,
+	}
+}
+
 // GetHistory 获取历史记录
 func (s *HistoryService) GetHistory(ctx context.Context) ([]*HistoryRecord, error) {
 	records := s.store.GetHistory()
 	result := make([]*HistoryRecord, len(records))
 	for i, r := range records {
-		result[i] = &HistoryRecord{
-			ID:            r.ID,
-			Surname:       r.Surname,
-			Gender:        r.Gender,
-			BirthDate:     r.BirthDate,
-			BirthTime:     r.BirthTime,
-			BirthLocation: r.BirthLocation,
-			Results:       json.RawMessage(r.Results),
-			CreatedAt:     r.CreatedAt,
-		}
+		result[i] = toHistoryRecord(r)
 	}
 	return result, nil
 }
@@ -93,18 +100,19 @@ func (s *HistoryService) GetHistoryPage(ctx context.Context, page, limit int) ([
 	}
 	result := make([]*HistoryRecord, len(records))
 	for i, r := range records {
-		result[i] = &HistoryRecord{
-			ID:            r.ID,
-			Surname:       r.Surname,
-			Gender:        r.Gender,
-			BirthDate:     r.BirthDate,
-			BirthTime:     r.BirthTime,
-			BirthLocation: r.BirthLocation,
-			Results:       json.RawMessage(r.Results),
-			CreatedAt:     r.CreatedAt,
-		}
+		result[i] = toHistoryRecord(r)
 	}
 	return result, total, nil
+}
+
+// GetHistoryRecord 按 ID 获取单条历史记录（SSR「历史回看」用）。
+// 不存在时返回 ErrCodeNotFound，由调用方转 404/提示。
+func (s *HistoryService) GetHistoryRecord(ctx context.Context, id string) (*HistoryRecord, error) {
+	r := s.store.GetHistoryByID(id)
+	if r == nil {
+		return nil, apperrors.NewError(apperrors.ErrCodeNotFound, "历史记录不存在或已删除")
+	}
+	return toHistoryRecord(r), nil
 }
 
 // DeleteHistory 删除历史记录
