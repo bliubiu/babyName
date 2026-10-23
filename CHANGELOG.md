@@ -7,61 +7,20 @@
 
 ## [2026.10.23.0]
 
-**粤语 TTS 试听"噪音"根因修复（E2E 复测，详见 docs/42）**
+**移除离线粤语 TTS（Audio8 ONNX），保留 Web Speech zh-HK 试听**
 
-实证复现并定位：前端把「粤拼罗马字」（如 `wong4 zi2 man4`）发给离线引擎，而 Audio8 的中文 tokenizer 无 Jyutping→音素层，把罗马字当英文字母+数字乱读成高过零率（ZCR=0.1107，正常语音的 2.5 倍）的 gibberish，人耳即"噪音"。
+离线 Audio8 0.1B INT8 ONNX 方案链路长、模型体积大、CPU 单条合成 45-60s，且默认音色仍为普通话口音，无法达到"真粤语"目标，投入产出不匹配，决定移除。粤语试听回退浏览器 Web Speech：本机安装 zh-HK/yue 嗓音时可用，否则给出降级提示。
 
-### 🐛 Bug Fixes 缺陷修复
-- 【TTS·噪音根因】前端 `CantoneseScore.tsx` 离线引擎调用由传 `name.jyutping`（粤拼）改为传汉字原名 `fullName`；`lib/api.ts` 的 `synthesizeCantoneseAudio` 请求体 `{"jyutping":...}` → `{"text":...}`；后端 `handlers/tts.go` 入站结构体 `Jyutping` → `Text`（`json:"text"`）。修复后离线输出 ZCR 由 0.1107 降到 0.0437（与正常语音一致）。
-- 【TTS·注释勘误】`services/tts.go` 与 `handlers/tts.go` 注释更正"喂 Jyutping 触发粤语"为"引擎无 G2P 层，必须传汉字"。
-
-### 📈 Improvements 性能/体验优化
-- 离线引擎输出由"听不清的乱读噪音"变为可懂语音（口音仍为普通话，见 §遗留）。
-
-### 📚 Docs 文档更新
-- 新增 `docs/42-粤语TTS管线E2E复测与噪音根因修复.md`（实证复现 + 客观指标 + 根因 + 修复 + 真·粤语发音的两条实现路径）。
+### 🗑 Removed 移除
+- 【TTS·后端】删除 `services/tts.go`、`handlers/tts.go` 与 `GET/POST /api/v1/tts` 路由；`WriteTimeout` 由 300s 恢复为 60s。
+- 【TTS·前端】删除 `getTtsHealth()` / `synthesizeCantoneseAudio()`；`CantoneseScore` 移除离线引擎优先、合成等待态与 Blob 音频播放逻辑，保留 Web Speech 能力探测、嗓音选择与 no-voice 降级提示。
+- 【TTS·sidecar】删除 `backend/tts_sidecar`（启动脚本、Audio8 运行时、模型与默认音色数据）。
+- 【TTS·文档】删除 `docs/41-离线粤语TTS-E2E验证报告.md`、`docs/42-粤语TTS管线E2E复测与噪音根因修复.md`。
+- 【依赖】移除 `github.com/ebitengine/purego`（仅为 ONNX Runtime 绑定引入）。
 
 ### 🧪 验证
-- 实证：直调真实 `ArkTtsRuntime` 合成 3 条 WAV（粤拼/汉字/对照），客观指标见 docs/42 §2；`go build` / `go test` handlers+services / 前端 `tsc --noEmit` 全绿。
-
-### 🗑 遗留
-- 离线引擎默认音色为普通话，仅到"可懂普通话"而非真粤语；真·粤语需二选一：① 注册粤语参考音色后喂粤语汉字，② 优先 Web Speech `zh-HK`。待用户确认路径后实现。
-
-## [2026.10.22.6]
-
-**离线粤语 TTS E2E 实测与超时缺陷修复（全链路贯通）**
-
-在实网环境完成模型下载 → 运行时获取 → 服务启动 → 合成的全链路 e2e 验证（报告见 `docs/41-离线粤语TTS-E2E验证报告.md`），并修复验证中暴露的 3 个产品缺陷。
-
-### 🐛 Bug Fixes 缺陷修复
-- 【TTS·30s 误杀】全局 `RequestTimeout(30s)` 中间件把请求上下文传给 sidecar 调用，CPU 合成实测 44-49s 必被取消（客户端收 503 `TTS_UNAVAILABLE`，sidecar 却仍在后台跑完）。`handlers/tts.go` 改用独立 300s 上下文调用 sidecar，不再继承请求 deadline。
-- 【TTS·客户端超时】`SidecarTTSSynthesizer` HTTP 客户端 60s→300s；新增 `max_new_tokens` 透传（`AUDIO8_TTS_MAX_TOKENS`，默认 256）把单条合成压到 44-49s（sidecar 默认 1024 步实测 >120s）；请求头补 `charset=utf-8`。
-- 【TTS·写入窗口】`cmd/server/main.go` `WriteTimeout` 60s→300s，为长合成留写入窗口（其余路由仍由 RequestTimeout 中间件 30s + 503 兜底保护，语义不变）。
-
-### ✨ New Features 新增功能
-- 【TTS·合成等待态】`CantoneseScore.tsx` 增加 `synthesizing` 状态：离线合成约 45-60s 期间按钮禁用 + 金色脉冲 + 「离线引擎合成中（CPU 推理约需 1 分钟）…」提示，修复等待期间无反馈且可重复点击并发拉起多条合成的问题。
-
-### 🔧 Changes 工程改动
-- 【sidecar 启动脚本重写】`start.sh`/`start.ps1`：① 克隆回退 `github.com`→`gh-proxy.com`（稀疏克隆只取 `onnx_runtime_0_1b_int8`）；② modelscope 入口改为 console script `modelscope download`（`python -m modelscope` 无 `__main__`）；③ 模型目录默认指向已落地的 `../model`（`MODEL_DIR` 可覆盖，服务经 `ARKTTS_MODEL_DIR` 感知）；④ Python 解析链 `ARKTTS_PYTHON > .venv > 系统 Python（依赖齐全时快速路径）> setup.sh`；⑤ 默认音色用官方 `register_default_voice.py` 注册（`reference_text` 取自 `runtime_manifest.json`，与 `reference_codes` 对齐），`FORCE_REGISTER=1` 可重建。
-- 清理 `backend/tts_sidecar/Audio8_TTS.tar.gz`（早期部分下载遗留物，已被完整克隆取代）。
-
-### 🧪 验证
-- **E2E 全链路通过**：`GET /api/v1/tts` → `{"available":true}`；`POST {"jyutping":"wong4 zi2 man4"}` → 200，audio/wav 1,048,620 字节（44.1kHz/11.89s/RMS 0.2551）；空值/非 JSON → 400；未配置 `AUDIO8_TTS_URL` → 503 `TTS_UNAVAILABLE`（设计行为）。
-- sidecar 契约：`/api/health` 200（int8 + fp16 + CPUExecutionProvider×3）；粤拼/汉字/中文输入均合成合法非静音 WAV（对比音频 3 条待人耳判定声调）。
-- `go vet` 三个包 + `go test` handlers/middleware/services 全绿；前端 `tsc --noEmit` 0 错误、`vitest` CantoneseScore 8/8、eslint 改动文件 0 error。
-- **待办**：粤语声调正确性需人耳听辨 `cmp_1_jyut_tone.wav`（`wong4 zi2 man4`）等 3 条对比音频（详见 docs/41 §6）。
-
-## [2026.10.22.5]
-
-**离线粤语 TTS 接入（Audio8 0.1B INT8 ONNX Runtime sidecar 代理）**
-
-需求：保证离线可用 + 保证粤语发音正确。评估结论 Audio8-TTS-0.1B-ONNX-INT8 是唯一同时满足两约束的引擎（Apache-2.0，官方 language 含 yue 粤语，原生 ONNX Runtime CPU 推理，~0.6GB 内存）；sherpa-onnx 无粤语 TTS 模型、Web Speech 不能离线且依赖本机粤语嗓音包，均排除。
-
-- **后端**：新增 `services/tts.go`（TTSSynthesizer 接口 + SidecarTTSSynthesizer 代理 + DisabledTTSSynthesizer 占位 + TTSService），`handlers/tts.go`（`GET /api/v1/tts` 健康检查、`POST /api/v1/tts {"jyutping":"..."}` 合成粤语 WAV）；`cmd/server/main.go` 装配并挂载路由。离线引擎未配置（`AUDIO8_TTS_URL` 缺省）时回 503 `TTS_UNAVAILABLE`，前端回退 Web Speech。
-- **前端**：`lib/api.ts` 加 `getTtsHealth()` / `synthesizeCantoneseAudio(jyutping)`；`CantoneseScore.tsx` 改为**离线引擎优先、Web Speech 兜底**：离线可用时优先拉 `/api/v1/tts` 播放 WAV，失败/未启用回退 Web Speech；按钮显隐同时考虑离线可用态与本机嗓音态。
-- **sidecar 启动脚本**：`backend/tts_sidecar/start.sh` + `start.ps1` 自动克隆官方 `onnx_runtime_0_1b_int8`、下载模型、注册默认音色并起服务（监听 127.0.0.1:8024）；`.gitignore` 排除克隆与模型。
-- **验证**：go build / go vet 全绿；前端 tsc / eslint 0 error；vitest 81 项通过（CantoneseScore 8 项含离线优先路径、jyutping 20 项）。
-- **待办（需联网机器）**：P0 发音验证——下载模型后实测 Jyutping（含声调数字）是否被 Audio8 G2P 正确发为粤语；确认 `/api/tts` 实际调用与延迟基准。
+- `go build ./...` 通过；`go test ./...` 除 `cmd/namer-cli` 既有日志污染 JSON 用例（与本次无关）外全部通过。
+- 前端 `tsc --noEmit` 通过；`vitest run` 8 个文件 80 项全部通过；改动文件 eslint 0 error。
 
 ## [2026.10.22.4]
 
