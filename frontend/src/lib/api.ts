@@ -587,16 +587,19 @@ export interface CantoneseAudioResult {
 
 /**
  * POST /api/v1/tts 合成粤语读音 WAV。
+ * 传入的是「汉字原名」而非粤拼罗马字：Audio8 侧无 Jyutping→音素转换层，
+ * 直接喂粤拼（wong4 zi2 man4）会被当英文字母+数字乱读成听不懂的噪音；
+ * 喂汉字才能走模型的中文 G2P 生成可懂语音（默认音色为普通话口音，非粤语）。
  * 返回 ok=true 时 audioUrl 为 Blob 临时地址（调用方负责 revoke）；
  * 503 表示离线引擎未启用（unavailable），由调用方回退 Web Speech。
  */
-export async function synthesizeCantoneseAudio(jyutping: string): Promise<CantoneseAudioResult> {
-  if (!jyutping) return { ok: false, error: 'jyutping 为空' };
+export async function synthesizeCantoneseAudio(text: string): Promise<CantoneseAudioResult> {
+  if (!text) return { ok: false, error: '朗读文本为空' };
   try {
     const response = await fetch(`${API_BASE_URL}/v1/tts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jyutping }),
+      body: JSON.stringify({ text }),
     });
     if (response.status === 503) {
       return { ok: false, unavailable: true };

@@ -5,6 +5,28 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.23.0]
+
+**粤语 TTS 试听"噪音"根因修复（E2E 复测，详见 docs/42）**
+
+实证复现并定位：前端把「粤拼罗马字」（如 `wong4 zi2 man4`）发给离线引擎，而 Audio8 的中文 tokenizer 无 Jyutping→音素层，把罗马字当英文字母+数字乱读成高过零率（ZCR=0.1107，正常语音的 2.5 倍）的 gibberish，人耳即"噪音"。
+
+### 🐛 Bug Fixes 缺陷修复
+- 【TTS·噪音根因】前端 `CantoneseScore.tsx` 离线引擎调用由传 `name.jyutping`（粤拼）改为传汉字原名 `fullName`；`lib/api.ts` 的 `synthesizeCantoneseAudio` 请求体 `{"jyutping":...}` → `{"text":...}`；后端 `handlers/tts.go` 入站结构体 `Jyutping` → `Text`（`json:"text"`）。修复后离线输出 ZCR 由 0.1107 降到 0.0437（与正常语音一致）。
+- 【TTS·注释勘误】`services/tts.go` 与 `handlers/tts.go` 注释更正"喂 Jyutping 触发粤语"为"引擎无 G2P 层，必须传汉字"。
+
+### 📈 Improvements 性能/体验优化
+- 离线引擎输出由"听不清的乱读噪音"变为可懂语音（口音仍为普通话，见 §遗留）。
+
+### 📚 Docs 文档更新
+- 新增 `docs/42-粤语TTS管线E2E复测与噪音根因修复.md`（实证复现 + 客观指标 + 根因 + 修复 + 真·粤语发音的两条实现路径）。
+
+### 🧪 验证
+- 实证：直调真实 `ArkTtsRuntime` 合成 3 条 WAV（粤拼/汉字/对照），客观指标见 docs/42 §2；`go build` / `go test` handlers+services / 前端 `tsc --noEmit` 全绿。
+
+### 🗑 遗留
+- 离线引擎默认音色为普通话，仅到"可懂普通话"而非真粤语；真·粤语需二选一：① 注册粤语参考音色后喂粤语汉字，② 优先 Web Speech `zh-HK`。待用户确认路径后实现。
+
 ## [2026.10.22.6]
 
 **离线粤语 TTS E2E 实测与超时缺陷修复（全链路贯通）**

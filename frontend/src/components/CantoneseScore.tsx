@@ -123,12 +123,13 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
       setSpeaking(false);
       return;
     }
-    // 优先走离线粤语引擎（保证断网可用 + 粤语发音正确），失败/未启用回退 Web Speech
-    if (offlineAvailable && name.jyutping) {
+    // 优先走离线粤语引擎（保证断网可用）；注意：离线引擎默认音色为普通话口音，
+    // 此处传入汉字原名（而非粤拼罗马字），否则会乱读成听不懂的噪音。失败/未启用回退 Web Speech。
+    if (offlineAvailable && fullName) {
       setSynthesizing(true);
       let res;
       try {
-        res = await synthesizeCantoneseAudio(name.jyutping);
+        res = await synthesizeCantoneseAudio(fullName);
       } finally {
         setSynthesizing(false);
       }

@@ -1,8 +1,9 @@
-// Package services 内的 TTS 合成服务：把粤语 Jyutping 串交给本地离线粤语引擎
+// Package services 内的 TTS 合成服务：把「汉字原名」交给本地离线粤语引擎
 // （Audio8 0.1B INT8 ONNX Runtime sidecar）合成为 WAV。
 //
 // 设计要点：
-//   - 离线优先：保证断网也能朗读，且粤语发音正确（喂 Jyutping 罗马字而非汉字）。
+//   - 离线优先：保证断网也能朗读；但 Audio8 无 Jyutping→音素转换层，
+//     必须由调用方传入汉字原名（喂粤拼罗马字会被当英文字母+数字乱读成噪音）。
 //   - 降级：sidecar 未配置/未启动时返回 ErrTTSUnavailable，处理器据此回 503，
 //     前端回退到 Web Speech（零成本兜底，参见 frontend/src/lib/jyutping.ts）。
 //   - sidecar 即 Audio8 官方 onnx_runtime_0_1b_int8 起的服务
@@ -24,7 +25,7 @@ import (
 // ErrTTSUnavailable 表示离线粤语 TTS 引擎未启用（未配置 AUDIO8_TTS_URL 或 sidecar 不可达）。
 var ErrTTSUnavailable = errors.New("offline Cantonese TTS engine unavailable")
 
-// TTSSynthesizer 把文本（粤语 Jyutping 罗马字）合成为音频字节。
+// TTSSynthesizer 把文本（汉字原名）合成为音频字节。
 type TTSSynthesizer interface {
 	// SynthesizeCantonese 返回 WAV 音频字节；不可用或失败时返回错误。
 	SynthesizeCantonese(ctx context.Context, jyutping string) ([]byte, error)
@@ -106,7 +107,7 @@ func (s *TTSService) SynthesizeCantonese(ctx context.Context, jyutping string) (
 //     健康检查误报可用（SidecarTTSSynthesizer.Available 不探测 sidecar 存活）。
 //   - AUDIO8_TTS_VOICE：音色名（默认 default）。
 //   - AUDIO8_TTS_MAX_TOKENS：自回归生成步数上限（默认 256）。CPU 推理单步约 0.2-0.3s，
-//     粤拼名字读音 256 步实测约 49s；不设上限（sidecar 默认 1024）时短文本也可能超过 120s。
+//     汉字名字读音 256 步实测约 49s；不设上限（sidecar 默认 1024）时短文本也可能超过 120s。
 //   - HTTP 客户端超时固定 300s：覆盖 CPU 上 256 步合成的上限，留足余量。
 func NewTTSService() *TTSService {
 	base := os.Getenv("AUDIO8_TTS_URL")
