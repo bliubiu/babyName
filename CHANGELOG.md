@@ -7,7 +7,7 @@
 
 ## [2026.10.24.2]
 
-**三处静默正确性缺陷修复（性别筛选 / 紫微大限方向 / SQLite 锁）+ 收藏入库校验防线**
+**三处静默正确性缺陷修复（性别筛选 / 紫微大限方向 / SQLite 锁）+ 收藏入库校验防线 + SSR 粤语试听**
 
 ### 🐛 Bug Fixes 问题修复
 - 【命理引擎】`fate.WithGenderFilter` 性别筛选静默失效：SSR 表单提交 "男"/"女" 原样落地，而 `GenderFilter` 值域是 male/female，永不相等 → 筛选退化为只剩中性字。入口统一归一化（男/m/M→male，女/f/F→female，无法识别原样返回），新增 `filter_gender_test.go`。
@@ -15,6 +15,7 @@
 - 【存储】SQLite 读写连接补 `busy_timeout(5000)`（modernc.org/sqlite 默认 0）：WAL checkpoint 或外部工具持锁瞬间读写路径直接抛 "database is locked"，现给 5 秒重试窗口；另补 `idx_favorites_created_at` 索引，修复收藏列表按时间分页的全表扫描 + 排序（此前只有姓名索引）。
 
 ### ✨ New Features 新增功能
+- 【SSR·结果/测名页】粤语试听回归：名字粤拼标注旁加「🔊 粤」按钮（Web Speech API 渐进增强，全站唯一一段内联原生 JS，约 50 行零依赖）。嗓音挑选沿用旧前端口径（zh-HK/yue 精确优先、任意中文嗓音兜底、voiceschanged 异步等待 1.5s 快照兜底）；朗读内容为汉字原名而非粤拼（调号数字会被念成字母，同 74a1e1b 教训）；朗读中再点一次即停止；零 JS / 无语音合成 / 无中文嗓音时按钮保持隐藏不误导。
 - 【收藏服务】`validateFavoriteEntry` 入库统一防线（`SaveFavorite`/`BatchSaveFavorite` 双入口）：姓氏/名字复用校验器、gender 归一校验、score 限 0-100（防 SSR 表单无校验直库 + score≥80 触发自学习污染精选库）、拼音/来源/备注长度上限，错误为中文文案；新增校验表驱动用例与评分越界不触发自学习用例。
 
 ### 📚 Docs 文档更新

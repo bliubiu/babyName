@@ -208,6 +208,12 @@
     .btn-primary:active,.btn-celadon:active,.btn-gold:active{transform:translateY(0);box-shadow:var(--shadow);}
     .btn-primary:focus-visible,.btn-celadon:focus-visible,.btn-gold:focus-visible,.btn-danger:focus-visible,.btn-ghost:focus-visible{outline:2px solid var(--seal);outline-offset:2px;}
 
+    /* 粤语试听按钮（Web Speech 渐进增强）：默认 hidden，脚本探测到可用嗓音才显示 */
+    .tts-yue{display:inline-flex;align-items:center;gap:.2rem;border:1px solid var(--line);background:var(--paper-card);color:var(--ink-soft);border-radius:.4rem;padding:.15rem .55rem;font-size:.72rem;cursor:pointer;transition:.15s;font-family:inherit;}
+    .tts-yue:hover{color:var(--seal);border-color:var(--gold);background:var(--gold-tint);}
+    .tts-yue[hidden]{display:none;}
+    .tts-yue:disabled{opacity:.5;cursor:not-allowed;}
+
     /* ===== 顶栏（书脊：纸卡底 + 朱金细线压边） ===== */
     .site-header{position:sticky;top:0;z-index:20;background:var(--paper-card);border-bottom:1px solid var(--line);}
     .site-header::after{content:"";position:absolute;left:0;right:0;bottom:-4px;height:3px;pointer-events:none;
@@ -280,6 +286,76 @@
     <div class="divider max-w-xs mx-auto mb-3"></div>
     起名 · 名Master　·　服务端渲染 · 离线可用　·　仅供文化参考，不负任何命理责任
   </footer>
+  <script>
+  /* 粤语试听（Web Speech API 渐进增强，全站唯一一段内联 JS）：
+     零 JS / 无语音合成 / 无中文嗓音时按钮保持隐藏，不误导。
+     朗读内容是汉字原名而非粤拼——调号数字会被朗读器按字母念（历史缺陷 74a1e1b 同源）。 */
+  (function () {
+    "use strict";
+    if (!("speechSynthesis" in window)) return;
+    var HK = ["zh-HK", "zh-Hant-HK", "yue-HK", "yue", "zh-yue"];
+    var ZH = ["zh", "zh-CN", "zh-TW", "zh-Hant", "cmn", "cmn-Hans", "cmn-Hant"];
+    var synth = window.speechSynthesis;
+    function pickVoice() {
+      var vs = synth.getVoices() || [];
+      var i, j, k;
+      for (i = 0; i < vs.length; i++) { if (HK.indexOf(vs[i].lang) >= 0) return vs[i]; }
+      for (j = 0; j < vs.length; j++) {
+        for (k = 0; k < ZH.length; k++) {
+          if (vs[j].lang === ZH[k] || vs[j].lang.indexOf(ZH[k] + "-") === 0) return vs[j];
+        }
+      }
+      return null;
+    }
+    function reveal(ok) {
+      var btns = document.querySelectorAll(".tts-yue");
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].hidden = !ok;
+        if (!ok) { btns[i].disabled = true; }
+      }
+    }
+    var voice = pickVoice();
+    if (voice !== null) {
+      reveal(true);
+    } else {
+      /* 嗓音列表多异步填充：监听 voiceschanged，1.5s 快照兜底 */
+      var settled = false;
+      var settle = function () {
+        if (settled) return;
+        settled = true;
+        synth.removeEventListener("voiceschanged", settle);
+        voice = pickVoice();
+        reveal(voice !== null);
+      };
+      synth.addEventListener("voiceschanged", settle);
+      setTimeout(settle, 1500);
+    }
+    /* 事件委托：朗读中再点一次 = 停止 */
+    document.addEventListener("click", function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest(".tts-yue") : null;
+      if (!btn || btn.disabled) return;
+      e.preventDefault();
+      if (btn.getAttribute("data-speaking") === "1") {
+        synth.cancel();
+        btn.setAttribute("data-speaking", "");
+        btn.textContent = "🔊 粤";
+        return;
+      }
+      var name = btn.getAttribute("data-name") || "";
+      if (!name) return;
+      synth.cancel();
+      var u = new SpeechSynthesisUtterance(name);
+      if (voice) { u.voice = voice; u.lang = voice.lang; }
+      u.onend = u.onerror = function () {
+        btn.setAttribute("data-speaking", "");
+        btn.textContent = "🔊 粤";
+      };
+      btn.setAttribute("data-speaking", "1");
+      btn.textContent = "⏹ 停止";
+      synth.speak(u);
+    });
+  })();
+  </script>
 </body>
 </html>
 {{end}}

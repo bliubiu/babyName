@@ -60,7 +60,12 @@
 {{with .Evaluate}}
 <section class="ink-card p-5 mt-6">
   <div class="flex items-start justify-between gap-3">
-    <h2 class="name-big">{{.Name.FullName}} <span class="text-sm" style="color:var(--ink-faint);font-family:'Noto Sans SC',sans-serif;">{{.Name.Pinyin}}</span>{{if .Name.Jyutping}} <span class="text-sm" style="color:var(--ink-faint);">[粤: {{.Name.Jyutping}}]</span>{{end}}</h2>
+    <div>
+      <div class="flex items-baseline gap-2 flex-wrap">
+        <h2 class="name-big">{{.Name.FullName}} <span class="text-sm" style="color:var(--ink-faint);font-family:'Noto Sans SC',sans-serif;">{{.Name.Pinyin}}</span>{{if .Name.Jyutping}} <span class="text-sm" style="color:var(--ink-faint);" title="粤拼">[粤: {{.Name.Jyutping}}]</span>{{end}}</h2>
+        {{if .Name.Jyutping}}<button type="button" class="tts-yue" hidden data-name="{{.Name.FullName}}" aria-label="试听 {{.Name.FullName}} 粤语读音" title="粤语试听">🔊 粤</button>{{end}}
+      </div>
+    </div>
     <div class="score-seal">{{.Name.TotalScore}}<small>分</small></div>
   </div>
   <p class="text-sm mt-1" style="color:var(--ink-soft);">寓意：{{.Name.Meaning}}</p>
