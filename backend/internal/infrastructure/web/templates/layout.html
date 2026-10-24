@@ -343,6 +343,7 @@
       for (var i = 0; i < btns.length; i++) { btns[i].title = tip; }
     }
     /* 事件委托：朗读中再点一次 = 停止 */
+    var currentUtterance = null; /* 模块级引用：Chrome 有 utterance 被垃圾回收致中途静音的经典缺陷，必须保引用 */
     document.addEventListener("click", function (e) {
       var btn = e.target && e.target.closest ? e.target.closest(".tts-yue") : null;
       if (!btn || btn.disabled) return;
@@ -356,12 +357,18 @@
       var name = btn.getAttribute("data-name") || "";
       if (!name) return;
       synth.cancel();
+      /* Chrome 偶发把队列置于 paused 态导致无声，朗读前先恢复 */
+      if (synth.paused) { synth.resume(); }
       var u = new SpeechSynthesisUtterance(name);
       if (voice) { u.voice = voice; u.lang = voice.lang; }
-      u.onend = u.onerror = function () {
+      u.onend = u.onerror = function (ev) {
         btn.setAttribute("data-speaking", "");
         btn.textContent = "🔊 粤";
+        if (ev && ev.error && ev.error !== "interrupted" && ev.error !== "canceled") {
+          btn.title = "朗读失败：" + ev.error + "（系统语音合成出错，可换浏览器或检查系统语音）";
+        }
       };
+      currentUtterance = u;
       btn.setAttribute("data-speaking", "1");
       btn.textContent = "⏹ 停止";
       synth.speak(u);
