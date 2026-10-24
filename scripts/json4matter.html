@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>JSON 美化查看器 · json4matter</title>
+<style>
+  :root {
+    --bg: #ffffff; --panel: #f7f8fa; --border: #e3e6eb; --text: #1f2329;
+    --muted: #8a9099; --accent: #2f6feb; --accent-soft: #e8f0fe;
+    --key: #0b6e99; --str: #1a7f37; --num: #b14400; --bool: #8a3ffc;
+    --null: #8a9099; --hover: #f0f3f7; --match: #fff3b0; --match-text: #5a4500;
+  }
+  [data-theme="dark"] {
+    --bg: #1b1f24; --panel: #232830; --border: #353b43; --text: #e6e9ed;
+    --muted: #8b939e; --accent: #5b9bff; --accent-soft: #1d2b44;
+    --key: #5ec8e6; --str: #6ddf8e; --num: #ff9d5c; --bool: #c79bff;
+    --null: #8b939e; --hover: #2a2f37; --match: #5a4a12; --match-text: #ffe27a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text);
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+  .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
+  header {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .tag { font-size: 11px; color: var(--muted); }
+  .spacer { flex: 1; }
+  button, select, label.btn {
+    font-size: 12px; padding: 5px 10px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); border-radius: 6px; cursor: pointer;
+  }
+  button:hover, label.btn:hover { background: var(--hover); }
+  button:active { transform: translateY(1px); }
+  .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .tabs { display: flex; gap: 4px; }
+  .tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .search { display: flex; align-items: center; gap: 6px; }
+  .search input {
+    font-size: 12px; padding: 5px 8px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--bg); color: var(--text); width: 180px;
+  }
+  #fileInput { display: none; }
+  .stats {
+    font-size: 11px; color: var(--muted); padding: 4px 14px;
+    border-bottom: 1px solid var(--border); background: var(--bg);
+    display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+  }
+  .stats b { color: var(--text); font-weight: 600; }
+  main { flex: 1; overflow: auto; padding: 10px 14px; }
+  /* tree */
+  .tree { font-size: 13px; line-height: 1.7; }
+  .row { white-space: pre; padding-right: 8px; }
+  .row:hover { background: var(--hover); }
+  .twisty {
+    display: inline-block; width: 14px; text-align: center; cursor: pointer;
+    color: var(--muted); user-select: none;
+  }
+  .twisty.empty { visibility: hidden; }
+  .key { color: var(--key); }
+  .colon { color: var(--muted); }
+  .v-string { color: var(--str); }
+  .v-number { color: var(--num); }
+  .v-boolean { color: var(--bool); }
+  .v-null { color: var(--null); font-style: italic; }
+  .bracket { color: var(--muted); }
+  .preview { color: var(--muted); }
+  .badge {
+    font-size: 10px; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0 6px; margin-left: 6px;
+  }
+  .children { /* indent handled inline */ }
+  mark { background: var(--match); color: var(--match-text); border-radius: 2px; padding: 0 1px; }
+  /* source view */
+  #sourceView { display: none; }
+  #sourcePre {
+    margin: 0; white-space: pre; word-break: break-word; font-size: 13px; line-height: 1.6;
+  }
+  .hl-key { color: var(--key); }
+  .hl-str { color: var(--str); }
+  .hl-num { color: var(--num); }
+  .hl-bool { color: var(--bool); }
+  .hl-null { color: var(--null); font-style: italic; }
+  /* drop zone */
+  #dropOverlay {
+    position: fixed; inset: 0; background: rgba(47,111,235,0.12);
+    border: 3px dashed var(--accent); display: none; align-items: center; justify-content: center;
+    font-size: 20px; color: var(--accent); z-index: 50;
+  }
+  #dropOverlay.show { display: flex; }
+  .err { color: #d23f3f; padding: 12px; font-size: 13px; }
+  .hint { color: var(--muted); font-size: 12px; padding: 20px; }
+  .zoom { display: flex; align-items: center; gap: 4px; }
+  .zoom button { width: 26px; padding: 4px 0; text-align: center; }
+  select { background: var(--bg); color: var(--text); }
+</style>
+</head>
+<body>
+<header>
+  <h1>JSON 美化查看器</h1>
+  <span class="tag">offline · json4matter</span>
+  <div class="tabs">
+    <button id="tabTree" class="active" onclick="switchTab('tree')">树视图</button>
+    <button id="tabSource" onclick="switchTab('source')">源码视图</button>
+  </div>
+  <div class="spacer"></div>
+  <div class="toolbar">
+    <label class="btn" for="fileInput">打开文件…</label>
+    <input id="fileInput" type="file" accept=".json,application/json" />
+    <select id="sampleSel" onchange="loadSample(this.value)">
+      <option value="">示例文件…</option>
+      <option value="allowlist">allowlist.json</option>
+      <option value="compliance_redline">compliance_redline.json</option>
+      <option value="materials_lock">materials.lock</option>
+    </select>
+    <select id="indentSel" onchange="rerender()">
+      <option value="2">缩进 2</option>
+      <option value="4" selected>缩进 4</option>
+    </select>
+  </div>
+  <div class="toolbar">
+    <div class="search">
+      <input id="searchBox" placeholder="搜索键/值…" oninput="debounceSearch()" />
+      <button onclick="clearSearch()">清除</button>
+    </div>
+    <div class="zoom">
+      <button title="缩小" onclick="zoom(-1)">A−</button>
+      <button title="放大" onclick="zoom(1)">A+</button>
+      <button title="重置字号" onclick="zoom(0)">A</button>
+    </div>
+    <button onclick="expandAll()">全部展开</button>
+    <button onclick="collapseAll()">全部折叠</button>
+    <button onclick="toggleTheme()">🌗 主题</button>
+  </div>
+  <input id="fileInputPaste" style="display:none" />
+</header>
+
+<div class="stats" id="stats">
+  <span>未加载</span>
+</div>
+
+<main>
+  <div id="treeView" class="tree"></div>
+  <div id="sourceView"><pre id="sourcePre" class="mono"></pre></div>
+  <div id="emptyHint" class="hint">把 .json 文件拖到此处，或点击「打开文件…」选择；也可从上方「示例文件」直接加载。</div>
+</main>
+
+<div id="dropOverlay">松开以加载 JSON 文件</div>
+
+<script>
+"use strict";
+
+let STATE = {
+  raw: null,         // original text
+  data: null,        // parsed object
+  indent: 4,
+  fontSize: 13,
+  theme: "light",
+  registry: new Map(),   // pathStr -> node controller
+};
+
+/* ---------- 示例数据（离线内置） ---------- */
+const SAMPLES = {
+  allowlist: {
+    "version": "1.0",
+    "note": "显式白名单（docs/33 门禁层 M1）：白名单优先于黑名单。chars=字级豁免；combos=组合级豁免；blessings=祈福组合（豁免软性消极惩罚并参与评分加分）。",
+    "chars": [],
+    "combos": [],
+    "blessings": ["去病", "弃疾", "除疾", "愈病", "去疾", "除病", "愈疾", "安恙", "康宁"]
+  },
+  compliance_redline: {
+    "version": "1.0",
+    "note": "L5 合规红线（docs/33 门禁层 M2）：输出侧法务红线，严禁作为人名。state_orgs=国家/机关单位；places=争议地名/行政区划；persons=负面历史人物。",
+    "state_orgs": ["国务院","全国人大","中央军委","政治局","中纪委","党中央","政协","人大常委会","最高人民法院","最高人民检察院","中共中央","中央","军委","国防部","公安部","安全部","武警","解放军","军区","战区","省政府","市政府","县政府","区政府","镇政府","乡政府","省委","市委","县委","纪委","监委","党委","法院","检察院","公安局","派出所","税务局","工商局","国安局","城管"],
+    "places": ["北京","上海","天津","重庆","河北","山西","辽宁","吉林","黑龙江","江苏","浙江","安徽","福建","江西","山东","河南","湖北","湖南","广东","广西","海南","四川","贵州","云南","西藏","陕西","甘肃","青海","宁夏","新疆","内蒙古","香港","澳门","台湾"],
+    "persons": ["秦桧","赵高","魏忠贤","来俊臣","董卓","梁冀","贾似道","严嵩","高俅","李莲英","刘瑾","王振","蔡京","杨国忠","安禄山","史思明","吴三桂","石敬瑭","张邦昌","汪精卫","周佛海","陈公博","慈禧","和珅"]
+  },
+  materials_lock: {
+    "version": "2026.10.16",
+    "note": "门禁物料上游来源与产物指纹（docs/33 门禁层 M5）：可审计、可回滚。",
+    "entries": [
+      {"material":"naming_gate","source":"","generated":"naming_quality.json","artifact_sha256":"87b74088051da6d2d5224d71c67f78aec9937f77c87fb260137f7e605ec69082"},
+      {"material":"forbidden_combos","source":"","generated":"forbidden_combos.json","artifact_sha256":"2d30f60348b6280927433aa64d76fb96fde6c671515004abe3ab1a937797ff46"},
+      {"material":"allowlist","source":"curated:M1","generated":"allowlist.json","artifact_sha256":"d1a76f8667cd4fb199da05c67ef6007512030b854c023699c20323d7a987eb43"},
+      {"material":"compliance_redline","source":"curated:M2","generated":"compliance_redline.json","artifact_sha256":"6e9aad967033c2405f0c0aadb859ce86f8c5c8bc4a5f878c2e6a7cdcab0be618"}
+    ]
+  }
+};
+
+/* ---------- 加载入口 ---------- */
+function loadText(text, name) {
+  const t0 = performance.now();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    showError("JSON 解析失败：" + e.message);
+    return;
+  }
+  STATE.raw = text;
+  STATE.data = parsed;
+  document.getElementById("emptyHint").style.display = "none";
+  STATE.registry.clear();
+  rerender();
+  const dt = (performance.now() - t0).toFixed(0);
+  updateStats(name, dt);
+}
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => loadText(String(reader.result), file.name);
+  reader.onerror = () => showError("文件读取失败");
+  reader.readAsText(file);
+}
+
+function loadSample(key) {
+  if (!key) return;
+  const obj = SAMPLES[key];
+  loadText(JSON.stringify(obj, null, 4), key + ".json（内置示例）");
+}
+
+function showError(msg) {
+  document.getElementById("treeView").innerHTML = '<div class="err">' + escapeHtml(msg) + '</div>';
+  document.getElementById("sourceView").style.display = "none";
+  document.getElementById("treeView").style.display = "block";
+  document.getElementById("stats").innerHTML = '<span class="err">加载失败</span>';
+}
+
+function updateStats(name, ms) {
+  const stats = document.getElementById("stats");
+  const bytes = STATE.raw ? STATE.raw.length : 0;
+  const counts = countNodes(STATE.data);
+  stats.innerHTML =
+    '<span>文件：<b>' + escapeHtml(name || "（内存）") + '</b></span>' +
+    '<span>字节：<b>' + formatBytes(bytes) + '</b></span>' +
+    '<span>节点：<b>' + counts.nodes.toLocaleString() + '</b></span>' +
+    '<span>键：<b>' + counts.keys.toLocaleString() + '</b></span>' +
+    '<span>深度：<b>' + counts.depth + '</b></span>' +
+    '<span>解析：<b>' + ms + ' ms</b></span>';
+}
+
+/* ---------- 统计 ---------- */
+function countNodes(obj, depth, acc) {
+  acc = acc || { nodes: 0, keys: 0, depth: 0 };
+  depth = depth || 0;
+  acc.nodes++;
+  acc.depth = Math.max(acc.depth, depth);
+  if (obj && typeof obj === "object") {
+    if (Array.isArray(obj)) {
+      for (const v of obj) countNodes(v, depth + 1, acc);
+    } else {
+      for (const k of Object.keys(obj)) {
+        acc.keys++;
+        countNodes(obj[k], depth + 1, acc);
+      }
+    }
+  }
+  return acc;
+}
+
+/* ---------- 智能识别换行：规范化为 JS 对象后树渲染，源码视图按缩进重排 ---------- */
+function rerender() {
+  STATE.indent = parseInt(document.getElementById("indentSel").value, 10) || 4;
+  applyFont();
+  // 树视图
+  const tv = document.getElementById("treeView");
+  tv.innerHTML = "";
+  STATE.registry.clear();
+  const root = buildNode("", STATE.data, 0, [], "root");
+  tv.appendChild(root.el);
+  // 源码视图（高亮）
+  const pretty = JSON.stringify(STATE.data, null, STATE.indent);
+  document.getElementById("sourcePre").innerHTML = highlightJSON(pretty);
+}
+
+/* ---------- 树节点构建（惰性展开） ---------- */
+function buildNode(key, value, depth, pathArr, pathStr) {
+  const el = document.createElement("div");
+  el.className = "node";
+  const row = document.createElement("div");
+  row.className = "row";
+  row.style.paddingLeft = (depth * (STATE.indent * 0.6 + 6)) + "px";
+
+  const isObj = value !== null && typeof value === "object";
+  const isArr = Array.isArray(value);
+
+  const twisty = document.createElement("span");
+  twisty.className = "twisty" + (isObj ? "" : " empty");
+  twisty.textContent = "▸";
+
+  const keySpan = document.createElement("span");
+  if (key !== "") {
+    keySpan.className = "key";
+    keySpan.textContent = key;
+    const colon = document.createElement("span");
+    colon.className = "colon";
+    colon.textContent = ": ";
+    row.appendChild(keySpan);
+    row.appendChild(colon);
+  } else {
+    // 数组项序号
+  }
+
+  const childrenWrap = document.createElement("div");
+  childrenWrap.className = "children";
+  childrenWrap.style.display = "none";
+
+  let built = false;
+  let expanded = false;
+
+  function buildChildren() {
+    if (built) return;
+    built = true;
+    const entries = isArr
+      ? value.map((v, i) => [String(i), v])
+      : Object.keys(value).map((k) => [k, value[k]]);
+    // 大数组折叠：超过 500 项先渲染前 200，剩余按需
+    const LIMIT = 500;
+    const shown = entries.slice(0, LIMIT);
+    for (const [k, v] of shown) {
+      const childPath = pathStr === "root" ? "root." + k : pathStr + (isArr ? "[" + k + "]" : "." + k);
+      const childPathArr = pathArr.concat(k);
+      const child = buildNode(k, v, depth + 1, childPathArr, childPath);
+      STATE.registry.set(childPath, child);
+      childrenWrap.appendChild(child.el);
+    }
+    if (entries.length > LIMIT) {
+      const more = document.createElement("div");
+      more.className = "row preview";
+      more.style.paddingLeft = ((depth + 1) * (STATE.indent * 0.6 + 6)) + "px";
+      more.textContent = "… 另有 " + (entries.length - LIMIT) + " 项（搜索或按需展开）";
+      childrenWrap.appendChild(more);
+    }
+  }
+
+  function setExpanded(v) {
+    if (!isObj) return;
+    expanded = v;
+    if (v) { buildChildren(); childrenWrap.style.display = "block"; twisty.textContent = "▾"; }
+    else { childrenWrap.style.display = "none"; twisty.textContent = "▸"; }
+  }
+
+  if (isObj) {
+    const size = isArr ? value.length : Object.keys(value).length;
+    const open = document.createElement("span");
+    open.className = "bracket";
+    open.textContent = isArr ? "[" : "{";
+    const close = document.createElement("span");
+    close.className = "bracket";
+    close.textContent = isArr ? "]" : "}";
+    const preview = document.createElement("span");
+    preview.className = "preview";
+    preview.textContent = (isArr ? " 数组 " : " 对象 ") + size + " 项 ";
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = isArr ? "[]×" + size : "{}×" + size;
+
+    row.appendChild(twisty);
+    row.appendChild(open);
+    row.appendChild(preview);
+    row.appendChild(badge);
+    row.appendChild(close);
+
+    twisty.onclick = () => setExpanded(!expanded);
+  } else {
+    row.appendChild(twisty);
+    row.appendChild(renderScalar(value));
+  }
+
+  el.appendChild(row);
+  if (isObj) el.appendChild(childrenWrap);
+
+  const controller = {
+    el, setExpanded, buildChildren, isContainer: isObj,
+    get expanded() { return expanded; }
+  };
+  STATE.registry.set(pathStr, controller);
+  return controller;
+}
+
+function renderScalar(value) {
+  const span = document.createElement("span");
+  if (typeof value === "string") { span.className = "v-string"; span.textContent = '"' + value + '"'; }
+  else if (typeof value === "number") { span.className = "v-number"; span.textContent = String(value); }
+  else if (typeof value === "boolean") { span.className = "v-boolean"; span.textContent = String(value); }
+  else if (value === null) { span.className = "v-null"; span.textContent = "null"; }
+  else { span.className = "v-string"; span.textContent = String(value); }
+  return span;
+}
+
+/* ---------- 展开/折叠 ---------- */
+function expandAll() {
+  let changed = true, guard = 0;
+  while (changed && guard++ < 20000) {
+    changed = false;
+    for (const [, c] of STATE.registry) {
+      if (c.isContainer && !c.expanded) { c.setExpanded(true); changed = true; }
+    }
+  }
+}
+function collapseAll() {
+  for (const [p, c] of STATE.registry) {
+    if (p !== "root" && c.isContainer && c.expanded) c.setExpanded(false);
+  }
+}
+// 逐级展开：先把 root 展开，再沿路径逐段展开父节点（父节点未构建时先 build）
+function ensurePathVisible(pathStr) {
+  const parts = [];
+  let acc = "";
+  let i = 0;
+  // 首个分段（root）
+  while (i < pathStr.length && pathStr[i] !== "." && pathStr[i] !== "[") { acc += pathStr[i]; i++; }
+  parts.push(acc);
+  while (i < pathStr.length) {
+    const ch = pathStr[i];
+    if (ch === "[") {
+      while (i < pathStr.length && pathStr[i] !== "]") { acc += pathStr[i]; i++; }
+      acc += "]"; i++;
+      parts.push(acc);
+    } else if (ch === ".") {
+      acc += "."; i++;
+      while (i < pathStr.length && pathStr[i] !== "." && pathStr[i] !== "[") { acc += pathStr[i]; i++; }
+      parts.push(acc);
+    } else { acc += ch; i++; }
+  }
+  for (const p of parts) {
+    const c = STATE.registry.get(p);
+    if (c) c.setExpanded(true);
+  }
+}
+
+/* ---------- 搜索 ---------- */
+let searchTimer = null;
+function debounceSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(doSearch, 250);
+}
+function clearSearch() {
+  document.getElementById("searchBox").value = "";
+  doSearch();
+}
+function doSearch() {
+  const q = document.getElementById("searchBox").value.trim().toLowerCase();
+  // 清除旧高亮
+  document.querySelectorAll("mark").forEach(m => {
+    const p = m.parentNode; if (p) { p.replaceChild(document.createTextNode(m.textContent), m); p.normalize(); }
+  });
+  if (!q) return;
+  if (STATE.tab === "source") {
+    highlightInSource(q);
+    return;
+  }
+  // 树视图：遍历数据找匹配路径
+  const matches = [];
+  (function walk(o, path, keyLabel) {
+    const selfMatch = (keyLabel && keyLabel.toLowerCase().includes(q)) ||
+                      (typeof o === "string" && o.toLowerCase().includes(q)) ||
+                      (typeof o === "number" && String(o).includes(q));
+    if (selfMatch) matches.push(path);
+    if (o && typeof o === "object") {
+      const entries = Array.isArray(o) ? o.map((v,i)=>[String(i),v]) : Object.keys(o).map(k=>[k,o[k]]);
+      for (const [k,v] of entries) walk(v, path + (Array.isArray(o) ? "["+k+"]" : (path==="root"?"."+k:"."+k)), k);
+    }
+  })(STATE.data, "root", "");
+
+  for (const p of matches) ensurePathVisible(p);
+  // 高亮匹配行
+  requestAnimationFrame(() => highlightRows(q));
+}
+
+function highlightRows(q) {
+  const rows = document.querySelectorAll("#treeView .row");
+  let hit = 0;
+  rows.forEach(row => {
+    const txt = row.textContent.toLowerCase();
+    if (txt.includes(q)) {
+      // 给 key/value 文本加 mark
+      markText(row, q);
+      hit++;
+    }
+  });
+  flashStats("匹配 " + matchesCount(q) + " 处 / 高亮 " + hit + " 行");
+}
+function matchesCount(q) {
+  let n = 0;
+  (function walk(o) {
+    if (typeof o === "string" && o.toLowerCase().includes(q)) n++;
+    else if (typeof o === "number" && String(o).includes(q)) n++;
+    if (o && typeof o === "object") {
+      const arr = Array.isArray(o) ? o : Object.values(o);
+      arr.forEach(walk);
+    }
+  })(STATE.data);
+  return n;
+}
+function markText(node, q) {
+  node.childNodes.forEach(child => {
+    if (child.nodeType === 3) { // text
+      const idx = child.textContent.toLowerCase().indexOf(q);
+      if (idx >= 0) {
+        const frag = document.createDocumentFragment();
+        const before = child.textContent.slice(0, idx);
+        const mid = child.textContent.slice(idx, idx + q.length);
+        const after = child.textContent.slice(idx + q.length);
+        if (before) frag.appendChild(document.createTextNode(before));
+        const m = document.createElement("mark"); m.textContent = mid; frag.appendChild(m);
+        if (after) frag.appendChild(document.createTextNode(after));
+        child.parentNode.replaceChild(frag, child);
+      }
+    } else if (child.nodeType === 1 && !child.classList.contains("twisty")) {
+      markText(child, q);
+    }
+  });
+}
+
+/* 源码视图搜索 */
+function highlightInSource(q) {
+  const pre = document.getElementById("sourcePre");
+  const html = highlightJSON(JSON.stringify(STATE.data, null, STATE.indent));
+  // 在已高亮的 html 上再加 search mark（仅对文本节点）
+  pre.innerHTML = html;
+  // 简单做法：重新做一次包含 search 的高亮
+  const text = JSON.stringify(STATE.data, null, STATE.indent);
+  pre.innerHTML = highlightJSONwithSearch(text, q);
+}
+function highlightJSONwithSearch(json, q) {
+  let out = "";
+  const re = /("(\\.|[^"\\])*"(\s*:)?|\b(true|false|null)\b|-?\d+(\.\d+)?([eE][+-]?\d+)?)/g;
+  let last = 0; let m;
+  while ((m = re.exec(json)) !== null) {
+    out += escapeHtml(json.slice(last, m.index));
+    let cls = "hl-num";
+    const tok = m[0];
+    if (tok.startsWith('"')) cls = (m[3] === ":") ? "hl-key" : "hl-str";
+    else if (tok === "true" || tok === "false") cls = "hl-bool";
+    else if (tok === "null") cls = "hl-null";
+    let inner = escapeHtml(tok);
+    if (q && tok.toLowerCase().includes(q.toLowerCase())) {
+      // 仅对字符串内容/键做搜索高亮
+      inner = inner.replace(new RegExp("(" + escapeReg(q) + ")", "ig"), "<mark>$1</mark>");
+    }
+    out += '<span class="' + cls + '">' + inner + "</span>";
+    last = re.lastIndex;
+  }
+  out += escapeHtml(json.slice(last));
+  return out;
+}
+
+/* ---------- 语法高亮（源码视图） ---------- */
+function highlightJSON(json) {
+  return highlightJSONwithSearch(json, "");
+}
+
+/* ---------- 工具 ---------- */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+function escapeReg(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+function formatBytes(b) {
+  if (b < 1024) return b + " B";
+  if (b < 1024*1024) return (b/1024).toFixed(1) + " KB";
+  return (b/1024/1024).toFixed(2) + " MB";
+}
+function flashStats(msg) {
+  const s = document.getElementById("stats");
+  const span = document.createElement("span");
+  span.style.color = "var(--accent)";
+  span.textContent = msg;
+  s.appendChild(span);
+  setTimeout(() => { if (span.parentNode) span.parentNode.removeChild(span); }, 4000);
+}
+
+/* ---------- 主题 / 字号 / Tab ---------- */
+function toggleTheme() {
+  STATE.theme = (STATE.theme === "light") ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", STATE.theme);
+  try { localStorage.setItem("j4m-theme", STATE.theme); } catch(e){}
+}
+function applyFont() {
+  document.documentElement.style.fontSize = STATE.fontSize + "px";
+}
+function zoom(delta) {
+  if (delta === 0) STATE.fontSize = 13;
+  else STATE.fontSize = Math.max(10, Math.min(22, STATE.fontSize + delta));
+  applyFont();
+}
+let tab = "tree"; STATE.tab = "tree";
+function switchTab(t) {
+  STATE.tab = t; tab = t;
+  document.getElementById("tabTree").classList.toggle("active", t === "tree");
+  document.getElementById("tabSource").classList.toggle("active", t === "source");
+  document.getElementById("treeView").style.display = t === "tree" ? "block" : "none";
+  document.getElementById("sourceView").style.display = t === "source" ? "block" : "none";
+  if (t === "source") {
+    document.getElementById("sourcePre").innerHTML = highlightJSON(JSON.stringify(STATE.data, null, STATE.indent));
+  }
+}
+
+/* ---------- 事件绑定 ---------- */
+document.getElementById("fileInput").addEventListener("change", e => {
+  if (e.target.files && e.target.files[0]) loadFile(e.target.files[0]);
+});
+// 拖拽
+const overlay = document.getElementById("dropOverlay");
+["dragenter","dragover"].forEach(ev => window.addEventListener(ev, e => {
+  if (e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files")) {
+    e.preventDefault(); overlay.classList.add("show");
+  }
+}));
+["dragleave","drop"].forEach(ev => window.addEventListener(ev, e => {
+  if (ev === "drop" || (e.target === document || !e.relatedTarget)) overlay.classList.remove("show");
+}));
+window.addEventListener("drop", e => {
+  e.preventDefault();
+  overlay.classList.remove("show");
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+// 粘贴
+window.addEventListener("paste", e => {
+  const text = (e.clipboardData || window.clipboardData).getData("text");
+  if (text && text.trim().startsWith("{") || (text && text.trim().startsWith("["))) {
+    try { JSON.parse(text); loadText(text, "（粘贴内容）"); } catch(_) {}
+  }
+});
+// 初始化主题
+try {
+  const t = localStorage.getItem("j4m-theme");
+  if (t) { STATE.theme = t; document.documentElement.setAttribute("data-theme", t); }
+} catch(e){}
+applyFont();
+</script>
+</body>
+</html>

@@ -171,3 +171,9 @@ go-coverage-*.txt
 go-test-result.txt
 # 本地覆盖率明细报告（go test -coverprofile 生成，可随时重新生成）
 cover-func.txt
+
+# Go 构建缓存（本机 GOCACHE 指向工作区时产生）
+.gocache/
+
+# 本机 ACL 安全工具的备份/恢复产物（含本机路径信息，不入库）
+acl-recovery/

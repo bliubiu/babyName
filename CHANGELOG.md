@@ -5,6 +5,28 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.24.2]
+
+**三处静默正确性缺陷修复（性别筛选 / 紫微大限方向 / SQLite 锁）+ 收藏入库校验防线**
+
+### 🐛 Bug Fixes 问题修复
+- 【命理引擎】`fate.WithGenderFilter` 性别筛选静默失效：SSR 表单提交 "男"/"女" 原样落地，而 `GenderFilter` 值域是 male/female，永不相等 → 筛选退化为只剩中性字。入口统一归一化（男/m/M→male，女/f/F→female，无法识别原样返回），新增 `filter_gender_test.go`。
+- 【紫微斗数】`ziwei.calculateDaXian` 顺逆行方向整片反置：`isMale` 只认 "男"，API 枚举 "male" 全被按女性逆行计算且无任何报错。现同时接受中英文枚举，新增 `ziwei_gender_test.go`。
+- 【存储】SQLite 读写连接补 `busy_timeout(5000)`（modernc.org/sqlite 默认 0）：WAL checkpoint 或外部工具持锁瞬间读写路径直接抛 "database is locked"，现给 5 秒重试窗口；另补 `idx_favorites_created_at` 索引，修复收藏列表按时间分页的全表扫描 + 排序（此前只有姓名索引）。
+
+### ✨ New Features 新增功能
+- 【收藏服务】`validateFavoriteEntry` 入库统一防线（`SaveFavorite`/`BatchSaveFavorite` 双入口）：姓氏/名字复用校验器、gender 归一校验、score 限 0-100（防 SSR 表单无校验直库 + score≥80 触发自学习污染精选库）、拼音/来源/备注长度上限，错误为中文文案；新增校验表驱动用例与评分越界不触发自学习用例。
+
+### 📚 Docs 文档更新
+- `docs/40-物料管线落地问题审查与优化改造方案.md` 重编号为 `docs/39-`（标题同步改号）；删除过时的 `docs/DOCKER_QUICKSTART.md`。
+- `backend/scripts/db_probe.py` 一次性 namer.db 写入探针入库留档（busy_timeout 修复的实证工具）；根 `scripts/json4matter.html` 旧版独立副本入库留档（真源已迁至 `backend/internal/infrastructure/web/static/json4matter.html`，随 go:embed 分发）。
+
+### 🔧 Dependencies 依赖更新
+- `.gitignore` 补 `.gocache/`（本机 GOCACHE 指向工作区时产生）与 `acl-recovery/`（本机 ACL 工具备份产物，含本机路径信息不入库）。
+
+### 🧪 验证
+- `go test ./internal/...` 30 包全绿（含 fate/ziwei/services 新用例）；两套页面层 E2E 14/14、5/5。
+
 ## [2026.10.24.1]
 
 **页面设计体系升级：国风质感与全站组件统一 + 首页原生日历选择器**
