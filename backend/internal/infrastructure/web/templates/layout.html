@@ -185,6 +185,16 @@
     .toolbar .spacer{flex:1;}
     .toolbar-hint{font-size:.72rem;color:var(--ink-faint);}
 
+    /* 折叠摘要（details/summary，零 JS）：默认收起，▸/▾ 指示开合 */
+    .fold{margin-top:.5rem;}
+    .fold>summary{cursor:pointer;color:var(--seal);font-size:.8rem;line-height:1.5;list-style:none;user-select:none;}
+    .fold>summary::-webkit-details-marker{display:none;}
+    .fold>summary::before{content:"▸";display:inline-block;width:1em;}
+    .fold[open]>summary::before{content:"▾";}
+    .fold>summary:hover{color:var(--seal-deep);text-decoration:underline;text-underline-offset:3px;}
+    .fold>.fold-body{margin-top:.4rem;}
+    .truncate-inline{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%;}
+
     /* flash 提示条 */
     .flash{display:flex;align-items:baseline;gap:.5rem;border-radius:.6rem;padding:.6rem .9rem;font-size:.85rem;margin-bottom:1rem;border:1px solid;}
     .flash::before{flex:none;font-weight:700;}

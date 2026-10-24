@@ -69,7 +69,10 @@
   {{end}}
   {{with .Ziwei}}
   <div class="mt-3 text-sm">
-    紫微斗数：命宫 <b>{{.Gongwei}}</b>{{if .Tianzhu}} · 天柱 {{.Tianzhu}}{{end}}{{if .Diwei}} · 地纬 {{.Diwei}}{{end}}{{if .Analysis}} —— {{.Analysis}}{{end}}
+    <details class="fold">
+      <summary>紫微斗数：命宫 <b>{{.Gongwei}}</b>{{if .Tianzhu}} · 天柱 {{.Tianzhu}}{{end}}{{if .Diwei}} · 地纬 {{.Diwei}}{{end}}　<span style="color:var(--ink-faint);">点击展开完整命盘分析</span></summary>
+      <div class="fold-body leading-relaxed" style="color:var(--ink-soft);">{{.Analysis}}</div>
+    </details>
   </div>
   {{end}}
 </section>
@@ -110,41 +113,43 @@
       {{if .CantoneseScore}}<span class="tag tag-gold">粤语 {{.CantoneseScore}}</span>{{end}}
       {{range .Reasons}}<span class="tag tag-seal">{{.}}</span>{{end}}
     </div>
-    <p class="text-sm mt-2" style="color:var(--ink-soft);">寓意：{{.Meaning}}</p>
-    <p class="text-sm" style="color:var(--ink-soft);">五行：{{.Wuxing}} —— {{.WuxingAnalysis}}</p>
     {{if .PoetrySource}}
-    <p class="text-sm mt-2 pl-3" style="color:var(--celadon);border-left:3px solid var(--celadon);">出处：{{.PoetrySource}}「{{.PoetrySentence}}」{{if .PoetryAuthor}}（{{.PoetryAuthor}}）{{end}}</p>
+    <p class="text-sm mt-2 pl-3 truncate-inline" style="color:var(--celadon);border-left:3px solid var(--celadon);" title="{{.PoetrySentence}}">出处：{{.PoetrySource}}「{{truncate .PoetrySentence 44}}」{{if .PoetryAuthor}}（{{.PoetryAuthor}}）{{end}}</p>
     {{end}}
-    {{if .PoetryFullText}}
-    <details class="mt-2 text-sm">
-      <summary class="cursor-pointer" style="color:var(--seal);">展开出处全文（加粗为命中的名字用字）</summary>
-      <p class="mt-1 leading-relaxed" style="color:var(--ink-soft);">{{highlightPoetry .PoetryFullText .PoetryMatchedChars}}</p>
+    <details class="fold">
+      <summary>寓意：{{truncate .Meaning 42}}</summary>
+      <div class="fold-body text-sm space-y-2" style="color:var(--ink-soft);">
+        <p class="leading-relaxed">{{.Meaning}}</p>
+        <p>五行：{{.Wuxing}} —— {{.WuxingAnalysis}}</p>
+        {{if .PoetryFullText}}<p class="leading-relaxed pl-3" style="border-left:3px solid var(--celadon-line);">{{highlightPoetry .PoetryFullText .PoetryMatchedChars}}</p>{{end}}
+      </div>
     </details>
-    {{end}}
-    <details class="mt-2 text-sm">
-      <summary class="cursor-pointer" style="color:var(--seal);">评分依据详情</summary>
-      <dl class="mt-1 space-y-1" style="color:var(--ink-soft);">
-        {{if .BaziScoreDetail}}<div><dt class="inline font-medium" style="color:var(--ink);">八字：</dt><dd class="inline">{{.BaziScoreDetail}}</dd></div>{{end}}
-        {{if .MeaningDetail}}<div><dt class="inline font-medium" style="color:var(--ink);">字义：</dt><dd class="inline">{{.MeaningDetail}}</dd></div>{{end}}
-        {{if .Yinyun}}<div><dt class="inline font-medium" style="color:var(--ink);">音韵：</dt><dd class="inline">{{.Yinyun}}</dd></div>{{end}}
-        {{if .SancaiAnalysis}}<div><dt class="inline font-medium" style="color:var(--ink);">三才：</dt><dd class="inline">{{.SancaiAnalysis}}</dd></div>{{end}}
-      </dl>
-    </details>
-    <div class="mt-3 space-y-1.5">
-      {{range .ScoreDetail}}
-      <div class="meter"><span class="meter-label">{{.Name}}</span><div class="meter-track"><div class="meter-fill" style="width:{{.Score}}%"></div></div><span class="meter-val">{{.Score}}</span></div>
-      {{end}}
-    </div>
-    {{if .CantoneseScore}}
-    <div class="mt-3">
-      <div class="text-xs mb-1" style="color:var(--ink-faint);">粤语分：<b style="color:var(--seal);">{{.CantoneseScore}}</b> 分</div>
-      <div class="space-y-1.5">
-        {{range .CantoneseScoreDetail}}
-        <div class="meter"><span class="meter-label">{{.Name}}</span><div class="meter-track"><div class="meter-fill gold" style="width:{{.Score}}%"></div></div><span class="meter-val">{{.Score}}</span></div>
+    <details class="fold">
+      <summary>评分明细（{{len .ScoreDetail}} 项{{if .CantoneseScore}} · 含粤语{{end}}）</summary>
+      <div class="fold-body">
+        <dl class="space-y-1 text-sm mb-2" style="color:var(--ink-soft);">
+          {{if .BaziScoreDetail}}<div><dt class="inline font-medium" style="color:var(--ink);">八字：</dt><dd class="inline">{{.BaziScoreDetail}}</dd></div>{{end}}
+          {{if .MeaningDetail}}<div><dt class="inline font-medium" style="color:var(--ink);">字义：</dt><dd class="inline">{{.MeaningDetail}}</dd></div>{{end}}
+          {{if .Yinyun}}<div><dt class="inline font-medium" style="color:var(--ink);">音韵：</dt><dd class="inline">{{.Yinyun}}</dd></div>{{end}}
+          {{if .SancaiAnalysis}}<div><dt class="inline font-medium" style="color:var(--ink);">三才：</dt><dd class="inline">{{.SancaiAnalysis}}</dd></div>{{end}}
+        </dl>
+        <div class="space-y-1.5">
+          {{range .ScoreDetail}}
+          <div class="meter"><span class="meter-label">{{.Name}}</span><div class="meter-track"><div class="meter-fill" style="width:{{.Score}}%"></div></div><span class="meter-val">{{.Score}}</span></div>
+          {{end}}
+        </div>
+        {{if .CantoneseScore}}
+        <div class="mt-3">
+          <div class="text-xs mb-1" style="color:var(--ink-faint);">粤语分：<b style="color:var(--seal);">{{.CantoneseScore}}</b> 分</div>
+          <div class="space-y-1.5">
+            {{range .CantoneseScoreDetail}}
+            <div class="meter"><span class="meter-label">{{.Name}}</span><div class="meter-track"><div class="meter-fill gold" style="width:{{.Score}}%"></div></div><span class="meter-val">{{.Score}}</span></div>
+            {{end}}
+          </div>
+        </div>
         {{end}}
       </div>
-    </div>
-    {{end}}
+    </details>
     <form method="post" action="/favorites" class="mt-4">
       <input type="hidden" name="rq" value="{{$.FilterQuery}}">
       <input type="hidden" name="surname" value="{{.Surname}}">

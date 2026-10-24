@@ -283,6 +283,7 @@ var templateFuncs = template.FuncMap{
 	"pctf":            pctf,
 	"navClass":        navClass,
 	"navAria":         navAria,
+	"truncate":        truncate,
 }
 
 // max5 五行计数取最大值（分布条宽度归一化基准）；全 0 时返回 1 防除零。
@@ -351,6 +352,19 @@ func navAria(path, link string) string {
 		return "page"
 	}
 	return ""
+}
+
+// truncate 按 rune 截断长文本，超长补省略号（结果卡摘要行用）。
+// n<=0 视为不限制；rune 安全，不会切出半个汉字。
+func truncate(s string, n int) string {
+	if n <= 0 {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n]) + "…"
 }
 
 // genderLabel 引擎性别字面量（male/female）→ 中文标签。

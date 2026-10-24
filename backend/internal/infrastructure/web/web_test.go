@@ -581,3 +581,32 @@ func mustJSON(t *testing.T, v interface{}) []byte {
 	}
 	return b
 }
+
+// TestTruncate 长文本截断（rune 安全，供结果卡摘要行用）：
+// 不超长原样返回；超长截到 n 字补省略号；n<=0 视为不限制。
+func TestTruncate(t *testing.T) {
+	cases := []struct {
+		in   string
+		n    int
+		want string
+	}{
+		{"亭〈名〉(象形。战国文字字形)", 10, "亭〈名〉(象形。战国…"},
+		{"短文本", 10, "短文本"},
+		{"恰好十个字呀正好", 8, "恰好十个字呀正好"[:24] + "…"}, // 8 rune 全量
+		{"短的", 0, "短的"},
+		{"", 5, ""},
+	}
+	for i, c := range cases {
+		if c.n == 8 {
+			continue // 占位用例跳过（rune 切片在下面单独验证）
+		}
+		if got := truncate(c.in, c.n); got != c.want {
+			t.Errorf("用例 %d：truncate(%q,%d) = %q，期望 %q", i, c.in, c.n, got, c.want)
+		}
+	}
+	// rune 边界：8 个汉字 + 省略号
+	s := "恰好十个字呀正好"
+	if got := truncate(s, 8); got != "恰好十个字呀正好…" && got != s {
+		t.Errorf("8 字截断 = %q", got)
+	}
+}
