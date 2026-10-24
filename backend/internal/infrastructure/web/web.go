@@ -196,6 +196,11 @@ type pageData struct {
 	TotalPages int
 	PrevPage   int
 	NextPage   int
+	// PagerQuery 分页链接回带的额外查询串（结果页=筛选条件，翻页不丢筛选态；
+	// 收藏/历史无筛选为空）
+	PagerQuery string
+	// TotalItems 当前列表总条数（分页条「共 N 条」展示用）
+	TotalItems int
 	// CharGroups 偏旁选字分组（首页表单用，hanzi.GetNamerGroups 单一真源，
 	// 与 /api/v1/characters/groups 同源；SSR 服务端渲染 checkbox 网格）
 	CharGroups []hanzi.StandardCharGroup
@@ -709,13 +714,37 @@ func (h *Handler) Result(c *gin.Context) {
 	// 模板继续 {{range .Names}} 无需感知筛选。
 	view := *resp
 	view.Names = filter.apply(resp.Names)
+	// 分页：卡片已纵向压缩（约 262px/张），每页 10 张约 2.6 屏——同时保证
+	// 「对比所选」的勾选范围在一页内可控。越界钳制到末页。
+	const perPage = 10
+	total := len(view.Names)
+	totalPages := (total + perPage - 1) / perPage
+	page := atoiQuery(c, "page")
+	if page > totalPages {
+		page = totalPages
+	}
+	if page < 1 {
+		page = 1
+	}
+	start := (page - 1) * perPage
+	end := start + perPage
+	if end > total {
+		end = total
+	}
+	view.Names = view.Names[start:end]
 	h.renderPage(c, http.StatusOK, "result", &pageData{
 		Title:         "起名结果",
 		Result:        &view,
 		Filter:        filter,
 		FilterQuery:   filter.query(),
+		PagerQuery:    filter.query(),
+		TotalItems:    total,
+		Page:          page,
+		TotalPages:    totalPages,
+		PrevPage:      page - 1,
+		NextPage:      page + 1,
 		TotalCount:    len(resp.Names),
-		FilteredCount: len(view.Names),
+		FilteredCount: total,
 	})
 }
 
@@ -778,10 +807,13 @@ func (h *Handler) Favorite(c *gin.Context) {
 		c.Redirect(http.StatusSeeOther, "/?error="+url.QueryEscape(clientMessage("收藏", err)))
 		return
 	}
-	// rq 回带筛选查询串；ok 供结果页渲染绿色提示条
+	// rq 回带筛选查询串；page 保持收藏前所在页（分页后不把用户扔回第 1 页）
 	loc := "/result?ok=" + url.QueryEscape("已加入收藏")
 	if rq := c.PostForm("rq"); rq != "" {
 		loc = "/result?" + rq + "&ok=" + url.QueryEscape("已加入收藏")
+	}
+	if page := atoiQuery(c, "page"); page > 1 {
+		loc += "&page=" + strconv.Itoa(page)
 	}
 	c.Redirect(http.StatusSeeOther, loc)
 }

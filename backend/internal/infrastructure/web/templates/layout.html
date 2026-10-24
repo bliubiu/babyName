@@ -391,10 +391,11 @@
 
 {{define "pagination"}}
 {{if gt .TotalPages 1}}
+{{$base := "?page="}}{{if .PagerQuery}}{{$base = printf "?%s&page=" .PagerQuery}}{{end}}
 <div class="mt-6 flex items-center justify-center gap-2 text-sm">
-  {{if gt .PrevPage 0}}<a href="?page={{.PrevPage}}" class="btn-ghost">上一页</a>{{end}}
-  <span style="color:var(--ink-faint)">第 {{.Page}} / {{.TotalPages}} 页</span>
-  {{if lt .Page .TotalPages}}<a href="?page={{.NextPage}}" class="btn-ghost">下一页</a>{{end}}
+  {{if gt .PrevPage 0}}<a href="{{$base}}{{.PrevPage}}" class="btn-ghost">上一页</a>{{end}}
+  <span style="color:var(--ink-faint)">第 {{.Page}} / {{.TotalPages}} 页{{if gt .TotalItems 0}} · 共 {{.TotalItems}} 条{{end}}</span>
+  {{if lt .Page .TotalPages}}<a href="{{$base}}{{.NextPage}}" class="btn-ghost">下一页</a>{{end}}
 </div>
 {{end}}
 {{end}}

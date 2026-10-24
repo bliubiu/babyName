@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -608,5 +609,66 @@ func TestTruncate(t *testing.T) {
 	s := "恰好十个字呀正好"
 	if got := truncate(s, 8); got != "恰好十个字呀正好…" && got != s {
 		t.Errorf("8 字截断 = %q", got)
+	}
+}
+
+// resultPageNames 构造 n 个可区分候选（结果页分页测试用）
+func resultPageNames(n int) []name.Name {
+	names := make([]name.Name, n)
+	for i := range names {
+		names[i] = name.Name{
+			Surname: "王", GivenName: fmt.Sprintf("测试%d", i+1),
+			FullName: fmt.Sprintf("王测试%d", i+1), Pinyin: "wáng cè shì",
+			Gender: "male", Wuxing: "水", Strokes: 10, TotalScore: float64(90 - i),
+		}
+	}
+	return names
+}
+
+// TestResult_分页 回归：候选列表分页渲染（每页 10 张压缩卡），
+// 越界钳制到末页，分页链接必须回带筛选查询串（否则翻页丢筛选态）。
+func TestResult_分页(t *testing.T) {
+	h, _, _, _, r := setupT(t)
+	w := doGenerate(t, r, validForm())
+	sid := sidCookieFor(w)
+	h.sessMu.Lock()
+	h.sessions[sid].resp.Names = resultPageNames(25)
+	h.sessMu.Unlock()
+
+	get := func(path string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(&http.Cookie{Name: "nm_sid", Value: sid})
+		r.ServeHTTP(w, req)
+		return w
+	}
+
+	// 第 1 页：10 张卡 + 页码 1/3
+	p1 := get("/result")
+	if got := strings.Count(p1.Body.String(), "class=\"name-big\""); got != 10 {
+		t.Fatalf("第 1 页应渲染 10 张卡，实得 %d", got)
+	}
+	if !strings.Contains(p1.Body.String(), "第 1 / 3 页") {
+		t.Fatalf("第 1 页应显示「第 1 / 3 页」")
+	}
+
+	// 第 3 页：5 张卡（25=10+10+5），末页无下一页
+	p3 := get("/result?page=3")
+	if got := strings.Count(p3.Body.String(), "class=\"name-big\""); got != 5 {
+		t.Fatalf("第 3 页应渲染 5 张卡，实得 %d", got)
+	}
+	if strings.Contains(p3.Body.String(), "下一页") {
+		t.Fatalf("末页不应有下一页链接")
+	}
+
+	// 越界钳制到末页
+	if p99 := get("/result?page=99"); !strings.Contains(p99.Body.String(), "第 3 / 3 页") {
+		t.Fatalf("page=99 应钳制到末页「第 3 / 3 页」")
+	}
+
+	// 筛选查询串跨页保持（HTML 属性中 & 转义为 &amp;）
+	pf := get("/result?gender=male&page=2")
+	if !strings.Contains(pf.Body.String(), "gender=male&amp;page=1") {
+		t.Fatalf("分页链接应回带筛选查询串 gender=male")
 	}
 }
