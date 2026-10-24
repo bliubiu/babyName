@@ -245,7 +245,34 @@ func (s *Store) loadBigramFromDB() bool {
 		return false
 	}
 	hanzi.SetBigramFromData(items)
+	s.restoreFrequencyTotal()
 	return true
+}
+
+// restoreFrequencyTotal 恢复频率语料总人数（meta.total_names，统计页占比分母）。
+// 历史缺陷：导入框架只落行数据不落 meta（SetFrequencyTotalNames 成孤儿函数），
+// 库装载后 GetTotalNames() 恒为 0 → 统计页占比列全部显示 0.0000%、占比条全空。
+// 修复：利用语料构造恒等式 total = Σ单字count − Σ双字count
+// （单字表计每个人名的每个「名」字：Σ单字 = 单字名数 + 2×双字名数；
+//   双字表计每个双字名一次：Σ双字 = 双字名数 ⇒ 差 = 语料总人数；
+//   真实语料验证：1,815,552 − 857,806 = 957,746 ✓）。
+// 前提：两表同批同源导入（导入指纹/幂等机制保证批次一致）；任一表缺失或
+// 差值非正则不设（保持 0，占比不显示），绝不给错分母。
+// 求和用库全量行——导入不过滤 tier；内存表已滤 tier<2，直接求和会偏大。
+func (s *Store) restoreFrequencyTotal() {
+	var charSum, bigramSum int
+	if err := s.db.QueryRow("SELECT COALESCE(SUM(count),0) FROM name_frequency").Scan(&charSum); err != nil || charSum <= 0 {
+		return
+	}
+	if err := s.db.QueryRow("SELECT COALESCE(SUM(count),0) FROM name_bigram").Scan(&bigramSum); err != nil || bigramSum <= 0 {
+		return
+	}
+	total := charSum - bigramSum
+	if total <= 0 {
+		return
+	}
+	hanzi.SetFrequencyTotalNames(total)
+	logger.Info("sqlite: 频率语料总量已恢复", logger.Int("总人数", total))
 }
 
 // loadGateFromDB 从库载入命名质量门禁字表

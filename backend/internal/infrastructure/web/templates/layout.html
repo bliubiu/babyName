@@ -316,6 +316,7 @@
     }
     var voice = pickVoice();
     if (voice !== null) {
+      applyTitles(voice);
       reveal(true);
     } else {
       /* 嗓音列表多异步填充：监听 voiceschanged，1.5s 快照兜底 */
@@ -325,10 +326,21 @@
         settled = true;
         synth.removeEventListener("voiceschanged", settle);
         voice = pickVoice();
+        applyTitles(voice);
         reveal(voice !== null);
       };
       synth.addEventListener("voiceschanged", settle);
       setTimeout(settle, 1500);
+    }
+    /* 嗓音降级提示：无 zh-HK 粤语嗓音时按钮 title 说明当前用普通话朗读，
+       并指引安装系统「中文(香港)」语音包（Web Speech 依赖系统/浏览器嗓音，无法随站点内嵌） */
+    function applyTitles(v) {
+      var tip = "粤语试听";
+      if (v && HK.indexOf(v.lang) < 0) {
+        tip = "试听（普通话嗓音）——未检测到粤语语音包：Windows 可在 设置→时间和语言→语音→管理语音 添加「中文(香港)」，安装后自动切换";
+      }
+      var btns = document.querySelectorAll(".tts-yue");
+      for (var i = 0; i < btns.length; i++) { btns[i].title = tip; }
     }
     /* 事件委托：朗读中再点一次 = 停止 */
     document.addEventListener("click", function (e) {

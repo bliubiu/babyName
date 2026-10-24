@@ -211,6 +211,8 @@ type pageData struct {
 	SelYear  int
 	SelMonth int
 	SelDay   int
+	// SelKind 统计页榜单种类（all/char/bigram，模板下拉回显）
+	SelKind string
 	// MonthToday 今天（月格高亮用）
 	MonthToday time.Time
 	// MonthLeadingBlanks 月格首行前置空白格数（周一开头：(weekday+6)%7）
@@ -1011,9 +1013,15 @@ func (h *Handler) StatPage(c *gin.Context) {
 			limit = n
 		}
 	}
+	// 榜单种类：合并榜会被高频单字名霸占（双字组合极度长尾），支持分列查看
+	kind := c.Query("kind")
+	if kind != "char" && kind != "bigram" {
+		kind = "all"
+	}
 	data := &pageData{
-		Title: "姓名统计",
-		Stats: namestat.GetTopNames(limit),
+		Title:   "姓名统计",
+		SelKind: kind,
+		Stats:   namestat.GetTopNames(limit, kind),
 	}
 	// 按名查重名率：查询词非空时直查域层（未收录返回 Count=0，模板据此提示）
 	if q := strings.TrimSpace(c.Query("name")); q != "" {

@@ -37,6 +37,7 @@
 
 <section class="mb-6">
   <h2 class="section-title mb-3">高频名字榜</h2>
+  <p class="text-xs mb-3" style="color:var(--ink-faint);">语料为 Chinese-Names-Corpus 人名库（约 95.8 万条，按「名」统计、不含姓氏）。全部榜以出现次数排序——单字名集中度远高于双字组合（多数双字组合仅出现 1-2 次），故合并榜以单字名为主；切「仅双字名」可看双字名榜。</p>
   {{with .Stats}}
   <div class="ink-card overflow-hidden p-2">
     <table class="ink-table">
@@ -73,12 +74,20 @@
 
 <div class="ink-card p-5 space-y-4">
   <form method="get" action="/stat" class="flex flex-wrap items-end gap-4">
+    <input type="hidden" name="kind" value="{{.SelKind}}">
     <label class="block text-sm">查询名字重名率
       <input name="name" value="{{.QueriedName}}" placeholder="输入完整名字，如 张伟" class="mt-1 border rounded px-3 py-2 w-48">
     </label>
     <button type="submit" class="btn-primary">查询</button>
   </form>
-  <form method="get" action="/stat" class="flex items-end gap-4">
+  <form method="get" action="/stat" class="flex flex-wrap items-end gap-4">
+    <label class="block text-sm">榜单种类
+      <select name="kind" class="mt-1 border rounded px-3 py-2">
+        <option value="all" {{if eq .SelKind "all"}}selected{{end}}>全部（单字+双字）</option>
+        <option value="char" {{if eq .SelKind "char"}}selected{{end}}>仅单字名</option>
+        <option value="bigram" {{if eq .SelKind "bigram"}}selected{{end}}>仅双字名</option>
+      </select>
+    </label>
     <label class="block text-sm">榜单显示数量
       <select name="limit" class="mt-1 border rounded px-3 py-2">
         <option value="20">Top 20</option>

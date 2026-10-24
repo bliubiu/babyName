@@ -82,7 +82,7 @@ func TestGetNameStats_Unknown(t *testing.T) {
 }
 
 func TestGetTopNames(t *testing.T) {
-	list := GetTopNames(10)
+	list := GetTopNames(10, "all")
 	if len(list) != 10 {
 		t.Fatalf("GetTopNames(10) 返回 %d 条，期望 10", len(list))
 	}
@@ -96,5 +96,47 @@ func TestGetTopNames(t *testing.T) {
 		if s.Name == "" || s.Count <= 0 {
 			t.Fatalf("排行条目非法：%+v", s)
 		}
+	}
+}
+
+// TestGetTopNames_Kind过滤 榜单种类过滤：单字名/双字名分列或合并，
+// 解决双字组合长尾（多数组合仅出现 1-2 次）导致榜单被单字名霸占、双字名不可见。
+func TestGetTopNames_Kind过滤(t *testing.T) {
+	isSingle := func(s NameStat) bool { return len([]rune(s.Name)) == 1 }
+
+	chars := GetTopNames(10, "char")
+	if len(chars) != 10 {
+		t.Fatalf("GetTopNames(10, char) 返回 %d 条，期望 10", len(chars))
+	}
+	for _, s := range chars {
+		if !isSingle(s) {
+			t.Fatalf("char 过滤混入双字名：%+v", s)
+		}
+	}
+
+	bigrams := GetTopNames(10, "bigram")
+	if len(bigrams) != 10 {
+		t.Fatalf("GetTopNames(10, bigram) 返回 %d 条，期望 10", len(bigrams))
+	}
+	for _, s := range bigrams {
+		if isSingle(s) {
+			t.Fatalf("bigram 过滤混入单字名：%+v", s)
+		}
+	}
+
+	all := GetTopNames(10, "all")
+	empty := GetTopNames(10, "")
+	if len(all) != 10 || len(empty) != 10 {
+		t.Fatalf("all/默认过滤应等价于合并榜单，实得 %d / %d 条", len(all), len(empty))
+	}
+	for i := range all {
+		if all[i].Name != empty[i].Name {
+			t.Fatalf("all 与空 kind 排序不一致：第 %d 项 %q ≠ %q", i, all[i].Name, empty[i].Name)
+		}
+	}
+
+	// 语料总量（JSON 路径带 meta）恢复后占比才有意义
+	if GetTopNames(1, "char")[0].Rate <= 0 {
+		t.Fatalf("榜单条目占比应 > 0（语料总量已装载）")
 	}
 }
