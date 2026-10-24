@@ -29,30 +29,7 @@
       </label>
       <label class="block">出生时辰
         <select name="birth_hour" class="mt-1 w-full border rounded px-3 py-2">
-          <option value="0">00 时 · 子时（夜半）</option>
-          <option value="1">01 时 · 丑时（鸡鸣）</option>
-          <option value="2">02 时 · 丑时（鸡鸣）</option>
-          <option value="3">03 时 · 寅时（平旦）</option>
-          <option value="4">04 时 · 寅时（平旦）</option>
-          <option value="5">05 时 · 卯时（日出）</option>
-          <option value="6">06 时 · 卯时（日出）</option>
-          <option value="7">07 时 · 辰时（食时）</option>
-          <option value="8">08 时 · 辰时（食时）</option>
-          <option value="9">09 时 · 巳时（隅中）</option>
-          <option value="10">10 时 · 巳时（隅中）</option>
-          <option value="11">11 时 · 午时（日中）</option>
-          <option value="12" selected>12 时 · 午时（日中）</option>
-          <option value="13">13 时 · 未时（日昳）</option>
-          <option value="14">14 时 · 未时（日昳）</option>
-          <option value="15">15 时 · 申时（晡时）</option>
-          <option value="16">16 时 · 申时（晡时）</option>
-          <option value="17">17 时 · 酉时（日入）</option>
-          <option value="18">18 时 · 酉时（日入）</option>
-          <option value="19">19 时 · 戌时（黄昏）</option>
-          <option value="20">20 时 · 戌时（黄昏）</option>
-          <option value="21">21 时 · 亥时（人定）</option>
-          <option value="22">22 时 · 亥时（人定）</option>
-          <option value="23">23 时 · 子时（夜半）</option>
+          {{template "birthHourOptions"}}
         </select>
       </label>
       <label class="block">出生分钟

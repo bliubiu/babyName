@@ -218,6 +218,8 @@ type pageData struct {
 	SelDay   int
 	// SelKind 统计页榜单种类（all/char/bigram，模板下拉回显）
 	SelKind string
+	// SelLimit 统计页榜单显示数量（20/50/100，模板下拉回显，缺省 20）
+	SelLimit int
 	// MonthToday 今天（月格高亮用）
 	MonthToday time.Time
 	// MonthLeadingBlanks 月格首行前置空白格数（周一开头：(weekday+6)%7）
@@ -275,6 +277,8 @@ type historyView struct {
 
 // templateFuncs 模板函数表：把前端 poetryHighlight.ts 的命中字切分算法与
 // 五行彩标逻辑移植到服务端，一次渲染零 JS。
+// 仅登记模板实际调用的函数；无引用的函数一律不入表（如 hasPrefix 曾注册却
+// 从未被任何模板使用，属死代码，已移除）。
 var templateFuncs = template.FuncMap{
 	"highlightPoetry": highlightPoetry,
 	"wuxingTags":      wuxingTags,
@@ -283,7 +287,6 @@ var templateFuncs = template.FuncMap{
 	"isToday":         isToday,
 	"max5":            max5,
 	"pct":             pct,
-	"hasPrefix":       strings.HasPrefix,
 	"maxf":            maxf,
 	"pctf":            pctf,
 	"navClass":        navClass,
@@ -901,6 +904,18 @@ func (h *Handler) EvaluatePage(c *gin.Context) {
 // Evaluate 测名：POST 表单 → 服务层评分报告 → 渲染同页结果。
 // 测名是幂等只读操作（无历史写入副作用），直接渲染同页而非 PRG 重定向。
 func (h *Handler) Evaluate(c *gin.Context) {
+	// 出生日期：与 /generate 同源解析 birth_date（evaluate.html 提交该合并字段，
+	// 旧三字段 birth_year/month/day 作为回退）。此前 handler 只读三字段、漏解析
+	// birth_date，导致测名永远拿不到出生日期、八字概要为空、校验失败——是使
+	// 测名功能失效的断链 bug。
+	year, month, day, derr := parseBirthDate(c)
+	if derr != nil {
+		h.renderPage(c, http.StatusOK, "evaluate", &pageData{
+			Title: "测名",
+			Error: clientMessage("测名", derr),
+		})
+		return
+	}
 	atoi := func(k string) int {
 		v, _ := strconv.Atoi(c.PostForm(k))
 		return v
@@ -909,9 +924,9 @@ func (h *Handler) Evaluate(c *gin.Context) {
 		Surname:       strings.TrimSpace(c.PostForm("surname")),
 		GivenName:     strings.TrimSpace(c.PostForm("given_name")),
 		Gender:        validator.NormalizeGender(c.PostForm("gender")),
-		BirthYear:     atoi("birth_year"),
-		BirthMonth:    atoi("birth_month"),
-		BirthDay:      atoi("birth_day"),
+		BirthYear:     year,
+		BirthMonth:    month,
+		BirthDay:      day,
 		BirthHour:     atoi("birth_hour"),
 		BirthMinute:   atoi("birth_minute"),
 		BirthLocation: c.PostForm("birth_location"),
@@ -1065,9 +1080,10 @@ func (h *Handler) StatPage(c *gin.Context) {
 		kind = "all"
 	}
 	data := &pageData{
-		Title:   "姓名统计",
-		SelKind: kind,
-		Stats:   namestat.GetTopNames(limit, kind),
+		Title:    "姓名统计",
+		SelKind:  kind,
+		SelLimit: limit,
+		Stats:    namestat.GetTopNames(limit, kind),
 	}
 	// 按名查重名率：查询词非空时直查域层（未收录返回 Count=0，模板据此提示）
 	if q := strings.TrimSpace(c.Query("name")); q != "" {
@@ -1336,22 +1352,41 @@ func validateEvaluateForm(req *services.EvaluateRequest) error {
 	return validator.ValidateTime(req.BirthHour, req.BirthMinute)
 }
 
+// atoiForm 从表单字段解析整数，非法/缺省返回 0（与表单校验解耦，仅用于
+// 非关键数值，关键日期走 parseBirthDate）。
+func atoiForm(c *gin.Context, k string) int {
+	v, _ := strconv.Atoi(c.PostForm(k))
+	return v
+}
+
+// parseBirthDate 从表单解析出生日期，供 /generate 与 /evaluate 两条 SSR 链路
+// 共用（消除重复解析）：优先合并字段 birth_date（YYYY-MM-DD，原生
+// <input type="date"> 提交，浏览器保证零填充且只提交合法日历日期）；缺省回退
+// 到旧三字段 birth_year/month/day（兼容 JSON API 与既有客户端）。
+// birth_date 存在但非法时返回错误，交由校验器统一拦截。
+func parseBirthDate(c *gin.Context) (year, month, day int, err error) {
+	year = atoiForm(c, "birth_year")
+	month = atoiForm(c, "birth_month")
+	day = atoiForm(c, "birth_day")
+	if bd := strings.TrimSpace(c.PostForm("birth_date")); bd != "" {
+		t, e := time.Parse("2006-01-02", bd)
+		if e != nil {
+			return 0, 0, 0, stderrors.New("出生日期不合法，请重新选择")
+		}
+		year, month, day = t.Year(), int(t.Month()), t.Day()
+	}
+	return year, month, day, nil
+}
+
 // parseGenerateForm 接收 /generate 表单
 func parseGenerateForm(c *gin.Context) (*services.GenerateRequest, error) {
 	atoi := func(k string) int {
 		v, _ := strconv.Atoi(c.PostForm(k))
 		return v
 	}
-	year, month, day := atoi("birth_year"), atoi("birth_month"), atoi("birth_day")
-	// SSR 表单用 <input type="date"> 原生日历提交合并字段 birth_date（YYYY-MM-DD，
-	// 浏览器保证零填充且只提交合法日历日期）；与旧三字段并存时以 birth_date 为准，
-	// 兼容 JSON API 与既有客户端继续走 birth_year/month/day。
-	if bd := strings.TrimSpace(c.PostForm("birth_date")); bd != "" {
-		t, err := time.Parse("2006-01-02", bd)
-		if err != nil {
-			return nil, stderrors.New("出生日期不合法，请重新选择")
-		}
-		year, month, day = t.Year(), int(t.Month()), t.Day()
+	year, month, day, derr := parseBirthDate(c)
+	if derr != nil {
+		return nil, derr
 	}
 	req := &services.GenerateRequest{
 		Surname:            strings.TrimSpace(c.PostForm("surname")),

@@ -5,6 +5,23 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.24.6]
+
+**SSR 表单/控件审计：修复测名断链、去重时辰下拉、合并统计表单、清理死代码**
+
+### 🐛 Bug Fixes 问题修复
+- 【SSR·测名】测名功能失效根因修复：`evaluate.html` 经合并字段 `birth_date`（`<input type="date">`）提交出生日期，但 `Evaluate` handler 只读 `birth_year/month/day` 且从未解析 `birth_date` → 出生日期恒为 0、八字概要为空、表单校验失败，**测名实际不可用**。修复：抽出共享 `parseBirthDate()`（与 `/generate` 同源，优先 `birth_date`、回退三字段、非法日期拦截），两条 SSR 链路共用，消除重复解析。回归：`TestEvaluate_POST_birth_date合并字段`。
+- 【SSR·统计】统计页两个独立表单互相冲掉对方状态：`查询`表单只带 `kind` 不带 `limit`，`榜单`表单只带 `kind+limit` 不带 `name`——查完名字再切榜单数量会把已查名字冲掉；且 `limit` 下拉不回显（`pageData` 无 `SelLimit`），选择 Top 50 后重渲染仍停在 Top 20。修复：合并为单一表单同时携带 `name/kind/limit`，并新增 `SelLimit` 字段回显。回归：`TestStat_GET_limit回显`。
+
+### 📈 Improvements 性能/体验优化
+- 【SSR·全局】出生时辰 24 选项块（`00–23 时 + 古称`）在首页生成表单与测名表单各维护一份完全一致的副本（仅 `selected` 默认 12 相同），属复制粘贴式重复、改时辰文案极易漏改。抽成共享模板 partial `{{template "birthHourOptions"}}`（定义于 `layout.html`，随每页模板集解析），两页统一引用，删去两份重复长块。
+
+### 🗑 Deprecated / 清理
+- 【SSR·模板】移除 `templateFuncs` 中注册却从未被任何模板调用的死代码函数 `hasPrefix`（仅 `strings.HasPrefix` 在 Go 侧仍被导航/开放重定向判断使用，不受影响）。
+
+### 🧪 验证
+- web 包测试全绿（含新增 2 条回归）；`go build ./...` 全后端通过。
+
 ## [2026.10.24.5]
 
 **结果页候选分页（每页 10 张）：50 卡长页 → 5 页短页，页面总高 14.6k → 3.6k px**

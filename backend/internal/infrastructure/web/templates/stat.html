@@ -73,14 +73,12 @@
 </section>
 
 <div class="ink-card p-5 space-y-4">
+  {{/* 单一表单同时携带 name/kind/limit，避免两表单各自只带部分字段、互相冲掉
+       对方状态（曾：查完名字再切榜单数量会丢失已查名字；limit 也不回显）。 */}}
   <form method="get" action="/stat" class="flex flex-wrap items-end gap-4">
-    <input type="hidden" name="kind" value="{{.SelKind}}">
     <label class="block text-sm">查询名字重名率
       <input name="name" value="{{.QueriedName}}" placeholder="输入完整名字，如 张伟" class="mt-1 border rounded px-3 py-2 w-48">
     </label>
-    <button type="submit" class="btn-primary">查询</button>
-  </form>
-  <form method="get" action="/stat" class="flex flex-wrap items-end gap-4">
     <label class="block text-sm">榜单种类
       <select name="kind" class="mt-1 border rounded px-3 py-2">
         <option value="all" {{if eq .SelKind "all"}}selected{{end}}>全部（单字+双字）</option>
@@ -90,12 +88,12 @@
     </label>
     <label class="block text-sm">榜单显示数量
       <select name="limit" class="mt-1 border rounded px-3 py-2">
-        <option value="20">Top 20</option>
-        <option value="50">Top 50</option>
-        <option value="100">Top 100</option>
+        <option value="20" {{if eq .SelLimit 20}}selected{{end}}>Top 20</option>
+        <option value="50" {{if eq .SelLimit 50}}selected{{end}}>Top 50</option>
+        <option value="100" {{if eq .SelLimit 100}}selected{{end}}>Top 100</option>
       </select>
     </label>
-    <button type="submit" class="btn-ghost">刷新榜单</button>
+    <button type="submit" class="btn-primary">查询 / 刷新</button>
   </form>
 </div>
 {{end}}

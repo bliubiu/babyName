@@ -532,6 +532,51 @@ func TestStat_GET_200(t *testing.T) {
 	}
 }
 
+// 回归：统计页 limit 下拉必须回显当前选择（此前 pageData 无 SelLimit，
+// 选择 Top 50 后重渲染下拉仍停在 Top 20，用户误以为未生效）。
+func TestStat_GET_limit回显(t *testing.T) {
+	_, _, _, _, r := setupT(t)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/stat?limit=50", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("期望 200，实得 %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `value="50" selected`) {
+		t.Errorf("limit=50 时下拉未回显 selected")
+	}
+}
+
+// 回归：测名表单经合并字段 birth_date 提交出生日期，后端必须解析到
+// BirthYear/Month/Day。此前 handler 只读 birth_year/month/day，birth_date
+// 被忽略——测名永远拿不到出生日期，八字概要为空、校验失败，测名功能失效。
+func TestEvaluate_POST_birth_date合并字段(t *testing.T) {
+	nm := &mockNameService{evalResp: &services.EvaluateResponse{FullName: "王测试"}}
+	hist := &mockHistoryService{}
+	fav := &mockFavoriteService{}
+	gin.SetMode(gin.TestMode)
+	h, err := NewHandler(nm, hist, fav)
+	if err != nil {
+		t.Fatalf("NewHandler 失败: %v", err)
+	}
+	r := gin.New()
+	RegisterRoutes(r, h)
+	form := url.Values{
+		"surname": {"王"}, "given_name": {"测试"}, "gender": {"女"},
+		"birth_date": {"2024-08-15"}, "birth_hour": {"12"}, "birth_minute": {"0"},
+	}
+	w := doPostForm(t, r, "/evaluate", form)
+	if w.Code != http.StatusOK {
+		t.Fatalf("期望 200 渲染同页，实得 %d", w.Code)
+	}
+	if nm.evalReq == nil {
+		t.Fatalf("请求未触达服务层")
+	}
+	if nm.evalReq.BirthYear != 2024 || nm.evalReq.BirthMonth != 8 || nm.evalReq.BirthDay != 15 {
+		t.Errorf("birth_date 未正确解析: 收到 %d-%d-%d，期望 2024-8-15",
+			nm.evalReq.BirthYear, nm.evalReq.BirthMonth, nm.evalReq.BirthDay)
+	}
+}
+
 // 回归：会话条带 TTL，过期条目读取视为无会话。
 func TestSession_TTL_过期即失效(t *testing.T) {
 	h, _, _, _, r := setupT(t)
