@@ -3,7 +3,9 @@ package services
 import (
 	"context"
 	"time"
+	"unicode/utf8"
 
+	"name/internal/application/validator"
 	"name/internal/domain/name"
 	"name/internal/infrastructure/database"
 	"name/internal/infrastructure/logger"
@@ -98,8 +100,48 @@ func toFavoriteRecord(r *database.FavoriteRecord) *FavoriteRecord {
 	}
 }
 
+// validateFavoriteEntry 收藏入库前校验（SaveFavorite/BatchSaveFavorite 唯一入口）
+//
+// 历史缺陷：API 层只校验姓氏/名字，SSR 表单入口完全无校验——gender/score/
+// pinyin/notes 可为任意值直达数据库；score 无界（可传 999）且 gender 未归一，
+// 一旦 score≥80 直接触发自学习把脏名字写进精选库。此处作为服务层最后防线
+// 统一拦截（批次入口同样生效），错误为中文文案直接回传调用方。
+func validateFavoriteEntry(record *FavoriteRecord) error {
+	if record == nil {
+		return validator.NewValidationError("record", "收藏记录不能为空")
+	}
+	if err := validator.ValidateSurname(record.Surname); err != nil {
+		return err
+	}
+	if err := validator.ValidateGivenName(record.GivenName); err != nil {
+		return err
+	}
+	record.Gender = validator.NormalizeGender(record.Gender)
+	if record.Gender != "" {
+		if err := validator.ValidateGender(record.Gender); err != nil {
+			return err
+		}
+	}
+	if record.Score < 0 || record.Score > 100 {
+		return validator.NewValidationError("score", "评分必须在0-100之间")
+	}
+	if utf8.RuneCountInString(record.Pinyin) > 100 {
+		return validator.NewValidationError("pinyin", "拼音长度不能超过100个字符")
+	}
+	if utf8.RuneCountInString(record.Source) > 64 {
+		return validator.NewValidationError("source", "来源标记长度不能超过64个字符")
+	}
+	if utf8.RuneCountInString(record.Notes) > 200 {
+		return validator.NewValidationError("notes", "备注长度不能超过200个字符")
+	}
+	return nil
+}
+
 // SaveFavorite 保存收藏（评分≥80 自动加入精选库）
 func (s *FavoriteService) SaveFavorite(ctx context.Context, record *FavoriteRecord) (string, error) {
+	if err := validateFavoriteEntry(record); err != nil {
+		return "", err
+	}
 	existing := s.store.GetFavoriteByName(record.Surname, record.GivenName)
 	if existing != nil {
 		return existing.ID, nil
@@ -153,6 +195,9 @@ func (s *FavoriteService) SaveFavorite(ctx context.Context, record *FavoriteReco
 func (s *FavoriteService) BatchSaveFavorite(ctx context.Context, records []*FavoriteRecord) ([]string, error) {
 	storeRecords := make([]*database.FavoriteRecord, len(records))
 	for i, record := range records {
+		if err := validateFavoriteEntry(record); err != nil {
+			return nil, err
+		}
 		// 检查是否已存在
 		existing := s.store.GetFavoriteByName(record.Surname, record.GivenName)
 		if existing != nil {

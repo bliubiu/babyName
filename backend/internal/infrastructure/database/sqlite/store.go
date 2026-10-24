@@ -28,7 +28,10 @@ var _ database.Store = (*Store)(nil)
 
 func NewStore(dbPath string, dataDir string) (*Store, error) {
 	// 写连接：单连接，负责所有写操作
-	writeDB, err := sql.Open("sqlite", dbPath+"?_txlock=immediate")
+	// busy_timeout=5000：modernc.org/sqlite 默认 0——WAL checkpoint、
+	// 外部工具（备份/导入）持锁瞬间，读写路径会直接抛 "database is locked"
+	// 而不是等待；给 5 秒重试窗口（docs/28 W5 审计结论）。
+	writeDB, err := sql.Open("sqlite", dbPath+"?_txlock=immediate&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite write connection: %w", err)
 	}
@@ -68,7 +71,8 @@ func NewStore(dbPath string, dataDir string) (*Store, error) {
 	}
 
 	// 读连接池：WAL 模式下读不阻塞写，可并发
-	readDB, err = sql.Open("sqlite", dbPath+"?mode=ro")
+	// busy_timeout 同写连接：读路径与 checkpoint 撞锁时等待而非报错
+	readDB, err = sql.Open("sqlite", dbPath+"?mode=ro&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite read connection: %w", err)
 	}
@@ -167,6 +171,9 @@ func createTables(db *sql.DB) error {
 			created_at TIMESTAMP NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_favorites_name ON favorites(surname, given_name)`,
+		// 收藏列表按 created_at DESC 分页查询（GetFavoritesPage），无索引时
+		// 收藏变多后每页都要全表扫描 + 排序（历史缺陷：只有姓名索引）
+		`CREATE INDEX IF NOT EXISTS idx_favorites_created_at ON favorites(created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at)`,
 		`CREATE TABLE IF NOT EXISTS name_requests (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
