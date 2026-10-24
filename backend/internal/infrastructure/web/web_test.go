@@ -280,6 +280,63 @@ func TestGenerate_POST_非法生日回首页错误(t *testing.T) {
 	}
 }
 
+// SSR 表单的出生日期用 <input type="date"> 原生日历选择器提交合并字段
+// birth_date（YYYY-MM-DD）；服务层仍收拆分的年/月/日。
+func TestGenerate_POST_合并日期字段birth_date(t *testing.T) {
+	_, nm, _, _, r := setupT(t)
+	form := validForm()
+	form.Del("birth_year")
+	form.Del("birth_month")
+	form.Del("birth_day")
+	form.Set("birth_date", "2024-08-15")
+	w := doGenerate(t, r, form)
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/result" {
+		t.Fatalf("期望 303 → /result，实得 %d → %s（body: %s）",
+			w.Code, w.Header().Get("Location"), w.Body.String())
+	}
+	if nm.genReq == nil {
+		t.Fatalf("服务层未收到请求")
+	}
+	if nm.genReq.BirthYear != 2024 || nm.genReq.BirthMonth != 8 || nm.genReq.BirthDay != 15 {
+		t.Errorf("服务层收到 %d-%d-%d，期望 2024-8-15",
+			nm.genReq.BirthYear, nm.genReq.BirthMonth, nm.genReq.BirthDay)
+	}
+}
+
+// 浏览器只提交合法日历日期，但手工构造的请求仍可能越权——非法日期必须拦截。
+func TestGenerate_POST_birth_date非法日期拒绝(t *testing.T) {
+	_, nm, _, _, r := setupT(t)
+	form := validForm()
+	form.Del("birth_year")
+	form.Del("birth_month")
+	form.Del("birth_day")
+	form.Set("birth_date", "2024-02-30")
+	w := doGenerate(t, r, form)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("期望 303，实得 %d", w.Code)
+	}
+	if msg := parseErrorFromLocation(t, w.Header().Get("Location")); msg == "" {
+		t.Errorf("应返回中文错误文案")
+	}
+	if nm.genReq != nil {
+		t.Errorf("校验失败不应触达服务层")
+	}
+}
+
+// birth_date 与旧三字段并存时以 birth_date 为准（保持单一入口语义）。
+func TestGenerate_POST_birth_date优先于三字段(t *testing.T) {
+	_, nm, _, _, r := setupT(t)
+	form := validForm()
+	form.Set("birth_date", "2020-01-02")
+	w := doGenerate(t, r, form)
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/result" {
+		t.Fatalf("期望 303 → /result，实得 %d", w.Code)
+	}
+	if nm.genReq == nil || nm.genReq.BirthYear != 2020 || nm.genReq.BirthMonth != 1 || nm.genReq.BirthDay != 2 {
+		t.Errorf("birth_date 应优先于 birth_year/month/day")
+	}
+}
+
 func TestResult_无会话重定向首页(t *testing.T) {
 	_, _, _, _, r := setupT(t)
 	w := httptest.NewRecorder()

@@ -16,7 +16,7 @@
     <h2 class="section-title mb-3">命理信息</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <label class="block">姓氏
-        <input name="surname" required class="mt-1 w-full border rounded px-3 py-2 focus:outline-none">
+        <input name="surname" required class="mt-1 w-full border rounded px-3 py-2">
       </label>
       <label class="block">性别
         <select name="gender" class="mt-1 w-full border rounded px-3 py-2">
@@ -24,14 +24,8 @@
           <option value="女">女</option>
         </select>
       </label>
-      <label class="block">出生年
-        <input name="birth_year" type="number" required class="mt-1 w-full border rounded px-3 py-2">
-      </label>
-      <label class="block">出生月
-        <input name="birth_month" type="number" min="1" max="12" required class="mt-1 w-full border rounded px-3 py-2">
-      </label>
-      <label class="block">出生日
-        <input name="birth_day" type="number" min="1" max="31" required class="mt-1 w-full border rounded px-3 py-2">
+      <label class="block">出生日期
+        <input name="birth_date" type="date" required min="1900-01-01" max="2100-12-31" class="mt-1 w-full border rounded px-3 py-2">
       </label>
       <label class="block">出生时辰
         <select name="birth_hour" class="mt-1 w-full border rounded px-3 py-2">
@@ -61,7 +55,7 @@
           <option value="23">23 时 · 子时（夜半）</option>
         </select>
       </label>
-      <label class="block">出生分钟（0-59 分）
+      <label class="block">出生分钟
         <input name="birth_minute" type="number" min="0" max="59" value="0" class="mt-1 w-full border rounded px-3 py-2">
       </label>
       <label class="block">出生地点

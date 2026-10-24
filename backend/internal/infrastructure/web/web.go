@@ -1288,14 +1288,25 @@ func parseGenerateForm(c *gin.Context) (*services.GenerateRequest, error) {
 		v, _ := strconv.Atoi(c.PostForm(k))
 		return v
 	}
+	year, month, day := atoi("birth_year"), atoi("birth_month"), atoi("birth_day")
+	// SSR 表单用 <input type="date"> 原生日历提交合并字段 birth_date（YYYY-MM-DD，
+	// 浏览器保证零填充且只提交合法日历日期）；与旧三字段并存时以 birth_date 为准，
+	// 兼容 JSON API 与既有客户端继续走 birth_year/month/day。
+	if bd := strings.TrimSpace(c.PostForm("birth_date")); bd != "" {
+		t, err := time.Parse("2006-01-02", bd)
+		if err != nil {
+			return nil, stderrors.New("出生日期不合法，请重新选择")
+		}
+		year, month, day = t.Year(), int(t.Month()), t.Day()
+	}
 	req := &services.GenerateRequest{
 		Surname:            strings.TrimSpace(c.PostForm("surname")),
 		Generation:         strings.TrimSpace(c.PostForm("generation")),
 		GenerationPosition: c.PostForm("generation_position"),
 		Gender:             validator.NormalizeGender(c.PostForm("gender")),
-		BirthYear:          atoi("birth_year"),
-		BirthMonth:         atoi("birth_month"),
-		BirthDay:           atoi("birth_day"),
+		BirthYear:          year,
+		BirthMonth:         month,
+		BirthDay:           day,
 		BirthHour:          atoi("birth_hour"),
 		BirthMinute:        atoi("birth_minute"),
 		BirthLocation:      c.PostForm("birth_location"),
