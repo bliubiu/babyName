@@ -187,13 +187,15 @@ type pageData struct {
 	Ok           string
 	Dark         bool
 	RedirectPath string
-	Result       *services.GenerateResponse
-	Favorites    []*services.FavoriteRecord
-	History      []historyView
-	Page         int
-	TotalPages   int
-	PrevPage     int
-	NextPage     int
+	// Path 当前请求路径（不含查询串），供导航当前页高亮
+	Path       string
+	Result     *services.GenerateResponse
+	Favorites  []*services.FavoriteRecord
+	History    []historyView
+	Page       int
+	TotalPages int
+	PrevPage   int
+	NextPage   int
 	// CharGroups 偏旁选字分组（首页表单用，hanzi.GetNamerGroups 单一真源，
 	// 与 /api/v1/characters/groups 同源；SSR 服务端渲染 checkbox 网格）
 	CharGroups []hanzi.StandardCharGroup
@@ -274,6 +276,11 @@ var templateFuncs = template.FuncMap{
 	"isToday":         isToday,
 	"max5":            max5,
 	"pct":             pct,
+	"hasPrefix":       strings.HasPrefix,
+	"maxf":            maxf,
+	"pctf":            pctf,
+	"navClass":        navClass,
+	"navAria":         navAria,
 }
 
 // max5 五行计数取最大值（分布条宽度归一化基准）；全 0 时返回 1 防除零。
@@ -296,6 +303,52 @@ func pct(v, max int) float64 {
 		return 0
 	}
 	return float64(v) / float64(max) * 100
+}
+
+// maxf 浮点序列取最大值（占比条归一化基准）；全 0 时返回 1 防除零。
+func maxf(vals ...float64) float64 {
+	m := 0.0
+	for _, v := range vals {
+		if v > m {
+			m = v
+		}
+	}
+	if m <= 0 {
+		return 1
+	}
+	return m
+}
+
+// pctf 浮点数占基准的百分比（统计页占比条宽度）。
+func pctf(v, max float64) float64 {
+	if max <= 0 {
+		return 0
+	}
+	return v / max * 100
+}
+
+// navClass 导航当前页高亮样式：当前请求路径命中导航项（首页全等、其余前缀匹配）
+// 时返回激活样式类。逻辑收在 Go 侧而非模板 {{if}}——html/template 对属性内的
+// 分支条件与动态属性名有转义限制，纯字符串插值最稳。
+func navClass(path, link string) string {
+	if link == "/" {
+		if path == "/" {
+			return "nav-link active"
+		}
+		return "nav-link"
+	}
+	if strings.HasPrefix(path, link) {
+		return "nav-link active"
+	}
+	return "nav-link"
+}
+
+// navAria 导航当前页的 aria-current 值（命中返回 "page"，否则空串）。
+func navAria(path, link string) string {
+	if strings.HasSuffix(navClass(path, link), " active") {
+		return "page"
+	}
+	return ""
 }
 
 // genderLabel 引擎性别字面量（male/female）→ 中文标签。
@@ -360,27 +413,28 @@ func highlightPoetry(text string, matched []string) template.HTML {
 	return template.HTML(b.String())
 }
 
-// wuxingColor 五行 → Tailwind 文字色类（与前端 NameCard 彩标同色系）。
-var wuxingColor = map[rune]string{
-	'金': "text-amber-600",
-	'木': "text-emerald-600",
-	'水': "text-sky-600",
-	'火': "text-red-600",
-	'土': "text-yellow-700",
+// wuxingClass 五行 → 国风彩标类名（wx-jin/mu/shui/huo/tu，见布局样式表）。
+// 与前端 NameCard 彩标同色系，但改用语义类以便暗色模式统一切换。
+var wuxingClass = map[rune]string{
+	'金': "wx-jin",
+	'木': "wx-mu",
+	'水': "wx-shui",
+	'火': "wx-huo",
+	'土': "wx-tu",
 }
 
-// wuxingTags 把 "木火" 这类五行串渲染成逐字彩标。
+// wuxingTags 把 "木火" 这类五行串渲染成逐字国风彩标（每字一枚 pill）。
 func wuxingTags(wuxing string) template.HTML {
 	if wuxing == "" {
 		return ""
 	}
 	var b strings.Builder
 	for _, r := range wuxing {
-		cls, ok := wuxingColor[r]
+		cls, ok := wuxingClass[r]
 		if !ok {
-			cls = "text-slate-500"
+			cls = "wx-tu"
 		}
-		b.WriteString(`<span class="inline-block rounded px-1.5 py-0.5 text-xs font-semibold `)
+		b.WriteString(`<span class="wuxing-pill `)
 		b.WriteString(cls)
 		b.WriteString(`">`)
 		b.WriteString(template.HTMLEscapeString(string(r)))
@@ -456,6 +510,7 @@ func (h *Handler) renderPage(c *gin.Context, status int, page string, data *page
 		data.Ok = c.Query("ok")
 		data.Dark = isDark(c)
 		data.RedirectPath = c.Request.URL.RequestURI()
+		data.Path = c.Request.URL.Path
 	}
 	t, ok := h.tmpls[page]
 	if !ok {

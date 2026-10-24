@@ -1,21 +1,25 @@
 {{define "content"}}
-<h1 class="text-2xl font-bold mb-4">历史记录</h1>
+<h1 class="page-title mb-4">历史记录</h1>
 {{if not .History}}
-<div class="bg-white rounded shadow p-6 text-center text-slate-500">还没有历史记录。生成名字后会自动保存。</div>
+<div class="ink-card empty-state" data-glyph="录">
+  <p>还没有历史记录。</p>
+  <p class="text-xs mt-2">每次生成名字都会自动存档，方便日后回看与对比。</p>
+  <a href="/" class="btn-primary inline-block mt-4">去起名</a>
+</div>
 {{else}}
 <div class="space-y-3">
   {{range .History}}
-  <article class="bg-white rounded shadow p-4 flex items-center justify-between">
+  <article class="ink-card p-4 flex items-center justify-between gap-3">
     <div>
-      <h3 class="text-base font-semibold">{{.Surname}}（{{.Gender}}） · {{.BirthDate}} {{.BirthTime}}{{if .BirthLoc}} · {{.BirthLoc}}{{end}}</h3>
-      <p class="text-xs text-slate-500">{{.CreatedAt}} · 共 {{.NameCount}} 个名字{{if .TopName}} · 首选 {{.TopName}}{{end}}</p>
+      <h3 class="text-base font-semibold" style="color:var(--ink);">{{.Surname}}（{{.Gender}}） · {{.BirthDate}} {{.BirthTime}}{{if .BirthLoc}} · {{.BirthLoc}}{{end}}</h3>
+      <p class="text-xs mt-1 flex items-center flex-wrap gap-1" style="color:var(--ink-faint);"><span>{{.CreatedAt}} · 共 {{.NameCount}} 个名字</span>{{if .TopName}}<span class="tag tag-seal">首选 {{.TopName}}</span>{{end}}</p>
     </div>
-    <div class="flex items-center gap-2">
-      <a href="/history/view?id={{.ID}}" class="text-sm bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700">回看</a>
+    <div class="flex items-center gap-2 shrink-0">
+      <a href="/history/view?id={{.ID}}" class="btn-primary text-sm">回看</a>
       <form method="post" action="/history/delete" onsubmit="return confirm('确定删除这条历史？')">
         <input type="hidden" name="id" value="{{.ID}}">
         <input type="hidden" name="page" value="{{$.Page}}">
-        <button type="submit" class="text-sm bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">删除</button>
+        <button type="submit" class="btn-danger text-sm">删除</button>
       </form>
     </div>
   </article>

@@ -1,97 +1,148 @@
 {{define "content"}}
-<h1 class="text-2xl font-bold mb-1">为宝宝起一个好名字</h1>
-<p class="text-slate-500 text-sm mb-5">基于八字五行、诗词典故与音形义综合评分，给出寓意美好的候选名。</p>
-
-<form method="post" action="/generate" class="bg-white rounded shadow p-5 space-y-4">
-  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-    <label class="block">姓氏
-      <input name="surname" required class="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400">
-    </label>
-    <label class="block">性别
-      <select name="gender" class="mt-1 w-full border rounded px-3 py-2">
-        <option value="男">男</option>
-        <option value="女">女</option>
-      </select>
-    </label>
-    <label class="block">出生年
-      <input name="birth_year" type="number" required class="mt-1 w-full border rounded px-3 py-2">
-    </label>
-    <label class="block">出生月
-      <input name="birth_month" type="number" min="1" max="12" required class="mt-1 w-full border rounded px-3 py-2">
-    </label>
-    <label class="block">出生日
-      <input name="birth_day" type="number" min="1" max="31" required class="mt-1 w-full border rounded px-3 py-2">
-    </label>
-    <label class="block">出生时辰（0-23 时）
-      <input name="birth_hour" type="number" min="0" max="23" value="12" class="mt-1 w-full border rounded px-3 py-2">
-    </label>
-    <label class="block">出生分钟（0-59 分）
-      <input name="birth_minute" type="number" min="0" max="59" value="0" class="mt-1 w-full border rounded px-3 py-2">
-    </label>
-    <label class="block">出生地点
-      <input name="birth_location" placeholder="如 北京" class="mt-1 w-full border rounded px-3 py-2">
-    </label>
-    <label class="block">名字长度
-      <select name="name_length" class="mt-1 w-full border rounded px-3 py-2">
-        <option value="2">双字名</option>
-        <option value="1">单字名</option>
-      </select>
-    </label>
-    <label class="block">字辈（可选，单字）
-      <input name="generation" maxlength="1" placeholder="如 家" class="mt-1 w-full border rounded px-3 py-2">
-    </label>
-    <label class="block">字辈位置（填了字辈才生效）
-      <select name="generation_position" class="mt-1 w-full border rounded px-3 py-2">
-        <option value="middle">固定中间（名的第一个字）</option>
-        <option value="tail">固定最后（名的最后一个字）</option>
-      </select>
-    </label>
+<div class="hero mb-6">
+  <h1 class="page-title mb-1">为宝宝起一个好名字</h1>
+  <p class="subtitle mb-3">参酌八字五行、诗词典故与音形义综合评分，为新生赐一枚寓意美好的名。</p>
+  <p class="hero-lede">「名以正体，字以表德。」—— 让姓与名，成一段浑然天成的意境。</p>
+  <div class="hero-feats">
+    <span class="tag tag-seal">八字 · 喜用神定调</span>
+    <span class="tag tag-celadon">易卦 · 数理为骨</span>
+    <span class="tag tag-gold">诗词 · 出典可溯</span>
+    <span class="tag">音形义 · 三美合一</span>
   </div>
+</div>
 
-  <label class="block">经典来源（可不选，默认综合所有经典）
-    <select name="source_classic" class="mt-1 w-full border rounded px-3 py-2">
-      <option value="">不指定</option>
-      <option value="诗经">诗经</option>
-      <option value="楚辞">楚辞</option>
-      <option value="唐诗宋词">唐诗宋词</option>
-      <option value="古文观止">古文观止</option>
-      <option value="论语">论语</option>
-      <option value="孟子">孟子</option>
-      <option value="三字经">三字经</option>
-      <option value="千字文">千字文</option>
-      <option value="声律启蒙">声律启蒙</option>
-    </select>
-  </label>
-
-  <label class="block">寓意关键词（逗号分隔，可选）
-    <input name="meaning_keywords" placeholder="如 清莲,竹韵,明德" class="mt-1 w-full border rounded px-3 py-2">
-  </label>
-
-  <label class="block">避讳长辈（逗号分隔）
-    <input name="avoid_elder_names" placeholder="如 李强,王芳" class="mt-1 w-full border rounded px-3 py-2">
-  </label>
-
-  <details class="border rounded">
-    <summary class="px-3 py-2 cursor-pointer text-sm text-slate-600">偏旁选字（可选，点击展开；所选用字会优先进入候选）</summary>
-    <div class="p-3 space-y-3">
-      {{range .CharGroups}}
-      <div>
-        <div class="text-xs text-slate-500 mb-1">{{.Name}}（{{.Meaning}}）</div>
-        <div class="flex flex-wrap gap-x-3 gap-y-1">
-          {{range .Chars}}
-          <label class="flex items-center gap-1 text-sm"><input type="checkbox" name="selected_chars" value="{{.}}"> {{.}}</label>
-          {{end}}
-        </div>
-      </div>
-      {{end}}
+<form method="post" action="/generate" class="ink-card p-6 space-y-6">
+  <section>
+    <h2 class="section-title mb-3">命理信息</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <label class="block">姓氏
+        <input name="surname" required class="mt-1 w-full border rounded px-3 py-2 focus:outline-none">
+      </label>
+      <label class="block">性别
+        <select name="gender" class="mt-1 w-full border rounded px-3 py-2">
+          <option value="男">男</option>
+          <option value="女">女</option>
+        </select>
+      </label>
+      <label class="block">出生年
+        <input name="birth_year" type="number" required class="mt-1 w-full border rounded px-3 py-2">
+      </label>
+      <label class="block">出生月
+        <input name="birth_month" type="number" min="1" max="12" required class="mt-1 w-full border rounded px-3 py-2">
+      </label>
+      <label class="block">出生日
+        <input name="birth_day" type="number" min="1" max="31" required class="mt-1 w-full border rounded px-3 py-2">
+      </label>
+      <label class="block">出生时辰
+        <select name="birth_hour" class="mt-1 w-full border rounded px-3 py-2">
+          <option value="0">00 时 · 子时（夜半）</option>
+          <option value="1">01 时 · 丑时（鸡鸣）</option>
+          <option value="2">02 时 · 丑时（鸡鸣）</option>
+          <option value="3">03 时 · 寅时（平旦）</option>
+          <option value="4">04 时 · 寅时（平旦）</option>
+          <option value="5">05 时 · 卯时（日出）</option>
+          <option value="6">06 时 · 卯时（日出）</option>
+          <option value="7">07 时 · 辰时（食时）</option>
+          <option value="8">08 时 · 辰时（食时）</option>
+          <option value="9">09 时 · 巳时（隅中）</option>
+          <option value="10">10 时 · 巳时（隅中）</option>
+          <option value="11">11 时 · 午时（日中）</option>
+          <option value="12" selected>12 时 · 午时（日中）</option>
+          <option value="13">13 时 · 未时（日昳）</option>
+          <option value="14">14 时 · 未时（日昳）</option>
+          <option value="15">15 时 · 申时（晡时）</option>
+          <option value="16">16 时 · 申时（晡时）</option>
+          <option value="17">17 时 · 酉时（日入）</option>
+          <option value="18">18 时 · 酉时（日入）</option>
+          <option value="19">19 时 · 戌时（黄昏）</option>
+          <option value="20">20 时 · 戌时（黄昏）</option>
+          <option value="21">21 时 · 亥时（人定）</option>
+          <option value="22">22 时 · 亥时（人定）</option>
+          <option value="23">23 时 · 子时（夜半）</option>
+        </select>
+      </label>
+      <label class="block">出生分钟（0-59 分）
+        <input name="birth_minute" type="number" min="0" max="59" value="0" class="mt-1 w-full border rounded px-3 py-2">
+      </label>
+      <label class="block">出生地点
+        <input name="birth_location" placeholder="如 北京" class="mt-1 w-full border rounded px-3 py-2">
+      </label>
     </div>
-  </details>
+  </section>
 
-  <div class="flex gap-5 text-sm text-slate-600">
-    <label class="flex items-center gap-1"><input type="checkbox" name="exclude_rare" value="1"> 排除生僻字</label>
-    <label class="flex items-center gap-1"><input type="checkbox" name="enable_cantonese" value="1"> 启用粤语评分</label>
+  <div class="divider"></div>
+
+  <section>
+    <h2 class="section-title mb-3">名字偏好</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <label class="block">名字长度
+        <select name="name_length" class="mt-1 w-full border rounded px-3 py-2">
+          <option value="2">双字名</option>
+          <option value="1">单字名</option>
+        </select>
+      </label>
+      <label class="block">字辈（可选，单字）
+        <input name="generation" maxlength="1" placeholder="如 家" class="mt-1 w-full border rounded px-3 py-2">
+      </label>
+      <label class="block sm:col-span-2">字辈位置（填了字辈才生效）
+        <select name="generation_position" class="mt-1 w-full border rounded px-3 py-2">
+          <option value="middle">固定中间（名的第一个字）</option>
+          <option value="tail">固定最后（名的最后一个字）</option>
+        </select>
+      </label>
+      <label class="block sm:col-span-2">经典来源（可不选，默认综合所有经典）
+        <select name="source_classic" class="mt-1 w-full border rounded px-3 py-2">
+          <option value="">不指定</option>
+          <option value="诗经">诗经</option>
+          <option value="楚辞">楚辞</option>
+          <option value="唐诗宋词">唐诗宋词</option>
+          <option value="古文观止">古文观止</option>
+          <option value="论语">论语</option>
+          <option value="孟子">孟子</option>
+          <option value="三字经">三字经</option>
+          <option value="千字文">千字文</option>
+          <option value="声律启蒙">声律启蒙</option>
+        </select>
+      </label>
+      <label class="block sm:col-span-2">寓意关键词（逗号分隔，可选）
+        <input name="meaning_keywords" placeholder="如 清莲,竹韵,明德" class="mt-1 w-full border rounded px-3 py-2">
+      </label>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section>
+    <h2 class="section-title mb-3">避讳与精简</h2>
+    <label class="block mb-4">避讳长辈（逗号分隔）
+      <input name="avoid_elder_names" placeholder="如 李强,王芳" class="mt-1 w-full border rounded px-3 py-2">
+    </label>
+
+    <details class="border rounded" style="border-color:var(--line);">
+      <summary class="px-3 py-2 cursor-pointer text-sm" style="color:var(--ink-soft);">偏旁选字（可选，点击展开；所选用字会优先进入候选）</summary>
+      <div class="p-3 space-y-3">
+        {{range .CharGroups}}
+        <div>
+          <div class="text-xs mb-1" style="color:var(--ink-faint);">{{.Name}}（{{.Meaning}}）</div>
+          <div class="flex flex-wrap gap-x-3 gap-y-1">
+            {{range .Chars}}
+            <label class="flex items-center gap-1 text-sm"><input type="checkbox" name="selected_chars" value="{{.}}"> {{.}}</label>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
+      </div>
+    </details>
+
+    <div class="flex flex-wrap gap-5 text-sm mt-4" style="color:var(--ink-soft);">
+      <label class="flex items-center gap-1"><input type="checkbox" name="exclude_rare" value="1"> 排除生僻字</label>
+      <label class="flex items-center gap-1"><input type="checkbox" name="enable_cantonese" value="1"> 启用粤语评分</label>
+    </div>
+  </section>
+
+  <div class="toolbar pt-2">
+    <button type="submit" class="btn-primary text-base">开始起名</button>
+    <span class="toolbar-hint">生成结果将自动存入历史记录，可随时回看。</span>
   </div>
-
-  <button type="submit" class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700">开始起名</button>
 </form>
 {{end}}

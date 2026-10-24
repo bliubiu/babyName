@@ -1,63 +1,73 @@
 {{define "content"}}
-<h1 class="text-2xl font-bold mb-4">名字对比</h1>
+<h1 class="page-title mb-4">名字对比</h1>
 
 {{if not .CompareNames}}
-<div class="bg-white rounded shadow p-6 text-center text-slate-500">
+<div class="ink-card empty-state mb-4" data-glyph="比">
   <p>请先选择至少 2 个名字进行对比</p>
   <p class="text-xs mt-2">在结果页勾选名字卡片后点击「对比所选」</p>
-  <a href="/" class="inline-block mt-4 bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700">去起名</a>
+  <a href="/" class="btn-primary inline-block mt-4">去起名</a>
 </div>
 {{else}}
-<div class="bg-white rounded shadow p-5 mb-6 overflow-x-auto">
-  <table class="w-full text-sm">
+<div class="ink-card p-5 mb-6 overflow-x-auto">
+  <table class="ink-table">
     <thead>
-      <tr class="text-left text-slate-500 border-b">
-        <th class="px-3 py-2 w-28">指标</th>
+      <tr>
+        <th class="w-28">指标</th>
         {{range .CompareNames}}
-        <th class="px-3 py-2 font-bold text-slate-800">{{.FullName}}</th>
+        <th class="font-bold" style="color:var(--ink);font-size:.95rem;">{{.FullName}}</th>
         {{end}}
       </tr>
     </thead>
     <tbody>
-      <tr class="border-b">
-        <td class="px-3 py-2 text-slate-500">综合评分</td>
+      {{$best := 0.0}}{{range .CompareNames}}{{if gt .TotalScore $best}}{{$best = .TotalScore}}{{end}}{{end}}
+      <tr>
+        <td style="color:var(--ink-faint);">综合评分</td>
         {{range .CompareNames}}
-        <td class="px-3 py-2">
-          <div class="font-semibold text-indigo-600">{{printf "%.1f" .TotalScore}} 分</div>
-          <div class="bg-slate-100 rounded h-1.5 mt-1"><div class="bg-indigo-500 h-1.5 rounded" style="width:{{.TotalScore}}%"></div></div>
+        <td>
+          <div class="font-semibold num{{if eq .TotalScore $best}} best{{end}}">{{printf "%.1f" .TotalScore}} 分</div>
+          <div class="rounded h-1.5 mt-1" style="background:var(--paper-2);"><div class="meter-fill h-1.5 rounded" style="width:{{.TotalScore}}%"></div></div>
         </td>
         {{end}}
       </tr>
-      <tr class="border-b"><td class="px-3 py-2 text-slate-500">五行</td>{{range .CompareNames}}<td class="px-3 py-2">{{wuxingTags .Wuxing}}</td>{{end}}</tr>
-      <tr class="border-b"><td class="px-3 py-2 text-slate-500">五行匹配</td>{{range .CompareNames}}<td class="px-3 py-2">{{printf "%.1f" .WuxingScore}} 分</td>{{end}}</tr>
-      <tr class="border-b"><td class="px-3 py-2 text-slate-500">音韵律动</td>{{range .CompareNames}}<td class="px-3 py-2">{{printf "%.1f" .YinyunScore}} 分</td>{{end}}</tr>
-      <tr class="border-b"><td class="px-3 py-2 text-slate-500">字义内涵</td>{{range .CompareNames}}<td class="px-3 py-2">{{printf "%.1f" .MeaningScore}} 分</td>{{end}}</tr>
-      <tr class="border-b"><td class="px-3 py-2 text-slate-500">天地人三才</td>{{range .CompareNames}}<td class="px-3 py-2">{{printf "%.1f" .SancaiScore}} 分</td>{{end}}</tr>
-      <tr class="border-b"><td class="px-3 py-2 text-slate-500">生肖适配</td>{{range .CompareNames}}<td class="px-3 py-2">{{printf "%.1f" .ZodiacScore}} 分</td>{{end}}</tr>
-      <tr class="border-b"><td class="px-3 py-2 text-slate-500">笔画数</td>{{range .CompareNames}}<td class="px-3 py-2">{{.Strokes}} 画</td>{{end}}</tr>
-      <tr class="border-b"><td class="px-3 py-2 text-slate-500">拼音</td>{{range .CompareNames}}<td class="px-3 py-2">{{.Pinyin}}</td>{{end}}</tr>
-      <tr class="border-b"><td class="px-3 py-2 text-slate-500">字义</td>{{range .CompareNames}}<td class="px-3 py-2">{{.Meaning}}</td>{{end}}</tr>
-      <tr><td class="px-3 py-2 text-slate-500">性别</td>{{range .CompareNames}}<td class="px-3 py-2">{{genderLabel .Gender}}</td>{{end}}</tr>
+      <tr><td style="color:var(--ink-faint);">五行</td>{{range .CompareNames}}<td>{{wuxingTags .Wuxing}}</td>{{end}}</tr>
+      {{$best = 0.0}}{{range .CompareNames}}{{if gt .WuxingScore $best}}{{$best = .WuxingScore}}{{end}}{{end}}
+      <tr><td style="color:var(--ink-faint);">五行匹配</td>{{range .CompareNames}}<td class="num{{if eq .WuxingScore $best}} best{{end}}">{{printf "%.1f" .WuxingScore}} 分</td>{{end}}</tr>
+      {{$best = 0.0}}{{range .CompareNames}}{{if gt .YinyunScore $best}}{{$best = .YinyunScore}}{{end}}{{end}}
+      <tr><td style="color:var(--ink-faint);">音韵律动</td>{{range .CompareNames}}<td class="num{{if eq .YinyunScore $best}} best{{end}}">{{printf "%.1f" .YinyunScore}} 分</td>{{end}}</tr>
+      {{$best = 0.0}}{{range .CompareNames}}{{if gt .MeaningScore $best}}{{$best = .MeaningScore}}{{end}}{{end}}
+      <tr><td style="color:var(--ink-faint);">字义内涵</td>{{range .CompareNames}}<td class="num{{if eq .MeaningScore $best}} best{{end}}">{{printf "%.1f" .MeaningScore}} 分</td>{{end}}</tr>
+      {{$best = 0.0}}{{range .CompareNames}}{{if gt .SancaiScore $best}}{{$best = .SancaiScore}}{{end}}{{end}}
+      <tr><td style="color:var(--ink-faint);">天地人三才</td>{{range .CompareNames}}<td class="num{{if eq .SancaiScore $best}} best{{end}}">{{printf "%.1f" .SancaiScore}} 分</td>{{end}}</tr>
+      {{$best = 0.0}}{{range .CompareNames}}{{if gt .ZodiacScore $best}}{{$best = .ZodiacScore}}{{end}}{{end}}
+      <tr><td style="color:var(--ink-faint);">生肖适配</td>{{range .CompareNames}}<td class="num{{if eq .ZodiacScore $best}} best{{end}}">{{printf "%.1f" .ZodiacScore}} 分</td>{{end}}</tr>
+      <tr><td style="color:var(--ink-faint);">笔画数</td>{{range .CompareNames}}<td class="num">{{.Strokes}} 画</td>{{end}}</tr>
+      <tr><td style="color:var(--ink-faint);">拼音</td>{{range .CompareNames}}<td>{{.Pinyin}}</td>{{end}}</tr>
+      <tr><td style="color:var(--ink-faint);">字义</td>{{range .CompareNames}}<td>{{.Meaning}}</td>{{end}}</tr>
+      <tr><td style="color:var(--ink-faint);">性别</td>{{range .CompareNames}}<td>{{genderLabel .Gender}}</td>{{end}}</tr>
     </tbody>
   </table>
+  <p class="text-xs mt-3" style="color:var(--ink-faint);">朱砂标注 = 该行指标最优（并列时同时标注）。</p>
 </div>
 
 <section>
-  <h2 class="font-semibold mb-3 text-indigo-700">综合分析</h2>
+  <h2 class="section-title mb-3">综合分析</h2>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     {{range .CompareNames}}
-    <div class="bg-white rounded shadow p-4 text-sm space-y-2">
-      <h3 class="font-bold">{{.FullName}}</h3>
-      <p class="text-slate-600"><span class="font-medium text-slate-700">五行：</span>{{.WuxingAnalysis}}</p>
-      <p class="text-slate-600"><span class="font-medium text-slate-700">八字：</span>{{.BaziScoreDetail}}</p>
-      <p class="text-slate-600"><span class="font-medium text-slate-700">音韵：</span>{{.Yinyun}}</p>
+    <div class="ink-card p-4 text-sm space-y-2">
+      <div class="flex items-start justify-between gap-3">
+        <h3 class="name-big" style="font-size:1.2rem;">{{.FullName}}</h3>
+        <div class="score-seal">{{printf "%.0f" .TotalScore}}<small>分</small></div>
+      </div>
+      <p style="color:var(--ink-soft);"><span class="font-medium" style="color:var(--ink);">五行：</span>{{.WuxingAnalysis}}</p>
+      <p style="color:var(--ink-soft);"><span class="font-medium" style="color:var(--ink);">八字：</span>{{.BaziScoreDetail}}</p>
+      <p style="color:var(--ink-soft);"><span class="font-medium" style="color:var(--ink);">音韵：</span>{{.Yinyun}}</p>
     </div>
     {{end}}
   </div>
 </section>
 
 <div class="mt-6">
-  <a href="/result" class="text-indigo-600 hover:text-indigo-800 text-sm">← 返回结果页</a>
+  <a href="/result" class="btn-ghost text-sm">← 返回结果页</a>
 </div>
 {{end}}
 {{end}}

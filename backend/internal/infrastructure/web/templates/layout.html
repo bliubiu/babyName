@@ -6,65 +6,278 @@
   <title>{{.Title}}</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700;900&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
-    /* 暗色模式：针对全站固定色板的覆盖（.dark 由 <html> 挂载，Tailwind darkMode:'class'）。
-       选择器特异性（0,2,0）高于 Tailwind 工具类（0,1,0），无需给每个元素加 dark: 变体。 */
-    .dark body { background-color: #0f172a; color: #e2e8f0; }
-    .dark .bg-white { background-color: #1e293b; }
-    .dark .bg-slate-50 { background-color: #0f172a; }
-    .dark .bg-slate-100 { background-color: #334155; }
-    .dark .bg-indigo-50 { background-color: #312e81; }
-    .dark .bg-indigo-100 { background-color: #3730a3; }
-    .dark .bg-emerald-50 { background-color: #064e3b; }
-    .dark .bg-amber-50 { background-color: #451a03; }
-    .dark .bg-amber-100 { background-color: #451a03; }
-    .dark .bg-red-50 { background-color: #450a0a; }
-    .dark .bg-red-100 { background-color: #450a0a; }
-    .dark .text-slate-800 { color: #e2e8f0; }
-    .dark .text-slate-700 { color: #cbd5e1; }
-    .dark .text-slate-600 { color: #94a3b8; }
-    .dark .text-slate-500 { color: #94a3b8; }
-    .dark .text-slate-400 { color: #64748b; }
-    .dark .text-indigo-700 { color: #a5b4fc; }
-    .dark .text-indigo-600 { color: #a5b4fc; }
-    .dark .text-emerald-700 { color: #6ee7b7; }
-    .dark .text-red-700 { color: #fca5a5; }
-    .dark .text-amber-700 { color: #fcd34d; }
-    .dark .border, .dark .border-slate-200, .dark .border-slate-300,
-    .dark .border-emerald-200, .dark .border-red-200, .dark .border-amber-200 { border-color: #334155; }
-    .dark .shadow { box-shadow: 0 1px 3px rgb(0 0 0 / 0.5); }
-    .dark input, .dark select, .dark textarea { background-color: #0f172a; color: #e2e8f0; border-color: #334155; }
-    .dark header { background-color: #1e293b; }
+    /* ===== 国风雅致 · 设计令牌 ===== */
+    :root{
+      --paper:#f3ede1;        /* 宣纸底 */
+      --paper-card:#fbf7ee;   /* 卡片纸 */
+      --paper-2:#ece2d0;      /* 次级纸/底纹 */
+      --ink:#2a2622;          /* 墨色 */
+      --ink-soft:#5b534a;     /* 淡墨 */
+      --ink-faint:#8a8175;    /* 飞白 */
+      --seal:#9e2b25;         /* 朱砂 */
+      --seal-deep:#7d211c;    /* 深朱 */
+      --seal-tint:#f6e9e7;    /* 朱砂淡 */
+      --seal-tint2:#efd9d6;   /* 朱砂更淡 */
+      --celadon:#5b7d6f;      /* 青瓷 */
+      --celadon-tint:#e8efe9; /* 青瓷淡 */
+      --celadon-line:#cfe3d6; /* 青瓷线 */
+      --gold:#b08d4f;         /* 描金 */
+      --gold-tint:#f4ecdc;    /* 描金淡 */
+      --line:#ddd2bf;         /* 线 */
+      --line-soft:#e8dfce;    /* 细线 */
+      --shadow:0 1px 3px rgba(60,40,20,.12);
+      --shadow-lg:0 8px 24px rgba(60,40,20,.16);
+      --grain:.05;            /* 宣纸颗粒浓度 */
+    }
+    .dark{
+      --paper:#1a1714; --paper-card:#251f1a; --paper-2:#2f2820;
+      --ink:#ece3d4; --ink-soft:#c2b8a6; --ink-faint:#8c8070;
+      --seal:#c75b50; --seal-deep:#e0766a; --seal-tint:#34221f; --seal-tint2:#3d2723;
+      --celadon:#7ba392; --celadon-tint:#23302b; --celadon-line:#2f4a3e;
+      --gold:#c9a86a; --gold-tint:#33291b;
+      --line:#3a3128; --line-soft:#2f2820;
+      --shadow:0 1px 3px rgba(0,0,0,.5);
+      --shadow-lg:0 8px 24px rgba(0,0,0,.55);
+      --grain:.07;
+    }
+
+    /* ===== 全局基底 ===== */
+    html,body{background:var(--paper)!important;color:var(--ink)!important;}
+    body{font-family:'Noto Sans SC','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;}
+    h1,h2,h3,h4,h5{font-family:'Noto Serif SC','Songti SC','STSong',serif;font-weight:700;letter-spacing:.02em;}
+    label{color:var(--ink-soft);}
+    input,select,textarea{background:var(--paper-card)!important;color:var(--ink)!important;border:1px solid var(--line)!important;}
+    input:hover,select:hover,textarea:hover{border-color:var(--gold)!important;}
+    input:focus,select:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px rgba(158,43,37,.22);border-color:var(--seal)!important;}
+    input[type=number]{font-variant-numeric:tabular-nums;}
+
+    /* 下拉框：原生箭头改描色细箭头（纯 CSS，零 JS） */
+    select{appearance:none;-webkit-appearance:none;padding-right:1.9rem!important;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238a8175' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")!important;
+      background-repeat:no-repeat!important;background-position:right .65rem center!important;}
+    select option{background:var(--paper-card);color:var(--ink);}
+
+    /* 宣纸颗粒：极淡噪点覆层，压住纯色的"塑料感" */
+    body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:var(--grain);
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+    /* ===== 入场动效（一次性淡入上移，尊重系统减动效偏好） ===== */
+    @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+    main>*{animation:rise .45s cubic-bezier(.22,.8,.36,1) both;}
+    main>*:nth-child(2){animation-delay:.05s} main>*:nth-child(3){animation-delay:.1s}
+    main>*:nth-child(4){animation-delay:.15s} main>*:nth-child(5){animation-delay:.2s}
+    main>*:nth-child(6){animation-delay:.25s} main>*:nth-child(n+7){animation-delay:.3s}
+    @media (prefers-reduced-motion:reduce){
+      *,*::before,*::after{animation:none!important;transition:none!important;}
+    }
+
+    /* ===== 重写常用 Tailwind 色板，整体贴合国风配色 ===== */
+    .bg-white{background:var(--paper-card)!important;}
+    .bg-slate-50{background:var(--paper)!important;}
+    .bg-slate-100{background:var(--paper-2)!important;}
+    .text-slate-800,.text-slate-700{color:var(--ink)!important;}
+    .text-slate-600{color:var(--ink-soft)!important;}
+    .text-slate-500,.text-slate-400{color:var(--ink-faint)!important;}
+    .text-indigo-700,.text-indigo-600{color:var(--seal)!important;}
+    .bg-indigo-50{background:var(--seal-tint)!important;}
+    .bg-indigo-100{background:var(--seal-tint2)!important;}
+    .bg-indigo-600,.bg-indigo-500{background:var(--seal)!important;}
+    .bg-indigo-700{background:var(--seal-deep)!important;}
+    .border-indigo-200,.border-indigo-400{border-color:var(--gold)!important;}
+    .border-slate-200,.border-slate-300{border-color:var(--line)!important;}
+    .bg-emerald-50,.bg-emerald-100{background:var(--celadon-tint)!important;}
+    .text-emerald-700,.text-emerald-600{color:var(--celadon)!important;}
+    .bg-amber-50,.bg-amber-100{background:var(--gold-tint)!important;}
+    .text-amber-700{color:var(--gold)!important;}
+    .bg-amber-500,.bg-amber-400{background:var(--gold)!important;}
+    .bg-red-50{background:var(--seal-tint)!important;}
+    .bg-red-100{background:var(--seal-tint2)!important;}
+    .text-red-700,.text-red-600{color:#b23b32!important;}
+    .bg-red-500{background:#b23b32!important;}
+    .border-emerald-200{border-color:var(--celadon)!important;}
+    .border-red-200{border-color:#cf9b95!important;}
+    .border-amber-200{border-color:var(--gold)!important;}
+    .shadow{box-shadow:var(--shadow)!important;}
+
+    /* ===== 国风组件 ===== */
+    .seal{display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;background:var(--seal);color:#fff;font-family:'Noto Serif SC',serif;font-weight:900;border-radius:.35rem;box-shadow:inset 0 0 0 2px rgba(255,255,255,.28);}
+    .brand{display:flex;align-items:center;gap:.5rem;font-family:'Noto Serif SC',serif;font-weight:900;font-size:1.25rem;color:var(--seal);}
+    .brand span:last-child{color:var(--ink);}
+    .nav-link{position:relative;color:var(--ink-soft);transition:color .15s;padding:.15rem 0;}
+    .nav-link:hover{color:var(--seal);}
+    .nav-link.active{color:var(--seal);font-weight:600;}
+    .nav-link.active::after{content:"";position:absolute;left:50%;transform:translateX(-50%);bottom:-.3rem;width:1.1rem;height:2px;border-radius:2px;background:var(--seal);}
+    .page-title{font-family:'Noto Serif SC',serif;font-weight:900;font-size:clamp(1.55rem,1.2rem+1.2vw,1.9rem);color:var(--ink);line-height:1.3;}
+    .subtitle{color:var(--ink-faint);font-size:.9rem;}
+    .section-title{display:flex;align-items:center;gap:.55rem;color:var(--seal);font-family:'Noto Serif SC',serif;font-weight:700;font-size:1.15rem;}
+    .section-title::before{content:"";width:.3rem;height:1.15rem;background:var(--seal);border-radius:2px;display:inline-block;}
+    .ink-card{background:var(--paper-card);border:1px solid var(--line);border-radius:.75rem;box-shadow:var(--shadow);position:relative;}
+    .ink-card::after{content:"";position:absolute;inset:.4rem;border:1px solid var(--line-soft);border-radius:.55rem;pointer-events:none;}
+    .hero{background:linear-gradient(135deg,var(--seal-tint),var(--paper-card));border:1px solid var(--line);border-radius:1rem;padding:1.75rem 1.5rem;position:relative;overflow:hidden;}
+    .hero::before{content:"名";position:absolute;right:-.5rem;bottom:-2.5rem;font-family:'Noto Serif SC',serif;font-weight:900;font-size:11rem;color:var(--seal);opacity:.06;line-height:1;pointer-events:none;}
+    .hero-lede{font-size:.92rem;color:var(--ink-soft);font-family:'Noto Serif SC',serif;}
+    .hero-feats{display:flex;flex-wrap:wrap;gap:.4rem .5rem;margin-top:1rem;position:relative;}
+    .divider{display:flex;align-items:center;gap:.75rem;color:var(--gold);}
+    .divider::after{content:"❖";flex:0 0 auto;font-size:.7rem;color:var(--gold);}
+    .divider::before{content:"";flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--line),transparent);}
+    .name-big{font-family:'Noto Serif SC',serif;font-weight:900;font-size:1.7rem;color:var(--ink);letter-spacing:.06em;}
+    .score-seal{display:inline-flex;align-items:center;justify-content:center;min-width:3.4rem;height:3.4rem;padding:0 .5rem;background:var(--seal);color:#fff;font-family:'Noto Serif SC',serif;font-weight:900;font-size:1.15rem;border-radius:.55rem;box-shadow:inset 0 0 0 2px rgba(255,255,255,.32),var(--shadow);line-height:1;text-align:center;flex-direction:column;}
+    .score-seal small{font-size:.6rem;font-weight:500;opacity:.85;font-family:'Noto Sans SC',sans-serif;}
+
+    /* 标签徽章（结果页 tag 类此前漏定义，此处统一补齐并分色） */
+    .tag{display:inline-flex;align-items:center;border-radius:.35rem;padding:.12rem .55rem;font-size:.72rem;font-weight:500;line-height:1.5;background:var(--paper-2);color:var(--ink-soft);border:1px solid var(--line-soft);}
+    .tag-seal{background:var(--seal-tint);color:var(--seal);border-color:var(--seal-tint2);}
+    .tag-celadon{background:var(--celadon-tint);color:var(--celadon);border-color:var(--celadon-line);}
+    .tag-gold{background:var(--gold-tint);color:var(--gold);border-color:var(--gold);}
+
+    /* 评分条：label + 轨道 + 填充 + 数值，全站统一 */
+    .meter{display:flex;align-items:center;gap:.5rem;font-size:.72rem;line-height:1.3;}
+    .meter-label{flex:none;width:3.5rem;color:var(--ink-faint);}
+    .meter-label-lg{width:5rem;}
+    .meter-track{flex:1;height:.5rem;border-radius:999px;background:var(--paper-2);overflow:hidden;}
+    .meter.slim .meter-track{height:.35rem;}
+    .meter-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--seal),var(--seal-deep));}
+    .meter-fill.gold{background:linear-gradient(90deg,var(--gold),#9a7b3f);}
+    .meter-val{flex:none;width:2.4rem;text-align:right;color:var(--ink-faint);font-variant-numeric:tabular-nums;}
+    /* 五行专属填充色（分布条用，明暗两套） */
+    .bar-jin{background:#9a7b3f!important;} .bar-mu{background:#3f6f54!important;}
+    .bar-shui{background:#3f5d7a!important;} .bar-huo{background:#9e2b25!important;}
+    .bar-tu{background:#7a5a2e!important;}
+    .dark .bar-jin{background:#d8b878!important;} .dark .bar-mu{background:#8fc4ac!important;}
+    .dark .bar-shui{background:#8fb3d4!important;} .dark .bar-huo{background:#e08a80!important;}
+    .dark .bar-tu{background:#cdb083!important;}
+
+    .wuxing-pill{display:inline-block;border-radius:.35rem;padding:.1rem .5rem;font-size:.72rem;font-weight:700;margin:0 .12rem;}
+    .wx-jin{color:#9a7b3f;background:#f3e9d2;} .wx-mu{color:#3f6f54;background:#e2efe6;}
+    .wx-shui{color:#3f5d7a;background:#e2ecf3;} .wx-huo{color:#9e2b25;background:#f6e3e0;}
+    .wx-tu{color:#7a5a2e;background:#f0e6d3;}
+    .dark .wx-jin{color:#d8b878;background:#33291b;} .dark .wx-mu{color:#8fc4ac;background:#1f2e27;}
+    .dark .wx-shui{color:#8fb3d4;background:#1c2733;} .dark .wx-huo{color:#e08a80;background:#34221f;}
+    .dark .wx-tu{color:#cdb083;background:#2e2519;}
+
+    /* 表格：行悬浮、表头字距、数字对齐 */
+    .ink-table{width:100%;font-size:.875rem;border-collapse:collapse;}
+    .ink-table th{font-weight:600;color:var(--ink-faint);text-align:left;font-size:.72rem;letter-spacing:.08em;padding:.6rem .75rem;border-bottom:1px solid var(--line);white-space:nowrap;}
+    .ink-table td{padding:.65rem .75rem;border-bottom:1px solid var(--line-soft);vertical-align:top;}
+    .ink-table tbody tr:last-child td{border-bottom:none;}
+    .ink-table tbody tr{transition:background .15s;}
+    .ink-table tbody tr:hover{background:var(--paper-2);}
+    .ink-table .num{font-variant-numeric:tabular-nums;}
+    .best{color:var(--seal);font-weight:700;}
+
+    /* 空状态：大字水印 + 引导 */
+    .empty-state{position:relative;overflow:hidden;text-align:center;padding:3rem 1.5rem;color:var(--ink-faint);}
+    .empty-state::before{content:attr(data-glyph);position:absolute;left:50%;top:50%;transform:translate(-50%,-52%);font-family:'Noto Serif SC',serif;font-weight:900;font-size:9rem;color:var(--seal);opacity:.05;line-height:1;pointer-events:none;}
+    .empty-state>*{position:relative;}
+    /* 通用角落水印（黄历宜/忌卡等）：data-glyph 给字，--wm-color 给色 */
+    .wm{position:relative;overflow:hidden;}
+    .wm::before{content:attr(data-glyph);position:absolute;right:-.5rem;bottom:-1.6rem;font-family:'Noto Serif SC',serif;font-weight:900;font-size:6.5rem;line-height:1;color:var(--wm-color,var(--seal));opacity:.08;pointer-events:none;}
+    .wm>*{position:relative;}
+
+    /* 工具条：操作按钮 + 提示并排 */
+    .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:.75rem;}
+    .toolbar .spacer{flex:1;}
+    .toolbar-hint{font-size:.72rem;color:var(--ink-faint);}
+
+    /* flash 提示条 */
+    .flash{display:flex;align-items:baseline;gap:.5rem;border-radius:.6rem;padding:.6rem .9rem;font-size:.85rem;margin-bottom:1rem;border:1px solid;}
+    .flash::before{flex:none;font-weight:700;}
+    .flash-error{background:var(--seal-tint);color:var(--seal-deep);border-color:var(--seal-tint2);}
+    .flash-error::before{content:"✕";font-size:.8em;}
+    .flash-ok{background:var(--celadon-tint);color:var(--celadon);border-color:var(--celadon-line);}
+    .flash-ok::before{content:"✓";font-size:.8em;}
+
+    /* ===== 按钮 ===== */
+    .btn-primary,.btn-celadon,.btn-gold,.btn-danger,.btn-ghost{display:inline-flex;align-items:center;justify-content:center;gap:.35rem;border-radius:.5rem;font-weight:500;transition:.15s;cursor:pointer;line-height:1.2;text-decoration:none;border:1px solid transparent;}
+    .btn-primary{padding:.5rem 1.5rem;background:var(--seal);color:#fff;box-shadow:var(--shadow);}
+    .btn-primary:hover{background:var(--seal-deep);transform:translateY(-1px);box-shadow:var(--shadow-lg);}
+    .btn-celadon{padding:.5rem 1.5rem;background:var(--celadon);color:#fff;box-shadow:var(--shadow);}
+    .btn-celadon:hover{filter:brightness(.93);transform:translateY(-1px);box-shadow:var(--shadow-lg);}
+    .btn-gold{padding:.45rem 1.25rem;background:var(--gold);color:#fff;box-shadow:var(--shadow);}
+    .btn-gold:hover{filter:brightness(.96);transform:translateY(-1px);box-shadow:var(--shadow-lg);}
+    .btn-danger{padding:.4rem 1rem;background:#b23b32;color:#fff;}
+    .btn-danger:hover{filter:brightness(.93);}
+    .btn-ghost{padding:.45rem 1rem;background:transparent;color:var(--ink-soft);border:1px solid var(--line);}
+    .btn-ghost:hover{background:var(--paper-2);color:var(--seal);}
+    .btn-primary:active,.btn-celadon:active,.btn-gold:active{transform:translateY(0);box-shadow:var(--shadow);}
+    .btn-primary:focus-visible,.btn-celadon:focus-visible,.btn-gold:focus-visible,.btn-danger:focus-visible,.btn-ghost:focus-visible{outline:2px solid var(--seal);outline-offset:2px;}
+
+    /* ===== 顶栏（书脊：纸卡底 + 朱金细线压边） ===== */
+    .site-header{position:sticky;top:0;z-index:20;background:var(--paper-card);border-bottom:1px solid var(--line);}
+    .site-header::after{content:"";position:absolute;left:0;right:0;bottom:-4px;height:3px;pointer-events:none;
+      background:linear-gradient(90deg,transparent,var(--gold) 20%,var(--seal) 50%,var(--gold) 80%,transparent);opacity:.28;}
+
+    /* ===== 移动端导航（零 JS，details 折叠） ===== */
+    .nav-toggle{list-style:none;cursor:pointer;color:var(--ink-soft);border:1px solid var(--line);border-radius:.5rem;padding:.35rem .7rem;font-size:.85rem;user-select:none;}
+    .nav-toggle::-webkit-details-marker{display:none;}
+    .mobile-menu{position:absolute;right:0;top:100%;margin-top:.5rem;background:var(--paper-card);border:1px solid var(--line);border-radius:.75rem;box-shadow:var(--shadow-lg);padding:.5rem;display:flex;flex-direction:column;gap:.15rem;min-width:11rem;z-index:30;}
+    .mobile-menu a{padding:.55rem .75rem;border-radius:.4rem;color:var(--ink-soft);}
+    .mobile-menu a:hover{background:var(--paper-2);color:var(--seal);}
+    .mobile-menu a.active{background:var(--seal-tint);color:var(--seal);}
+
+    /* ===== 打印（报告页"另存为 PDF"） ===== */
+    @media print{
+      .site-header,footer,.no-print{display:none!important;}
+      html,body{background:#fff!important;}
+      body::before{display:none;}
+      .ink-card{box-shadow:none;}
+    }
   </style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
-  <header class="bg-white shadow">
+<body class="min-h-screen flex flex-col">
+  <header class="site-header">
     <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-      <a href="/" class="text-xl font-bold text-indigo-700">起名 NameMaster</a>
-      <nav class="flex items-center gap-3 text-sm text-slate-600">
-        <a href="/" class="hover:text-indigo-600">首页</a>
-        <a href="/result" class="hover:text-indigo-600">结果</a>
-        <a href="/favorites" class="hover:text-indigo-600">收藏</a>
-        <a href="/history" class="hover:text-indigo-600">历史</a>
-        <a href="/evaluate" class="hover:text-indigo-600">测名</a>
-        <a href="/huangli" class="hover:text-indigo-600">黄历</a>
-        <a href="/stat" class="hover:text-indigo-600">统计</a>
-        <a href="/compare" class="hover:text-indigo-600">对比</a>
-        <a href="/json-viewer" class="hover:text-indigo-600">JSON</a>
+      <a href="/" class="brand"><span class="seal">名</span><span>起名 · 名Master</span></a>
+      <nav class="hidden md:flex items-center gap-4 text-sm">
+        <a href="/" class="{{navClass .Path "/"}}" aria-current="{{navAria .Path "/"}}">首页</a>
+        <a href="/result" class="{{navClass .Path "/result"}}" aria-current="{{navAria .Path "/result"}}">结果</a>
+        <a href="/evaluate" class="{{navClass .Path "/evaluate"}}" aria-current="{{navAria .Path "/evaluate"}}">测名</a>
+        <a href="/compare" class="{{navClass .Path "/compare"}}" aria-current="{{navAria .Path "/compare"}}">对比</a>
+        <a href="/favorites" class="{{navClass .Path "/favorites"}}" aria-current="{{navAria .Path "/favorites"}}">收藏</a>
+        <a href="/history" class="{{navClass .Path "/history"}}" aria-current="{{navAria .Path "/history"}}">历史</a>
+        <a href="/huangli" class="{{navClass .Path "/huangli"}}" aria-current="{{navAria .Path "/huangli"}}">黄历</a>
+        <a href="/stat" class="{{navClass .Path "/stat"}}" aria-current="{{navAria .Path "/stat"}}">统计</a>
+        <a href="/json-viewer" class="{{navClass .Path "/json-viewer"}}" aria-current="{{navAria .Path "/json-viewer"}}">JSON</a>
         <form method="post" action="/theme" class="inline">
           <input type="hidden" name="redirect" value="{{.RedirectPath}}">
           <input type="hidden" name="theme" value="{{if .Dark}}light{{else}}dark{{end}}">
-          <button type="submit" class="ml-1 px-2 py-1 rounded border bg-white hover:bg-slate-50" title="切换暗色模式">{{if .Dark}}☀️ 浅色{{else}}🌙 深色{{end}}</button>
+          <button type="submit" class="btn-ghost" title="切换主题">{{if .Dark}}☀ 浅色{{else}}🌙 深色{{end}}</button>
         </form>
       </nav>
+      <details class="md:hidden relative">
+        <summary class="nav-toggle">☰ 菜单</summary>
+        <div class="mobile-menu">
+          <a href="/" class="{{navClass .Path "/"}}">首页</a>
+          <a href="/result" class="{{navClass .Path "/result"}}">结果</a>
+          <a href="/evaluate" class="{{navClass .Path "/evaluate"}}">测名</a>
+          <a href="/compare" class="{{navClass .Path "/compare"}}">对比</a>
+          <a href="/favorites" class="{{navClass .Path "/favorites"}}">收藏</a>
+          <a href="/history" class="{{navClass .Path "/history"}}">历史</a>
+          <a href="/huangli" class="{{navClass .Path "/huangli"}}">黄历</a>
+          <a href="/stat" class="{{navClass .Path "/stat"}}">统计</a>
+          <a href="/json-viewer" class="{{navClass .Path "/json-viewer"}}">JSON</a>
+          <form method="post" action="/theme" class="px-2 py-2">
+            <input type="hidden" name="redirect" value="{{.RedirectPath}}">
+            <input type="hidden" name="theme" value="{{if .Dark}}light{{else}}dark{{end}}">
+            <button type="submit" class="btn-ghost w-full">{{if .Dark}}☀ 浅色模式{{else}}🌙 深色模式{{end}}</button>
+          </form>
+        </div>
+      </details>
     </div>
   </header>
   <main class="flex-1 max-w-5xl mx-auto w-full px-4 py-6">
-    {{if .Error}}<div class="bg-red-100 text-red-700 px-4 py-2 rounded mb-4">{{.Error}}</div>{{end}}
-    {{if .Ok}}<div class="bg-emerald-100 text-emerald-700 px-4 py-2 rounded mb-4">{{.Ok}}</div>{{end}}
+    {{if .Error}}<div class="flash flash-error">{{.Error}}</div>{{end}}
+    {{if .Ok}}<div class="flash flash-ok">{{.Ok}}</div>{{end}}
     {{block "content" .}}{{end}}
   </main>
-  <footer class="text-center text-xs text-slate-400 py-4">起名工具 · 仅供文化参考</footer>
+  <footer class="text-center text-xs py-6" style="color:var(--ink-faint);">
+    <div class="divider max-w-xs mx-auto mb-3"></div>
+    起名 · 名Master　·　服务端渲染 · 离线可用　·　仅供文化参考，不负任何命理责任
+  </footer>
 </body>
 </html>
 {{end}}
@@ -72,9 +285,9 @@
 {{define "pagination"}}
 {{if gt .TotalPages 1}}
 <div class="mt-6 flex items-center justify-center gap-2 text-sm">
-  {{if gt .PrevPage 0}}<a href="?page={{.PrevPage}}" class="px-3 py-1 rounded bg-white shadow hover:bg-indigo-50">上一页</a>{{end}}
-  <span class="px-3 py-1 text-slate-500">第 {{.Page}} / {{.TotalPages}} 页</span>
-  {{if lt .Page .TotalPages}}<a href="?page={{.NextPage}}" class="px-3 py-1 rounded bg-white shadow hover:bg-indigo-50">下一页</a>{{end}}
+  {{if gt .PrevPage 0}}<a href="?page={{.PrevPage}}" class="btn-ghost">上一页</a>{{end}}
+  <span style="color:var(--ink-faint)">第 {{.Page}} / {{.TotalPages}} 页</span>
+  {{if lt .Page .TotalPages}}<a href="?page={{.NextPage}}" class="btn-ghost">下一页</a>{{end}}
 </div>
 {{end}}
 {{end}}

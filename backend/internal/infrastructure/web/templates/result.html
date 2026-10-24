@@ -1,17 +1,17 @@
 {{define "content"}}
 {{with .Result}}
-<h1 class="text-2xl font-bold mb-4">起名结果</h1>
+<h1 class="page-title mb-4">起名结果</h1>
 
 {{if $.FromHistory}}
-<div class="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-2 rounded mb-4 text-sm">
-  正在回看历史记录（候选池会话已结束，换一批/对比不可用；收藏仍可正常使用）。
-  <a href="/history" class="underline">返回历史列表</a>
+<div class="ink-card px-4 py-3 mb-4 text-sm" style="border-color:var(--gold);">
+  <span style="color:var(--gold);">回看历史记录</span>：候选池会话已结束，换一批/对比不可用；收藏仍可正常使用。
+  <a href="/history" style="color:var(--seal);text-decoration:underline;">返回历史列表</a>
 </div>
 {{end}}
 
-<a href="/report" class="inline-block mb-4 text-sm bg-white border rounded px-4 py-2 shadow hover:bg-indigo-50">查看完整报告 →</a>
+<a href="/report" class="btn-ghost inline-block mb-4 text-sm">查看完整报告 →</a>
 
-<form method="get" action="/result" class="bg-white rounded shadow p-4 mb-5">
+<form method="get" action="/result" class="ink-card p-4 mb-5">
   <div class="flex flex-wrap items-end gap-3 text-sm">
     <label class="block">性别
       <select name="gender" class="mt-1 border rounded px-2 py-1">
@@ -46,21 +46,21 @@
         <option value="5" {{if eq $.Filter.MinTier 5}}selected{{end}}>5（高频）</option>
       </select>
     </label>
-    <button type="submit" class="bg-indigo-600 text-white px-4 py-1.5 rounded hover:bg-indigo-700">筛选</button>
-    {{if $.FilterQuery}}<a href="/result" class="px-3 py-1.5 rounded border bg-white hover:bg-slate-50">清除筛选</a>{{end}}
+    <button type="submit" class="btn-primary px-4 py-1.5 text-sm">筛选</button>
+    {{if $.FilterQuery}}<a href="/result" class="btn-ghost px-3 py-1.5 text-sm">清除筛选</a>{{end}}
   </div>
-  <div class="text-xs text-slate-400 mt-2">共 {{$.TotalCount}} 个候选{{if $.FilterQuery}}，筛选后 {{$.FilteredCount}} 个{{end}}</div>
+  <div class="text-xs mt-2" style="color:var(--ink-faint);">共 {{$.TotalCount}} 个候选{{if $.FilterQuery}}，筛选后 {{$.FilteredCount}} 个{{end}}</div>
 </form>
 
-<section class="bg-white rounded shadow p-5 mb-6">
-  <h2 class="font-semibold mb-3 text-indigo-700">八字五行</h2>
+<section class="ink-card p-5 mb-6">
+  <h2 class="section-title mb-3">八字五行</h2>
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 text-sm">
     <div>四柱：{{.Bazi.Bazi.YearGanzhi}} {{.Bazi.Bazi.MonthGanzhi}} {{.Bazi.Bazi.DayGanzhi}} {{.Bazi.Bazi.HourGanzhi}}</div>
     <div>生肖：{{.Zodiac}}</div>
-    <div>五行：金{{.Bazi.Wuxing.Jin}} 木{{.Bazi.Wuxing.Mu}} 水{{.Bazi.Wuxing.Shui}} 火{{.Bazi.Wuxing.Huo}} 土{{.Bazi.Wuxing.Tu}}</div>
+    <div class="flex items-center flex-wrap gap-y-1">五行：<span class="wuxing-pill wx-jin">金 {{.Bazi.Wuxing.Jin}}</span><span class="wuxing-pill wx-mu">木 {{.Bazi.Wuxing.Mu}}</span><span class="wuxing-pill wx-shui">水 {{.Bazi.Wuxing.Shui}}</span><span class="wuxing-pill wx-huo">火 {{.Bazi.Wuxing.Huo}}</span><span class="wuxing-pill wx-tu">土 {{.Bazi.Wuxing.Tu}}</span></div>
     <div>日主：{{.Bazi.DayMaster}}（{{.Bazi.DayMasterStrength}}）</div>
     <div class="sm:col-span-2">喜用神：
-      {{range .Bazi.Xiyongshen}}<span class="inline-block bg-indigo-100 text-indigo-700 rounded px-2 py-0.5 mr-1">{{.}}</span>{{end}}
+      {{range .Bazi.Xiyongshen}}<span class="tag tag-seal mr-1">{{.}}</span>{{end}}
     </div>
     <div>年命纳音：{{.Nayin}}</div>
   </div>
@@ -75,83 +75,74 @@
 </section>
 
 {{if not $.FromHistory}}
-<form method="post" action="/explore" class="mb-5">
-  <input type="hidden" name="generation_id" value="{{.GenerationID}}">
-  <input type="hidden" name="rq" value="{{$.FilterQuery}}">
-  <button type="submit" class="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700">换一批</button>
-</form>
-
-<form method="post" action="/compare" id="cmpForm" class="mb-5 flex items-center gap-3">
-  <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">对比所选</button>
-  <span class="text-xs text-slate-400">在下方候选卡中勾选 2-4 个名字（勾选状态随本页保持）</span>
-</form>
+<div class="toolbar mb-5">
+  <form method="post" action="/explore">
+    <input type="hidden" name="generation_id" value="{{.GenerationID}}">
+    <input type="hidden" name="rq" value="{{$.FilterQuery}}">
+    <button type="submit" class="btn-celadon">换一批</button>
+  </form>
+  <form method="post" action="/compare" id="cmpForm">
+    <button type="submit" class="btn-primary">对比所选</button>
+  </form>
+  <span class="toolbar-hint">在下方候选卡中勾选 2-4 个名字进行对比（勾选状态随本页保持）</span>
+</div>
 {{end}}
 
 <section class="space-y-4">
   {{range .Names}}
-  <article class="bg-white rounded shadow p-4">
-    <div class="flex items-baseline justify-between">
-      <h3 class="text-xl font-bold">{{.FullName}} <span class="text-sm text-slate-400">{{.Pinyin}}</span>{{if .Jyutping}} <span class="text-sm text-slate-400" title="粤拼">[粤: {{.Jyutping}}]</span>{{end}}</h3>
-      <div class="flex items-center gap-3">
-        {{if not $.FromHistory}}<label class="flex items-center gap-1 text-xs text-slate-500"><input type="checkbox" name="compare" value="{{.GivenName}}" form="cmpForm"> 对比</label>{{end}}
-        <span class="text-lg font-semibold text-indigo-600">{{.TotalScore}} 分</span>
+  <article class="ink-card p-5">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h3 class="name-big">{{.FullName}} <span class="text-sm" style="color:var(--ink-faint);font-family:'Noto Sans SC',sans-serif;">{{.Pinyin}}</span>{{if .Jyutping}} <span class="text-sm" style="color:var(--ink-faint);" title="粤拼">[粤: {{.Jyutping}}]</span>{{end}}</h3>
+      </div>
+      <div class="flex items-center gap-3 shrink-0">
+        {{if not $.FromHistory}}<label class="flex items-center gap-1 text-xs" style="color:var(--ink-soft);"><input type="checkbox" name="compare" value="{{.GivenName}}" form="cmpForm"> 对比</label>{{end}}
+        <div class="score-seal">{{.TotalScore}}<small>分</small></div>
       </div>
     </div>
-    <div class="flex flex-wrap items-center gap-2 mt-1 text-sm">
-      <span class="inline-block bg-slate-100 text-slate-600 rounded px-2 py-0.5 text-xs">{{genderLabel .Gender}}</span>
+    <div class="flex flex-wrap items-center gap-2 mt-2 text-sm">
+      <span class="tag">{{genderLabel .Gender}}</span>
       <span class="inline-flex gap-0.5">{{wuxingTags .Wuxing}}</span>
-      <span class="text-xs text-slate-500">{{.Strokes}} 画</span>
-      {{if .CantoneseScore}}<span class="inline-block bg-amber-100 text-amber-700 rounded px-2 py-0.5 text-xs">粤语分 {{.CantoneseScore}}</span>{{end}}
-      {{range .Reasons}}<span class="inline-block bg-indigo-50 text-indigo-600 rounded px-2 py-0.5 text-xs">{{.}}</span>{{end}}
+      <span class="tag">{{.Strokes}} 画</span>
+      {{if .CantoneseScore}}<span class="tag tag-gold">粤语 {{.CantoneseScore}}</span>{{end}}
+      {{range .Reasons}}<span class="tag tag-seal">{{.}}</span>{{end}}
     </div>
-    <p class="text-sm text-slate-600 mt-1">寓意：{{.Meaning}}</p>
-    <p class="text-sm text-slate-600">五行：{{.Wuxing}} —— {{.WuxingAnalysis}}</p>
+    <p class="text-sm mt-2" style="color:var(--ink-soft);">寓意：{{.Meaning}}</p>
+    <p class="text-sm" style="color:var(--ink-soft);">五行：{{.Wuxing}} —— {{.WuxingAnalysis}}</p>
     {{if .PoetrySource}}
-    <p class="text-sm text-slate-600">出处：{{.PoetrySource}}「{{.PoetrySentence}}」{{if .PoetryAuthor}}（{{.PoetryAuthor}}）{{end}}</p>
+    <p class="text-sm mt-2 pl-3" style="color:var(--celadon);border-left:3px solid var(--celadon);">出处：{{.PoetrySource}}「{{.PoetrySentence}}」{{if .PoetryAuthor}}（{{.PoetryAuthor}}）{{end}}</p>
     {{end}}
     {{if .PoetryFullText}}
-    <details class="mt-1 text-sm">
-      <summary class="cursor-pointer text-indigo-600">展开出处全文（加粗为命中的名字用字）</summary>
-      <p class="mt-1 text-slate-600 leading-relaxed">{{highlightPoetry .PoetryFullText .PoetryMatchedChars}}</p>
+    <details class="mt-2 text-sm">
+      <summary class="cursor-pointer" style="color:var(--seal);">展开出处全文（加粗为命中的名字用字）</summary>
+      <p class="mt-1 leading-relaxed" style="color:var(--ink-soft);">{{highlightPoetry .PoetryFullText .PoetryMatchedChars}}</p>
     </details>
     {{end}}
-    <details class="mt-1 text-sm">
-      <summary class="cursor-pointer text-indigo-600">评分依据详情</summary>
-      <dl class="mt-1 space-y-1 text-slate-600">
-        {{if .BaziScoreDetail}}<div><dt class="inline font-medium text-slate-700">八字：</dt><dd class="inline">{{.BaziScoreDetail}}</dd></div>{{end}}
-        {{if .MeaningDetail}}<div><dt class="inline font-medium text-slate-700">字义：</dt><dd class="inline">{{.MeaningDetail}}</dd></div>{{end}}
-        {{if .Yinyun}}<div><dt class="inline font-medium text-slate-700">音韵：</dt><dd class="inline">{{.Yinyun}}</dd></div>{{end}}
-        {{if .SancaiAnalysis}}<div><dt class="inline font-medium text-slate-700">三才：</dt><dd class="inline">{{.SancaiAnalysis}}</dd></div>{{end}}
+    <details class="mt-2 text-sm">
+      <summary class="cursor-pointer" style="color:var(--seal);">评分依据详情</summary>
+      <dl class="mt-1 space-y-1" style="color:var(--ink-soft);">
+        {{if .BaziScoreDetail}}<div><dt class="inline font-medium" style="color:var(--ink);">八字：</dt><dd class="inline">{{.BaziScoreDetail}}</dd></div>{{end}}
+        {{if .MeaningDetail}}<div><dt class="inline font-medium" style="color:var(--ink);">字义：</dt><dd class="inline">{{.MeaningDetail}}</dd></div>{{end}}
+        {{if .Yinyun}}<div><dt class="inline font-medium" style="color:var(--ink);">音韵：</dt><dd class="inline">{{.Yinyun}}</dd></div>{{end}}
+        {{if .SancaiAnalysis}}<div><dt class="inline font-medium" style="color:var(--ink);">三才：</dt><dd class="inline">{{.SancaiAnalysis}}</dd></div>{{end}}
       </dl>
     </details>
-    <div class="mt-3 space-y-1">
+    <div class="mt-3 space-y-1.5">
       {{range .ScoreDetail}}
-      <div class="text-xs flex items-center gap-2">
-        <span class="w-16 shrink-0 text-slate-500">{{.Name}}</span>
-        <div class="flex-1 bg-slate-100 rounded h-2">
-          <div class="bg-indigo-500 h-2 rounded" style="width:{{.Score}}%"></div>
-        </div>
-        <span class="w-10 text-right text-slate-500">{{.Score}}</span>
-      </div>
+      <div class="meter"><span class="meter-label">{{.Name}}</span><div class="meter-track"><div class="meter-fill" style="width:{{.Score}}%"></div></div><span class="meter-val">{{.Score}}</span></div>
       {{end}}
     </div>
     {{if .CantoneseScore}}
     <div class="mt-3">
-      <div class="text-xs text-slate-500 mb-1">粤语分：<b class="text-indigo-600">{{.CantoneseScore}}</b> 分</div>
-      <div class="space-y-1">
+      <div class="text-xs mb-1" style="color:var(--ink-faint);">粤语分：<b style="color:var(--seal);">{{.CantoneseScore}}</b> 分</div>
+      <div class="space-y-1.5">
         {{range .CantoneseScoreDetail}}
-        <div class="text-xs flex items-center gap-2">
-          <span class="w-16 shrink-0 text-slate-500">{{.Name}}</span>
-          <div class="flex-1 bg-slate-100 rounded h-2">
-            <div class="bg-amber-400 h-2 rounded" style="width:{{.Score}}%"></div>
-          </div>
-          <span class="w-10 text-right text-slate-500">{{.Score}}</span>
-        </div>
+        <div class="meter"><span class="meter-label">{{.Name}}</span><div class="meter-track"><div class="meter-fill gold" style="width:{{.Score}}%"></div></div><span class="meter-val">{{.Score}}</span></div>
         {{end}}
       </div>
     </div>
     {{end}}
-    <form method="post" action="/favorites" class="mt-3">
+    <form method="post" action="/favorites" class="mt-4">
       <input type="hidden" name="rq" value="{{$.FilterQuery}}">
       <input type="hidden" name="surname" value="{{.Surname}}">
       <input type="hidden" name="given_name" value="{{.GivenName}}">
@@ -159,7 +150,7 @@
       <input type="hidden" name="gender" value="{{.Gender}}">
       <input type="hidden" name="score" value="{{.TotalScore}}">
       <input type="hidden" name="source" value="生成">
-      <button type="submit" class="text-sm bg-amber-500 text-white px-3 py-1 rounded hover:bg-amber-600">收藏</button>
+      <button type="submit" class="btn-gold text-sm">收藏此名</button>
     </form>
   </article>
   {{end}}
