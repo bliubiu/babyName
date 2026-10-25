@@ -5,6 +5,25 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.25.0]
+
+**SSR 冒烟套件版本化：4 个页面冒烟脚本纳入 `scripts/smoke/` 并接入质量管线，修正 3 处陈旧断言**
+
+### ✨ New Features 新增功能
+- 【质量工程·冒烟套件】将原先散落在 `backend/.workbuddy/tmp/`（gitignore 草稿区）的 4 个 SSR 全页面冒烟脚本提升为版本化资产，落到 `scripts/smoke/`：`smoke_e2e.py`（首页/生成/结果/换一批/收藏/历史/测名/黄历/统计 + 错误路径，45 项）、`smoke_ssr.py`（服务层 FullName 回填回归）、`smoke_ssr_ext.py`（筛选/对比/JSON查看器/暗色/报告/历史回看/统计查询/黄历万年历/Flash，77 项）、`smoke_delete.py`（取消收藏/删除历史）。统一改造：目标服务经 `SMOKE_BASE` 环境变量注入；结果输出按 `__file__` 计算落到 `.workbuddy/tmp/`（gitignore，不污染仓库）；结果同时打印 stdout 便于 CI 日志；每个脚本以 `RESULT`/退出码收口。
+- 【质量工程·运行器】新增 `scripts/smoke/run.sh`：优先复用 `SMOKE_BASE`/`SERVER_URL` 或已就绪的 `127.0.0.1:8080`，否则按需构建并临时拉起服务（`trap` 自动清理）；按序跑 4 个脚本并聚合退出码，任一失败即 exit 1。python 解释器逐个实跑 `import sys` 选取，规避 Windows 下 `python3` 为 Microsoft Store 占位符（实跑退出码 49）的坑，同时兼容 CI(ubuntu) 的 `python3`。
+- 【质量工程·CI 接线】`scripts/verify-quality.sh` 在 `e2e_check` 之后新增「SSR 冒烟套件」阶段，复用同一服务实例（导出 `SMOKE_BASE`）；因此 `.github/workflows/quality.yml` 的 `quality-e2e` job 自动纳入冒烟回归，无需改 workflow。
+
+### 🐛 Bug Fixes 问题修复
+- 【测试·冒烟】修正 3 处与实现脱节的陈旧断言（均为测试写错，非服务端缺陷）：
+  - `smoke_ssr_ext.py`「暗色覆盖样式存在」：断言 `.dark body` → 实际 `layout.html` 根选择器为 `.dark{`（设 `color-scheme` + CSS 变量）+ `.dark .bar-*`/`.dark .wx-*` 覆盖，改为 `.dark{`。
+  - `smoke_ssr_ext.py`「回看横幅提示」：断言 `正在回看历史记录` → 实际 `result.html` 横幅文案为 `回看历史记录`，改为 `回看历史记录`。
+  - `smoke_ssr.py` 候选名提取正则：`<h3 class="text-xl font-bold">` → 结果页卡片在「纵向压缩」重构后 h3 类名已改为 `name-big`（`<h3 class="name-big">{{.FullName}} <span…>`），更新后候选名与「带姓前缀」断言恢复命中。
+
+### 🧪 验证
+- 本地完整跑通 `scripts/verify-quality.sh`：单元(fate/golden/score_detail) + gate_audit + dim_audit(147/147) + e2e_check(18/18) + SSR 冒烟(45/45 + ssr PASS + 77/77 + delete PASS) 全绿，退出码 0。
+- `bash -n` / `py_compile` 静态检查通过。
+
 ## [2026.10.24.6]
 
 **SSR 表单/控件审计：修复测名断链、去重时辰下拉、合并统计表单、清理死代码**

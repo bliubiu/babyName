@@ -9,6 +9,7 @@
 #      （八字/五行/生肖/诗词出典准确性，直接吃真实 domain 逻辑）
 #   ③ 端到端（需服务）：e2e_check 八大段 18 项（耗时/用字质量/参数生效/
 #                        双路径同分/可复现/并发/测名/探索）
+#      + SSR 全页面冒烟套件（scripts/smoke/：smoke_e2e / smoke_ssr / smoke_ssr_ext / smoke_delete）
 #   ④ 解释准确性：喜用神双算法对拍、诗词来源筛选、PDF 真实数据 等已内含于上述测试
 #
 # 退出码：任一阶段失败即以 1 退出，便于接入 CI。
@@ -187,6 +188,12 @@ else
   run_phase "E2E 巡检: e2e_check -strict (repeat=$E2E_REPEAT conc=$E2E_CONCURRENCY rounds=$E2E_ROUNDS)" \
     go -C "$BACKEND_DIR" run ./tools/e2e_check \
       -host "$e2e_host" -repeat "$E2E_REPEAT" -concurrency "$E2E_CONCURRENCY" -rounds "$E2E_ROUNDS" -strict
+
+  # SSR 全页面冒烟套件：复用上面已拉起的同一服务实例（导出 SMOKE_BASE 让 run.sh 走复用分支，
+  # 不自行启停）。四个脚本各自判定 PASS/FAIL 并以退出码收口，任一失败即使本阶段失败。
+  export SMOKE_BASE="$URL"
+  run_phase "SSR 冒烟: smoke 套件 (smoke_e2e / smoke_ssr / smoke_ssr_ext / smoke_delete)" \
+    bash "$ROOT_DIR/scripts/smoke/run.sh"
 fi
 
 # ---------------------------------------------------------------------------
