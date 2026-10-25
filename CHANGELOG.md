@@ -5,6 +5,24 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.25.1]
+
+**性能深挖：持久化写/响应序列化常驻基准落地；结论——并发瓶颈在引擎 CPU 而非持久化串行段**
+
+### ✨ New Features 新增功能
+- 【性能工程·基准】新增两组常驻 Go 基准，为 e2e 并发压测（16 并发 p95 5.18s）的根因分析提供可复现证据：
+  - `internal/infrastructure/database/sqlite/persist_bench_test.go`：量化 `/generate` 链路唯一全串行段 `SaveHistory`（单写连接 + WAL）。首次实测：294KB blob 串行 **9.49ms/op**、16 路并发 9.83ms/op（本就全串行）；blob 50/172/294/369KB → 3.90/6.94/9.33/11.65ms（≈3ms 固定 + ~22ms/MB）；`BatchSaveHistory` 16 条一批 **1.55ms/条**（6.1× 便宜）；`synchronous=NORMAL` **5.08ms/op**（−46%）。
+  - `internal/application/services/marshal_bench_test.go`：量化同一 `GenerateResponse` 的两次 `json.Marshal`（gin HTTP 渲染 + saveHistory 落库）。单次 0.64ms、每请求两次 1.22ms（占串行请求 0.846s 的 0.14%）。
+
+### 📊 性能结论（本次深挖，驱动后续优化优先级）
+- **持久化异步化暂不采纳**：SaveHistory 仅占串行请求 1.1%（9.49ms/846ms）；16 并发下聚合写 152ms/轮 ≈ p95 的 3%。异步化收益 1–3%，却引入丢失窗口/乱序/排水复杂度，风险收益比差。
+- **真正的瓶颈是引擎 CPU**：`bench_gen` 实测 5558 字池、97,794 已评分组合、1.05s；CPU profile 显示 `RateNameScore` 累积 53%、全程仅用满 ~2 核（GOMAXPROCS=2 墙钟 1.13s ≈ 16 核 1.05s）——**16 个 worker 因「按潜力分排序后连续分片」早停不均衡而大面积空转**。16 并发 p95 膨胀 6.1× 由 CPU 需求（≈2 核秒/请求）+ GC + 写串行叠加所致，系统是 CPU 吞吐受限而非串行化受限。
+- 建议后续（按 ROI 排序，本次未实施）：① 写连接 DSN 加 `_pragma=synchronous(normal)`（一行，−46% 写耗时）；② `generateDoubleName` 连续分片改跨步/窃取式分片（恢复单请求并行度，预期 2–3× 延迟收益）；③ marshal 一次两处复用；④ 仍不满足再考虑有界异步队列 + 批量写 + 关闭排水。
+
+### 🧪 验证
+- `go vet` + 两包全量测试通过（sqlite 66.5s / services 29.6s）。
+- 基准数据可复现：`go test ./internal/infrastructure/database/sqlite/ -run '^$' -bench 'BenchmarkSaveHistory|BenchmarkBatchSaveHistory' -benchmem -benchtime 200x`。
+
 ## [2026.10.25.0]
 
 **SSR 冒烟套件版本化：4 个页面冒烟脚本纳入 `scripts/smoke/` 并接入质量管线，修正 3 处陈旧断言**
