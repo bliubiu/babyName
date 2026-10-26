@@ -40,6 +40,12 @@ var templateFS embed.FS
 //go:embed static/json4matter.html
 var jsonViewerHTML []byte
 
+// tailwindCSS 自托管 Tailwind 构建产物（scripts/tailwind.config.js 生成），
+// 运行期不依赖 CDN 或 Node 工具链；模板改动后需重新构建并以二进制重发。
+//
+//go:embed static/tailwind.css
+var tailwindCSS []byte
+
 // Handler 持有服务端渲染所需的服务引用与模板引擎
 type Handler struct {
 	name     services.NameServiceInterface
@@ -519,6 +525,7 @@ func RegisterRoutes(router *gin.Engine, h *Handler) {
 	router.GET("/stat", h.StatPage)
 	router.GET("/json-viewer", h.JSONViewerPage)
 	router.GET("/json4matter.html", h.JSONViewerAsset)
+	router.GET("/assets/tailwind.css", h.TailwindCSS)
 	router.POST("/theme", h.Theme)
 	router.GET("/report", h.ReportPage)
 	router.GET("/history/view", h.HistoryView)
@@ -1129,6 +1136,13 @@ func (h *Handler) JSONViewerPage(c *gin.Context) {
 // JSONViewerAsset 内嵌的离线 JSON 美化查看器单文件（/json-viewer 页 iframe 的src）
 func (h *Handler) JSONViewerAsset(c *gin.Context) {
 	c.Data(http.StatusOK, "text/html; charset=utf-8", jsonViewerHTML)
+}
+
+// TailwindCSS 输出内嵌的 Tailwind 构建产物。
+// 文件名不含哈希，用 1 小时缓存平衡重复下载与发版后的及时更新。
+func (h *Handler) TailwindCSS(c *gin.Context) {
+	c.Header("Cache-Control", "public, max-age=3600")
+	c.Data(http.StatusOK, "text/css; charset=utf-8", tailwindCSS)
 }
 
 // reportAnalysis 完整报告页的综合解读（五段文本）。

@@ -5,6 +5,21 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.26.2]
+
+**Tailwind CSS 改为自托管：移除 CDN 脚本，构建产物内嵌二进制并通过本站路由提供**
+
+### ✨ New Features 新增功能
+- 【样式·自托管】新增 `scripts/tailwind.config.js` / `tailwind.input.css`，以模板与 `web.go` 为 content 源预编译 Tailwind；产物 `backend/internal/infrastructure/web/static/tailwind.css`（约 11.7 KB）通过 `//go:embed` 内嵌，路由 `GET /assets/tailwind.css` 输出（`Cache-Control: max-age=3600`）。
+- 【运行期】`layout.html` 以 `<link rel="stylesheet" href="/assets/tailwind.css">` 取代 `cdn.tailwindcss.com` 脚本与 `tailwind.config` 内联配置；运行期不再请求 CDN，也不再依赖浏览器端 JIT。
+
+### 📚 Docs 文档更新
+- 更新 `AGENTS.md` / `README.md` 技术栈说明；重建方式记录于 `scripts/tailwind.config.js` 头部注释（仅模板改动后需要，`npx` 为开发期工具，非运行期依赖）。
+
+### 🧪 验证
+- 新增 web 测试：资源 200 + `text/css`、关键工具类存在、首页不再引用 CDN 且引用本地样式。
+- `go test ./internal/infrastructure/web/` 通过。
+
 ## [2026.10.26.1]
 
 **收藏 / 历史按访客会话隔离：杜绝跨会话读取、按 ID 覆盖与越权删除**

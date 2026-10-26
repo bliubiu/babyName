@@ -28,7 +28,7 @@
 | 层级     | 技术                                     |
 | -------- | ---------------------------------------- |
 | 前端     | Next.js 14 + React 18 + TypeScript       |
-| 样式     | Tailwind CSS                             |
+| 样式     | Tailwind CSS（自托管构建产物）           |
 | 状态管理 | Zustand                                  |
 | 图表库   | ECharts                                  |
 | 包管理器 | pnpm                                     |

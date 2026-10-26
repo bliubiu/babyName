@@ -2,7 +2,7 @@
 
 起名是一个免费的起名工具，旨在帮助新手父母为宝宝起一个寓意美好、符合中国传统玄学的名字。
 
-基于DDD架构（领域驱动设计）和**TDD（测试驱动开发）**设计思想，使用 go 语言 + Gin 开发。前端采用 **Go `html/template` 服务端渲染（SSR）全栈**，通过 Gin 路由直接调用领域服务并装配视图模型渲染页面，**不引入 React / Next.js / TypeScript**，交互以服务端表单提交为主、必要时辅以极少量原生 JS。样式使用 **Tailwind CSS（CDN）**，零前端构建、无 Node/pnpm 工具链依赖。
+基于DDD架构（领域驱动设计）和**TDD（测试驱动开发）**设计思想，使用 go 语言 + Gin 开发。前端采用 **Go `html/template` 服务端渲染（SSR）全栈**，通过 Gin 路由直接调用领域服务并装配视图模型渲染页面，**不引入 React / Next.js / TypeScript**，交互以服务端表单提交为主、必要时辅以极少量原生 JS。样式使用 **Tailwind CSS（构建产物自托管，运行期无 CDN、无 Node/pnpm 工具链依赖）**。
 
 
 
@@ -96,7 +96,7 @@
 | 层级       | 技术                                                         |
 | ---------- | ------------------------------------------------------------ |
 | 前端       | Go `html/template` 服务端渲染（SSR）全栈，Gin 路由直接调用服务层；不引入 React / Next.js / TypeScript |
-| 样式       | Tailwind CSS（CDN 引入，零构建）                             |
+| 样式       | Tailwind CSS（自托管构建产物 `static/tailwind.css`，内嵌二进制；运行期零 CDN） |
 | 状态管理   | 服务端会话（cookie `nm_sid` + 内存会话）；收藏/历史走后端持久化，对比走 URL 参数 |
 | 图表库     | 暂不使用（五行分布以文本/进度条呈现；如需图表后续可引入 CDN ECharts） |
 | 包管理器   | 无前端包管理器（已去 npm/pnpm）；后端仅 Go 工具链             |

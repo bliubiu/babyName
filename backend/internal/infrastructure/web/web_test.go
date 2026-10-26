@@ -697,6 +697,38 @@ func TestSession_非法Cookie不复用(t *testing.T) {
 	}
 }
 
+// TestTailwindCSS_自托管 样式必须由本站提供，页面不得再依赖 Tailwind CDN。
+func TestTailwindCSS_自托管(t *testing.T) {
+	_, _, _, _, r := setupT(t)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/assets/tailwind.css", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("期望 200，实得 %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/css") {
+		t.Fatalf("Content-Type 应为 text/css，实得 %q", ct)
+	}
+	body := w.Body.String()
+	if len(body) == 0 {
+		t.Fatal("Tailwind 构建产物为空")
+	}
+	for _, cls := range []string{".min-h-screen", ".grid-cols-7", ".md\\:flex", ".text-indigo-700"} {
+		if !strings.Contains(body, cls) {
+			t.Errorf("构建产物缺少模板使用的工具类 %q（需重新生成 tailwind.css）", cls)
+		}
+	}
+
+	home := httptest.NewRecorder()
+	r.ServeHTTP(home, httptest.NewRequest(http.MethodGet, "/", nil))
+	if strings.Contains(home.Body.String(), "cdn.tailwindcss.com") {
+		t.Fatal("页面仍引用 Tailwind CDN")
+	}
+	if !strings.Contains(home.Body.String(), `/assets/tailwind.css`) {
+		t.Fatal("页面未引用自托管 Tailwind 样式")
+	}
+}
+
 func sidCookieFor(w *httptest.ResponseRecorder) string {
 	for _, ck := range w.Result().Cookies() {
 		if ck.Name == "nm_sid" {
