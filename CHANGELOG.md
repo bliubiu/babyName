@@ -5,6 +5,35 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.26.3]
+
+**部署链路对齐 SSR 全栈：移除 frontend 容器与反代，修复镜像字库缺失，收紧 CSP，SQLite 失败不再静默降级**
+
+### ⚠️ Breaking Changes 破坏性变更
+- 【构建】`backend/Dockerfile` 要求**仓库根**构建上下文（compose `context: .`）：镜像需要根 `data/` 字库烘焙为 `/app/data-seed`。旧的 `docker build ./backend` 会因 `COPY /app/data` 找不到源而失败。
+- 【拓扑】`docker-compose.yml` 删除 `frontend` 服务与 nginx 对 `frontend:3000` 的依赖；nginx 全部页面/API/`/assets/` 只反代 `backend:8080`。
+- 【配置】`backend/application.yml` 不再写死开发者本机绝对路径：`database.path` 改为 `namer.db`（在 `backend/` 启动），`mode` 改为 `api`（SSR 无需静态目录）。
+
+### 🐛 Bug Fixes 问题修复
+- 【镜像构建】修复运行阶段 `COPY --from=builder /app/data` 源目录不存在导致 `docker build` 必失败的问题；改为从仓库根上下文复制 `data/` 并在运行阶段烘焙。
+- 【CSP】移除已无必要的 `script-src 'unsafe-eval'`：Tailwind 已自托管，页面不再依赖 CDN 与运行时 JIT。
+- 【持久化】`initStore` 不再在 SQLite 打开失败时静默回退内存：未显式配置 `memory` 时一律报错拒绝启动，避免“服务健康但重启丢数据”的假象；未知驱动同样拒绝启动。
+- 【部署脚本】`deploy.sh` 去掉不存在的 frontend 镜像拉取与 `/api/healthz` 探活，改为 `up -d --build` + `/healthz`、`/readyz`、SSR 首页检查；备份/回滚路径对齐 compose 的 `/data/namer/backend` 卷。
+- 【一键构建】`scripts/build.ps1` 删除已废弃的 pnpm/Next.js 前端构建，改为 SSR 单文件产物（二进制 + `application.yml` + 根 `data/`）；不再复制不存在的 `backend/data`。
+- 【开发启动】`scripts/start.ps1` / `start_services.ps1` / `backend/bin/start-server.sh` 去掉前端构建与硬编码路径，改为动态仓库根 + `-mode api`，并在就绪前轮询 `/healthz`。
+
+### 📈 Improvements 性能/体验优化
+- 【构建上下文】新增仓库根 `.dockerignore`，排除 `frontend/`、`docs/`、`.git`、日志与 `data/raw` 语料（保留康熙笔画 CSV），控制上下文与镜像体积。
+- 【静态资源】nginx 新增 `/assets/` 专用反代，Tailwind CSS 缓存头统一由后端输出。
+
+### 📚 Docs 文档更新
+- 重写 `docs/26-Docker部署指南.md`：SSR 单容器拓扑、仓库根构建上下文、播种机制、环境变量、局域网变体、CSP 与故障排查。
+- 更新 `README.md` 技术栈、目录结构、运行参数、构建/部署与环境变量说明；更新 `.env.example` 移除 `NEXT_PUBLIC_*`。
+
+### 🧪 验证
+- 新增 `cmd/server/init_store_test.go`：显式 memory、未知驱动、SQLite 无效路径、SQLite 正常路径。
+- `gofmt` + `go build ./...` + `go vet ./...` + `go test -shuffle=on ./...` 全通过。
+
 ## [2026.10.26.2]
 
 **Tailwind CSS 改为自托管：移除 CDN 脚本，构建产物内嵌二进制并通过本站路由提供**

@@ -25,16 +25,14 @@
 
 ### 技术栈
 
-| 层级     | 技术                                     |
-| -------- | ---------------------------------------- |
-| 前端     | Next.js 14 + React 18 + TypeScript       |
-| 样式     | Tailwind CSS（自托管构建产物）           |
-| 状态管理 | Zustand                                  |
-| 图表库   | ECharts                                  |
-| 包管理器 | pnpm                                     |
-| 后端     | Go + Gin                                 |
-| 存储     | SQLite（默认）/ 内存环形缓存   冷热数据  |
-| 架构     | DDD（领域驱动设计）+ TDD（测试驱动开发） |
+| 层级     | 技术                                             |
+| -------- | ------------------------------------------------ |
+| 前端     | Go `html/template` 服务端渲染（SSR 全栈，无 React） |
+| 样式     | Tailwind CSS（构建产物自托管，运行期无 CDN）      |
+| 交互     | 服务端表单 POST + PRG 重定向，必要时少量原生 JS   |
+| 后端     | Go 1.25 + Gin                                    |
+| 存储     | SQLite（默认，WAL）/ 内存存储（仅显式配置）       |
+| 架构     | DDD（领域驱动设计）+ TDD（测试驱动开发）         |
 
 ### 目录结构
 
@@ -55,28 +53,21 @@ name/
 │   │   │   ├── namestat/          # 名字统计
 │   │   │   └── classics/           # 诗词典故
 │   │   └── infrastructure/          # 基础设施层
-│   │       └── database/
-│   │           ├── memory/          # 内存存储（默认）
-│   │           └── sqlite/          # SQLite 存储（推荐）
+│   │       ├── database/
+│   │       │   ├── memory/          # 内存存储（仅显式配置）
+│   │       │   └── sqlite/          # SQLite 存储（默认）
+│   │       └── web/                 # SSR 渲染层（templates/、static/）
 │   ├── go.mod
-│   └── namer.exe              # 编译后的可执行文件
+│   └── application.yml              # 本地配置
 │
-├── frontend/                        # Next.js前端
-│   ├── src/
-│   │   ├── app/                    # 页面
-│   │   │   ├── page.tsx           # 首页
-│   │   │   ├── result/            # 结果页
-│   │   │   ├── history/           # 历史记录页
-│   │   │   ├── favorites/         # 收藏页
-│   │   │   ├── compare/           # 对比页
-│   │   │   └── stat/              # 重名率查询页
-│   │   ├── components/            # 组件
-│   │   ├── lib/                   # 工具库
-│   │   └── types/                 # TypeScript类型
-│   ├── package.json
-│   └── tailwind.config.ts
-│
-└── docs/                           # 项目文档
+├── data/                            # 字库与经典语料（运行时数据）
+├── scripts/
+│   ├── build.ps1                   # 一键构建（SSR 全栈）
+│   ├── tailwind.config.js          # Tailwind 自托管构建配置
+│   └── tailwind.input.css
+├── nginx/                           # 反向代理配置（Docker 部署）
+├── docker-compose.yml               # 生产编排（nginx + backend）
+└── docs/                            # 项目文档
     ├── 00-页面原型设计及相关素材知识.md
     ├── 01-需求规格说明书.md
     ├── 02-API文档.md
@@ -100,11 +91,12 @@ name/
 运行单体二进制可执行文件启动所有服务。【Web 静态页面内嵌；运行时数据（汉字库、频率统计等）位于二进制同级的 `data/` 目录，一键构建已自动复制】
 
 ```bash
-# 进入后端目录
-cd backend
+# 构建单文件产物（dist/namer.exe + application.yml + data/）
+.\scripts\build.ps1
 
-# 运行服务（默认端口8080）
-.\namer.exe -mode all
+# 进入产物目录运行
+cd dist
+.\namer.exe -mode api -port 8080
 
 # 访问 http://localhost:8080
 ```
@@ -114,46 +106,31 @@ cd backend
 ```bash
 -port 8080        # 指定端口（默认8080）
 -host localhost   # 指定主机（默认localhost）
--mode all         # 运行模式：backend 或 all
--db memory        # 数据库类型：memory（默认，重启后数据丢失）
--db sqlite        # 数据库类型：sqlite（推荐，数据持久化）
--dsn name.db # SQLite 数据库文件路径（配合 -db sqlite 使用）
+-mode api         # 运行模式：api（SSR 无静态目录）或 all（历史兼容）
+-db namer.db      # SQLite 数据库文件路径（覆盖配置文件）
+-log logs         # 日志目录
+-config application.yml  # 配置文件路径
 ```
 
 **示例：**
 
 ```bash
-# 使用 SQLite 持久化存储（推荐）
-.\namer.exe -mode all -db sqlite -dsn name.db
+# 使用 SQLite 持久化存储（默认）
+.\namer.exe -mode api -db namer.db
 
 # 使用端口8083
-.\namer.exe -mode all -port 8083
-
-# 使用端口8084 + SQLite
-.\namer.exe -mode all -db sqlite -port 8084
+.\namer.exe -mode api -port 8083
 ```
 
-### 方式二：前后端分离
-
-**1. 启动后端**
+### 方式二：从源码运行
 
 ```bash
 cd backend
-go run cmd/server/main.go
-# 后端运行在 http://localhost:8080
+go run ./cmd/server
+# 服务运行在 http://localhost:8080（SSR 页面与 API 同源）
 ```
 
-**2. 启动前端**
-
-```bash
-cd frontend
-pnpm install
-pnpm dev
-# 前端运行在 http://localhost:3000
-```
-
-**3. 访问应用**
-打开浏览器访问 <http://localhost:3000>
+打开浏览器访问 <http://localhost:8080>。
 
 ***
 
@@ -341,62 +318,53 @@ pnpm dev
 ```
 
 此脚本会：
-1. 构建前端（`pnpm run build` + `pnpm run export`）
-2. 编译 Go 后端（单文件二进制）
-3. 导出前端静态文件 + 后端 EXE 到 `dist/` 目录
+1. 编译 Go 后端（SSR 模板与 Tailwind 已内嵌进二进制）
+2. 复制 `application.yml` 与仓库根 `data/` 字库到 `dist/`
+3. 生成 `start.bat` / `start.ps1`
 
 ### 手动构建
 
-**构建前端：**
-
-```bash
-cd frontend
-pnpm install
-pnpm run build
-```
-
-**编译后端：**
-
 ```bash
 cd backend
-go build -o namer.exe ./cmd/server/
+go build -o ../dist/namer.exe ./cmd/server/
 ```
+
+构建后需把 `backend/application.yml` 与仓库根 `data/` 复制到二进制同级目录。
 
 ### 部署
 
 **二进制 + 数据目录部署（推荐）：**
 
 ```bash
-# 一键构建已自动产出 namer.exe + data/ 目录（dist/ 下）
 .\scripts\build.ps1
 
-# 启动 SQLite 模式（数据持久化，重启不丢失）
-.\namer.exe -mode all -db sqlite -dsn name.db
+cd dist
+.\namer.exe -mode api
 ```
 
 运行时数据从二进制同级的 `data/` 目录加载（汉字库、人名频率、命名质量门禁字表、经典文献等）。
-部署时请保持 `namer.exe` 与 `data/` 目录同级，否则数据加载降级，重名率查询等依赖真实语料的功能将不可用。
+部署时请保持 `namer.exe`、`application.yml` 与 `data/` 同级；字库缺失时服务会**拒绝启动**，
+不会在空字库上继续提供 100% 失败的业务。
 
-历史记录、收藏、名字反馈等用户数据持久化到 `name.db`。
-首次启动会自动创建 SQLite 数据库并导入用户数据。
-
-**内存模式（开发测试）：**
-
-```bash
-.\namer.exe -mode all
-# 数据仅存于内存，重启后丢失
-```
+收藏、历史等用户数据默认写入同目录 `namer.db`（WAL 模式）。
+SQLite 打开失败会拒绝启动；如需临时内存存储，需显式设置
+`NAME_DATABASE_DRIVER=memory`（重启即丢数据）。
 
 ### 环境变量
 
+配置项统一使用 `NAME_` 前缀（如 `NAME_DATABASE_PATH`、`NAME_SERVER_PORT`）。
+
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `SQLITE_PATH` | SQLite 文件路径 | `name.db` |
-| `HANZI_DATA_PATH` | 汉字数据 JSON 路径 | `hanzi_data.json` |
-| `FRONTEND_STATIC_PATH` | 前端静态文件目录 | `../frontend/out` |
-| `CACHE_TYPE` | 缓存类型 | 空（无缓存） |
-| `RATE_LIMIT_CAPACITY` | 限流容量 | 100 |
-| `RATE_LIMIT_RATE` | 限流速率 | 10 |
+| `NAME_DATABASE_DRIVER` | 存储驱动：`sqlite` / `memory` | `sqlite` |
+| `NAME_DATABASE_PATH` | SQLite 文件路径 | `namer.db` |
+| `NAME_SERVER_HOST` | 监听地址 | `localhost` |
+| `NAME_SERVER_PORT` | 监听端口 | `8080` |
+| `NAME_MODE` | `api`（SSR，无静态目录）/ `all` | `api` |
+| `NAME_RATE_LIMIT_CAPACITY` | 限流容量 | `100` |
+| `NAME_RATE_LIMIT_RATE` | 限流速率 | `10` |
+| `DATA_DIR` | 字库/数据目录 | 启动目录下 `data/` |
+| `CONFIG_DIR` | 配置文件搜索目录 | 可执行文件目录 |
 
 ***
 

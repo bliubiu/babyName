@@ -1,384 +1,263 @@
 # 起名项目 Docker 构建部署指南
 
+> 适用版本：2026.10.26 起（SSR 全栈，已移除 Next.js 前端容器）
+>
+> 本文档只描述当前真实部署链路。历史 Next.js / pnpm / `frontend/` 相关内容
+> 已全部废弃，不要再按旧流程构建或排查。
+
 ## 目录
 
-1. [项目架构概览](#项目架构概览)
+1. [架构概览](#架构概览)
 2. [Dockerfile 说明](#dockerfile-说明)
 3. [Docker Compose 配置](#docker-compose-配置)
-4. [构建与部署流程](#构建与部署流程)
-4. [环境变量配置](#环境变量配置)
-5. [Nginx 反向代理配置](#nginx-反向代理配置)
-6. [常用运维命令](#常用运维命令)
-7. [故障排查](#故障排查)
+4. [构建与部署](#构建与部署)
+5. [环境变量](#环境变量)
+6. [Nginx 反向代理](#nginx-反向代理)
+7. [局域网部署](#局域网部署)
+8. [常用运维命令](#常用运维命令)
+9. [故障排查](#故障排查)
+10. [文件清单](#文件清单)
 
 ---
 
-## 项目架构概览
+## 架构概览
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     用户访问                                 │
-└─────────────────────┬───────────────────────────────────────┘
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Nginx (反向代理 + SSL终结 + 静态资源缓存)                   │
-│  - 端口 80/443                                              │
-│  - /api/* → Backend:8080                                    │
-│  - /_next/static/* → 缓存 1 年                              │
-│  - /* → Frontend:3000                                       │
-└─────────────────────┬───────────────────────────────────────┘
-                      ▼
-        ┌─────────────┴─────────────┐
-        ▼                           ▼
-┌───────────────┐           ┌───────────────┐
-│ Frontend      │           │ Backend       │
-│ Next.js:3000  │           │ Go Gin:8080   │
-│ 独立输出模式   │           │ 纯静态二进制   │
-└───────────────┘           └───────────────┘
-        │                           │
-        │                    ┌──────┴──────┐
-        │                    ▼             ▼
-        │              ┌─────────┐   ┌─────────┐
-        │              │ SQLite  │   │ 数据目录  │
-        │              │ (WAL模式)│   │ /app/data │
-        │              └─────────┘   └─────────┘
-        └─────────────────────────────────┘
+用户访问
+   │
+   ▼
+Nginx（反向代理 / TLS 终结 / 限流 / 安全头）
+   │  所有页面与 API
+   ▼
+Backend（Go 1.25 + Gin）
+   ├── SSR 页面：html/template（templates/ 内嵌）
+   ├── JSON API：/api/v1/*
+   └── 静态资源：/assets/tailwind.css（go:embed）
+   │
+   ├── SQLite（WAL，/app/data/namer.db）
+   └── 字库（/app/data 下 JSON + 康熙笔画 CSV）
 ```
 
-**技术栈：**
-- **后端**: Go 1.23 + Gin + SQLite (WAL模式) + 纯 Go 实现
-- **前端**: Next.js 16.2 + React 19.2 + TypeScript + Tailwind CSS
-- **数据持久化**: SQLite (默认) / 内存环形缓存 (冷热数据分离)
-- **反向代理**: Nginx (SSL终结、负载均衡、静态资源缓存)
+- **没有独立前端容器**：页面由 Go 服务端模板直接渲染，无 Node/pnpm 构建产物。
+- **Tailwind CSS 自托管**：构建产物 `backend/internal/infrastructure/web/static/tailwind.css`
+  通过 `go:embed` 编入二进制，运行期无 CDN 依赖。
+- **单容器后端**：SSR 页面与 JSON API 共用同一服务、同一数据卷。
+- 旧 `/api/v1/*` JSON 接口保留，供移动端或外部系统调用。
 
 ---
 
 ## Dockerfile 说明
 
-### 后端 Dockerfile (`backend/Dockerfile`)
+### 构建上下文必须是仓库根
 
-**多阶段构建特点：**
-- **构建阶段**: 使用 `golang:1.23-alpine`，启用 `CGO_ENABLED=0` 静态编译
-- **运行阶段**: 使用 `alpine:3.20`，仅包含二进制文件和必要数据文件
-- **镜像大小**: ~15MB (极简)
-- **安全性**: 非 root 用户 (UID 1000)、只读根文件系统兼容
+`backend/Dockerfile` 现在依赖仓库根 `data/` 字库作为镜像内置种子，
+因此 `docker build` / compose 的构建上下文必须是仓库根：
 
-```dockerfile
-# 关键构建参数
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64
-go build -ldflags="-s -w -extldflags=-static" -o namer-server
+```bash
+# 正确
+docker build -f backend/Dockerfile -t namer-backend:dev .
+
+# 错误（拿不到根 data/，运行阶段 COPY /app/data 会失败）
+docker build -t namer-backend:dev ./backend
 ```
 
-**健康检查:**
-```dockerfile
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/healthz || exit 1
-```
+镜像内路径：
 
-### 前端 Dockerfile (`frontend/Dockerfile`)
+| 阶段 | 路径 | 说明 |
+| --- | --- | --- |
+| builder | `/app` | Go 源码 + `/app/data` 字库 |
+| runtime | `/app/namer-server` | 静态链接二进制 |
+| runtime | `/app/config-seed/application.yml` | 配置种子 |
+| runtime | `/app/data-seed/` | 字库种子 |
+| runtime | `/app/config`、`/app/data`、`/app/logs` | 运行期挂载点 |
 
-**Next.js 独立输出模式:**
-- 启用 `output: 'standalone'` 生成精简的 `server.js` + 最小依赖
-- **构建阶段**: 完整 Node.js 环境编译
-- **运行阶段**: 仅包含 `server.js` + `.next/static` + 最小 `node_modules`
-- **镜像大小**: ~120MB
+### 多阶段构建
 
-```javascript
-// next.config.js 关键配置
-output: 'standalone',
-```
+- **builder**：`golang:1.25.10-alpine`，`CGO_ENABLED=0` 静态编译。
+- **runtime**：`alpine:3.20`，仅含二进制、证书、时区与非 root 用户（UID 1000）。
+- 构建参数：`-ldflags="-s -w -extldflags=-static"`。
+
+### 启动时播种
+
+`backend/docker-entrypoint.sh` 在启动前执行：
+
+1. `/app/data-seed/*` → `/app/data/`（已存在则保留卷内版本）；
+2. `/app/config-seed/*` → `/app/config/`（已有配置不覆盖）；
+3. 校验 `namer.json` 与 `application.yml`，缺失时打印明确警告；
+4. `exec ./namer-server`。
+
+compose 把宿主目录挂到 `/app/data`、`/app/config`，**挂载会遮蔽镜像内目录**，
+因此必须依赖播种机制；若宿主目录属主不是 UID 1000，播种会失败并打印警告。
 
 ---
 
 ## Docker Compose 配置
 
-### 文件结构
-```
-├── docker-compose.yml          # 生产环境 (含 Nginx)
-├── docker-compose.dev.yml      # 开发环境 (热重载)
-├── .env.production             # 生产环境变量 (不提交 Git)
-├── .env.development            # 开发环境变量
-└── nginx/
-    ├── nginx.conf              # 主配置
-    └── conf.d/                 # 站点配置
-```
+### 生产环境（`docker-compose.yml`）
 
-### 生产环境 (`docker-compose.yml`)
+服务拓扑：
 
-**服务拓扑:**
 ```
-nginx:80/443 (反向代理)
-    ├── frontend:3000 (Next.js)
-    └── backend:8080 (Gin API)
+nginx（80/443）
+   └── backend:8080（SSR + API）
+          ├── /app/data   ← /data/namer/backend/data
+          ├── /app/logs   ← /data/namer/backend/logs
+          └── /app/config ← /data/namer/backend/config
 ```
 
-**关键配置点:**
-- **健康检查**: 每服务独立配置，`depends_on` 配合 `condition: service_healthy`
-- **数据持久化**: `./backend/data:/app/data` (SQLite WAL 模式需文件锁支持)
-- **日志管理**: `json-file` 驱动，单文件 10MB，保留 3 个
-- **重启策略**: `unless-stopped` (容器异常退出自动重启)
+关键点：
 
-### 开发环境 (`docker-compose.dev.yml`)
+- `backend.build.context: .`、`dockerfile: backend/Dockerfile`；
+- `depends_on` 只等待 backend 健康；
+- `NAME_MODE=api`：SSR 不需要静态目录，避免容器内创建已废弃的 `frontend/out`；
+- `NAME_DATABASE_PATH=/app/data/namer.db`：数据库必须落在挂载卷内；
+- `NAME_SERVER_HOST=0.0.0.0`：默认 `localhost` 会导致 nginx 502；
+- 所有配置环境变量使用 `NAME_` 前缀（viper `AutomaticEnv`）。
 
-**热重载支持:**
-```yaml
-backend:
-  volumes:
-    - ./backend:/app          # 源码挂载
-    - /app/tmp                # 避免覆盖容器内编译产物
-  command: air -c .air.toml   # Go 热重载
+### 开发环境（`docker-compose.dev.yml`）
 
-frontend:
-  volumes:
-    - ./frontend:/app
-    - /app/node_modules       # 保护依赖目录
-    - /app/.next              # 保护构建缓存
-  command: pnpm run dev       # Next.js 热重载
-```
-
-**启动开发环境:**
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+  --env-file .env.development up -d
 ```
+
+- 使用 builder 阶段镜像（含 Go 工具链）容器内 `go run` 运行；
+- 源码挂载 `./backend:/app`，字库挂载 `./data:/app/data`；
+- `CONFIG_DIR=/app`：直接读取源码目录下的 `backend/application.yml`；
+- 已无 `frontend` 服务与 `:3000` 端口。
 
 ---
 
-## 构建与部署流程
+## 构建与部署
 
-### 1. 本地开发构建
-
-```bash
-# 后端
-cd backend
-docker build -t namer-backend:dev .
-
-# 前端
-cd frontend
-docker build -t namer-frontend:dev .
-
-# 验证镜像
-docker images | grep namer
-```
-
-### 2. 生产环境多架构构建推送
+### 一键部署（推荐）
 
 ```bash
-# 创建 buildx 构建器 (首次)
-docker buildx create --name multiarch --use --bootstrap
-
-# 后端多架构构建推送
-docker buildx build \
-  --platform linux/amd64,linux/arm64 \
-  -t your-registry.com/namer-backend:v1.0.0 \
-  -t your-registry.com/namer-backend:latest \
-  --push \
-  ./backend
-
-# 前端多架构构建推送
-docker buildx build \
-  --platform linux/amd64,linux/arm64 \
-  -t your-registry.com/namer-frontend:v1.0.0 \
-  -t your-registry.com/namer-frontend:latest \
-  --push \
-  ./frontend
+./deploy.sh
 ```
 
-### 3. 一键部署脚本
+脚本行为：检查文件 → 备份 `/data/namer/backend/data` 与 `config` →
+`docker compose up -d --build --remove-orphans` → 轮询
+`/healthz`、`/readyz`、`/` → 失败自动回滚。
+
+### 手动部署
 
 ```bash
-#!/bin/bash
-# deploy.sh
-set -e
+# 生产环境变量（从 .env.example 复制后修改）
+cp .env.example .env.production
 
-VERSION=${1:-latest}
-REGISTRY=${2:-your-registry.com}
+# 构建并启动
+docker compose --env-file .env.production up -d --build
 
-echo "🚀 部署版本: $VERSION"
-
-# 1. 拉取最新镜像
-docker compose pull
-
-# 2. 数据库迁移 (如需要)
-# docker compose run --rm backend ./namer-server migrate
-
-# 3. 滚动重启 (零停机)
-docker compose up -d --remove-orphans
-
-# 4. 健康检查等待
-echo "⏳ 等待服务就绪..."
-sleep 10
-
-# 5. 验证部署
-curl -f http://localhost/healthz || exit 1
-curl -f http://localhost/api/healthz || exit 1
-
-echo "✅ 部署成功: $VERSION"
+# 验证
+curl -f http://localhost/healthz
+curl -f http://localhost/readyz
+curl -f http://localhost/ | head
 ```
 
-**使用方法:**
+### 只重建后端
+
 ```bash
-chmod +x deploy.sh
-./deploy.sh v1.2.0 your-registry.com
+docker compose --env-file .env.production up -d --build backend
 ```
 
-### 4. CI/CD 集成 (GitHub Actions)
+### 镜像分发（可选）
 
-```yaml
-# .github/workflows/deploy.yml
-name: Deploy to Production
-
-on:
-  push:
-    tags: ['v*']
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Login to Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ secrets.REGISTRY_URL }}
-          username: ${{ secrets.REGISTRY_USER }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
-      
-      - name: Build and Push Backend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ secrets.REGISTRY_URL }}/namer-backend:${{ github.ref_name }}
-            ${{ secrets.REGISTRY_URL }}/namer-backend:latest
-      
-      - name: Build and Push Frontend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ secrets.REGISTRY_URL }}/namer-frontend:${{ github.ref_name }}
-            ${{ secrets.REGISTRY_URL }}/namer-frontend:latest
-      
-      - name: Deploy to Server
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            cd /opt/namer
-            ./deploy.sh ${{ github.ref_name }} ${{ secrets.REGISTRY_URL }}
-```
+若采用「构建机推镜像、服务器拉镜像」模式，请自行在 compose 中增加
+`image:` 并用 `docker buildx build --platform linux/amd64,linux/arm64`
+推送。注意构建上下文仍必须是仓库根。
 
 ---
 
-## 环境变量配置
+## 环境变量
 
-### 生产环境 (`.env.production`)
+`.env.example`（生产）：
 
 ```bash
-# ===== 通用 =====
 COMPOSE_PROJECT_NAME=namer
 TZ=Asia/Shanghai
 
-# ===== 后端 =====
 GIN_MODE=release
 PORT=8080
 DATA_DIR=/app/data
 LOG_LEVEL=info
 LOG_DIR=/app/logs
-
-# 数据库 (SQLite 默认，可选 PostgreSQL)
-# DSN=postgres://namer:password@postgres:5432/namer?sslmode=disable
-
-# Redis (可选，用于缓存/会话)
-# REDIS_ADDR=redis:6379
-# REDIS_PASSWORD=
-# REDIS_DB=0
-
-# 邮件/通知 (可选)
-# SMTP_HOST=smtp.example.com
-# SMTP_PORT=587
-# SMTP_USER=namer@example.com
-# SMTP_PASSWORD=
-
-# ===== 前端 =====
-# NEXT_PUBLIC_API_URL 为构建期变量（frontend Dockerfile ARG + compose
-# build.args 注入，静态导出烘焙进产物 JS）；留空走同源推导（推荐），
-# 跨域 API 才需要完整前缀（含 /api）
-# NEXT_PUBLIC_API_URL=https://api.your-domain.com/api
-
-# 注：JWT_SECRET / JWT_EXPIRE 与 NGINX_SSL_EMAIL / NGINX_DOMAIN 为历史死
-# 配置，2026.10.21 清理：后端零鉴权（docs/29 B14），公网须在网关层做访问控制。
 ```
 
-### 开发环境 (`.env.development`)
+- `PORT` / `LOG_LEVEL` / `LOG_DIR` / `DATA_DIR` 由 compose 转成 `NAME_*` 传给后端；
+- `NAME_DATABASE_PATH` 固定为 `/app/data/namer.db`，不要改到容器可写层；
+- 不再有 `NEXT_PUBLIC_*` 构建期变量。
 
-```bash
-COMPOSE_PROJECT_NAME=namer-dev
-GIN_MODE=debug
-PORT=8080
-DATA_DIR=/app/data
-LOG_LEVEL=debug
+---
 
-# dev（next dev）运行时 env 生效；prod 静态导出必须构建期注入
-NEXT_PUBLIC_API_URL=http://localhost:8080/api
+## Nginx 反向代理
+
+主配置：`nginx/nginx.conf`
+
+| 路径 | 行为 |
+| --- | --- |
+| `/api/` | 代理 backend，100 r/s，突发 200 |
+| `/api/names/generate` | 生成接口单独限流 10 r/min |
+| `/assets/` | 代理 backend 的自托管 Tailwind CSS，不记访问日志 |
+| `/healthz`、`/readyz` | 代理 backend，5s 超时，不记日志 |
+| `/ws` | WebSocket 升级 |
+| `/` | SSR 页面，代理 backend |
+| 其他 | HTTP→HTTPS 跳转、ACME、隐藏文件拒绝 |
+
+安全头与 CSP：
+
+```nginx
+script-src 'self' 'unsafe-inline';
+style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+font-src 'self' data: https://fonts.gstatic.com;
 ```
 
-**使用方式:**
-```bash
-# 生产环境
-docker compose --env-file .env.production up -d
+- Tailwind 已自托管，CSP 不再放行 CDN，也不再需要 `'unsafe-eval'`；
+- 字体仍从 Google Fonts 外链，若需完全离线，需改为本地字体并同步收紧 CSP。
 
-# 开发环境
-docker compose --env-file .env.development -f docker-compose.yml -f docker-compose.dev.yml up -d
+### 证书自动续期（Certbot）
+
+```bash
+docker run --rm -it \
+  -v /data/certbot/conf:/etc/letsencrypt \
+  -v /data/certbot/www:/var/www/certbot \
+  certbot/certbot certonly --webroot \
+  --webroot-path=/var/www/certbot \
+  -d your-domain.com -d www.your-domain.com \
+  --email admin@your-domain.com --agree-tos --no-eff-email
+
+# 每日续期
+0 3 * * * docker run --rm -v /data/certbot/conf:/etc/letsencrypt \
+  -v /data/certbot/www:/var/www/certbot \
+  certbot/certbot renew --quiet
 ```
 
 ---
 
-## 局域网部署（无域名 / 内网虚拟机，如 192.168.10.180）
+## 局域网部署
 
-主 `nginx.conf` 绑定 `your-domain.com` 且强制 Let's Encrypt 证书路径——在无域名、
-无证书的内网虚拟机上，nginx 容器会因 `cannot load certificate` 启动崩溃循环。
-此场景使用局域网变体：
+### HTTP（IP 直访）
 
 ```bash
-# 同一 compose 主文件叠加 lan 变体（仅覆盖 nginx 配置挂载）
 docker compose --env-file .env.production \
   -f docker-compose.yml -f docker-compose.lan.yml up -d --build
 ```
 
-**差异点**（`nginx/nginx-lan.conf`）：
-- 纯 HTTP :80，`server_name _` + `default_server` → 支持 **IP 直访**
-- 无 SSL/证书/ACME 路径/HSTS（内网明文可接受；如需加密自行换证书形态）
-- 生成接口限流放宽为 30r/min
+- 纯 HTTP :80，`server_name _` + `default_server`；
+- 无证书/ACME/HSTS；
+- 页面、API、`/assets/` 全部反代 backend；
+- 只有 nginx 发布宿主端口，backend 8080 仅在容器网络内。
 
-**访问方式**（宿主浏览器 → 虚拟机）：
+访问：
+
 ```text
-页面        http://<虚拟机IP>/            ← 唯一入口，nginx :80
-API         http://<虚拟机IP>/api/...     ← nginx 反代 backend:8080
-探活        http://<虚拟机IP>/healthz-backend
+页面   http://<虚拟机IP>/
+API    http://<虚拟机IP>/api/v1/...
+探活   http://<虚拟机IP>/healthz
+就绪   http://<虚拟机IP>/readyz
 ```
 
-> ⚠ 三个服务中**只有 nginx 发布宿主端口（80/443）**；backend 8080、frontend
-> 3000 仅在内部网络互通，浏览器**无法**直接访问 `IP:8080` / `IP:3000`。
-> `localhost:8080` 仅 dev 编排（docker-compose.dev.yml）且只在虚拟机本机成立。
-
-Windows 宿主机上浏览器地址栏输入 `http://192.168.10.180/` 即可（确认虚拟机
-防火墙放行 80：`sudo ufw allow 80/tcp` 或 firewalld `--add-service=http`）。
-
-### 局域网 HTTPS（自签名证书，可选）
-
-nginx 支持自签名证书——TLS 终结不关心签发者，差别仅在浏览器提示「不受信任」。
-生成证书（**SAN 必须含真实 IP**，现代浏览器只认 SAN 不认 CN）：
+### HTTPS（自签名）
 
 ```bash
 mkdir -p nginx/lan-certs
@@ -391,287 +270,151 @@ docker compose --env-file .env.production \
   -f docker-compose.yml -f docker-compose.lan-https.yml up -d --build
 ```
 
-- 访问 `https://192.168.10.180/`：首次提示证书不受信任 → 点「高级/继续访问」；
-  或把 `server.crt` 导入 Windows「受信任的根证书颁发机构」消除警告
-- `:80` 自动 301 跳转 `:443`；探活 `http://…/healthz` 两个端口都在
-- 证书文件按 `.gitignore`（`*.crt/*.key`）设计**不入 Git**；换机重生成即可
-- 需要域名+真证书时回退主 `nginx.conf`（Let's Encrypt 形态）
-
----
-
-## Nginx 反向代理配置
-
-### 核心功能
-- **SSL 终结**: Let's Encrypt 证书自动续期
-- **HTTP → HTTPS 强制跳转**
-- **API 代理**: `/api/*` → `backend:8080`
-- **WebSocket 支持**: `/ws` 升级协议
-- **静态资源缓存**: `/_next/static/*` 缓存 1 年
-- **安全头**: CSP、HSTS、X-Frame-Options 等
-- **限流**: API 限流 (可选)
-
-### 证书自动续期 (Certbot)
-
-```bash
-# 手动申请证书
-docker run --rm -it \
-  -v ./certbot/conf:/etc/letsencrypt \
-  -v ./certbot/www:/var/www/certbot \
-  certbot/certbot certonly --webroot \
-  --webroot-path=/var/www/certbot \
-  -d your-domain.com -d www.your-domain.com \
-  --email admin@your-domain.com --agree-tos --no-eff-email
-
-# 自动续期 (cron)
-0 3 * * * docker run --rm -v ./certbot/conf:/etc/letsencrypt -v ./certbot/www:/var/www/certbot certbot/certbot renew --quiet
-```
+证书文件不入 Git；换机后重新生成即可。
 
 ---
 
 ## 常用运维命令
 
-### 服务管理
 ```bash
-# 启动/停止/重启
-docker compose up -d                    # 后台启动
-docker compose down                     # 停止并移除容器
-docker compose restart backend          # 重启单个服务
-docker compose up -d --scale backend=2  # 扩容 (需共享存储)
+# 状态与日志
+docker compose ps
+docker compose logs -f backend --tail=200
+docker compose logs -f nginx --tail=100
 
-# 查看状态
-docker compose ps                       # 服务状态
-docker compose ps -a                    # 包含停止的容器
-```
+# 重启 / 重建
+docker compose restart backend
+docker compose --env-file .env.production up -d --build backend
 
-### 日志查看
-```bash
-# 实时日志
-docker compose logs -f backend --tail=100
-docker compose logs -f frontend --tail=100
-docker compose logs -f nginx --tail=50
-
-# 查看特定时间范围
-docker compose logs --since="2024-01-15T10:00:00" backend
-
-# 导出日志
-docker compose logs backend > backend_$(date +%Y%m%d).log
-```
-
-### 容器调试
-```bash
-# 进入容器 Shell
+# 进入容器
 docker compose exec backend sh
-docker compose exec frontend sh
 docker compose exec nginx sh
 
-# 查看进程
-docker compose top backend
-
-# 查看资源使用
+# 资源占用
 docker stats --no-stream
 ```
 
 ### 数据备份与恢复
 
 ```bash
-# 备份 SQLite 数据库 (含 WAL/SHM)
-docker compose exec backend tar czf - /app/data | gzip > backup_$(date +%Y%m%d_%H%M%S).tar.gz
+# 备份（宿主路径与 compose 卷一致）
+tar czf namer-data-$(date +%Y%m%d).tar.gz -C /data/namer/backend data config
 
-# 备份配置文件
-tar czf config_backup_$(date +%Y%m%d).tar.gz backend/config frontend/public
-
-# 恢复数据
-gunzip -c backup_20240115_120000.tar.gz | docker compose exec -T backend tar xzf - -C /
-docker compose restart backend
+# 恢复
+docker compose down
+tar xzf namer-data-20261026.tar.gz -C /data/namer/backend
+docker compose --env-file .env.production up -d
 ```
 
-### 版本回滚
-
-```bash
-# 查看镜像历史
-docker images your-registry.com/namer-backend
-
-# 标记回滚版本
-docker tag your-registry.com/namer-backend:v1.1.0 your-registry.com/namer-backend:latest
-
-# 重新部署
-docker compose up -d backend
-
-# 验证
-curl -f http://localhost/api/healthz
-```
-
-### 清理资源
-
-```bash
-# 清理未使用镜像/容器/网络
-docker system prune -f
-
-# 深度清理 (含卷)
-docker system prune -af --volumes
-
-# 清理构建缓存
-docker builder prune -af
-```
+SQLite 使用 WAL，备份时建议先停后端，或同时打包
+`namer.db`、`namer.db-wal`、`namer.db-shm`。
 
 ---
 
 ## 故障排查
 
-### 1. 后端启动失败
+### 1. 构建失败：`COPY /app/data: not found`
 
-**现象**: `backend` 容器反复重启
+构建上下文不是仓库根。使用：
 
-**排查步骤:**
 ```bash
-# 1. 查看日志
-docker compose logs backend --tail=50
-
-# 2. 常见原因:
-# - 端口冲突: lsof -i :8080
-# - 数据目录权限: ls -la backend/data/
-# - 配置文件缺失: ls backend/config/
-# - 数据库锁定: 确保无其他进程占用 SQLite 文件
-
-# 3. 进入容器调试
-docker compose run --rm backend sh -c "ls -la /app/data && ./namer-server -version"
+docker build -f backend/Dockerfile .
+# 或
+docker compose build backend
 ```
 
-### 2. 前端构建失败
+### 2. 后端反复重启
 
-**现象**: `frontend` 构建阶段报错
-
-**排查步骤:**
 ```bash
-# 1. 查看构建日志
-docker compose logs frontend --tail=100
-
-# 2. 常见原因:
-# - 依赖安装失败: 检查 pnpm-lock.yaml 是否提交
-# - 类型检查失败: 运行 pnpm run lint / pnpm run typecheck
-# - 内存不足: 增加 Docker 内存限制 (Settings > Resources > Memory > 4GB)
-
-# 3. 本地验证构建
-cd frontend && pnpm run build
+docker compose logs backend --tail=100
 ```
 
-### 3. Nginx 代理错误
+重点检查：
 
-**现象**: 502 Bad Gateway / 504 Gateway Timeout
+- `/app/data` 权限：宿主目录属主应为 UID 1000；
+- `/app/config/application.yml` 是否存在（入口脚本会播种）；
+- SQLite 是否可写；
+- 物料缺失会 **拒绝启动**（fail-fast），不会静默返回空结果。
 
-**排查步骤:**
+### 3. 启动后收藏/历史为空
+
+- 确认 `NAME_DATABASE_PATH=/app/data/namer.db` 且 `/app/data` 已挂卷；
+- 显式配置 `database.driver=memory` 时数据只在内存，重启即丢（日志会警告）；
+- SQLite 打开失败现在会直接拒绝启动，不再静默降级。
+
+### 4. Nginx 502 / 404
+
 ```bash
-# 1. 检查上游服务
-docker compose ps
-curl -f http://backend:8080/healthz  # 在 nginx 容器内测试
-
-# 2. 检查 Nginx 配置语法
 docker compose exec nginx nginx -t
-
-# 3. 查看 Nginx 错误日志
-docker compose logs nginx | grep error
-
-# 4. 常见问题:
-# - upstream 名称拼写错误 (backend vs frontend)
-# - 端口不匹配 (8080 vs 3000)
-# - 网络不通 (需同一 docker network)
+docker compose exec nginx wget -qO- http://backend:8080/healthz
 ```
 
-### 4. 数据库锁定/损坏
+常见原因：
 
-**现象**: `database is locked` / `disk I/O error`
+- 后端未监听 `0.0.0.0`；
+- nginx 配置仍残留 `upstream frontend`（当前版本必须只反代 backend）；
+- backend 健康检查未通过导致 nginx 未启动。
 
-**排查步骤:**
+### 5. Tailwind 样式缺失
+
 ```bash
-# 1. 检查 WAL 模式文件
-ls -la backend/data/
-# 应存在: namer.db, namer.db-wal, namer.db-shm
+# 模板新增 Tailwind 类后重建 CSS（仓库根执行）
+npx --yes tailwindcss@3.4.3 \
+  -c scripts/tailwind.config.js \
+  -i scripts/tailwind.input.css \
+  -o backend/internal/infrastructure/web/static/tailwind.css --minify
 
-# 2. 强制清理锁文件 (仅在确无其他进程时)
-docker compose down
-rm -f backend/data/namer.db-wal backend/data/namer.db-shm
-docker compose up -d backend
-
-# 3. 检查磁盘空间
-df -h /opt/namer/backend/data
-
-# 4. SQLite 完整性检查
-docker compose exec backend sqlite3 /app/data/namer.db "PRAGMA integrity_check;"
+# 确认页面引用的是自托管地址
+curl -I http://localhost/assets/tailwind.css
 ```
 
-### 5. SSL 证书问题
+### 6. SQLite 锁 / I/O 错误
 
-**现象**: 浏览器提示证书无效 / 过期
-
-**排查步骤:**
 ```bash
-# 1. 检查证书有效期
-docker compose exec nginx openssl x509 -in /etc/letsencrypt/live/your-domain.com/fullchain.pem -text -noout | grep "Not After"
+# 停服务后检查卷内文件
+ls -la /data/namer/backend/data
+# 应存在 namer.db、namer.db-wal、namer.db-shm
+```
 
-# 2. 手动续期
-docker run --rm -it \
-  -v $(pwd)/certbot/conf:/etc/letsencrypt \
-  -v $(pwd)/certbot/www:/var/www/certbot \
-  certbot/certbot renew --force-renewal
+不要在容器内用 `sqlite3` CLI（运行镜像未安装）；可在宿主机对卷内数据库执行
+完整性检查：
 
-# 3. 重新加载 Nginx
+```bash
+sqlite3 /data/namer/backend/data/namer.db "PRAGMA integrity_check;"
+```
+
+### 7. SSL 证书问题
+
+```bash
+docker compose exec nginx openssl x509 \
+  -in /etc/letsencrypt/live/your-domain.com/fullchain.pem -text -noout | grep "Not After"
 docker compose exec nginx nginx -s reload
-```
-
-### 6. 性能问题
-
-**现象**: 响应缓慢 / CPU/内存占用高
-
-**排查步骤:**
-```bash
-# 1. 资源监控
-docker stats --no-stream
-
-# 2. Go pprof 分析 (后端)
-# 开启: 在代码中 import _ "net/http/pprof"
-# 访问: http://localhost:8080/debug/pprof/
-go tool pprof http://localhost:8080/debug/pprof/profile?seconds=30
-
-# 3. Node.js 性能分析 (前端)
-# 启动时添加: NODE_OPTIONS="--inspect=0.0.0.0:9229"
-# Chrome DevTools 连接: chrome://inspect
-
-# 4. 数据库慢查询
-# SQLite: EXPLAIN QUERY PLAN SELECT ...
-# 添加索引优化
 ```
 
 ---
 
-## 附录：完整文件清单
+## 文件清单
 
 ```
-项目根目录/
-├── Docker部署指南.md              # 本文档
-├── docker-compose.yml             # 生产环境编排
-├── docker-compose.dev.yml         # 开发环境编排
-├── .env.production                # 生产环境变量 (gitignore)
-├── .env.development               # 开发环境变量
-├── deploy.sh                      # 一键部署脚本
+项目根/
+├── .dockerignore                 # 构建上下文规则（保留 backend/ 与 data/）
+├── docker-compose.yml            # 生产编排：nginx + backend
+├── docker-compose.dev.yml        # 开发编排：backend 热重载
+├── docker-compose.lan.yml        # 局域网 HTTP 变体
+├── docker-compose.lan-https.yml  # 局域网 HTTPS 变体
+├── deploy.sh                     # 一键部署
+├── .env.example
+├── data/                         # 字库（构建时烘焙为 /app/data-seed）
 ├── backend/
-│   ├── Dockerfile                 # 后端多阶段构建
-│   ├── .dockerignore              # 构建忽略文件
-│   ├── cmd/server/main.go         # 服务入口
-│   ├── config/                    # 配置文件目录
-│   └── data/                      # SQLite 数据目录 (运行时挂载)
-├── frontend/
-│   ├── Dockerfile                 # 前端多阶段构建
-│   ├── .dockerignore              # 构建忽略文件
-│   ├── next.config.js             # Next.js 配置 (output: standalone)
-│   ├── package.json
-│   └── pnpm-lock.yaml
+│   ├── Dockerfile                # 需仓库根构建上下文
+│   ├── docker-entrypoint.sh      # 字库/配置播种
+│   ├── application.yml           # 本地配置（容器由环境变量覆盖）
+│   └── internal/infrastructure/web/static/tailwind.css
 └── nginx/
-    ├── nginx.conf                 # Nginx 主配置
-    ├── conf.d/
-    │   └── default.conf           # 站点配置
-    └── certbot/                   # Let's Encrypt 证书目录
-        ├── conf/
-        └── www/
+    ├── nginx.conf                # 公网 HTTPS 主配置
+    ├── nginx-lan.conf            # 局域网 HTTP
+    ├── nginx-lan-https.conf      # 局域网 HTTPS
+    └── conf.d/                   # 站点扩展（compose 挂载）
 ```
 
 ---
@@ -679,9 +422,10 @@ go tool pprof http://localhost:8080/debug/pprof/profile?seconds=30
 ## 版本历史
 
 | 版本 | 日期 | 变更说明 |
-|------|------|----------|
-| 1.0.0 | 2024-09-16 | 初始版本：完整 Docker 构建部署指南 |
+| --- | --- | --- |
+| 2026.10.26 | 2026-10-26 | SSR 全栈部署：移除 frontend 容器、构建上下文改为仓库根、CSP 收紧、SQLite 失败 fail-fast、自托管 Tailwind |
+| 1.0.0 | 2024-09-16 | 初始版本（Next.js 前后端分离，已废弃） |
 
 ---
 
-*文档维护: 请在每次部署流程变更时同步更新本文档*
+*文档维护：每次部署链路变更时同步更新本文档。*

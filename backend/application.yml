@@ -6,11 +6,12 @@ server:
   port: 8080
   read_header_timeout: "10s"  # 防止慢速客户端攻击
 
-# 运行模式: backend 或 all
-mode: "all"
+# 运行模式: api = 仅后端（SSR 页面由 Go 模板直接渲染，无静态目录）；
+# all = 历史兼容模式，会额外检查/创建已废弃的 frontend 静态目录。
+mode: "api"
 
-# 静态文件目录（前端构建输出目录）
-static: ""  # 默认为 frontend/out
+# 静态文件目录（仅 all 模式使用，已随前端容器一并废弃）
+static: ""
 
 # 日志配置
 log:
@@ -24,11 +25,11 @@ log:
 # 数据库配置
 database:
   driver: "sqlite"      # 数据库驱动: sqlite, memory
-  # ★ 单一权威库（docs/36 双库分叉治理）：必须使用绝对路径，避免 server 从不同
-  # cwd 启动（backend/ 或仓库根）时各自生成 ./namer.db 造成双库分叉。
-  # 本机权威库为 backend/namer.db（已清理 words/data_meta 孤儿表）。
-  # 容器部署由 NAME_DATABASE_PATH 环境变量覆盖为 /app/data/namer.db（挂卷），无需改动此处。
-  path: "D:/19-Training/learngo/name/backend/namer.db" # SQLite 数据库绝对路径
+  # ★ 单一权威库（docs/36 双库分叉治理）：本机固定使用 backend/namer.db，
+  # 请在 backend/ 目录启动服务；从仓库根启动会落到另一处 ./namer.db。
+  # 容器部署由 NAME_DATABASE_PATH 环境变量覆盖为 /app/data/namer.db（挂卷），
+  # 不读取此相对路径，故不要在这里写死本机的绝对路径。
+  path: "namer.db" # SQLite 数据库（相对 backend/，容器内由环境变量覆盖）
 
 # 限流配置
 rate_limit:

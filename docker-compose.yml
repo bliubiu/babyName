@@ -23,8 +23,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-      frontend:
-        condition: service_healthy
     networks:
       - namer-network
     healthcheck:
@@ -39,11 +37,14 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # ===== 后端服务 (Go Gin) =====
+  # ===== 后端服务 (Go Gin + SSR 全栈) =====
+  # SSR 页面与 JSON API 由同一容器提供，不再有独立前端容器。
+  # 构建上下文为仓库根：镜像需要仓库根 data/ 下的字库作为 data-seed
+  # （docs/29 B12 播种机制），./backend 上下文拿不到它。
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
       args:
         - GOPROXY=https://goproxy.cn,direct
     container_name: namer-backend
@@ -63,9 +64,9 @@ services:
       # 容器外（含 nginx）根本连不上，表现为「容器 healthy 但 502」。
       - NAME_SERVER_HOST=0.0.0.0
       - NAME_SERVER_PORT=${PORT:-8080}
-      # mode=api：本拓扑下静态页面由 frontend 容器（nginx 静态服务）提供，
-      # 后端只出 API。application.yml 种子里 mode=all 会让后端在容器内
-      # mkdir 静态目录——非 root 必然失败 → Fatal 重启循环（docs/30 §六）。
+      # mode=api：页面由后端 SSR 模板直接渲染，无需任何静态目录。
+      # 保留显式设置，避免宿主 config 被改成 all 后触发已废弃的静态目录
+      # 检查（容器内 mkdir 失败 → Fatal 重启循环，docs/30 §六）。
       - NAME_MODE=api
       # 日志文件必须落在挂载卷内，否则写容器可写层，重启/重建即丢。
       # 语义为「日志目录」：目录下按天生成 namer-YYYYMMDD.log（docs/36 日志路径锚定）。
@@ -109,40 +110,6 @@ services:
         reservations:
           cpus: '0.25'
           memory: 128M
-
-  # ===== 前端服务 =====
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      # NEXT_PUBLIC_* 必须在构建期注入（output:'export' 静态导出烘焙进产物），
-      # 写在 environment 里是死配置（2026.10.21 死配置清理）。
-      # 留空 → 前端走同源推导（nginx 外层反代 /api，docs/08）。
-      args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
-    container_name: namer-frontend
-    restart: unless-stopped
-    networks:
-      - namer-network
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-      start_period: 15s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 64M
 
   # ===== 可选: Redis 缓存/会话 =====
   # redis:

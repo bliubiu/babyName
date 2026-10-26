@@ -7,8 +7,9 @@
 # ===== 构建阶段 =====
 FROM golang:1.25.10-alpine AS builder
 
-# 配置 Go 代理（使用国内镜像加速下载）
-ENV GOPROXY=https://goproxy.cn,direct
+# 配置 Go 代理（使用国内镜像加速下载；compose build.args 可覆盖）
+ARG GOPROXY=https://goproxy.cn,direct
+ENV GOPROXY=${GOPROXY}
 ENV GOSUMDB=sum.golang.google.cn
 
 # 安装构建依赖
@@ -16,12 +17,16 @@ RUN apk add --no-cache git make gcc musl-dev ca-certificates tzdata
 
 WORKDIR /app
 
+# 构建上下文是仓库根（compose: context: .），故路径均带 backend/ 前缀；
+# 根 data/ 下的字库需一并进入镜像，供运行阶段烘焙为 /app/data-seed。
+#
 # 利用缓存层：先复制依赖文件下载模块
-COPY go.mod go.sum ./
+COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
-# 复制源码
-COPY . .
+# 复制源码与内置字库
+COPY backend/ ./
+COPY data ./data
 
 # 构建：静态链接、精简二进制
 # - CGO_ENABLED=0: 禁用 CGO，生成纯 Go 静态二进制
@@ -74,7 +79,7 @@ COPY --from=builder /app/application.yml ./config-seed/application.yml
 COPY --from=builder /app/data ./data-seed
 
 # 复制启动脚本（负责播种字库）
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # 创建必要目录并赋权

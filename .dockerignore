@@ -1,0 +1,55 @@
+# 构建上下文为仓库根（docker-compose.yml: context: .）
+# 镜像只需要 backend/ 源码、backend/docker-entrypoint.sh 与根 data/ 字库。
+
+.git
+.gitignore
+.github
+.agents
+.codegraph
+.vscode
+.idea
+*.swp
+*.swo
+
+# 已废弃的前端与文档、部署辅助文件
+frontend/
+docs/
+nginx/
+scripts/
+deploy.sh
+docker-compose*.yml
+.env
+.env.*
+*.md
+
+# 构建产物与日志
+*.exe
+*.out
+*.test
+namer-server
+namer-cli
+*.prof
+coverage.out
+coverage.html
+backend/logs/
+logs/
+*.log
+backend/tmp/
+tmp/
+backend/*.db
+backend/*.db-wal
+backend/*.db-shm
+backend/*.sqlite*
+backend/namer.db
+backend/vendor/
+
+# 字库原料：data/raw 仅保留运行时真正读取的康熙笔画 CSV
+# （dataloader → hanzi.LoadKangxiStrokesFromCSV），其余语料/zip 不进镜像。
+data/raw/*
+!data/raw/kangxi-strokecount.csv
+
+# 4 个姓名统计文件仅由 cmd/build_namestats 离线产出，运行时不读取（docs/40）。
+data/full_name_stats.json
+data/given_name_stats.json
+data/name_gender_stats.json
+data/surname_stats.json

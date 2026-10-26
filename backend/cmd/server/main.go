@@ -33,7 +33,7 @@ import (
 var (
 	port         = flag.Int("port", 0, "Server port (覆盖配置文件)")
 	host         = flag.String("host", "", "Server host (覆盖配置文件)")
-	mode         = flag.String("mode", "", "Run mode: backend or all (覆盖配置文件)")
+	mode         = flag.String("mode", "", "Run mode: api 或 all（SSR 默认 api，覆盖配置文件）")
 	static       = flag.String("static", "", "Static files directory (覆盖配置文件)")
 	help         = flag.Bool("help", false, "Show help")
 	logPath      = flag.String("log", "", "Log dir (覆盖配置文件；空 = 项目根/logs，文件名 namer-YYYYMMDD.log 按天)")
@@ -150,11 +150,17 @@ func main() {
 	// 让入口脚本与进程读同一个目录。
 	dataDir := cwdDataDir(cwd)
 
-	// 1. 初始化数据存储 — 优先 SQLite 持久化，回退到内存存储
+	// 1. 初始化数据存储 — 按配置选择 SQLite（默认）或内存；SQLite 打开失败
+	// 一律拒绝启动，绝不静默降级（否则重启后收藏/历史全部丢失，且 readyz
+	// 仍会通过——监控看不到持久化已失效）。
 	//
 	// 顺序说明：物料统一从 SQLite 读取（docs/31 ADR-008），因此必须先开库，
 	// 再把库内物料灌进内存索引。initStore 不会写物料表（只建表与用户数据）。
-	store := initStore(cfg.Database.Path, dataDir)
+	store, err := initStore(cfg.Database.Driver, cfg.Database.Path, dataDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\n错误: 数据存储初始化失败，服务拒绝启动\n  原因: %v\n\n", err)
+		logger.Fatal("数据存储初始化失败，服务拒绝启动", logger.ErrField(err))
+	}
 
 	// 2. 加载传统文化物料（以 SQLite 物料库为唯一真源，docs/31 ADR-008）
 	//
@@ -253,13 +259,21 @@ func printHelp() {
 
 // --- 数据存储 ---
 
-func initStore(dbPath, dataDir string) database.Store {
-	if dbStore, err := sqlite.NewStore(dbPath, dataDir); err == nil {
+func initStore(driver, dbPath, dataDir string) (database.Store, error) {
+	switch driver {
+	case "", "sqlite":
+		dbStore, err := sqlite.NewStore(dbPath, dataDir)
+		if err != nil {
+			return nil, fmt.Errorf("打开 SQLite 数据库失败（%s）: %w", dbPath, err)
+		}
 		logger.Info("Using SQLite store", logger.String("db", dbPath))
-		return dbStore
-	} else {
-		logger.Warn("Failed to open SQLite, falling back to memory store", logger.ErrField(err))
-		return memory.NewStore()
+		return dbStore, nil
+	case "memory":
+		// 显式选择内存存储时允许启动，但必须让运维明确知道重启即丢数据。
+		logger.Warn("使用内存存储：服务重启后收藏/历史将全部丢失", logger.String("driver", driver))
+		return memory.NewStore(), nil
+	default:
+		return nil, fmt.Errorf("不支持的数据库驱动 %q（可选 sqlite、memory）", driver)
 	}
 }
 

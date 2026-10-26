@@ -1,6 +1,7 @@
 # backend/.dockerignore
 # ============================================================
-# 构建上下文忽略文件 - 减少构建上下文大小，加速构建
+# ⚠ 已不生效：Dockerfile 现要求仓库根构建上下文（需复制根 data/ 字库），
+#   实际忽略规则见仓库根 .dockerignore。保留本文件仅为旧命令兼容提示。
 # ============================================================
 
 # Git 相关
@@ -92,4 +93,10 @@ Thumbs.db
 # 其余继续排除以控制镜像体积。
 data/raw/*
 !data/raw/kangxi-strokecount.csv
+# 4 个姓名统计文件（约 32MB）仅由 cmd/build_namestats 离线产出，
+# 运行时不读取（见 docs/40），故不进镜像。
+data/full_name_stats.json
+data/given_name_stats.json
+data/name_gender_stats.json
+data/surname_stats.json
 !docker-entrypoint.sh
