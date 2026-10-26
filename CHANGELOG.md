@@ -5,6 +5,48 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.26.1]
+
+**收藏 / 历史按访客会话隔离：杜绝跨会话读取、按 ID 覆盖与越权删除**
+
+### ✨ New Features 新增功能
+- 【会话隔离】新增 `middleware.SessionID()` 全局中间件与 `EnsureSessionID`：按 `X-Session-ID` 头 → `nm_sid` cookie → 新建的顺序解析访客会话；非法值一律重新签发，绝不回落空串（防止命中原 `session_id=''` 的旧数据）；cookie 有效期 30 天，与生成结果的内存会话 TTL 解耦。
+- 【存储层】SQLite / 内存实现的 `history`、`favorites` 全部改为按 `session_id` 作用域读写；upsert 使用 `ON CONFLICT(id) DO UPDATE ... WHERE <table>.session_id = excluded.session_id` 并由 `RowsAffected` 拒绝对他人记录按 ID 覆盖；删除语句强制附带会话条件。
+- 【存量迁移】已有库在 `createTables` 后自动 `ALTER TABLE` 补齐 `session_id TEXT NOT NULL DEFAULT ''` 并建立会话索引；无归属的历史/收藏不再对任何会话可见（无法确定归属，宁可隐藏）。
+
+### 🐛 Bug Fixes 问题修复
+- 【收藏 / 历史】修复访客之间共享全部收藏与历史的问题：服务层、JSON API（`/api/v1/history|favorites`）、SSR 页面均以当前会话标识读写；SSR 提交收藏/落历史时强制使用 cookie 中的 sid，忽略客户端表单自带值。
+- 【越权删除】按 ID 删除他人收藏/历史不再生效（此前任意访客可删全站记录）。
+
+### 🧪 验证
+- 新增 `sqlite/store_session_isolation_test.go`：跨会话不可见、跨会话覆盖被拒、跨会话删除无效、同名收藏可在两会话并存、旧库迁移后无归属记录不可见。
+- 新增 web 接线测试：cookie/非法 cookie/历史自动落库的 sid 传递。
+- `gofmt` + `go build ./...` + `go vet ./...` + `go test -shuffle=on ./...` 全通过。
+
+## [2026.10.26.0]
+
+**固化入库源清单：物料清单成为唯一真源，`materials manifest` 可打印/校验；`word.json` 移出运行期 data 根目录**
+
+### ✨ New Features 新增功能
+- 【物料管线·清单固化】`schema.Definition` 新增 `Files []string` 多文件清单，classics 的 23 个 JSON 收敛到 `schema.ClassicsFiles`；新增 `Manifest()` / `AllSourceFiles()`，入库清单由 `schema.Definitions` 单一真源派生（docs/40）。
+- 【物料管线·CLI】新增 `materials manifest --data ./data [--check] [--json]`：按物料打印源文件与存在性；`--check` 在必需源文件缺失时以非 0 退出，供部署/CI 核对。
+- 【物料管线·导入】`classicsSourceFiles` 改为「清单 → 存在性过滤」，不再反向扫描目录，避免清单外 JSON 被静默多导、清单漏登记被静默少导。
+
+### 🐛 Bug Fixes 问题修复
+- 【物料管线·一致性】新增双向守护测试：`schema.ClassicsFiles` ⇄ `classicsFileCategory` 必须完全一致，非经典文件（word/hanzi/standard_chars/zodiac/curated_names）不得进入 classics 清单。
+
+### 🗑 Deprecated / 清理
+- 【数据目录】`data/word.json`（26.1 MiB）移入 `data/raw/word.json`：`words` 物料已退场，仅 `cmd/export_namer` 离线使用；`export_namer` 读取路径同步改为 `raw/word.json`，不再进入运行期入库清单与镜像（`.dockerignore` 已排除 `data/raw/*`）。
+- 【镜像瘦身】`.dockerignore` 显式排除 4 个仅离线使用的姓名统计文件（`full_name_stats.json`、`given_name_stats.json`、`name_gender_stats.json`、`surname_stats.json`，合计约 32 MiB），镜像不再携带。
+- 【原料清理】删除 `data/raw/corpus` 中与 ASCII 文件 SHA256 完全相同的两份 `（120W）` 语料副本，以及 9 个无代码引用的 `pinyin.*`、3 个 `shendiao*` 遗留文件，共 14 个文件 / 28.19 MiB；`build_namestats`、`build_frequency` 使用的 `Chinese_Names_Corpus_Gender_120W.txt` 保持不变。
+- 【原料清理】继续删除 `data/raw` 下无本地引用的字表中间产物与繁简参考表：`characters.csv/json/min.json/txt`、`fanti.txt`、`simplified.convert.json`、`traditional.convert.json`，共 7 个文件 / 287 KiB；`validate_namer.py` 仅从官方 URL 拉取同名数据，不依赖本地副本。
+- 【文档】新增 `docs/40-入库源清单与物料边界.md`，明确 33 个唯一入库文件、不导入清单与维护规则；更新 `docs/13` 中 word.json 路径说明。
+
+### 🧪 验证
+- `go test ./internal/materials/schema/`、`go test ./internal/infrastructure/database/sqlite/ -run 'ClassicsManifest|ClassicsSourceFiles'`。
+- `go run ./cmd/materials manifest --data ../data --check`：33 个唯一文件全部齐全。
+- `go run ./cmd/materials status --db ./namer.db`：12 类物料状态不变。
+
 ## [2026.10.25.1]
 
 **性能深挖：持久化写/响应序列化常驻基准落地；结论——并发瓶颈在引擎 CPU 而非持久化串行段**

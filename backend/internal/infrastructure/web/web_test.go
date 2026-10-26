@@ -52,22 +52,28 @@ func (m *mockNameService) ExploreNames(ctx context.Context, req *services.Explor
 }
 
 type mockHistoryService struct {
-	pageRecords []*services.HistoryRecord
-	pageTotal   int
-	pageErr     error
-	pageNum     int
-	pageLimit   int
+	pageRecords   []*services.HistoryRecord
+	pageTotal     int
+	pageErr       error
+	pageNum       int
+	pageLimit     int
+	lastSessionID string
+	savedRecord   *services.HistoryRecord
 }
 
 func (m *mockHistoryService) SaveHistory(ctx context.Context, record *services.HistoryRecord) (string, error) {
+	m.lastSessionID = record.SessionID
+	m.savedRecord = record
 	return "h1", nil
 }
 
-func (m *mockHistoryService) GetHistory(ctx context.Context) ([]*services.HistoryRecord, error) {
+func (m *mockHistoryService) GetHistory(ctx context.Context, sessionID string) ([]*services.HistoryRecord, error) {
+	m.lastSessionID = sessionID
 	return nil, nil
 }
 
-func (m *mockHistoryService) GetHistoryPage(ctx context.Context, page, limit int) ([]*services.HistoryRecord, int, error) {
+func (m *mockHistoryService) GetHistoryPage(ctx context.Context, sessionID string, page, limit int) ([]*services.HistoryRecord, int, error) {
+	m.lastSessionID = sessionID
 	m.pageNum = page
 	m.pageLimit = limit
 	if m.pageErr != nil {
@@ -76,11 +82,13 @@ func (m *mockHistoryService) GetHistoryPage(ctx context.Context, page, limit int
 	return m.pageRecords, m.pageTotal, nil
 }
 
-func (m *mockHistoryService) DeleteHistory(ctx context.Context, id string) error {
+func (m *mockHistoryService) DeleteHistory(ctx context.Context, sessionID, id string) error {
+	m.lastSessionID = sessionID
 	return nil
 }
 
-func (m *mockHistoryService) GetHistoryRecord(ctx context.Context, id string) (*services.HistoryRecord, error) {
+func (m *mockHistoryService) GetHistoryRecord(ctx context.Context, sessionID, id string) (*services.HistoryRecord, error) {
+	m.lastSessionID = sessionID
 	for _, rec := range m.pageRecords {
 		if rec != nil && rec.ID == id {
 			return rec, nil
@@ -90,16 +98,19 @@ func (m *mockHistoryService) GetHistoryRecord(ctx context.Context, id string) (*
 }
 
 type mockFavoriteService struct {
-	saveReq *services.FavoriteRecord
-	saveErr error
-	pageNum int
+	saveReq       *services.FavoriteRecord
+	saveErr       error
+	pageNum       int
+	lastSessionID string
 }
 
-func (m *mockFavoriteService) GetFavorites(ctx context.Context) ([]*services.FavoriteRecord, error) {
+func (m *mockFavoriteService) GetFavorites(ctx context.Context, sessionID string) ([]*services.FavoriteRecord, error) {
+	m.lastSessionID = sessionID
 	return nil, nil
 }
 
-func (m *mockFavoriteService) GetFavoritesPage(ctx context.Context, page, limit int) ([]*services.FavoriteRecord, int, error) {
+func (m *mockFavoriteService) GetFavoritesPage(ctx context.Context, sessionID string, page, limit int) ([]*services.FavoriteRecord, int, error) {
+	m.lastSessionID = sessionID
 	m.pageNum = page
 	if m.saveErr != nil && m.pageNum == -1 { // pageErr 复用在页错误场景
 		return nil, 0, m.saveErr
@@ -109,13 +120,15 @@ func (m *mockFavoriteService) GetFavoritesPage(ctx context.Context, page, limit 
 
 func (m *mockFavoriteService) SaveFavorite(ctx context.Context, record *services.FavoriteRecord) (string, error) {
 	m.saveReq = record
+	m.lastSessionID = record.SessionID
 	if m.saveErr != nil {
 		return "", m.saveErr
 	}
 	return "f1", nil
 }
 
-func (m *mockFavoriteService) DeleteFavorite(ctx context.Context, id string) error {
+func (m *mockFavoriteService) DeleteFavorite(ctx context.Context, sessionID, id string) error {
+	m.lastSessionID = sessionID
 	return nil
 }
 
@@ -607,6 +620,80 @@ func TestSession_容量上限(t *testing.T) {
 	h.sessMu.Unlock()
 	if size > sessionMaxEntries {
 		t.Fatalf("会话数 %d 超过上限 %d", size, sessionMaxEntries)
+	}
+}
+
+// TestFavorite_POST_会话标识来自Cookie 浏览器会话里的收藏写入必须带上同一 sid。
+func TestFavorite_POST_会话标识来自Cookie(t *testing.T) {
+	_, _, _, fav, r := setupT(t)
+	sid := "0123456789abcdef0123456789abcdef"
+
+	w := httptest.NewRecorder()
+	form := url.Values{"surname": {"王"}, "given_name": {"涵"}, "score": {"90"}}
+	req := httptest.NewRequest(http.MethodPost, "/favorites", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", "nm_sid="+sid)
+	r.ServeHTTP(w, req)
+
+	if fav.lastSessionID != sid {
+		t.Fatalf("收藏写入应使用 cookie 中的 sid，实得 %q", fav.lastSessionID)
+	}
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("期望 303，实得 %d", w.Code)
+	}
+}
+
+// TestHistory_会话标识来自Cookie 历史读取同样按 cookie 中的 sid 隔离。
+func TestHistory_会话标识来自Cookie(t *testing.T) {
+	_, _, hist, _, r := setupT(t)
+	sid := "0123456789abcdef0123456789abcdef"
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/history", nil)
+	req.Header.Set("Cookie", "nm_sid="+sid)
+	r.ServeHTTP(w, req)
+
+	if hist.lastSessionID != sid {
+		t.Fatalf("历史读取应使用 cookie 中的 sid，实得 %q", hist.lastSessionID)
+	}
+}
+
+// TestGenerate_历史记录归属当前会话 自动落历史时必须带上本次生成会话的 sid。
+func TestGenerate_历史记录归属当前会话(t *testing.T) {
+	_, _, hist, _, r := setupT(t)
+	w := doGenerate(t, r, validForm())
+	sid := sidCookieFor(w)
+	if sid == "" {
+		t.Fatal("生成后应签发 nm_sid cookie")
+	}
+	if hist.savedRecord == nil {
+		t.Fatal("生成后应自动写入历史")
+	}
+	if hist.savedRecord.SessionID != sid {
+		t.Fatalf("历史归属应为 %q，实得 %q", sid, hist.savedRecord.SessionID)
+	}
+}
+
+// TestSession_非法Cookie不复用 非法 sid 不得透传给服务层（避免命中原 session_id=”）。
+func TestSession_非法Cookie不复用(t *testing.T) {
+	_, _, _, fav, r := setupT(t)
+
+	w := httptest.NewRecorder()
+	form := url.Values{"surname": {"王"}, "given_name": {"涵"}, "score": {"90"}}
+	req := httptest.NewRequest(http.MethodPost, "/favorites", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", "nm_sid=bad sid!")
+	r.ServeHTTP(w, req)
+
+	sid := fav.lastSessionID
+	if sid == "bad sid!" || sid == "" {
+		t.Fatalf("非法 cookie 不应被复用，实得 %q", sid)
+	}
+	if len(sid) != 32 || strings.ToLower(sid) != sid {
+		t.Fatalf("应重新签发 32 位小写十六进制 sid，实得 %q", sid)
+	}
+	if sidCookieFor(w) != sid {
+		t.Fatalf("响应应回写新 sid，实得 cookie=%q", sidCookieFor(w))
 	}
 }
 

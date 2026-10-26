@@ -18,22 +18,24 @@ type NameServiceInterface interface {
 }
 
 // HistoryServiceInterface 历史记录服务接口
+//
+// 读/删均需传入当前访客的会话标识；实现层会校验标识格式并按会话过滤。
 type HistoryServiceInterface interface {
 	SaveHistory(ctx context.Context, record *HistoryRecord) (string, error)
-	GetHistory(ctx context.Context) ([]*HistoryRecord, error)
-	GetHistoryPage(ctx context.Context, page, limit int) ([]*HistoryRecord, int, error)
-	// GetHistoryRecord 按 ID 获取单条历史记录（SSR「历史回看」用）
-	GetHistoryRecord(ctx context.Context, id string) (*HistoryRecord, error)
-	DeleteHistory(ctx context.Context, id string) error
+	GetHistory(ctx context.Context, sessionID string) ([]*HistoryRecord, error)
+	GetHistoryPage(ctx context.Context, sessionID string, page, limit int) ([]*HistoryRecord, int, error)
+	// GetHistoryRecord 按 ID 获取当前会话的单条历史记录（SSR「历史回看」用）
+	GetHistoryRecord(ctx context.Context, sessionID, id string) (*HistoryRecord, error)
+	DeleteHistory(ctx context.Context, sessionID, id string) error
 }
 
 // FavoriteServiceInterface 收藏服务接口
 type FavoriteServiceInterface interface {
-	GetFavorites(ctx context.Context) ([]*FavoriteRecord, error)
-	// GetFavoritesPage 分页获取收藏，返回当页记录与总数（HTTP 路径走这个）
-	GetFavoritesPage(ctx context.Context, page, limit int) ([]*FavoriteRecord, int, error)
+	GetFavorites(ctx context.Context, sessionID string) ([]*FavoriteRecord, error)
+	// GetFavoritesPage 分页获取当前会话收藏，返回当页记录与总数（HTTP 路径走这个）
+	GetFavoritesPage(ctx context.Context, sessionID string, page, limit int) ([]*FavoriteRecord, int, error)
 	SaveFavorite(ctx context.Context, record *FavoriteRecord) (string, error)
-	DeleteFavorite(ctx context.Context, id string) error
+	DeleteFavorite(ctx context.Context, sessionID, id string) error
 }
 
 // ReportServiceInterface 报告服务接口

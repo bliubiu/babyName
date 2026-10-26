@@ -44,8 +44,11 @@ func (s *FavoriteService) SetGateReviewRecorder(r GateReviewRecorder) {
 }
 
 // FavoriteRecord 收藏记录
+//
+// SessionID 是记录归属的访客会话标识，不进入 JSON 响应（避免泄露 bearer）。
 type FavoriteRecord struct {
 	ID        string    `json:"id"`
+	SessionID string    `json:"-"`
 	Surname   string    `json:"surname"`
 	GivenName string    `json:"given_name"`
 	Pinyin    string    `json:"pinyin"`
@@ -56,12 +59,16 @@ type FavoriteRecord struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// GetFavorites 获取收藏列表（全量，仅供内部/兼容调用）
+// GetFavorites 获取当前会话的收藏列表（全量，仅供内部/兼容调用）
 //
 // 注意：HTTP 路径请走 GetFavoritesPage —— 本方法无分页，收藏累积后会
 // 一次性返回全量（docs/29 B6）。
-func (s *FavoriteService) GetFavorites(ctx context.Context) ([]*FavoriteRecord, error) {
-	records := s.store.GetFavorites()
+func (s *FavoriteService) GetFavorites(ctx context.Context, sessionID string) ([]*FavoriteRecord, error) {
+	sid, err := NormalizeSessionID(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	records := s.store.GetFavorites(sid)
 	result := make([]*FavoriteRecord, len(records))
 	for i, r := range records {
 		result[i] = toFavoriteRecord(r)
@@ -69,12 +76,16 @@ func (s *FavoriteService) GetFavorites(ctx context.Context) ([]*FavoriteRecord, 
 	return result, nil
 }
 
-// GetFavoritesPage 分页获取收藏列表，返回当页记录与总数。
+// GetFavoritesPage 分页获取当前会话的收藏列表，返回当页记录与总数。
 //
 // 底层 database.FavoriteStore 早已提供 GetFavoritesPage，此前服务层与
 // handler 都没走它，导致 /favorites 永远全量返回。
-func (s *FavoriteService) GetFavoritesPage(ctx context.Context, page, limit int) ([]*FavoriteRecord, int, error) {
-	records, total, err := s.store.GetFavoritesPage(page, limit)
+func (s *FavoriteService) GetFavoritesPage(ctx context.Context, sessionID string, page, limit int) ([]*FavoriteRecord, int, error) {
+	sid, err := NormalizeSessionID(sessionID)
+	if err != nil {
+		return nil, 0, err
+	}
+	records, total, err := s.store.GetFavoritesPage(sid, page, limit)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -142,12 +153,18 @@ func (s *FavoriteService) SaveFavorite(ctx context.Context, record *FavoriteReco
 	if err := validateFavoriteEntry(record); err != nil {
 		return "", err
 	}
-	existing := s.store.GetFavoriteByName(record.Surname, record.GivenName)
+	sid, err := NormalizeSessionID(record.SessionID)
+	if err != nil {
+		return "", err
+	}
+	record.SessionID = sid
+	existing := s.store.GetFavoriteByName(sid, record.Surname, record.GivenName)
 	if existing != nil {
 		return existing.ID, nil
 	}
 	id, err := s.store.SaveFavorite(&database.FavoriteRecord{
 		ID:        record.ID,
+		SessionID: sid,
 		Surname:   record.Surname,
 		GivenName: record.GivenName,
 		Pinyin:    record.Pinyin,
@@ -198,14 +215,20 @@ func (s *FavoriteService) BatchSaveFavorite(ctx context.Context, records []*Favo
 		if err := validateFavoriteEntry(record); err != nil {
 			return nil, err
 		}
-		// 检查是否已存在
-		existing := s.store.GetFavoriteByName(record.Surname, record.GivenName)
+		sid, err := NormalizeSessionID(record.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		record.SessionID = sid
+		// 检查当前会话内是否已存在同名收藏
+		existing := s.store.GetFavoriteByName(sid, record.Surname, record.GivenName)
 		if existing != nil {
 			// 使用现有ID
 			record.ID = existing.ID
 		}
 		storeRecords[i] = &database.FavoriteRecord{
 			ID:        record.ID,
+			SessionID: sid,
 			Surname:   record.Surname,
 			GivenName: record.GivenName,
 			Pinyin:    record.Pinyin,
@@ -222,17 +245,29 @@ func (s *FavoriteService) BatchSaveFavorite(ctx context.Context, records []*Favo
 	return ids, nil
 }
 
-// BatchDeleteFavorite 批量删除收藏
-func (s *FavoriteService) BatchDeleteFavorite(ctx context.Context, ids []string) error {
-	return s.store.BatchDeleteFavorite(ids)
+// BatchDeleteFavorite 批量删除当前会话的收藏
+func (s *FavoriteService) BatchDeleteFavorite(ctx context.Context, sessionID string, ids []string) error {
+	sid, err := NormalizeSessionID(sessionID)
+	if err != nil {
+		return err
+	}
+	return s.store.BatchDeleteFavorite(sid, ids)
 }
 
-// DeleteFavorite 删除收藏
-func (s *FavoriteService) DeleteFavorite(ctx context.Context, id string) error {
-	return s.store.DeleteFavorite(id)
+// DeleteFavorite 删除当前会话的收藏
+func (s *FavoriteService) DeleteFavorite(ctx context.Context, sessionID, id string) error {
+	sid, err := NormalizeSessionID(sessionID)
+	if err != nil {
+		return err
+	}
+	return s.store.DeleteFavorite(sid, id)
 }
 
-// CheckFavorite 检查名字是否已收藏
-func (s *FavoriteService) CheckFavorite(ctx context.Context, surname, givenName string) bool {
-	return s.store.GetFavoriteByName(surname, givenName) != nil
+// CheckFavorite 检查名字是否已在当前会话收藏
+func (s *FavoriteService) CheckFavorite(ctx context.Context, sessionID, surname, givenName string) bool {
+	sid, err := NormalizeSessionID(sessionID)
+	if err != nil {
+		return false
+	}
+	return s.store.GetFavoriteByName(sid, surname, givenName) != nil
 }

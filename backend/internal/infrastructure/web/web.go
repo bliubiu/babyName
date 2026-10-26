@@ -3,9 +3,7 @@ package web
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"embed"
-	"encoding/hex"
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
@@ -27,6 +25,7 @@ import (
 	"name/internal/domain/name"
 	"name/internal/domain/namestat"
 	"name/internal/infrastructure/logger"
+	"name/internal/infrastructure/middleware"
 )
 
 //go:embed templates/*.html
@@ -550,24 +549,33 @@ func (h *Handler) renderPage(c *gin.Context, status int, page string, data *page
 	c.Data(status, "text/html; charset=utf-8", buf.Bytes())
 }
 
-// getSession 从 cookie 取回本次生成结果；无有效会话时发一个新 sid 并返回 nil resp。
-// 新 sid 不预先落表——只有 Generate 真正写入结果时才登记，避免空会话堆积。
-func (h *Handler) getSession(c *gin.Context) (string, *services.GenerateResponse) {
-	if sid, err := c.Cookie("nm_sid"); err == nil {
-		h.sessMu.Lock()
-		entry := h.sessions[sid]
-		if entry != nil && time.Now().Before(entry.expiresAt) {
-			resp := entry.resp
-			h.sessMu.Unlock()
-			return sid, resp
-		}
-		h.sessMu.Unlock()
+// sessionID 取当前请求的会话标识；失败时已写入 500 响应，调用方直接返回。
+func (h *Handler) sessionID(c *gin.Context) (string, bool) {
+	sid, err := middleware.EnsureSessionID(c)
+	if err != nil {
+		logger.Error("初始化会话标识失败", logger.ErrField(err))
+		c.String(http.StatusInternalServerError, "会话初始化失败，请稍后重试")
+		return "", false
 	}
-	sid := generateSID()
-	// SameSite=Lax：SSR 全部为同站表单 POST，Lax 足够且不破坏 PRG 跳转；
-	// Secure 无法固定为 true（本地 HTTP 部署会直接丢 cookie）。
-	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("nm_sid", sid, int(sessionTTL.Seconds()), "/", "", false, true)
+	return sid, true
+}
+
+// getSession 取回本次生成结果；无有效会话时返回 nil resp。
+// cookie 由 SessionID 中间件 / EnsureSessionID 统一签发，这里不再重复写。
+func (h *Handler) getSession(c *gin.Context) (string, *services.GenerateResponse) {
+	sid, err := middleware.EnsureSessionID(c)
+	if err != nil {
+		logger.Error("初始化会话标识失败", logger.ErrField(err))
+		return "", nil
+	}
+	h.sessMu.Lock()
+	entry := h.sessions[sid]
+	if entry != nil && time.Now().Before(entry.expiresAt) {
+		resp := entry.resp
+		h.sessMu.Unlock()
+		return sid, resp
+	}
+	h.sessMu.Unlock()
 	return sid, nil
 }
 
@@ -599,14 +607,6 @@ func (h *Handler) setSession(sid string, resp *services.GenerateResponse) {
 		delete(h.sessions, oldestKey)
 	}
 	h.sessions[sid] = &sessionEntry{resp: resp, expiresAt: now.Add(sessionTTL)}
-}
-
-func generateSID() string {
-	var b [8]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return fmt.Sprintf("%d", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(b[:])
 }
 
 // clientMessage 把服务层错误转成可展示给浏览器用户的文案。
@@ -700,8 +700,12 @@ func (h *Handler) Generate(c *gin.Context) {
 	// Surname=input.Surname、FullName=Surname+GivenName，见
 	// convertFateToNameNames / assembleEvaluatedName），此处无需再拼接。
 	sid, _ := h.getSession(c)
+	if sid == "" {
+		c.Redirect(http.StatusSeeOther, "/?error="+url.QueryEscape("会话初始化失败，请稍后重试"))
+		return
+	}
 	h.setSession(sid, resp)
-	h.saveHistory(c, req, resp)
+	h.saveHistory(c, sid, req, resp)
 	c.Redirect(http.StatusSeeOther, "/result")
 }
 
@@ -797,8 +801,13 @@ func (h *Handler) Explore(c *gin.Context) {
 
 // Favorite 收藏：复用后端收藏服务（含 score≥80 自学习副作用）
 func (h *Handler) Favorite(c *gin.Context) {
+	sid, ok := h.sessionID(c)
+	if !ok {
+		return
+	}
 	score, _ := strconv.ParseFloat(c.PostForm("score"), 64)
 	rec := &services.FavoriteRecord{
+		SessionID: sid,
 		Surname:   c.PostForm("surname"),
 		GivenName: c.PostForm("given_name"),
 		Pinyin:    c.PostForm("pinyin"),
@@ -823,9 +832,13 @@ func (h *Handler) Favorite(c *gin.Context) {
 
 // Favorites 收藏列表页（分页）
 func (h *Handler) Favorites(c *gin.Context) {
+	sid, ok := h.sessionID(c)
+	if !ok {
+		return
+	}
 	page := atoiQuery(c, "page")
 	limit := 20
-	recs, total, err := h.favorite.GetFavoritesPage(c.Request.Context(), page, limit)
+	recs, total, err := h.favorite.GetFavoritesPage(c.Request.Context(), sid, page, limit)
 	if err != nil {
 		h.renderPage(c, http.StatusInternalServerError, "favorites", &pageData{
 			Title: "收藏",
@@ -846,10 +859,14 @@ func (h *Handler) Favorites(c *gin.Context) {
 
 // DeleteFavorite 取消收藏（PRG 重定向回列表）
 func (h *Handler) DeleteFavorite(c *gin.Context) {
+	sid, ok := h.sessionID(c)
+	if !ok {
+		return
+	}
 	id := c.PostForm("id")
 	page := atoiQuery(c, "page")
 	if id != "" {
-		if err := h.favorite.DeleteFavorite(c.Request.Context(), id); err != nil {
+		if err := h.favorite.DeleteFavorite(c.Request.Context(), sid, id); err != nil {
 			c.Redirect(http.StatusSeeOther, "/favorites?page="+strconv.Itoa(page)+"&error="+url.QueryEscape(clientMessage("取消收藏", err)))
 			return
 		}
@@ -859,9 +876,13 @@ func (h *Handler) DeleteFavorite(c *gin.Context) {
 
 // History 历史记录列表页（分页）
 func (h *Handler) History(c *gin.Context) {
+	sid, ok := h.sessionID(c)
+	if !ok {
+		return
+	}
 	page := atoiQuery(c, "page")
 	limit := 20
-	recs, total, err := h.history.GetHistoryPage(c.Request.Context(), page, limit)
+	recs, total, err := h.history.GetHistoryPage(c.Request.Context(), sid, page, limit)
 	if err != nil {
 		h.renderPage(c, http.StatusInternalServerError, "history", &pageData{
 			Title: "历史",
@@ -882,10 +903,14 @@ func (h *Handler) History(c *gin.Context) {
 
 // DeleteHistory 删除历史记录（PRG 重定向回列表，带 flash 提示）
 func (h *Handler) DeleteHistory(c *gin.Context) {
+	sid, ok := h.sessionID(c)
+	if !ok {
+		return
+	}
 	id := c.PostForm("id")
 	page := atoiQuery(c, "page")
 	if id != "" {
-		if err := h.history.DeleteHistory(c.Request.Context(), id); err != nil {
+		if err := h.history.DeleteHistory(c.Request.Context(), sid, id); err != nil {
 			c.Redirect(http.StatusSeeOther, "/history?page="+strconv.Itoa(page)+"&error="+url.QueryEscape(clientMessage("删除历史记录", err)))
 			return
 		}
@@ -1266,12 +1291,16 @@ func containsStr(list []string, s string) bool {
 // 取代 React「点历史卡片→store 携带→跳 /result」的客户端态方案：
 // 回看是服务端直查，刷新/分享链接行为一致。
 func (h *Handler) HistoryView(c *gin.Context) {
+	sid, ok := h.sessionID(c)
+	if !ok {
+		return
+	}
 	id := c.Query("id")
 	if id == "" {
 		c.Redirect(http.StatusSeeOther, "/history")
 		return
 	}
-	rec, err := h.history.GetHistoryRecord(c.Request.Context(), id)
+	rec, err := h.history.GetHistoryRecord(c.Request.Context(), sid, id)
 	if err != nil {
 		c.Redirect(http.StatusSeeOther, "/history?error="+url.QueryEscape(clientMessage("查看历史记录", err)))
 		return
@@ -1454,8 +1483,8 @@ func parseGenerateForm(c *gin.Context) (*services.GenerateRequest, error) {
 	return req, nil
 }
 
-// saveHistory 将本次生成结果自动写入历史（后端持久化）
-func (h *Handler) saveHistory(c *gin.Context, req *services.GenerateRequest, resp *services.GenerateResponse) {
+// saveHistory 将本次生成结果自动写入历史（后端持久化，归属当前会话）
+func (h *Handler) saveHistory(c *gin.Context, sessionID string, req *services.GenerateRequest, resp *services.GenerateResponse) {
 	if h.history == nil {
 		return
 	}
@@ -1464,6 +1493,7 @@ func (h *Handler) saveHistory(c *gin.Context, req *services.GenerateRequest, res
 		return
 	}
 	rec := &services.HistoryRecord{
+		SessionID:     sessionID,
 		Surname:       req.Surname,
 		Gender:        req.Gender,
 		BirthDate:     fmt.Sprintf("%04d-%02d-%02d", req.BirthYear, req.BirthMonth, req.BirthDay),

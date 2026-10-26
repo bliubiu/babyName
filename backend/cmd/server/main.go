@@ -408,6 +408,8 @@ func setupRouter(h *appHandlers, wh *web.Handler, runMode, staticDir string, sto
 	router.Use(middleware.ZapRecovery())
 	router.Use(middleware.RequestID())
 	router.Use(middleware.CORSMiddleware())
+	// 会话标识：收藏/历史按 nm_sid（浏览器）或 X-Session-ID（API 客户端）隔离。
+	router.Use(middleware.SessionID())
 	// 请求体上限：本站最大请求体是 /report/* 的报告数据（几十 KB 量级），
 	// 1 MiB 留足余量；超限直接 413，避免大 body 造成内存放大。
 	router.Use(middleware.MaxBodyBytes(1 << 20))
