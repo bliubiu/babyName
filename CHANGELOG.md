@@ -5,6 +5,18 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.31.4]
+
+**紫微斗数：闰月口径统一为 iztro 默认「按日切」并消除盘内月份基准冲突**
+
+### 🐛 Bug Fixes 问题修复
+- 【紫微斗数·闰月口径】评审发现的口径冲突已修复：旧实现月柱/命宫按「归后月」(闰X月恒当X+1月)、辅星/杂曜按「归本月」(闰X月恒当X月)，同一闰月盘内部月份基准不一致；现统一为 iztro `bySolar(fixLeap=true)` 默认口径「按日切」——闰X月 `农历日≤15` 算上个月(X月)、`>15` 算下个月(X+1月)。新增 `effectiveMonthIndex(lunarMonth, lunarDayNum)` 统一函数，月柱/命宫/辅星/杂曜共用，避免再漂移
+- 【紫微斗数·iztro 兼容】该口径与 iztro 2.6.3 默认行为一致（非本项目自造）；旧纯「归后月」对闰月上半月其实也不符合 iztro，现一并校正。case9（1995-10-12 闰八月十八，下半月→九月→命宫戊子）锚点零回退
+- 测试同步：`calculateMingGong`/`calculateShenGong`/`distributeFuXing`/`distributeSuiXing` 签名补 `lunarDayNum`；新增 `TestLeapMonth_ByDayConvention` 锁死上下半月两分支（含 2023 闰二月上/下半月 + 1995 闰八月下半月）
+
+### 🔧 Dependencies 依赖更新
+- 无新增运行时依赖
+
 ## [2026.10.31.3]
 
 **紫微斗数：清理死表 + 五行局静默兜底改显式失败**

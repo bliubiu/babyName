@@ -214,6 +214,21 @@ func hourToInt(hour int) int {
 // ============================================================
 
 // calculateFourPillars 使用 tyme 库计算四柱
+// effectiveMonthIndex 闰月「按日切」口径（与 iztro fixLeap 默认一致）：
+// 闰X月， lunarDayNum<=15 → 上个月(X月)，lunarDayNum>15 → 下个月(X+1月)；
+// 非闰月直接返回 lunarMonth-1。返回值 0-based：0=正月 … 11=腊月。
+// 月柱/命宫/辅星/杂曜共用此口径，避免同一闰月盘内部月份基准冲突。
+func effectiveMonthIndex(lunarMonth, lunarDayNum int) int {
+	if lunarMonth > 0 {
+		return lunarMonth - 1
+	}
+	x := -lunarMonth // 闰的月份号 X
+	if lunarDayNum <= 15 {
+		return x - 1 // 上个月 = X月 → 0-based X-1
+	}
+	return x // 下个月 = X+1月 → 0-based X
+}
+
 func calculateFourPillars(year, month, day, hour int) (nianZhu, yueZhu, riZhu, shiZhu string, lunarYear, lunarMonth, lunarDayNum int, yearGanIndex int) {
 	// 使用 tyme 库的 SolarDay 进行公历→农历转换。
 	// 日期不合法（如 2024-02-30）时 FromYmd 返回 nil，旧代码吞错后
@@ -240,13 +255,8 @@ func calculateFourPillars(year, month, day, hour int) (nianZhu, yueZhu, riZhu, s
 
 	// 月柱（使用农历月 + 正月初一年干 + 五虎遁）
 	// 农历月: 1=正月(寅), 2=二月(卯), ..., 12=腊月(丑)
-	// 闰月: 用绝对值作为月份索引（闰八月→按九月计算），不减1
-	var monthIdx int
-	if lunarMonth > 0 {
-		monthIdx = lunarMonth - 1 // 0-based: 0=正月, 1=二月, ..., 11=腊月
-	} else {
-		monthIdx = -lunarMonth // 闰月：直接使用绝对值
-	}
+	// 月柱口径：与命宫/辅星共用「按日切」闰月规则（iztro fixLeap 默认）
+	monthIdx := effectiveMonthIndex(lunarMonth, lunarDayNum)
 	monthGanIdx := fixIndex(TigerRule[yearGanIndex]+monthIdx, 10)
 	monthZhiIdx := fixIndex(monthIdx+2, 12) // 正月=寅(2), 二月=卯(3), ...
 	yueZhu = TianganNames[monthGanIdx] + DizhiNames[monthZhiIdx]
@@ -276,12 +286,9 @@ func calculateFourPillars(year, month, day, hour int) (nianZhu, yueZhu, riZhu, s
 // ============================================================
 
 // calculateMingGong 计算命宫（干支格式）
-func calculateMingGong(yearGanIndex, lunarMonth, timeIndex int) string {
-	// monthIndex: lunarMonth - 1（如果闰月且timeIndex==12且lunarDay>15，则需调整）
-	monthIndex := lunarMonth - 1
-	if monthIndex < 0 {
-		monthIndex = -monthIndex - 1 // 闰月处理
-	}
+func calculateMingGong(yearGanIndex, lunarMonth, lunarDayNum, timeIndex int) string {
+	// monthIndex: 与月柱/辅星共用「按日切」闰月规则（iztro fixLeap 默认）
+	monthIndex := effectiveMonthIndex(lunarMonth, lunarDayNum)
 
 	// soulIndex = fixIndex(monthIndex - timeIndex%12)
 	soulIndex := fixIndex(monthIndex-timeIndex%12, 12)
@@ -296,11 +303,9 @@ func calculateMingGong(yearGanIndex, lunarMonth, timeIndex int) string {
 }
 
 // calculateShenGong 计算身宫（干支格式）
-func calculateShenGong(yearGanIndex, lunarMonth, timeIndex int) string {
-	monthIndex := lunarMonth - 1
-	if monthIndex < 0 {
-		monthIndex = -monthIndex - 1
-	}
+func calculateShenGong(yearGanIndex, lunarMonth, lunarDayNum, timeIndex int) string {
+	// monthIndex: 与月柱/辅星共用「按日切」闰月规则（iztro fixLeap 默认）
+	monthIndex := effectiveMonthIndex(lunarMonth, lunarDayNum)
 
 	// bodyIndex = fixIndex(monthIndex + timeIndex%12)
 	bodyIndex := fixIndex(monthIndex+timeIndex%12, 12)
@@ -611,7 +616,7 @@ func brightnessOf(star, zhi string) string {
 // 时系+年支系：火星铃星按三合起点顺数生时，地空地劫自亥顺逆数生时；
 // 年支系：天空居年支下一位；年干支系：截空取阴阳相应支、旬空取旬中空亡与
 // 年支阴阳同支；天伤居交友宫、天使居疾厄宫。
-func distributeFuXing(chart *ZiweiChart, lunarMonth, timeIndex, yearGanIndex, yearZhiIndex int) {
+func distributeFuXing(chart *ZiweiChart, lunarMonth, lunarDayNum, timeIndex, yearGanIndex, yearZhiIndex int) {
 	for i := range Gongs {
 		chart.FuXing[Gongs[i]] = []string{}
 	}
@@ -629,14 +634,12 @@ func distributeFuXing(chart *ZiweiChart, lunarMonth, timeIndex, yearGanIndex, ye
 		chart.FuXing[p] = append(chart.FuXing[p], star)
 	}
 
-	// 闰月按其绝对值所属月份取用
-	if lunarMonth < 0 {
-		lunarMonth = -lunarMonth
-	}
+	// 月系：与月柱/命宫共用「按日切」闰月规则（iztro fixLeap 默认）
+	m := effectiveMonthIndex(lunarMonth, lunarDayNum) + 1 // 1-based 生效月份
 
 	// 月系
-	place(4+lunarMonth-1, "左辅")
-	place(10-(lunarMonth-1), "右弼")
+	place(4+m-1, "左辅")
+	place(10-(m-1), "右弼")
 
 	// 时系（晚子时 timeIndex=12 经 fixIndex 归位到子时同宫）
 	place(10-timeIndex, "文昌")
@@ -697,7 +700,7 @@ func distributeFuXing(chart *ZiweiChart, lunarMonth, timeIndex, yearGanIndex, ye
 // 与亡神（劫煞对宫）、大耗（年支对宫，阳支顺行一位、阴支逆行一位）、
 // 龙池（辰起子年顺数）与凤阁（戌起子年逆数）；
 // 月系：天姚（丑起正月顺数）。
-func distributeSuiXing(chart *ZiweiChart, lunarMonth, yearZhiIndex int) {
+func distributeSuiXing(chart *ZiweiChart, lunarMonth, lunarDayNum, yearZhiIndex int) {
 	if chart.SuiXing == nil {
 		chart.SuiXing = make(map[string][]string)
 	}
@@ -715,10 +718,8 @@ func distributeSuiXing(chart *ZiweiChart, lunarMonth, yearZhiIndex int) {
 		chart.SuiXing[p] = append(chart.SuiXing[p], star)
 	}
 
-	// 闰月按其绝对值所属月份取用（与左辅右弼口径一致）
-	if lunarMonth < 0 {
-		lunarMonth = -lunarMonth
-	}
+	// 闰月「按日切」（与月柱/命宫/左辅右弼口径一致）
+	m := effectiveMonthIndex(lunarMonth, lunarDayNum) + 1 // 1-based 生效月份
 
 	hongLuan := fixIndex(3-yearZhiIndex, 12)
 	place(hongLuan, "红鸾")
@@ -744,7 +745,7 @@ func distributeSuiXing(chart *ZiweiChart, lunarMonth, yearZhiIndex int) {
 	place(4+yearZhiIndex, "龙池")
 	place(10-yearZhiIndex, "凤阁")
 
-	place(1+lunarMonth-1, "天姚")
+	place(1+m-1, "天姚")
 }
 
 // ============================================================
@@ -807,8 +808,8 @@ func CalculateZiweiChart(year, month, day, hour int, gender string) *ZiweiChart 
 
 	// 2. 计算命宫/身宫（干支格式）
 	timeIndex := hourToInt(hour)
-	chart.MingGong = calculateMingGong(yearGanIndex, lunarMonth, timeIndex)
-	chart.ShenGong = calculateShenGong(yearGanIndex, lunarMonth, timeIndex)
+	chart.MingGong = calculateMingGong(yearGanIndex, lunarMonth, lunarDayNum, timeIndex)
+	chart.ShenGong = calculateShenGong(yearGanIndex, lunarMonth, lunarDayNum, timeIndex)
 
 	// 3. 计算五行局
 	fiveElements, fiveOK := calculateFiveElementsClass(chart.MingGong)
@@ -827,8 +828,8 @@ func CalculateZiweiChart(year, month, day, hour int, gender string) *ZiweiChart 
 	}
 
 	// 7. 分布辅星与杂曜
-	distributeFuXing(chart, lunarMonth, timeIndex, yearGanIndex, nianZhiIndex)
-	distributeSuiXing(chart, lunarMonth, nianZhiIndex)
+	distributeFuXing(chart, lunarMonth, lunarDayNum, timeIndex, yearGanIndex, nianZhiIndex)
+	distributeSuiXing(chart, lunarMonth, lunarDayNum, nianZhiIndex)
 
 	// 8. 计算大限（依赖五行局；五行局未定时跳过）
 	if fiveOK {

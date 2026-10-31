@@ -106,7 +106,7 @@ func TestDistributeFuXing_火铃四组(t *testing.T) {
 	}
 	for i, c := range cases {
 		chart := newAuxChart(0, 0, c.yearZhi)
-		distributeFuXing(chart, 1, c.t, 0, c.yearZhi)
+		distributeFuXing(chart, 1, 17, c.t, 0, c.yearZhi)
 		containsStar(t, chart.FuXing, palaceAt(0, c.huo), "火星", "火铃组%d", i)
 		containsStar(t, chart.FuXing, palaceAt(0, c.ling), "铃星", "火铃组%d", i)
 	}
@@ -119,7 +119,7 @@ func TestDistributeFuXing_空劫时序(t *testing.T) {
 	}
 	for i, c := range cases {
 		chart := newAuxChart(0, 0, 0)
-		distributeFuXing(chart, 1, c.t, 0, 0)
+		distributeFuXing(chart, 1, 17, c.t, 0, 0)
 		containsStar(t, chart.FuXing, palaceAt(0, c.kong), "地空", "空劫%d", i)
 		containsStar(t, chart.FuXing, palaceAt(0, c.jie), "地劫", "空劫%d", i)
 	}
@@ -140,7 +140,7 @@ func TestDistributeFuXing_截空阴阳性(t *testing.T) {
 	}
 	for i, c := range cases {
 		chart := newAuxChart(0, c.gan, c.zhi)
-		distributeFuXing(chart, 1, 0, c.gan, c.zhi)
+		distributeFuXing(chart, 1, 17, 0, c.gan, c.zhi)
 		containsStar(t, chart.FuXing, palaceAt(0, c.want), "截空", "截空%d", i)
 	}
 }
@@ -159,7 +159,7 @@ func TestDistributeFuXing_旬空阴阳性(t *testing.T) {
 	}
 	for i, c := range cases {
 		chart := newAuxChart(0, c.gan, c.zhi)
-		distributeFuXing(chart, 1, 0, c.gan, c.zhi)
+		distributeFuXing(chart, 1, 17, 0, c.gan, c.zhi)
 		containsStar(t, chart.FuXing, palaceAt(0, c.want), "旬空", "旬空%d", i)
 	}
 }
@@ -169,7 +169,7 @@ func TestDistributeFuXing_旬空阴阳性(t *testing.T) {
 func TestDistributeFuXing_天伤天使(t *testing.T) {
 	for _, mingZhi := range []int{0, 3, 6, 11} {
 		chart := newAuxChart(mingZhi, 5, 5)
-		distributeFuXing(chart, 1, 0, 5, 5)
+		distributeFuXing(chart, 1, 17, 0, 5, 5)
 		containsStar(t, chart.FuXing, palaceAt(mingZhi, fixIndex(mingZhi-7, 12)), "天伤", "天伤@交友")
 		containsStar(t, chart.FuXing, palaceAt(mingZhi, fixIndex(mingZhi-5, 12)), "天使", "天使@疾厄")
 	}
@@ -244,7 +244,7 @@ func TestDistributeSuiXing_表驱动(t *testing.T) {
 	}
 	for i, c := range cases {
 		chart := newAuxChart(0, 0, c.yearZhi)
-		distributeSuiXing(chart, c.month, c.yearZhi)
+		distributeSuiXing(chart, c.month, 17, c.yearZhi)
 		containsStar(t, chart.SuiXing, palaceAt(0, c.want), c.star, "杂曜表%d", i)
 	}
 }
