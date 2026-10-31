@@ -334,7 +334,9 @@ func newTestStoreIn(t *testing.T, dataDir string) *Store {
 // 库装载后 GetTotalNames() 恒为 0 → 统计页占比全部显示 0.0000%。
 // 装载侧须用构造恒等式恢复：total = Σ单字count − Σ双字count
 // （单字表计每个人名的每个「名」字：Σ单字 = 单字名数 + 2×双字名数；
-//   双字表计每个双字名一次：Σ双字 = 双字名数 ⇒ 差 = 语料总人数）。
+//
+//	双字表计每个双字名一次：Σ双字 = 双字名数 ⇒ 差 = 语料总人数）。
+//
 // 夹具：单字 500+300+10=810，双字 20 ⇒ 期望 790。
 func TestLoadMaterials_恢复频率语料总人数(t *testing.T) {
 	dir := writeMinimalMaterials(t)

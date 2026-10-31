@@ -11,7 +11,7 @@ func TestWithGenderFilter_性别枚举归一化(t *testing.T) {
 	}{
 		{"男", "male"}, {"male", "male"}, {"M", "male"},
 		{"女", "female"}, {"female", "female"}, {"F", "female"},
-		{"", ""},        // 空串=不过滤，保持现有语义
+		{"", ""},       // 空串=不过滤，保持现有语义
 		{"bad", "bad"}, // 未知输入原样返回，由下游校验兜底
 	}
 	for _, tt := range tests {
