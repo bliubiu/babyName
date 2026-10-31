@@ -114,12 +114,6 @@ var GuGuaTable = [4][2]int{{2, 10}, {5, 1}, {8, 4}, {11, 7}}
 // 寅午戌人猪面黑，巳酉丑人虎咆哮」；亡神居劫煞对宫，并入本表推算。
 var JieShaTable = [4]int{5, 2, 11, 8}
 
-// HuaGaiTable/XianChiTable 华盖、咸池查表：三合分组号 = 年支索引 % 4
-// → [华盖支 / 咸池支]。「子辰申年在辰（咸池酉），丑巳酉年在丑（午），
-// 寅午戌年在戌（卯），卯未亥年在未（子）」
-var HuaGaiTable = [4]int{4, 1, 10, 7}
-var XianChiTable = [4]int{9, 6, 3, 0}
-
 type ZiweiChart struct {
 	Year   int    `json:"year"`
 	Month  int    `json:"month"`
@@ -328,30 +322,33 @@ func calculateShenGong(yearGanIndex, lunarMonth, timeIndex int) string {
 // 由命宫干支的纳音五行定局：水二局、木三局、金四局、土五局、火六局。
 // 原实现以「干数+支数取模」自造公式，与纳音无关，导致紫微落宫与
 // 大限起运年龄整体错位（如命宫甲子纳音海中金应为金四局，旧式算出水二局）。
-func calculateFiveElementsClass(mingGong string) string {
+// 命宫干支非法或纳音末字无法识别五行时返回 ("", false) —— 不再静默降级为
+// 「水二局」，由调用方（CalculateZiweiChart）标记为退化盘并提示，
+// 与 docs/39「失败不再静默降级」原则一致。
+func calculateFiveElementsClass(mingGong string) (string, bool) {
 	runes := []rune(mingGong)
 	if len(runes) < 2 {
-		return "水二局"
+		return "", false
 	}
 	sc, err := tyme.SixtyCycle{}.FromName(string(runes))
 	if err != nil || sc == nil {
-		// 命宫干支非法时兜底，保证排盘不中断（此链路无错误通道）
-		return "水二局"
+		// 命宫干支非法：显式返回失败，不再兜底「水二局」
+		return "", false
 	}
 	sound := sc.GetSound().GetName()
 	switch string([]rune(sound)[len([]rune(sound))-1]) {
 	case "水":
-		return "水二局"
+		return "水二局", true
 	case "木":
-		return "木三局"
+		return "木三局", true
 	case "金":
-		return "金四局"
+		return "金四局", true
 	case "土":
-		return "土五局"
+		return "土五局", true
 	case "火":
-		return "火六局"
+		return "火六局", true
 	}
-	return "水二局"
+	return "", false
 }
 
 // ============================================================
@@ -814,7 +811,8 @@ func CalculateZiweiChart(year, month, day, hour int, gender string) *ZiweiChart 
 	chart.ShenGong = calculateShenGong(yearGanIndex, lunarMonth, timeIndex)
 
 	// 3. 计算五行局
-	chart.FiveElements = calculateFiveElementsClass(chart.MingGong)
+	fiveElements, fiveOK := calculateFiveElementsClass(chart.MingGong)
+	chart.FiveElements = fiveElements
 
 	// 4. 计算命主/身主
 	chart.Soul = calculateSoul(chart.MingGong)
@@ -823,18 +821,27 @@ func CalculateZiweiChart(year, month, day, hour int, gender string) *ZiweiChart 
 	// 5. 计算四化
 	chart.SiHua = calculateSiHua(yearGanIndex)
 
-	// 6. 分布主星
-	distributeZhuXing(chart, lunarDayNum, lunarMonth)
+	// 6. 分布主星（依赖五行局；五行局未定时跳过，避免错盘）
+	if fiveOK {
+		distributeZhuXing(chart, lunarDayNum, lunarMonth)
+	}
 
 	// 7. 分布辅星与杂曜
 	distributeFuXing(chart, lunarMonth, timeIndex, yearGanIndex, nianZhiIndex)
 	distributeSuiXing(chart, lunarMonth, nianZhiIndex)
 
-	// 8. 计算大限
-	chart.DaXian = calculateDaXian(chart.NianZhu, chart.MingGong, chart.FiveElements, gender)
+	// 8. 计算大限（依赖五行局；五行局未定时跳过）
+	if fiveOK {
+		chart.DaXian = calculateDaXian(chart.NianZhu, chart.MingGong, chart.FiveElements, gender)
+	}
 
 	// 9. 生成分析
 	chart.Analysis = generateAnalysis(chart)
+	if !fiveOK {
+		// 五行局未定：不静默降级为「水二局」，明确提示盘已退化
+		chart.Analysis = "【排盘异常】命宫干支非法或纳音无法识别，未能定五行局；" +
+			"已跳过主星安布与大限，未以「水二局」静默兜底。\n\n" + chart.Analysis
+	}
 
 	return chart
 }

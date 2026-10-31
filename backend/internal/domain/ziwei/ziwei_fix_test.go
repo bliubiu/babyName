@@ -58,8 +58,9 @@ func TestCalculateFiveElementsClass_Nayin(t *testing.T) {
 		{"癸未", "木三局"}, // 杨柳木
 	}
 	for _, a := range anchors {
-		if got := calculateFiveElementsClass(a.mingGong); got != a.want {
-			t.Errorf("命宫 %s：五行局 got %s，want %s", a.mingGong, got, a.want)
+		got, ok := calculateFiveElementsClass(a.mingGong)
+		if !ok || got != a.want {
+			t.Errorf("命宫 %s：五行局 got %s(ok=%v)，want %s", a.mingGong, got, ok, a.want)
 		}
 	}
 }

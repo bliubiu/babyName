@@ -11,6 +11,21 @@ import (
 // 派亮度表。全部锚点经 iztro 2.6.3 实排对拍验证（sample：
 // 公历 2000-08-16 巳时 女 → 庚辰年七月十七巳时，命宫辛卯，土五局）。
 
+// TestCalculateFiveElementsClass_InvalidExplicit 命宫干支非法/纳音末字无法识别时
+// 必须显式返回 ("", false)，不得再静默降级为「水二局」（docs/39 不静默降级原则）。
+func TestCalculateFiveElementsClass_InvalidExplicit(t *testing.T) {
+	invalid := []string{"", "甲", "甲乙丙", "X", "子"}
+	for _, mg := range invalid {
+		if fe, ok := calculateFiveElementsClass(mg); ok || fe != "" {
+			t.Errorf("calculateFiveElementsClass(%q) = (%q,%v)，期望 (\"\",false)", mg, fe, ok)
+		}
+	}
+	// 合法命宫仍应命中真实五行局（确认正常路径未破坏）
+	if fe, ok := calculateFiveElementsClass("甲子"); !ok || fe != "金四局" {
+		t.Errorf("calculateFiveElementsClass(甲子) = (%q,%v)，期望 (金四局,true)", fe, ok)
+	}
+}
+
 // newAuxChart 构造仅含定位所需字段的合成盘：mingZhiIdx 即命宫实际地支索引，
 // 命宫天干按五虎遁自寅起推算（安布只用宫名定位，不参与断言）
 func newAuxChart(mingZhiIdx, yearGanIdx, yearZhiIdx int) *ZiweiChart {
