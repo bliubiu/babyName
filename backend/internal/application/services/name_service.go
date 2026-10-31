@@ -152,7 +152,7 @@ type GenerateResponse struct {
 	Zodiac        string                `json:"zodiac"`
 	Hexagram      *yijing.Hexagram      `json:"hexagram"`
 	HexagramMatch *yijing.HexagramMatch `json:"hexagram_match,omitempty"`
-	Ziwei         *ziwei.ZiweiAnalysis  `json:"ziwei,omitempty"`
+	Ziwei         *ziwei.ZiweiChart     `json:"ziwei,omitempty"`
 	Names         []name.Name           `json:"names"`
 	// GenerationID 本轮生成会话标识：凭它可调 POST /names/generate/explore
 	// 从同一候选表中「换一批」（探索模式，与 Top-N 零交集）。空表示本轮不支持。
@@ -165,7 +165,7 @@ type GenerateWithAnalysisResponse struct {
 	Nayin       string               `json:"nayin"`
 	Zodiac      string               `json:"zodiac"`
 	Hexagram    *yijing.Hexagram     `json:"hexagram"`
-	Ziwei       *ziwei.ZiweiAnalysis `json:"ziwei,omitempty"`
+	Ziwei       *ziwei.ZiweiChart    `json:"ziwei,omitempty"`
 	Names       []*name.NameAnalysis `json:"names"`
 	Suggestions []string             `json:"suggestions"`
 }
@@ -201,11 +201,11 @@ func (s *NameService) GenerateWithProgress(ctx context.Context, req *GenerateReq
 	if onProgress != nil {
 		onProgress("命理扩展", 98)
 	}
-	hexagram, hexagramMatch, ziweiAnalysis, parallelDuration := s.calculateHexagramAndZiweiParallel(names, baziAnalysis, req)
+	hexagram, hexagramMatch, ziweiChart, parallelDuration := s.calculateHexagramAndZiweiParallel(names, baziAnalysis, req)
 
 	// 4. 构建响应
 	zodiacName := s.zodiacFinder.FindByYear(req.BirthYear)
-	response := s.buildResponse(baziAnalysis, names, hexagram, hexagramMatch, ziweiAnalysis, zodiacName)
+	response := s.buildResponse(baziAnalysis, names, hexagram, hexagramMatch, ziweiChart, zodiacName)
 	response.GenerationID = generationID
 
 	// 5. 记录日志
@@ -511,7 +511,7 @@ func convertFateToNameNames(results []fate.NameResult, gender string, sourceClas
 
 // calculateHexagramAndZiweiParallel 并行计算易经卦象和紫微斗数
 // 姓名卦采用梅花易数：姓笔画→上卦，名笔画→下卦（取首个候选名）
-func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziAnalysis *bazi.BaziAnalysis, req *GenerateRequest) (*yijing.Hexagram, *yijing.HexagramMatch, *ziwei.ZiweiAnalysis, time.Duration) {
+func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziAnalysis *bazi.BaziAnalysis, req *GenerateRequest) (*yijing.Hexagram, *yijing.HexagramMatch, *ziwei.ZiweiChart, time.Duration) {
 	start := time.Now()
 
 	// 姓氏笔画（康熙优先）
@@ -534,7 +534,7 @@ func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziA
 
 	var hexagram *yijing.Hexagram
 	var hexagramMatch *yijing.HexagramMatch
-	var ziweiAnalysis *ziwei.ZiweiAnalysis
+	var ziweiChart *ziwei.ZiweiChart
 
 	var wg sync.WaitGroup
 	var hexagramMutex sync.Mutex
@@ -558,7 +558,7 @@ func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziA
 		z := s.ziweiAnalyzer.Analyze(req.BirthYear, req.BirthMonth, req.BirthDay, req.BirthHour, req.Gender)
 
 		ziweiMutex.Lock()
-		ziweiAnalysis = z
+		ziweiChart = z
 		ziweiMutex.Unlock()
 	}()
 
@@ -567,22 +567,22 @@ func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziA
 	duration := time.Since(start)
 
 	hexagramName := ""
-	ziweiGongwei := ""
+	ziweiMingGong := ""
 	if hexagram != nil {
 		hexagramName = hexagram.Name
 	}
-	if ziweiAnalysis != nil {
-		ziweiGongwei = ziweiAnalysis.Gongwei
+	if ziweiChart != nil {
+		ziweiMingGong = ziweiChart.MingGong
 	}
 	logger.Info("Parallel calculation completed",
 		zap.String("hexagram", hexagramName),
 		zap.Int("surname_strokes", surnameStrokes),
 		zap.Int("given_strokes", givenStrokes),
-		zap.String("ziwei_ming_gong", ziweiGongwei),
+		zap.String("ziwei_ming_gong", ziweiMingGong),
 		zap.Duration("duration", duration),
 	)
 
-	return hexagram, hexagramMatch, ziweiAnalysis, duration
+	return hexagram, hexagramMatch, ziweiChart, duration
 }
 
 // buildResponse 构建响应对象
@@ -591,7 +591,7 @@ func (s *NameService) buildResponse(
 	names []name.Name,
 	hexagram *yijing.Hexagram,
 	hexagramMatch *yijing.HexagramMatch,
-	ziweiAnalysis *ziwei.ZiweiAnalysis,
+	ziweiChart *ziwei.ZiweiChart,
 	zodiacName string,
 ) *GenerateResponse {
 	nayin := baziAnalysis.Nayin
@@ -602,7 +602,7 @@ func (s *NameService) buildResponse(
 		Zodiac:        zodiacName,
 		Hexagram:      hexagram,
 		HexagramMatch: hexagramMatch,
-		Ziwei:         ziweiAnalysis,
+		Ziwei:         ziweiChart,
 		Names:         names,
 	}
 }

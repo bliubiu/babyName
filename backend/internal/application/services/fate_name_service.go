@@ -356,7 +356,8 @@ func (s *FateNameService) hexagramForNames(names []*name.NameAnalysis, req *Gene
 }
 
 // ziweiForRequest 按出生时间进行紫微排盘（无分析器时返回 nil）
-func (s *FateNameService) ziweiForRequest(req *GenerateRequest) *ziwei.ZiweiAnalysis {
+// 返回完整 ZiweiChart（12 宫落星 + 主星亮度 + 大限等），由前端渲染。
+func (s *FateNameService) ziweiForRequest(req *GenerateRequest) *ziwei.ZiweiChart {
 	if s.ziweiAnalyzer == nil {
 		return nil
 	}

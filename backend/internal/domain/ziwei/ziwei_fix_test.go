@@ -222,10 +222,8 @@ func TestAnalyzeZiwei_MingGongStar(t *testing.T) {
 	if result == nil {
 		t.Fatal("AnalyzeZiwei 返回 nil")
 	}
-	if result.Tianzhu == "" {
+	mingGongStars := result.ZhuXing["命宫"]
+	if len(mingGongStars) == 0 {
 		t.Fatal("命宫主星为空")
-	}
-	if result.Tianzhu == "无主星" {
-		t.Fatal("命宫主星恒为「无主星」：ZhuXing 键口径断裂未修复")
 	}
 }

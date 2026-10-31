@@ -419,29 +419,39 @@ func TestGetYaoInfoCoverage(t *testing.T) {
 	}
 }
 
-// TestGetYaoNameCoverage tests GetYaoName
+// TestGetYaoNameCoverage tests GetYaoName（爻位 1-6 × 阴阳）
 func TestGetYaoNameCoverage(t *testing.T) {
 	tests := []struct {
-		yao  int
+		pos  int
+		val  int
 		want string
 	}{
-		{6, "初六"},
-		{7, "初九"},
-		{8, "六二"},
-		{9, "九二"},
+		{1, 7, "初九"}, {1, 6, "初六"},
+		{2, 9, "九二"}, {2, 8, "六二"},
+		{3, 7, "九三"}, {3, 8, "六三"},
+		{4, 9, "九四"}, {4, 8, "六四"},
+		{5, 7, "九五"}, {5, 8, "六五"},
+		{6, 9, "上九"}, {6, 6, "上六"},
 	}
 
 	for _, tc := range tests {
-		got := GetYaoName(tc.yao)
+		got := GetYaoName(tc.pos, tc.val)
 		if got != tc.want {
-			t.Errorf("GetYaoName(%d) = %q, want %q", tc.yao, got, tc.want)
+			t.Errorf("GetYaoName(%d,%d) = %q, want %q", tc.pos, tc.val, got, tc.want)
 		}
 	}
 
-	// Test invalid
-	got := GetYaoName(10)
-	if got != "" {
-		t.Errorf("GetYaoName(10) = %q, want empty", got)
+	// 非法爻位 / 非法爻值 → 空
+	invalids := []struct {
+		pos int
+		val int
+	}{
+		{0, 7}, {7, 7}, {1, 5}, {3, 10},
+	}
+	for _, tc := range invalids {
+		if got := GetYaoName(tc.pos, tc.val); got != "" {
+			t.Errorf("GetYaoName(%d,%d) = %q, want empty", tc.pos, tc.val, got)
+		}
 	}
 }
 

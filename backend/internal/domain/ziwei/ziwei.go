@@ -153,20 +153,6 @@ type DaXianEntry struct {
 	EarthlyBranch string `json:"earthly_branch"` // 地支
 }
 
-type ZiweiAnalysis struct {
-	Tianzhu  string `json:"tianzhu"`
-	Diwei    string `json:"diwei"`
-	Lu       string `json:"lu"`
-	Quan     string `json:"quan"`
-	Ke       string `json:"ke"`
-	Ji       string `json:"ji"`
-	Zhushen  string `json:"zhushen"`
-	Fuji     string `json:"fuji"`
-	Xingyao  string `json:"xingyao"`
-	Gongwei  string `json:"gongwei"`
-	Analysis string `json:"analysis"`
-}
-
 // ============================================================
 // 工具函数
 // ============================================================
@@ -755,28 +741,14 @@ func distributeSuiXing(chart *ZiweiChart, lunarMonth, lunarDayNum, yearZhiIndex 
 // AnalyzeZiwei 紫微斗数分析（无锁：tyme lazy-init 均 sync.Once 保护、
 // 排盘为纯计算，并发安全由 TestCalculateZiweiChartConcurrentDeterminism
 // 压测固化——原 ziweiMutex 把并发排盘串行化，docs/29 P3#22）
-func AnalyzeZiwei(year, month, day, hour int, gender string) *ZiweiAnalysis {
-	chart := CalculateZiweiChart(year, month, day, hour, gender)
-
-	// 命宫主星（ZhuXing 以宫名为键；原实现误用干支串查宫名键，恒落空）
-	mingGongStar := joinStars(chart.ZhuXing["命宫"])
-	if mingGongStar == "" {
-		mingGongStar = "无主星"
-	}
-
-	return &ZiweiAnalysis{
-		Tianzhu:  mingGongStar,
-		Diwei:    joinStars(chart.ZhuXing["田宅宫"]),
-		Lu:       chart.SiHua["禄"],
-		Quan:     chart.SiHua["权"],
-		Ke:       chart.SiHua["科"],
-		Ji:       chart.SiHua["忌"],
-		Zhushen:  chart.Soul,
-		Fuji:     joinStars(chart.FuXing["命宫"]),
-		Xingyao:  getAllXingYao(chart),
-		Gongwei:  chart.MingGong,
-		Analysis: chart.Analysis,
-	}
+// AnalyzeZiwei 紫微斗数排盘入口：返回完整 ZiweiChart。
+//
+// 此前本函数把完整盘面压缩为 9 字段摘要（ZiweiAnalysis），导致 12 宫落星、
+// 主星亮度、大限、辅星/杂曜分布全部丢失，前端「算而不显」。现直接返回
+// CalculateZiweiChart 的完整结果（含 Analysis 文本与 Brightness 等全部字段），
+// 由前端按需渲染。
+func AnalyzeZiwei(year, month, day, hour int, gender string) *ZiweiChart {
+	return CalculateZiweiChart(year, month, day, hour, gender)
 }
 
 func CalculateZiweiChart(year, month, day, hour int, gender string) *ZiweiChart {

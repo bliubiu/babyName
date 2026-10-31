@@ -78,7 +78,7 @@ func (a *HexagramAdapter) MatchXiyongshen(hexagram *yijing.Hexagram, xiyongshen 
 // ZiweiAdapter 紫微斗数适配器
 type ZiweiAdapter struct{}
 
-func (a *ZiweiAdapter) Analyze(year, month, day, hour int, gender string) *ziwei.ZiweiAnalysis {
+func (a *ZiweiAdapter) Analyze(year, month, day, hour int, gender string) *ziwei.ZiweiChart {
 	return ziwei.AnalyzeZiwei(year, month, day, hour, gender)
 }
 

@@ -381,7 +381,7 @@ func getTestCases() []TestCase {
 	}
 }
 
-// TestAnalyzeZiwei 测试 AnalyzeZiwei 接口返回的 ZiweiAnalysis
+// TestAnalyzeZiwei 测试 AnalyzeZiwei 返回完整 ZiweiChart
 func TestAnalyzeZiwei(t *testing.T) {
 	// Case 1 简单验证
 	result := AnalyzeZiwei(2000, 8, 16, 4, "女")
@@ -390,22 +390,30 @@ func TestAnalyzeZiwei(t *testing.T) {
 	}
 
 	// 命宫应该是干支格式 "壬午"，不是宫名 "命宫"
-	if result.Gongwei == "命宫" {
-		t.Errorf("Gongwei should be 干支 format like '壬午', got '%s'", result.Gongwei)
+	if result.MingGong == "命宫" {
+		t.Errorf("MingGong should be 干支 format like '壬午', got '%s'", result.MingGong)
 	}
 
 	// 四化应该有值
-	if result.Lu == "" {
+	if result.SiHua["禄"] == "" {
 		t.Error("四化禄 should not be empty")
 	}
-	if result.Quan == "" {
+	if result.SiHua["权"] == "" {
 		t.Error("四化权 should not be empty")
 	}
-	if result.Ke == "" {
+	if result.SiHua["科"] == "" {
 		t.Error("四化科 should not be empty")
 	}
-	if result.Ji == "" {
+	if result.SiHua["忌"] == "" {
 		t.Error("四化忌 should not be empty")
+	}
+
+	// 完整盘面应已安布主星与命主
+	if len(result.ZhuXing["命宫"]) == 0 {
+		t.Error("主星应已安布到命宫")
+	}
+	if result.Soul == "" {
+		t.Error("命主 should not be empty")
 	}
 }
 

@@ -430,12 +430,40 @@ func GetYaoInfo(yao int) YaoResult {
 	return YaoResult{Yao: yao, Name: "未知", YaoName: "", Meaning: ""}
 }
 
-func GetYaoName(yao int) string {
-	names := map[int]string{
-		6: "初六", 7: "初九", 8: "六二", 9: "九二",
+// GetYaoName 根据爻位与爻值返回标准爻名。
+//
+// position 自下而上为 1-6（初/二/三/四/五/上）；value 为爻值 6 老阴 / 7 少阳 /
+// 8 少阴 / 9 老阳。阴爻（6/8）前缀「六」，阳爻（7/9）前缀「九」，组合成：
+// 初九/初六、九二/六二、九三/六三、九四/六四、九五/六五、上九/上六。
+//
+// 旧实现把「爻位 + 阴阳」压缩进一张 4 值查表（仅初/二两爻），位置信息丢失，
+// 任意位置的阳爻都返回「九二」、阴爻返回「六二」。此处按通行规则重建。
+func GetYaoName(position, value int) string {
+	if position < 1 || position > 6 {
+		return ""
 	}
-	if name, ok := names[yao]; ok {
-		return name
+	var yinYang string
+	switch value {
+	case 6, 8:
+		yinYang = "六"
+	case 7, 9:
+		yinYang = "九"
+	default:
+		return ""
+	}
+	switch position {
+	case 1:
+		return "初" + yinYang
+	case 2:
+		return yinYang + "二"
+	case 3:
+		return yinYang + "三"
+	case 4:
+		return yinYang + "四"
+	case 5:
+		return yinYang + "五"
+	case 6:
+		return "上" + yinYang
 	}
 	return ""
 }

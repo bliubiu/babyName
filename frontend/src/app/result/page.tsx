@@ -14,6 +14,7 @@ import { NameFilters } from '@/components/NameFilter';
 
 const BaziAnalysis = lazy(() => import('@/components/BaziAnalysis'));
 const HexagramDisplay = lazy(() => import('@/components/HexagramDisplay'));
+const ZiweiDisplay = lazy(() => import('@/components/ZiweiDisplay'));
 const NameCard = lazy(() => import('@/components/NameCard').then(module => ({
   default: module.default
 })));
@@ -291,7 +292,7 @@ const cachedFavorites = useMemo<FavoriteData[]>(
     );
   }
 
-  const { bazi, nayin, zodiac, hexagram, names } = result;
+  const { bazi, nayin, zodiac, hexagram, ziwei, names } = result;
 
   const handleCompare = () => {
     if (compareNames.length < 2) {
@@ -331,6 +332,13 @@ const cachedFavorites = useMemo<FavoriteData[]>(
         {hexagram && (
           <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载卦象...</div>}>
             <HexagramDisplay hexagram={hexagram} />
+          </Suspense>
+        )}
+
+        {/* 紫微斗数 */}
+        {ziwei && (
+          <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载紫微斗数...</div>}>
+            <ZiweiDisplay ziwei={ziwei} />
           </Suspense>
         )}
 

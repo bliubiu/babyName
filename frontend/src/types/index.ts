@@ -164,12 +164,44 @@ export interface GenerateResponse {
     zodiac: string;
     hexagram: Hexagram;
     hexagram_match?: Record<string, unknown>;
-    ziwei?: Record<string, unknown>;
+    ziwei?: ZiweiChart;
     names: Name[];
     suggestions?: string[];
     /** 生成会话标识：凭它调 POST /names/generate/explore 换一批（探索模式） */
     generation_id?: string;
   };
+}
+
+// 紫微斗数完整盘面（与后端 ZiweiChart JSON 一致）。
+// 此前后端将盘面压缩为 9 字段摘要导致「算而不显」，现透传完整结构由前端渲染。
+export interface ZiweiChart {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  gender: string;
+  nian_zhu: string;
+  yue_zhu: string;
+  ri_zhu: string;
+  shi_zhu: string;
+  ming_gong: string; // 命宫（干支）
+  shen_gong: string; // 身宫（干支）
+  five_elements: string; // 五行局，如「火六局」
+  soul: string; // 命主
+  body: string; // 身主
+  // 大限：宫名 → { 起运年龄范围, 天干, 地支 }
+  da_xian: Record<string, { range: [number, number]; heavenly_stem: string; earthly_branch: string }>;
+  // 宫名 → 主星列表（同宫双星全部保留）
+  zhu_xing: Record<string, string[]>;
+  // 宫名 → 辅星列表
+  fu_xing: Record<string, string[]>;
+  // 宫名 → 杂曜列表
+  sui_xing: Record<string, string[]>;
+  // 生年四化：禄/权/科/忌 → 星名
+  si_hua: Record<string, string>;
+  // 主星亮度（庙/旺/得/利/平/不/陷），键为主星名
+  brightness: Record<string, string>;
+  analysis: string; // 排盘分析文本
 }
 
 // --- 异步生成任务（长任务体验） ---

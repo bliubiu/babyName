@@ -5,6 +5,18 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.31.5]
+
+**修复紫微斗数「算而不显」展示断点 + 易经 GetYaoName 爻名缺陷**
+
+### 🐛 Bug Fixes 问题修复
+- 【紫微斗数·展示断点】此前 `AnalyzeZiwei` 把完整盘面压缩为 9 字段摘要（`ZiweiAnalysis`），导致 12 宫落星、主星亮度、大限、辅星/杂曜分布全部丢失，前端「算而不显」。现改为直接返回完整 `ZiweiChart`：`ZiweiAnalyzer.Analyze` 接口、适配器、两处响应 DTO（`GenerateResponse` / `GenerateWithAnalysisResponse`）、`calculateHexagramAndZiweiParallel` / `buildResponse` / `ziweiForRequest` 全链路改类型为 `*ziwei.ZiweiChart`，并删除已被取代的 `ZiweiAnalysis` 摘要结构体
+- 【紫微斗数·前端渲染】新增 `ZiweiDisplay` 组件渲染完整盘面（十二宫落星 + 主星庙旺亮度 + 生年四化 + 五行局/命主身主 + 大限 + 分析文本），在 `result` 页与卦象并列懒加载渲染；`types/index.ts` 新增 `ZiweiChart` 接口替代原 `Record<string, unknown>` 占位，并重建 `out/`
+- 【易经·爻名缺陷】`GetYaoName` 原把「爻位 + 阴阳」压缩成 4 值查表（仅初/二两爻），位置信息丢失，任意阳爻都返回「九二」、阴爻返回「六二」。现改为 `GetYaoName(position, value int)`，按 1-6 爻位（初/二/三/四/五/上）与爻值（6/8 阴→六、7/9 阳→九）生成标准爻名（初九/六二/九五/上六等），并重写 `TestGetYaoNameCoverage` 覆盖全部 12 种合法组合与非法输入
+
+### 🔧 Dependencies 依赖更新
+- 无新增运行时依赖
+
 ## [2026.10.31.4]
 
 **紫微斗数：闰月口径统一为 iztro 默认「按日切」并消除盘内月份基准冲突**
