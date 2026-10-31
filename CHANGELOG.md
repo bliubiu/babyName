@@ -5,6 +5,23 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.31.0]
+
+**SSR 分支命理修复回植——紫微/命理/统计/隐私四处缺陷 cherry-pick 至 master（不含 SSR 模板）**
+
+### 🐛 Bug Fixes 问题修复
+- 【紫微斗数·双缺陷】`ZiweiChart.ZhuXing` 由单星 map 改为多星列表，布星由覆盖改为追加：同宫双星全部保留，宫内顺序紫微系在前、天府系在后，与经典并称（紫府、日月、同巨、武贪、廉杀等）一致，修复每盘静默丢失 3~4 颗主星（原提交 f1fbadc）；`calculateDaXian` 的 `isMale` 同时接受"男"/"male"，修复 `male` 全按女性逆行计算致大限方向整片反置（原提交 7b25739）
+- 【命理】`fate.WithGenderFilter` 入口归一化"男"/"女"→male/female：修复性别筛选静默失效（候选池退化只剩中性字）；新增 `validator.NormalizeGender` 统一三套性别表示
+- 【统计】SQLite 装载侧以恒等式 total=Σ单字count−Σ双字count 恢复频率语料总人数（实测 957746），修复统计占比恒为 0.0000%；`GetTopNames(limit, kind)` 支持 all/char/bigram 三种榜单分列，双字组合极度长尾（57.8% 仅出现 1-2 次）不再被单字名霸榜（原提交 9c80a74 后端部分）
+- 【隐私】收藏/历史按 128 位随机会话标识隔离（HttpOnly cookie `nm_sid` / `X-Session-ID` 头 + 全局中间件）：history/favorites 存量库迁移补 `session_id` 列与会话索引，落库层拒绝跨会话覆盖（`ON CONFLICT WHERE` + `RowsAffected` 校验），删除/查询全部收窄到当前会话，堵住跨会话读取、覆盖与越权删除（原提交 b865703 后端部分）
+- 【存储】SQLite 读写连接补 `busy_timeout(5000)`，写连接 `txlock=immediate`，修复 WAL checkpoint/外部工具持锁瞬间读写直接抛 database is locked；补 `idx_favorites_created_at` 索引修复收藏分页全表扫描
+- 【收藏】`FavoriteService.validateFavoriteEntry` 统一防线（单条/批量双入口）：姓名校验、gender 归一、score 限 0-100（防脏数据经 score≥80 污染精选库）、拼音/来源/备注长度上限
+- 【工程】`.gitignore` 增加 `.gocache/`（本机 GOCACHE 指向工作区产生的构建缓存不入库）
+
+### 🧪 验证
+- 随移植纳入回归用例：`TestDistributeZhuXing_十四星唯一性`（5 局 × 30 日全遍历）、紫微在子/午全盘逐宫锚点、`ziwei_gender_test`、`filter_gender_test`、`TestNormalizeGender`、`TestLoadMaterials_恢复频率语料总人数`、`store_session_isolation_test`（193 行）、`store_materials_load_test`
+- `go build ./...` + `go vet ./...` + 全仓 `go test ./...` 通过（`cmd/namer-cli` 为存量环境性失败，与本次移植无关，基线 26a1fb0 复跑同样失败）
+
 ## [2026.10.23.0]
 
 **移除离线粤语 TTS（Audio8 ONNX），保留 Web Speech zh-HK 试听**

@@ -17,6 +17,9 @@ backend/namer-*
 backend/*.prof
 backend/coverage.*
 
+# Go 构建缓存（本机 GOCACHE 指向工作区时产生）
+.gocache/
+
 # 前端
 frontend/node_modules/
 frontend/.next/
