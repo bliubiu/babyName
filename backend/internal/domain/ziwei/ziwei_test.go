@@ -32,8 +32,8 @@ type TestCase struct {
 	ExpectedSiHua map[string]string // 禄权科忌 -> 星名
 	// 大限
 	ExpectedDaXian map[string]DaXianExpected
-	// 宫位主星（部分宫位）
-	ExpectedZhuXing map[string]string
+	// 宫位主星（部分宫位，宫内顺序即布星顺序：紫微系在前、天府系在后）
+	ExpectedZhuXing map[string][]string
 	// 宫位辅星（部分宫位）
 	ExpectedFuXing map[string][]string
 }
@@ -101,12 +101,12 @@ func TestAnchors(t *testing.T) {
 			}
 
 			// 验证主星分布
-			for gong, expectedStar := range tc.ExpectedZhuXing {
+			for gong, expectedStars := range tc.ExpectedZhuXing {
 				got, ok := chart.ZhuXing[gong]
 				if !ok {
-					t.Errorf("宫位[%s] 主星缺失，期望: %s", gong, expectedStar)
-				} else if got != expectedStar {
-					t.Errorf("宫位[%s] 主星: got %s, want %s", gong, got, expectedStar)
+					t.Errorf("宫位[%s] 主星缺失，期望: %v", gong, expectedStars)
+				} else if !equalStringSlices(got, expectedStars) {
+					t.Errorf("宫位[%s] 主星: got %v, want %v", gong, got, expectedStars)
 				}
 			}
 
@@ -179,6 +179,19 @@ func getTestCases() []TestCase {
 				"权": "武曲",
 				"科": "太阴",
 				"忌": "天同",
+			},
+			// 紫微在午独坐：同巨在丑、武相在寅、阳梁在卯、廉府在戌（双星全保留）
+			ExpectedZhuXing: map[string][]string{
+				"命宫":  {"紫微"},
+				"兄弟宫": {"天机"},
+				"夫妻宫": {"七杀"},
+				"子女宫": {"太阳", "天梁"},
+				"财帛宫": {"武曲", "天相"},
+				"疾厄宫": {"天同", "巨门"},
+				"迁移宫": {"贪狼"},
+				"交友宫": {"太阴"},
+				"官禄宫": {"廉贞", "天府"},
+				"福德宫": {"破军"},
 			},
 			ExpectedDaXian: map[string]DaXianExpected{
 				"命宫":  {Range: [2]int{3, 12}, HeavenlyStem: "壬", EarthlyBranch: "午"},
@@ -459,8 +472,8 @@ func formatChartDebug(chart *ZiweiChart) string {
 	sb.WriteString(fmt.Sprintf("命主: %s\n", chart.Soul))
 	sb.WriteString(fmt.Sprintf("身主: %s\n", chart.Body))
 	sb.WriteString("主星:\n")
-	for gong, star := range chart.ZhuXing {
-		sb.WriteString(fmt.Sprintf("  %s: %s\n", gong, star))
+	for gong, stars := range chart.ZhuXing {
+		sb.WriteString(fmt.Sprintf("  %s: %s\n", gong, joinStars(stars)))
 	}
 	return sb.String()
 }
