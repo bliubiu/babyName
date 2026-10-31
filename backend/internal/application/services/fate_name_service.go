@@ -303,7 +303,7 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 	}
 
 	// 补齐易经卦象与紫微斗数（梅花易数：姓上卦、名下卦）
-	response.Hexagram = s.hexagramForNames(names, req)
+	response.Hexagram, response.HexagramDetail = s.hexagramForNames(names, req)
 	response.Ziwei = s.ziweiForRequest(req)
 
 	logger.Info("GenerateWithAnalysis: completed via fate engine",
@@ -336,10 +336,11 @@ func buildCantoneseScoreDetail(cs *fate.NameScore) []name.ScoreDetailItem {
 	return out
 }
 
-// hexagramForNames 梅花易数姓名卦：姓笔画→上卦，名笔画→下卦
-func (s *FateNameService) hexagramForNames(names []*name.NameAnalysis, req *GenerateRequest) *yijing.Hexagram {
+// hexagramForNames 梅花易数姓名卦：姓笔画→上卦，名笔画→下卦。
+// 同时返回完整梅花详情（本/变/互卦与动爻，docs/42 P0-4），两查询同笔画口径。
+func (s *FateNameService) hexagramForNames(names []*name.NameAnalysis, req *GenerateRequest) (*yijing.Hexagram, *yijing.PlumBlossomResult) {
 	if s.hexagramFinder == nil || len(names) == 0 {
-		return nil
+		return nil, nil
 	}
 	surnameStrokes := 0
 	if l1, l2, err := NewHanziDataProvider().GetSurnameStrokes(req.Surname); err == nil {
@@ -352,7 +353,8 @@ func (s *FateNameService) hexagramForNames(names []*name.NameAnalysis, req *Gene
 	if givenStrokes <= 0 {
 		givenStrokes = 10
 	}
-	return s.hexagramFinder.FindByMeihuaName(surnameStrokes, givenStrokes)
+	return s.hexagramFinder.FindByMeihuaName(surnameStrokes, givenStrokes),
+		s.hexagramFinder.FindMeihuaDetail(surnameStrokes, givenStrokes)
 }
 
 // ziweiForRequest 按出生时间进行紫微排盘（无分析器时返回 nil）

@@ -30,8 +30,12 @@ func TestCalculateDayanNumber_ChangeYaoReachable(t *testing.T) {
 		r := CastHexagramByDayan()
 		if r.ChangeYao > 0 {
 			sawChange = true
-			if yao := r.YaoLines[r.ChangeYao-1]; yao != 6 && yao != 9 {
-				t.Fatalf("变爻位置 %d 的爻值=%d，应为 6/9", r.ChangeYao, yao)
+			// ChangeYao 为《易学启蒙》占例下的断卦爻位：1-3 动时必为动爻（6/9），
+			// 4-5 动时断静爻（7/8）属正常口径
+			if len(r.ChangeYaos) <= 3 {
+				if yao := r.YaoLines[r.ChangeYao-1]; yao != 6 && yao != 9 {
+					t.Fatalf("动爻数 %d 时断爻位 %d 的爻值=%d，应为 6/9", len(r.ChangeYaos), r.ChangeYao, yao)
+				}
 			}
 		}
 	}

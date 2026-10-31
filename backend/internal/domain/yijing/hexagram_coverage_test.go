@@ -2,7 +2,6 @@ package yijing
 
 import (
 	"testing"
-	"time"
 )
 
 // TestGetHexagramByNumberCoverage tests GetHexagramByNumber
@@ -504,13 +503,11 @@ func TestInterpretHexagramCoverage(t *testing.T) {
 	}
 }
 
-// TestCastHexagramByTimeCoverage tests CastHexagramByTime
-func TestCastHexagramByTimeCoverage(t *testing.T) {
-	// Use fixed seed for deterministic test
-	now := time.Now()
-	r := CastHexagramByTime(now.Year(), int(now.Month()), now.Day(), now.Hour())
+// TestCastMeihuaByNumbersCoverage tests CastMeihuaByNumbers（梅花两数起卦，确定性）
+func TestCastMeihuaByNumbersCoverage(t *testing.T) {
+	r := CastMeihuaByNumbers(7, 3)
 	if r == nil {
-		t.Fatal("CastHexagramByTime should not return nil")
+		t.Fatal("CastMeihuaByNumbers should not return nil")
 	}
 	if r.Hexagram == nil {
 		t.Error("Hexagram should not be nil")
@@ -519,12 +516,19 @@ func TestCastHexagramByTimeCoverage(t *testing.T) {
 		t.Errorf("YaoLines length = %d, want 6", len(r.YaoLines))
 	}
 	for _, yao := range r.YaoLines {
-		if yao < 6 || yao > 9 {
-			t.Errorf("Yao = %d, want 6-9", yao)
+		// 梅花静卦仅 7 少阳 / 8 少阴
+		if yao != 7 && yao != 8 {
+			t.Errorf("Yao = %d, want 7/8", yao)
 		}
 	}
-	if r.ChangeYao < 0 || r.ChangeYao > 6 {
-		t.Errorf("ChangeYao = %d, want 0-6", r.ChangeYao)
+	if r.ChangeYao < 1 || r.ChangeYao > 6 {
+		t.Errorf("ChangeYao = %d, want 1-6", r.ChangeYao)
+	}
+	if r.ChangedHexagram == nil {
+		t.Error("ChangedHexagram should not be nil（梅花必有动爻）")
+	}
+	if r.InterHexagram == nil {
+		t.Error("InterHexagram should not be nil")
 	}
 	if r.Interpretation == "" {
 		t.Error("Interpretation should not be empty")

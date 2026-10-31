@@ -2,7 +2,6 @@ package yijing
 
 import (
 	"math/rand"
-	"time"
 )
 
 type YaoResult struct {
@@ -198,32 +197,12 @@ func FindHexagramByTrigrams(upper, lower int) *Hexagram {
 	return nil
 }
 
-// meihuaGuaNames 先天八卦顺序 64 卦名：索引 (upper-1)*8+(lower-1)
-// 行=上卦，列=下卦；顺序：乾兑离震巽坎艮坤
-var meihuaGuaNames = [64]string{
-	"乾", "履", "同人", "无妄", "姤", "讼", "遁", "否",
-	"夬", "兑", "革", "随", "大过", "困", "咸", "萃",
-	"大有", "睽", "离", "噬嗑", "鼎", "未济", "旅", "晋",
-	"大壮", "归妹", "丰", "震", "恒", "解", "小过", "豫",
-	"小畜", "中孚", "家人", "益", "巽", "涣", "渐", "观",
-	"需", "节", "既济", "屯", "井", "坎", "蹇", "比",
-	"大畜", "损", "贲", "颐", "蛊", "蒙", "艮", "剥",
-	"泰", "临", "明夷", "复", "升", "师", "谦", "坤",
-}
-
-// GetHexagramByMeihuaName 梅花易数姓名卦：姓笔画→上卦，名笔画→下卦
-// 使用先天八卦标准 64 卦名表，避免库内 Upper/Lower 字段错位
+// GetHexagramByMeihuaName 梅花易数姓名卦（单卦）：姓笔画→上卦，名笔画→下卦。
+// 口径与 GetMeihuaDetailByStrokes 同源（plum_blossom.go），仅返回本卦。
 func GetHexagramByMeihuaName(surnameStrokes, givenStrokes int) *Hexagram {
 	upper := TrigramFromStrokes(surnameStrokes)
 	lower := TrigramFromStrokes(givenStrokes)
-	name := meihuaGuaNames[(upper-1)*8+(lower-1)]
-	if h := GetHexagramByName(name); h != nil {
-		return h
-	}
-	if h := FindHexagramByTrigrams(upper, lower); h != nil {
-		return h
-	}
-	return GetHexagramByNumber((upper-1)*8 + lower)
+	return FindHexagramByTrigrams(upper, lower)
 }
 
 // GetHexagramByName 根据卦名获取卦象
@@ -380,12 +359,51 @@ func AnalyzeHexagramWuxing(hexagram *Hexagram) string {
 }
 
 type DayanResult struct {
-	Hexagram       *Hexagram
-	OriginalHex    *Hexagram
-	YaoLines       []int  `json:"yao_lines"`
-	DayanNumbers   []int  `json:"dayan_numbers"`
-	ChangeYao      int    `json:"change_yao"`
-	Interpretation string `json:"interpretation"`
+	Hexagram        *Hexagram
+	OriginalHex     *Hexagram
+	ChangedHexagram *Hexagram // 变卦（之卦）：翻转动爻阴阳后排定，无动爻为 nil
+	InterHexagram   *Hexagram // 互卦：本卦 234 爻为下卦、345 爻为上卦
+	YaoLines        []int     `json:"yao_lines"`
+	DayanNumbers    []int     `json:"dayan_numbers"`
+	ChangeYaos      []int     `json:"change_yaos"` // 全部动爻位置（1-6，自下而上）
+	ChangeYao       int       `json:"change_yao"`  // 断卦爻位（《易学启蒙》占例选定，0=以卦辞断）
+	Interpretation  string    `json:"interpretation"`
+}
+
+// decideYaoFromChanges 依据朱熹《易学启蒙》占例，由动爻集合选定断卦爻位：
+// 0 动 → 0（以本卦卦辞断）；1 动 → 该动爻；2 动 → 上动爻；3 动 → 中间动爻；
+// 4 动 → 变卦二静爻之下者（本卦静爻中较低者）；5 动 → 变卦静爻（本卦唯一静爻）；
+// 6 动 → 0（乾坤用九用六，余卦以变卦卦辞断）。
+// changes 须为升序动爻位置（1-6）。
+func decideYaoFromChanges(changes []int) int {
+	n := len(changes)
+	switch n {
+	case 0:
+		return 0
+	case 1:
+		return changes[0]
+	case 2:
+		return changes[1] // 两爻动，以上动爻为主
+	case 3:
+		return changes[1] // 三爻动，以中间动爻为主
+	case 4, 5:
+		// 四动取静爻之下者，五动取唯一静爻
+		for pos := 1; pos <= 6; pos++ {
+			static := true
+			for _, c := range changes {
+				if c == pos {
+					static = false
+					break
+				}
+			}
+			if static {
+				return pos
+			}
+		}
+		return 0
+	default:
+		return 0
+	}
 }
 
 // CalculateDayanNumber 大衍筮法：三变成一爻。
@@ -503,56 +521,57 @@ func InterpretHexagram(hexagram *Hexagram, xiyongshen []string) *HexagramInterpr
 	return interp
 }
 
-func CastHexagramByTime(year, month, day, hour int) *DayanResult {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+// CastMeihuaByNumbers 梅花易数两数起卦（确定性，无随机）：
+// 上卦 = n1 %8（余 0 取 8），下卦 = n2 %8（余 0 取 8），动爻 = (n1+n2) %6（余 0 取 6）。
+// 旧 CastHexagramByTime 以时间戳做随机种子再均匀摇爻，既非标准梅花时间起卦，
+// 概率分布也不符大衍 1:3:3:1，已删除；时间起卦应由调用方先换算农历再按本函数口径传数。
+func CastMeihuaByNumbers(n1, n2 int) *DayanResult {
+	if n1 <= 0 {
+		n1 = 1
+	}
+	if n2 <= 0 {
+		n2 = 1
+	}
+	upper := TrigramFromStrokes(n1)
+	lower := TrigramFromStrokes(n2)
 
-	seed := year*1000000 + month*10000 + day*100 + hour
-	r.Seed(int64(seed))
-
-	var yaoLines []int
-	var changeYao int
-
-	for i := 0; i < 6; i++ {
-		num := r.Intn(4) + 6
-		yaoLines = append(yaoLines, num)
-
-		if num == 9 || num == 6 {
-			changeYao = i + 1
-		}
+	total := n1 + n2
+	movingYao := total % 6
+	if movingYao == 0 {
+		movingYao = 6
 	}
 
-	// 上下卦由六爻阴阳直接排定，按先天上下卦查表（组合码 ≠ 通行本卦序）
-	lowerTrigram := trigramFromYaoLines(yaoLines[0:3])
-	upperTrigram := trigramFromYaoLines(yaoLines[3:6])
+	hexagram := FindHexagramByTrigrams(upper, lower)
+	originalLines := GenerateYaoLines(upper, lower)
 
-	hexagram := FindHexagramByTrigrams(upperTrigram, lowerTrigram)
+	changedUpper, changedLower := CalcChangedHexagram(upper, lower, movingYao)
+	changedHex := FindHexagramByTrigrams(changedUpper, changedLower)
 
-	interpretation := ""
-	if hexagram != nil {
-		interpretation = hexagram.Interpretation
-	}
+	interUpper, interLower := CalcInterHexagram(upper, lower)
+	interHex := FindHexagramByTrigrams(interUpper, interLower)
 
-	if changeYao > 0 {
-		interpretation += "\n变爻：" + string(rune('一'+changeYao-1)) + "，"
-		if yaoLines[changeYao-1] == 6 {
-			interpretation += "老阴变阳，推荐关注变卦"
-		} else {
-			interpretation += "老阳变阴，推荐关注变卦"
-		}
-	}
+	yaoLines := make([]int, 6)
+	copy(yaoLines, originalLines[:])
+
+	interpretation := buildMeihuaDayanInterpretation(
+		hexagram, changedHex, interHex, upper, lower, movingYao, yaoLines,
+	)
 
 	return &DayanResult{
-		Hexagram:       hexagram,
-		YaoLines:       yaoLines,
-		ChangeYao:      changeYao,
-		Interpretation: interpretation,
+		Hexagram:        hexagram,
+		ChangedHexagram: changedHex,
+		InterHexagram:   interHex,
+		YaoLines:        yaoLines,
+		ChangeYaos:      []int{movingYao},
+		ChangeYao:       movingYao,
+		Interpretation:  interpretation,
 	}
 }
 
 func CastHexagramByDayan() *DayanResult {
 	var yaoLines []int
 	var dayanNumbers []int
-	var changeYao int
+	var changeYaos []int
 
 	for i := 0; i < 6; i++ {
 		num := CalculateDayanNumber()
@@ -575,7 +594,7 @@ func CastHexagramByDayan() *DayanResult {
 		yaoLines = append(yaoLines, yao)
 
 		if num == 9 || num == 6 {
-			changeYao = i + 1
+			changeYaos = append(changeYaos, i+1)
 		}
 	}
 
@@ -586,31 +605,70 @@ func CastHexagramByDayan() *DayanResult {
 
 	hexagram := FindHexagramByTrigrams(upperTrigram, lowerTrigram)
 
-	var originalHex *Hexagram
-	if changeYao > 0 {
-		originalHex = hexagram
+	// 互卦：234 爻为下卦、345 爻为上卦
+	interUpper, interLower := CalcInterHexagram(upperTrigram, lowerTrigram)
+	interHex := FindHexagramByTrigrams(interUpper, interLower)
+
+	// 变卦：翻转动爻阴阳后重新排定上下卦
+	var changedHex *Hexagram
+	var changeYao int
+	if len(changeYaos) > 0 {
+		changeYao = decideYaoFromChanges(changeYaos)
+		changedLines := make([]int, 6)
+		copy(changedLines, yaoLines)
+		for _, pos := range changeYaos {
+			if changedLines[pos-1] == 9 {
+				changedLines[pos-1] = 8 // 老阳变阴
+			} else if changedLines[pos-1] == 6 {
+				changedLines[pos-1] = 7 // 老阴变阳
+			}
+		}
+		changedUpper := trigramFromYaoLines(changedLines[3:6])
+		changedLower := trigramFromYaoLines(changedLines[0:3])
+		changedHex = FindHexagramByTrigrams(changedUpper, changedLower)
 	}
 
 	interpretation := ""
 	if hexagram != nil {
 		interpretation = hexagram.Interpretation
 	}
-
-	if changeYao > 0 && originalHex != nil {
-		interpretation += "\n变爻：" + string(rune('一'+changeYao-1)) + "，"
-		if yaoLines[changeYao-1] == 6 {
-			interpretation += "老阴变阳，推荐关注变卦"
-		} else {
-			interpretation += "老阳变阴，推荐关注变卦"
+	if len(changeYaos) > 0 {
+		interpretation += "\n断卦（朱熹《易学启蒙》占例）：" + decideYaoRuleText(changeYaos, changeYao)
+		if changedHex != nil {
+			interpretation += "变卦为" + changedHex.Name + "。"
 		}
 	}
 
 	return &DayanResult{
-		Hexagram:       hexagram,
-		OriginalHex:    originalHex,
-		YaoLines:       yaoLines,
-		DayanNumbers:   dayanNumbers,
-		ChangeYao:      changeYao,
-		Interpretation: interpretation,
+		Hexagram:        hexagram,
+		OriginalHex:     hexagram,
+		ChangedHexagram: changedHex,
+		InterHexagram:   interHex,
+		YaoLines:        yaoLines,
+		DayanNumbers:    dayanNumbers,
+		ChangeYaos:      changeYaos,
+		ChangeYao:       changeYao,
+		Interpretation:  interpretation,
+	}
+}
+
+// decideYaoRuleText 生成断法说明文字（与 decideYaoFromChanges 同一口径）
+func decideYaoRuleText(changeYaos []int, changeYao int) string {
+	posName := map[int]string{1: "初爻", 2: "二爻", 3: "三爻", 4: "四爻", 5: "五爻", 6: "上爻"}
+	switch len(changeYaos) {
+	case 0:
+		return "无动爻，以本卦卦辞断。"
+	case 1:
+		return "一爻动，以本卦动爻爻辞为主。"
+	case 2:
+		return "两爻动，以上动爻（" + posName[changeYao] + "）爻辞为主。"
+	case 3:
+		return "三爻动，以中间动爻（" + posName[changeYao] + "）爻辞为主，兼看本卦与变卦卦辞。"
+	case 4:
+		return "四爻动，以变卦二静爻之下者（" + posName[changeYao] + "）爻辞为主。"
+	case 5:
+		return "五爻动，以变卦静爻（" + posName[changeYao] + "）爻辞为主。"
+	default:
+		return "六爻皆动：乾坤二卦以用九、用六断，余卦以变卦卦辞断。"
 	}
 }

@@ -2,32 +2,32 @@ package yijing
 
 import "testing"
 
-// TestHexagram_TrigramsMatchMeihuaTable 64 卦 Upper/Lower 与先天八卦姓名卦对照表一致
-func TestHexagram_TrigramsMatchMeihuaTable(t *testing.T) {
-	if len(meihuaGuaNames) != 64 {
-		t.Fatalf("meihuaGuaNames len=%d", len(meihuaGuaNames))
+// TestHexagram_TrigramsBijection 64 组先天上下卦组合与 HexagramList 双射：
+// 每个 (upper, lower) 恰好命中一卦，且 64 卦互不重复（Symbol 同口径校验）
+func TestHexagram_TrigramsBijection(t *testing.T) {
+	seen := map[string]bool{}
+	for u := 1; u <= 8; u++ {
+		for l := 1; l <= 8; l++ {
+			h := FindHexagramByTrigrams(u, l)
+			if h == nil {
+				t.Fatalf("组合 (%d,%d) 无卦命中", u, l)
+			}
+			if h.UpperTrigram != u || h.LowerTrigram != l {
+				t.Fatalf("组合 (%d,%d) 命中卦 %s 的上下卦为 %d/%d，表数据错位",
+					u, l, h.Name, h.UpperTrigram, h.LowerTrigram)
+			}
+			if seen[h.Name] {
+				t.Fatalf("卦名 %s 重复命中，组合不构成双射", h.Name)
+			}
+			seen[h.Name] = true
+			wantSym := TrigramMap[u] + TrigramMap[l]
+			if h.Symbol != wantSym {
+				t.Errorf("卦 %s Symbol=%q, 期望 %q", h.Name, h.Symbol, wantSym)
+			}
+		}
 	}
-	byName := map[string]*Hexagram{}
-	for i := range HexagramList {
-		byName[HexagramList[i].Name] = &HexagramList[i]
-	}
-	for i, name := range meihuaGuaNames {
-		wantU := i/8 + 1
-		wantL := i%8 + 1
-		h, ok := byName[name]
-		if !ok {
-			t.Errorf("对照表卦名 %s 不在 HexagramList", name)
-			continue
-		}
-		if h.UpperTrigram != wantU || h.LowerTrigram != wantL {
-			t.Errorf("卦 %s Upper/Lower=%d/%d, 期望 %d/%d（先天八卦）",
-				name, h.UpperTrigram, h.LowerTrigram, wantU, wantL)
-		}
-		// Symbol 应为 上卦符号+下卦符号
-		wantSym := TrigramMap[wantU] + TrigramMap[wantL]
-		if h.Symbol != wantSym {
-			t.Errorf("卦 %s Symbol=%q, 期望 %q", name, h.Symbol, wantSym)
-		}
+	if len(seen) != 64 {
+		t.Fatalf("覆盖卦名 %d 个，应为 64", len(seen))
 	}
 }
 

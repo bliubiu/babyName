@@ -94,6 +94,31 @@ export interface Hexagram {
   interpretation: string;
 }
 
+/** 梅花易数完整起卦结果：本卦/变卦/互卦/动爻与六爻值（docs/42 P0-4） */
+export interface HexagramDetail {
+  /** 本卦 */
+  original_hexagram: Hexagram;
+  /** 变卦（之卦） */
+  changed_hexagram: Hexagram | null;
+  /** 互卦（事情发展过程） */
+  inter_hexagram: Hexagram | null;
+  upper_trigram_id: number;
+  lower_trigram_id: number;
+  upper_trigram_name: string;
+  lower_trigram_name: string;
+  /** 动爻位置（1-6，自下而上） */
+  moving_yao: number;
+  /** 本卦六爻（7=少阳/阳爻，8=少阴/阴爻），自下而上 */
+  original_yao_lines: number[];
+  /** 变卦六爻 */
+  changed_yao_lines: number[];
+  /** 互卦上卦 ID（1-8） */
+  inter_upper: number;
+  /** 互卦下卦 ID（1-8） */
+  inter_lower: number;
+  interpretation: string;
+}
+
 export interface NameBase {
   surname: string;
   given_name: string;
@@ -164,6 +189,8 @@ export interface GenerateResponse {
     zodiac: string;
     hexagram: Hexagram;
     hexagram_match?: Record<string, unknown>;
+    /** 梅花完整起卦：本/变/互卦、动爻与六爻（docs/42 P0-4） */
+    hexagram_detail?: HexagramDetail;
     ziwei?: ZiweiChart;
     names: Name[];
     suggestions?: string[];

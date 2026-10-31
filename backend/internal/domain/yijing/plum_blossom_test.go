@@ -77,11 +77,11 @@ func TestGenerateYaoLines_InvalidID(t *testing.T) {
 
 func TestCalcChangedHexagram_FirstYao(t *testing.T) {
 	// 上乾(1)下坤(8)，动初爻(1)
-	// 初爻由少阴(8)→少阳(7)，下卦爻变{7,8,8}=艮(7)
+	// 初爻由少阴(8)→少阳(7)，下卦爻变{7,8,8}=震(4)（震仰盂：阳阴阴）
 	upper, lower := CalcChangedHexagram(1, 8, 1)
-	// yaoToTrigram[{7,8,8}] = 7(艮)
-	if lower != 7 {
-		t.Errorf("下卦 = %d, want 7(艮)", lower)
+	// yaoToTrigram[{7,8,8}] = 4(震)，变卦为天雷无妄 #25
+	if lower != 4 {
+		t.Errorf("下卦 = %d, want 4(震)", lower)
 	}
 	if upper != 1 {
 		t.Errorf("上卦 = %d, want 1(乾)", upper)
@@ -217,6 +217,18 @@ func TestYaoToTrigram_Bidirectional(t *testing.T) {
 		mapped := yaoToTrigram[yao]
 		if mapped != id {
 			t.Errorf("trigramYaoMaps[%d] -> yaoToTrigraph -> %d, not bidirectional", id, mapped)
+		}
+	}
+}
+
+// TestTrigramYaoMaps_MatchesTrigramFromYaoLines 双编码一致性锁：
+// trigramYaoMaps 的爻画必须与 hexagram.go 的 trigramFromYaoLines 排定结果一致。
+// 此前兑/巽、震/艮爻画颠倒（round-trip 自洽故单向测试无法发现），本测试以
+// trigramFromYaoLines 为基准锚定正确爻画（docs/42 P0-1）。
+func TestTrigramYaoMaps_MatchesTrigramFromYaoLines(t *testing.T) {
+	for id, yao := range trigramYaoMaps {
+		if got := trigramFromYaoLines(yao[:]); got != id {
+			t.Errorf("trigramYaoMaps[%d] = %v，但 trigramFromYaoLines 排定为 %d，两套编码不一致", id, yao, got)
 		}
 	}
 }

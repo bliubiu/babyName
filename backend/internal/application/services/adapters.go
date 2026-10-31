@@ -63,6 +63,11 @@ func (a *HexagramAdapter) FindByMeihuaName(surnameStrokes, givenStrokes int) *yi
 	return yijing.GetHexagramByMeihuaName(surnameStrokes, givenStrokes)
 }
 
+// FindMeihuaDetail 梅花易数姓名完整起卦：本卦/变卦/互卦/动爻与六爻（docs/42 P0-4）
+func (a *HexagramAdapter) FindMeihuaDetail(surnameStrokes, givenStrokes int) *yijing.PlumBlossomResult {
+	return yijing.GetMeihuaDetailByStrokes(surnameStrokes, givenStrokes)
+}
+
 func (a *HexagramAdapter) FindByNumber(id int) *yijing.Hexagram {
 	return yijing.GetHexagramByNumber(id)
 }
