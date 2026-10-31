@@ -1,5 +1,7 @@
 package fate
 
+import "strings"
+
 // CharacterFilterType 字符筛选类型（位标志）
 type CharacterFilterType uint
 
@@ -206,9 +208,25 @@ func (fo FilterOption) WithStrictness(s string) FilterOption {
 }
 
 // WithGenderFilter 设置性别筛选
+// 历史缺陷：SSR 表单提交 "男"/"女" 原样落地，而 GenderHint 值域是
+// male/female/neutral，永不相等 → 性别筛选静默失效（候选池退化只剩中性字）。
+// 故在入口统一归一化为 canonical 枚举，与 filters 包内其它比较同口径。
 func (fo FilterOption) WithGenderFilter(gender string) FilterOption {
-	fo.GenderFilter = gender
+	fo.GenderFilter = normalizeGenderFilter(gender)
 	return fo
+}
+
+// normalizeGenderFilter 把常见性别表示归一为 male/female；
+// 无法识别的输入原样返回（空串=不过滤，保持现有语义）。
+func normalizeGenderFilter(gender string) string {
+	switch strings.ToLower(strings.TrimSpace(gender)) {
+	case "男", "male", "m":
+		return "male"
+	case "女", "female", "f":
+		return "female"
+	default:
+		return gender
+	}
 }
 
 // WithPreferredCategories 设置精选起名分类偏好

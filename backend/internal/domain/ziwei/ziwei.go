@@ -376,7 +376,10 @@ func calculateDaXian(yearGanZhi, mingGong string, fiveElements string, gender st
 	soulIdx := fixIndex(mingZhiIdx-2, 12)
 
 	// 顺行判断：性别与年支阴阳一致则顺行（阳男阴女顺行）
-	isMale := gender == "男"
+	// 历史缺陷：isMale 只认 "男"，而 API 枚举是 "male"/"female"（见
+	// ziwei/interfaces.go 声明），"male" 全被按女性逆行计算——紫微大限
+	// 方向整片反置且无任何报错。现同时接受中文与英文枚举。
+	isMale := gender == "男" || gender == "male"
 	isYearYang := YinZhiSet[yearZhiIdx] // true=阳支
 	gongForward := (isMale && isYearYang) || (!isMale && !isYearYang)
 

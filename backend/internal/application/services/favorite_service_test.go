@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
+	"name/internal/application/validator"
 	"name/internal/infrastructure/database"
 )
 
@@ -368,5 +370,65 @@ func TestSaveFavorite_写库失败不回流(t *testing.T) {
 	}
 	if len(rec.calls) != 0 {
 		t.Fatalf("收藏失败不应回流，实得 %+v", rec.calls)
+	}
+}
+
+// TestValidateFavoriteEntry 收藏入库防线回归：SSR 表单曾无校验，gender/
+// score/pinyin/notes 任意值直达库；score 无界会污染自学习精选库。
+func TestValidateFavoriteEntry(t *testing.T) {
+	valid := &FavoriteRecord{Surname: "王", GivenName: "涵", Gender: "男", Score: 88.5}
+	if err := validateFavoriteEntry(valid); err != nil {
+		t.Fatalf("合法记录不应报错: %v", err)
+	}
+	if valid.Gender != "male" {
+		t.Errorf("性别应归一为 male，实得 %q", valid.Gender)
+	}
+
+	tests := []struct {
+		name string
+		rec  *FavoriteRecord
+		want string
+	}{
+		{"空记录", nil, "收藏记录不能为空"},
+		{"空姓氏", &FavoriteRecord{GivenName: "涵"}, "姓氏不能为空"},
+		{"空名字", &FavoriteRecord{Surname: "王"}, "名字不能为空"},
+		{"非法性别", &FavoriteRecord{Surname: "王", GivenName: "涵", Gender: "外星人"}, "性别必须是male或female"},
+		{"评分上限", &FavoriteRecord{Surname: "王", GivenName: "涵", Score: 999}, "评分必须在0-100之间"},
+		{"评分下限", &FavoriteRecord{Surname: "王", GivenName: "涵", Score: -1}, "评分必须在0-100之间"},
+		{"拼音超长", &FavoriteRecord{Surname: "王", GivenName: "涵", Pinyin: strings.Repeat("p", 101)}, "拼音长度不能超过100个字符"},
+		{"来源超长", &FavoriteRecord{Surname: "王", GivenName: "涵", Source: strings.Repeat("s", 65)}, "来源标记长度不能超过64个字符"},
+		{"备注超长", &FavoriteRecord{Surname: "王", GivenName: "涵", Notes: strings.Repeat("备", 201)}, "备注长度不能超过200个字符"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateFavoriteEntry(tt.rec)
+			if err == nil {
+				t.Fatalf("%s 期望报错，实际 nil", tt.name)
+			}
+			if ve, ok := err.(*validator.ValidationError); ok {
+				if ve.Message != tt.want {
+					t.Errorf("文案 %q ≠ %q", ve.Message, tt.want)
+				}
+			}
+		})
+	}
+}
+
+// TestSaveFavorite_评分越界不触发自学习 重新验证集成路径：越界评分先被
+// 服务层拦截，且精选库（score≥80 触发器）前必须先入库校验。
+func TestSaveFavorite_评分越界不触发自学习(t *testing.T) {
+	store := &mockFavoriteStore{}
+	svc := NewFavoriteService(store)
+	_, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
+		Surname: "王", GivenName: "涵", Score: 999,
+	})
+	if err == nil {
+		t.Fatal("评分 999 应被拦截")
+	}
+	if store.curatedCalls != 0 {
+		t.Fatalf("拦截点在精选库之前，不应触发回流，实得 %d 次", store.curatedCalls)
+	}
+	if len(store.favorites) != 0 {
+		t.Fatalf("脏记录不应写入收藏库，实得 %d 条", len(store.favorites))
 	}
 }
