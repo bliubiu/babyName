@@ -94,53 +94,77 @@ func TestGetZiweiPosition_Anchors(t *testing.T) {
 	}
 }
 
-// TestDistributeZhuXing_ZiweiZiConfig 紫微在子：紫微独坐对照贪狼、
-// 廉贞天府在辰戌、太阳天梁在卯酉、武曲天相在寅申、天同巨门在丑未
+// TestDistributeZhuXing_ZiweiZiConfig 紫微在子全盘：紫微独坐对照贪狼、
+// 廉贞天府在辰、太阳天梁在酉、武曲天相在申、天同巨门在未——
+// 同宫双星两颗都必须落位（历史缺陷：单星 map 覆盖丢失紫微系星）
 func TestDistributeZhuXing_ZiweiZiConfig(t *testing.T) {
 	chart := &ZiweiChart{
-		ZhuXing:      make(map[string]string),
+		ZhuXing:      make(map[string][]string),
 		MingGong:     "壬午", // 命宫在午(6)
-		FiveElements: "水二局",
+		FiveElements: "金四局",
 	}
-	// 水二局初一 → 紫微在丑(1)；此处直接构造紫微在子的场景：
-	// 用金四局初五 → 紫微在子
-	chart.FiveElements = "金四局"
-	lunarDay := 5
-	distributeZhuXing(chart, lunarDay, 1)
+	// 金四局初五 → 紫微在子
+	distributeZhuXing(chart, 5, 1)
 
 	// 宫名按地支定位：命宫在午 → 地支 z 的宫名 = Gongs[(6-z) mod 12]
 	palaceAt := func(zhi int) string { return Gongs[(6-zhi+12)%12] }
 
-	// 14 主星全部落位且恰好 12 宫（其中两宫双星，map 键为宫名会覆盖——
-	// 现契约 ZhuXing[宫名]=单星，双星只保留后布的天府系一颗，与旧契约一致；
-	// 这里验证幸存星的地支位置正确）
-	expect := map[string]int{ // 星 → 地支
-		"紫微": 0, "天机": 11,
-		"天府": 4, "太阴": 5, "贪狼": 6, "巨门": 7, "天相": 8, "天梁": 9, "七杀": 10, "破军": 2,
+	// 14 主星地支 → 期望星曜（宫内紫微系在前、天府系在后）
+	wantByZhi := map[int][]string{
+		0: {"紫微"}, 11: {"天机"},
+		4: {"廉贞", "天府"}, 5: {"太阴"}, 6: {"贪狼"},
+		7: {"天同", "巨门"}, 8: {"武曲", "天相"}, 9: {"太阳", "天梁"},
+		10: {"七杀"}, 2: {"破军"},
 	}
-	// 被天府系覆盖的紫微系星（辰/酉/申/未 四宫双星）
-	overwritten := map[string]int{
-		"太阳": 9, "武曲": 8, "天同": 7, "廉贞": 4,
+	for zhi, want := range wantByZhi {
+		got := chart.ZhuXing[palaceAt(zhi)]
+		if !equalStringSlices(got, want) {
+			t.Errorf("%s宫(%s)：got %v，want %v", palaceAt(zhi), DizhiNames[zhi], got, want)
+		}
 	}
-	found := make(map[string]int)
-	for gong, star := range chart.ZhuXing {
-		for z := 0; z < 12; z++ {
-			if palaceAt(z) == gong {
-				found[star] = z
+
+	// 主星总数必须为 14（覆盖缺陷下单星 map 只剩 10 颗）
+	total := 0
+	for _, stars := range chart.ZhuXing {
+		total += len(stars)
+	}
+	if total != 14 {
+		t.Errorf("主星总数 = %d，期望 14（同宫双星不得覆盖）", total)
+	}
+}
+
+// TestDistributeZhuXing_十四星唯一性 回归：任意五行局 × 全生日，14 主星
+// 必须恰好各落位一次（历史缺陷：同宫双星被 map 覆盖，每盘丢 3~4 颗）
+func TestDistributeZhuXing_十四星唯一性(t *testing.T) {
+	wantStars := []string{"紫微", "天机", "太阳", "武曲", "天同", "廉贞",
+		"天府", "太阴", "贪狼", "巨门", "天相", "天梁", "七杀", "破军"}
+
+	for _, jue := range []string{"水二局", "木三局", "金四局", "土五局", "火六局"} {
+		for day := 1; day <= 30; day++ {
+			chart := &ZiweiChart{
+				ZhuXing:      make(map[string][]string),
+				MingGong:     "甲寅",
+				FiveElements: jue,
+			}
+			distributeZhuXing(chart, day, 1)
+
+			seen := map[string]int{}
+			for _, stars := range chart.ZhuXing {
+				for _, star := range stars {
+					seen[star]++
+				}
+			}
+			if len(seen) != len(wantStars) {
+				t.Errorf("%s局生日%d：落位主星 %d 种（期望 14）：%v", jue, day, len(seen), seen)
+				continue
+			}
+			for _, star := range wantStars {
+				if seen[star] != 1 {
+					t.Errorf("%s局生日%d：主星 %s 落位 %d 次（期望恰 1 次）", jue, day, star, seen[star])
+				}
 			}
 		}
 	}
-	for star, wantZhi := range expect {
-		gotZhi, ok := found[star]
-		if !ok {
-			t.Errorf("主星 %s 未落位（宫 %s）", star, palaceAt(wantZhi))
-			continue
-		}
-		if gotZhi != wantZhi {
-			t.Errorf("主星 %s 落在 %s(%d)，期望 %s(%d)", star, DizhiNames[gotZhi], gotZhi, DizhiNames[wantZhi], wantZhi)
-		}
-	}
-	_ = overwritten // 双星地支由安星偏移唯一决定，幸存星已覆盖全部 12 宫校验
 }
 
 // TestDistributeFuXing_PalaceMapping 辅星按地支落宫：年干甲（禄存寅、

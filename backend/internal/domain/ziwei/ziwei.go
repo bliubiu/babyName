@@ -2,6 +2,7 @@ package ziwei
 
 import (
 	"fmt"
+	"strings"
 
 	"name/internal/domain/bazi/tyme"
 )
@@ -110,7 +111,7 @@ type ZiweiChart struct {
 	Body         string                 `json:"body"`          // 身主
 	DaXian       map[string]DaXianEntry `json:"da_xian"`       // 大限
 
-	ZhuXing map[string]string   `json:"zhu_xing"`
+	ZhuXing map[string][]string `json:"zhu_xing"` // 宫名 → 主星列表（同宫双星全部保留，紫微系在前）
 	FuXing  map[string][]string `json:"fu_xing"`
 	SiHua   map[string]string   `json:"si_hua"`
 
@@ -472,6 +473,9 @@ func getZiweiPosition(lunarDayNum int, fiveElementsClass string, lunarMonth int)
 // 天府与紫微以寅申轴对称：天府位 = (4 - 紫微位) mod 12；
 // 天府系自天府起顺布（地支递增）：太阴+1、贪狼+2、巨门+3、天相+4、天梁+5、七杀+6、空三宫、破军+10。
 // 宫名按地支定位：命宫居命宫地支，十二宫自命宫逆行（兄弟=命宫地支-1，以此类推）。
+// 同宫双星全部保留：宫内顺序紫微系在前、天府系在后，与经典并称（紫府、日月、
+// 同巨、武贪、廉杀等）一致。历史缺陷：ZhuXing 曾为单星 map，后布的天府系
+// 覆盖先布的紫微系，每盘静默丢失 3~4 颗主星。
 // 原实现把紫微系天府系 14 星混入一个数组按宫序线性铺开，下标 12/13 永不可达
 // （破军不可能出现在任何宫），且把宫序当宫位地支。
 func distributeZhuXing(chart *ZiweiChart, lunarDayNum int, lunarMonth int) {
@@ -495,7 +499,7 @@ func distributeZhuXing(chart *ZiweiChart, lunarDayNum int, lunarMonth int) {
 	}
 	for _, s := range ziweiSeries {
 		p := palaceByZhi(fixIndex(ziweiPos-s.offset, 12))
-		chart.ZhuXing[p] = s.star
+		chart.ZhuXing[p] = append(chart.ZhuXing[p], s.star)
 	}
 
 	// 天府系（顺布）
@@ -508,7 +512,7 @@ func distributeZhuXing(chart *ZiweiChart, lunarDayNum int, lunarMonth int) {
 	}
 	for _, s := range tianfuSeries {
 		p := palaceByZhi(fixIndex(tianfuPos+s.offset, 12))
-		chart.ZhuXing[p] = s.star
+		chart.ZhuXing[p] = append(chart.ZhuXing[p], s.star)
 	}
 }
 
@@ -576,20 +580,20 @@ func AnalyzeZiwei(year, month, day, hour int, gender string) *ZiweiAnalysis {
 	chart := CalculateZiweiChart(year, month, day, hour, gender)
 
 	// 命宫主星（ZhuXing 以宫名为键；原实现误用干支串查宫名键，恒落空）
-	mingGongStar := chart.ZhuXing["命宫"]
+	mingGongStar := joinStars(chart.ZhuXing["命宫"])
 	if mingGongStar == "" {
 		mingGongStar = "无主星"
 	}
 
 	return &ZiweiAnalysis{
 		Tianzhu:  mingGongStar,
-		Diwei:    chart.ZhuXing["田宅宫"],
+		Diwei:    joinStars(chart.ZhuXing["田宅宫"]),
 		Lu:       chart.SiHua["禄"],
 		Quan:     chart.SiHua["权"],
 		Ke:       chart.SiHua["科"],
 		Ji:       chart.SiHua["忌"],
 		Zhushen:  chart.Soul,
-		Fuji:     getFuXingString(chart.FuXing["命宫"]),
+		Fuji:     joinStars(chart.FuXing["命宫"]),
 		Xingyao:  getAllXingYao(chart),
 		Gongwei:  chart.MingGong,
 		Analysis: chart.Analysis,
@@ -603,7 +607,7 @@ func CalculateZiweiChart(year, month, day, hour int, gender string) *ZiweiChart 
 		Day:     day,
 		Hour:    hour,
 		Gender:  gender,
-		ZhuXing: make(map[string]string),
+		ZhuXing: make(map[string][]string),
 		FuXing:  make(map[string][]string),
 		SiHua:   make(map[string]string),
 		DaXian:  make(map[string]DaXianEntry),
@@ -646,13 +650,14 @@ func CalculateZiweiChart(year, month, day, hour int, gender string) *ZiweiChart 
 	return chart
 }
 
-func getFuXingString(fuXing []string) string {
-	if len(fuXing) == 0 {
+// joinStars 星曜列表 → 「、」连接（主星/辅星通用，空列表返回空串）
+func joinStars(stars []string) string {
+	if len(stars) == 0 {
 		return ""
 	}
-	result := fuXing[0]
-	for i := 1; i < len(fuXing); i++ {
-		result += "、" + fuXing[i]
+	result := stars[0]
+	for i := 1; i < len(stars); i++ {
+		result += "、" + stars[i]
 	}
 	return result
 }
@@ -661,9 +666,7 @@ func getAllXingYao(chart *ZiweiChart) string {
 	var allStars []string
 
 	// 主星
-	if star, ok := chart.ZhuXing["命宫"]; ok && star != "" {
-		allStars = append(allStars, star)
-	}
+	allStars = append(allStars, chart.ZhuXing["命宫"]...)
 
 	// 辅星
 	if fuXing, ok := chart.FuXing["命宫"]; ok {
@@ -673,7 +676,7 @@ func getAllXingYao(chart *ZiweiChart) string {
 	if len(allStars) == 0 {
 		return "无"
 	}
-	return getFuXingString(allStars)
+	return joinStars(allStars)
 }
 
 func generateAnalysis(chart *ZiweiChart) string {
@@ -687,8 +690,8 @@ func generateAnalysis(chart *ZiweiChart) string {
 
 	analysis += "\n【主星分布】\n"
 	for _, gong := range Gongs {
-		if zhuXing, ok := chart.ZhuXing[gong]; ok && zhuXing != "" {
-			analysis += fmt.Sprintf("%s：%s\n", gong, zhuXing)
+		if stars := chart.ZhuXing[gong]; len(stars) > 0 {
+			analysis += fmt.Sprintf("%s：%s\n", gong, joinStars(stars))
 		}
 	}
 
@@ -702,7 +705,7 @@ func generateAnalysis(chart *ZiweiChart) string {
 	hasFuXing := false
 	for _, gong := range Gongs {
 		if fuXing, ok := chart.FuXing[gong]; ok && len(fuXing) > 0 {
-			analysis += fmt.Sprintf("%s：%s\n", gong, getFuXingString(fuXing))
+			analysis += fmt.Sprintf("%s：%s\n", gong, joinStars(fuXing))
 			hasFuXing = true
 		}
 	}
@@ -710,14 +713,13 @@ func generateAnalysis(chart *ZiweiChart) string {
 		analysis += "无特殊辅星\n"
 	}
 
-	mingGongZhuXing := chart.ZhuXing["命宫"]
 	analysis += "\n【命宫主星分析】\n"
-	analysis += getZhuXingAnalysis(mingGongZhuXing)
+	analysis += getZhuXingAnalysis(chart.ZhuXing["命宫"])
 
 	return analysis
 }
 
-func getZhuXingAnalysis(zhuXing string) string {
+func getZhuXingAnalysis(zhuXing []string) string {
 	analysisMap := map[string]string{
 		"紫微": "紫微星君临，美满福禄，地位显赫，有领导才能，适合管理岗位。",
 		"天机": "天机星临命，聪明机智，思维敏捷，适合策划、创意、技术类工作。",
@@ -734,10 +736,16 @@ func getZhuXingAnalysis(zhuXing string) string {
 		"破军": "破军星变革创新，不畏艰难，适合改革、技术、开创类工作。",
 	}
 
-	if analysis, ok := analysisMap[zhuXing]; ok {
-		return analysis
+	var descs []string
+	for _, star := range zhuXing {
+		if desc, ok := analysisMap[star]; ok {
+			descs = append(descs, desc)
+		}
 	}
-	return "命主性格温和，做事稳重，适合稳定的工作环境。"
+	if len(descs) == 0 {
+		return "命主性格温和，做事稳重，适合稳定的工作环境。"
+	}
+	return strings.Join(descs, "；")
 }
 
 func getLuckyDirection(year int) string {

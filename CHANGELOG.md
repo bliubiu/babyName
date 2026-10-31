@@ -5,7 +5,22 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.31.0]
+
+**紫微排盘：修复同宫双主星覆盖丢失——ZhuXing 改为多星列表，14 主星全保留**
+
+### 🐛 Bug Fixes 问题修复
+- 【紫微斗数】`ZiweiChart.ZhuXing` 由单星 map（宫名→星名）改为多星列表（宫名→星名列表），布星由覆盖改为追加：同宫双星全部保留，宫内顺序紫微系在前、天府系在后，与经典并称（紫府、日月、同巨、武贪、廉杀等）一致。历史缺陷为后布的天府系覆盖先布的紫微系，每盘静默丢失 3~4 颗主星（如紫微在子盘丢太阳/武曲/天同/廉贞），命宫落双星宫时命主星定调只反映一颗。
+- 【紫微斗数】`ZiweiAnalysis.Tianzhu`/`Diwei`/`Analysis` 文本输出适配多星：双星以「、」连接；【命宫主星分析】逐星取断语以「；」连接，双星宫不再退化为兜底文案。`getFuXingString` 更名 `joinStars`（主星/辅星通用）。
+
+### 🧪 验证
+- 重写 `TestDistributeZhuXing_ZiweiZiConfig`：紫微在子全盘逐宫断言（含 4 组双星宫），主星总数必须为 14。
+- 新增 `TestDistributeZhuXing_十四星唯一性`：5 种五行局 × 生日 1~30 全遍历，14 主星恰好各落位一次。
+- `TestAnchors/case1` 补齐紫微在午全盘 14 星锚点（对照《紫微斗数全书》安星表手工核对）。
+- `gofmt` + `go build ./...` + `go vet ./...` + `go test -shuffle=on ./internal/...` 通过；`internal/infrastructure/database/sqlite` 在 shuffle 模式下的偶发失败为物料工作线存量顺序依赖（不带 shuffle 复验通过，与本变更无关）。
+
 ## [2026.10.26.3]
+
 
 **部署链路对齐 SSR 全栈：移除 frontend 容器与反代，修复镜像字库缺失，收紧 CSP，SQLite 失败不再静默降级**
 
