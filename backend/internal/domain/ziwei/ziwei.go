@@ -50,9 +50,6 @@ var BodyStarTable = [12]string{"火星", "天相", "天梁", "天同", "文昌",
 // FiveElementsClassTable 五行局查表
 var FiveElementsClassTable = [5]string{"木三局", "金四局", "水二局", "火六局", "土五局"}
 
-// GenderTable 性别 → 阴阳
-var GenderTable = map[string]string{"男": "阳", "女": "阴"}
-
 // YinZhiSet 阳支集合 (子寅辰午申戌 → index%2==0)
 var YinZhiSet = [12]bool{true, false, true, false, true, false, true, false, true, false, true, false} // true=阳
 
@@ -969,66 +966,4 @@ func getZhuXingAnalysis(zhuXing []string) string {
 		return "命主性格温和，做事稳重，适合稳定的工作环境。"
 	}
 	return strings.Join(descs, "；")
-}
-
-func getLuckyDirection(year int) string {
-	directions := []string{"东方", "南方", "西方", "北方", "东南方", "西南方", "东北方", "西北方"}
-	index := year % len(directions)
-	return directions[index]
-}
-
-func getLuckyColor(year int) string {
-	colors := []string{"红色", "黄色", "蓝色", "绿色", "紫色", "白色", "黑色", "金色"}
-	index := year % len(colors)
-	return colors[index]
-}
-
-func getLuckyNumber(year int) int {
-	return (year % 9) + 1
-}
-
-func getCareerSuggestion(zhuXing string) string {
-	careerMap := map[string]string{
-		"紫微": "适合从政、管理、领导岗位",
-		"贪狼": "适合商业、艺术、娱乐行业",
-		"巨门": "适合教育、法律、媒体行业",
-		"武曲": "适合军事、金融、技术行业",
-		"天机": "适合科技、策划、创意行业",
-		"天同": "适合服务、医疗、教育行业",
-		"太阴": "适合艺术、设计、文职行业",
-		"太阳": "适合教育、公共服务、销售行业",
-		"天梁": "适合教育、宗教、慈善行业",
-		"七杀": "适合军事、执法、冒险行业",
-		"破军": "适合创业、改革、技术行业",
-		"天府": "适合管理、财务、稳定行业",
-		"廉贞": "适合艺术、文学、演艺行业",
-	}
-
-	if career, ok := careerMap[zhuXing]; ok {
-		return career
-	}
-	return "适合稳定的工作环境，注重团队合作"
-}
-
-func getRelationshipAdvice(zhuXing string) string {
-	relationMap := map[string]string{
-		"紫微": "感情中注重尊严，需要伴侣理解支持",
-		"贪狼": "感情丰富，需要伴侣有共同兴趣",
-		"巨门": "口才出众，需要伴侣善于沟通",
-		"武曲": "性格刚毅，需要伴侣温柔体贴",
-		"天机": "思维敏捷，需要伴侣聪明伶俐",
-		"天同": "性格温和，需要伴侣真诚相待",
-		"太阴": "感情细腻，需要伴侣细心呵护",
-		"太阳": "热情开朗，需要伴侣积极乐观",
-		"天梁": "传统保守，需要伴侣稳重可靠",
-		"七杀": "个性强势，需要伴侣独立自信",
-		"破军": "喜欢挑战，需要伴侣勇敢坚强",
-		"天府": "注重实际，需要伴侣踏实肯干",
-		"廉贞": "情感丰富，需要伴侣能理解艺术气质",
-	}
-
-	if advice, ok := relationMap[zhuXing]; ok {
-		return advice
-	}
-	return "感情中需要相互理解，共同成长"
 }
