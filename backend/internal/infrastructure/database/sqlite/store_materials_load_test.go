@@ -329,3 +329,23 @@ func newTestStoreIn(t *testing.T, dataDir string) *Store {
 	t.Cleanup(func() { _ = s.Close() })
 	return s
 }
+
+// TestLoadMaterials_恢复频率语料总人数 回归：导入框架只落行数据不落 meta，
+// 库装载后 GetTotalNames() 恒为 0 → 统计页占比全部显示 0.0000%。
+// 装载侧须用构造恒等式恢复：total = Σ单字count − Σ双字count
+// （单字表计每个人名的每个「名」字：Σ单字 = 单字名数 + 2×双字名数；
+//   双字表计每个双字名一次：Σ双字 = 双字名数 ⇒ 差 = 语料总人数）。
+// 夹具：单字 500+300+10=810，双字 20 ⇒ 期望 790。
+func TestLoadMaterials_恢复频率语料总人数(t *testing.T) {
+	dir := writeMinimalMaterials(t)
+	s := newTestStoreIn(t, dir)
+	if _, err := s.Import(ImportOptions{DataDir: dir}); err != nil {
+		t.Fatalf("导入失败: %v", err)
+	}
+	if report := s.LoadMaterialsFromDBWithReport(); report.Loaded == nil {
+		t.Fatal("装载失败")
+	}
+	if got := hanzi.GetTotalNames(); got != 790 {
+		t.Fatalf("装载后 GetTotalNames() = %d，期望 790（Σ单字810 − Σ双字20）", got)
+	}
+}

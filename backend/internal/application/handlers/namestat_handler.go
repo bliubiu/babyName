@@ -41,6 +41,7 @@ func (h *NameStatHandler) GetNameStats(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param limit query int false "限制数量，默认20，最大100"
+// @Param kind query string false "榜单种类：all(默认，合并)/char(仅单字名)/bigram(仅双字名)"
 // @Success 200 {array} namestat.NameStat "成功"
 // @Failure 500 {object} response.Response "服务器内部错误"
 // @Router /namestat [get]
@@ -52,7 +53,12 @@ func (h *NameStatHandler) GetTopNames(c *gin.Context) {
 		}
 	}
 
-	logger.Info("GetTopNames called", zap.Int("limit", limit))
-	stats := namestat.GetTopNames(limit)
+	kind := c.Query("kind")
+	if kind != "char" && kind != "bigram" {
+		kind = "all"
+	}
+
+	logger.Info("GetTopNames called", zap.Int("limit", limit), zap.String("kind", kind))
+	stats := namestat.GetTopNames(limit, kind)
 	response.SuccessJSON(c, stats)
 }

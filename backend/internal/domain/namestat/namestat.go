@@ -61,8 +61,11 @@ func GetNameStats(name string) *NameStat {
 	}
 }
 
-// GetTopNames 获取热门名字排行（合并单字名与双字名，按出现次数降序）
-func GetTopNames(limit int) []NameStat {
+// GetTopNames 获取热门名字排行（合并单字名与双字名，按出现次数降序）。
+// kind 过滤榜单种类："char" 仅单字名、"bigram" 仅双字名、其余（含 ""/"all"）
+// 合并双表。单字名集中度远高于双字组合（语料中 57.8% 的双字组合仅出现 1-2 次），
+// 合并榜单会被单字名霸占，故提供分列视图。
+func GetTopNames(limit int, kind string) []NameStat {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -71,11 +74,15 @@ func GetTopNames(limit int) []NameStat {
 	}
 
 	merged := make([]NameStat, 0, len(hanzi.CharRanking())+len(hanzi.BigramRanking()))
-	for _, f := range hanzi.CharRanking() {
-		merged = append(merged, NameStat{Name: f.Char, Count: f.Count, Rate: rateOf(f.Count)})
+	if kind != "bigram" {
+		for _, f := range hanzi.CharRanking() {
+			merged = append(merged, NameStat{Name: f.Char, Count: f.Count, Rate: rateOf(f.Count)})
+		}
 	}
-	for _, f := range hanzi.BigramRanking() {
-		merged = append(merged, NameStat{Name: f.Char1 + f.Char2, Count: f.Count, Rate: rateOf(f.Count)})
+	if kind != "char" {
+		for _, f := range hanzi.BigramRanking() {
+			merged = append(merged, NameStat{Name: f.Char1 + f.Char2, Count: f.Count, Rate: rateOf(f.Count)})
+		}
 	}
 
 	sort.Slice(merged, func(i, j int) bool { return merged[i].Count > merged[j].Count })
