@@ -171,7 +171,7 @@ func TestDistributeZhuXing_十四星唯一性(t *testing.T) {
 // 擎羊卯、陀罗丑、天魁丑、天钺未），命宫在午
 func TestDistributeFuXing_PalaceMapping(t *testing.T) {
 	chart := &ZiweiChart{FuXing: make(map[string][]string), MingGong: "壬午"}
-	distributeFuXing(chart, 1, 0, 0) // 正月、子时、甲年
+	distributeFuXing(chart, 1, 0, 0, 0) // 正月、子时、甲年、子年
 
 	palaceAt := func(zhi int) string { return Gongs[(6-zhi+12)%12] }
 	contains := func(gong, star string) bool {

@@ -91,6 +91,38 @@ var TianKuiTianYueTable = [10][2]int{
 	{3, 5},  // 癸→卯, 巳
 }
 
+// HuoLingTable 火星铃星起点表：三合分组号 = 年支索引 % 4（0=申子辰、
+// 1=巳酉丑、2=寅午戌、3=亥卯未）→ [火星起点支, 铃星起点支]（子起索引），
+// 自起点顺数至生时。
+// 口诀「申子辰人寅戌扬，寅午戌人丑卯方，巳酉丑人卯戌位，亥卯未人酉戌房」
+var HuoLingTable = [4][2]int{
+	{2, 10}, // 申子辰：火星寅起、铃星戌起
+	{3, 10}, // 巳酉丑：火卯、铃戌
+	{1, 3},  // 寅午戌：火丑、铃卯
+	{9, 10}, // 亥卯未：火酉、铃戌
+}
+
+// JieKongTable 截路空亡查表：分组号 = 年干索引 % 5（0=甲己、1=乙庚、
+// 2=丙辛、3=丁壬、4=戊癸）→ [截路支, 空亡支]（子起索引）。
+// 口诀「甲己之年申酉方，乙庚之年午未当，丙辛辰巳，丁壬寅卯，戊癸子丑」
+var JieKongTable = [5][2]int{{8, 9}, {6, 7}, {4, 5}, {2, 3}, {0, 1}}
+
+// GuGuaTable 孤辰寡宿查表：分组号 = ((年支+1) mod 12) / 3（0=亥子丑、
+// 1=寅卯辰、2=巳午未、3=申酉戌）→ [孤辰支, 寡宿支]（子起索引）。
+// 口诀「寅卯辰年安巳丑，巳午未年安申辰，申酉戌年安亥未，亥子丑年安寅戌」
+var GuGuaTable = [4][2]int{{2, 10}, {5, 1}, {8, 4}, {11, 7}}
+
+// JieShaTable 劫煞查表：三合分组号 = 年支索引 % 4（组序同 HuoLingTable）
+// → 劫煞支（子起索引）。「申子辰人蛇开口，亥卯未人猴速走，
+// 寅午戌人猪面黑，巳酉丑人虎咆哮」；亡神居劫煞对宫，并入本表推算。
+var JieShaTable = [4]int{5, 2, 11, 8}
+
+// HuaGaiTable/XianChiTable 华盖、咸池查表：三合分组号 = 年支索引 % 4
+// → [华盖支 / 咸池支]。「子辰申年在辰（咸池酉），丑巳酉年在丑（午），
+// 寅午戌年在戌（卯），卯未亥年在未（子）」
+var HuaGaiTable = [4]int{4, 1, 10, 7}
+var XianChiTable = [4]int{9, 6, 3, 0}
+
 type ZiweiChart struct {
 	Year   int    `json:"year"`
 	Month  int    `json:"month"`
@@ -113,7 +145,12 @@ type ZiweiChart struct {
 
 	ZhuXing map[string][]string `json:"zhu_xing"` // 宫名 → 主星列表（同宫双星全部保留，紫微系在前）
 	FuXing  map[string][]string `json:"fu_xing"`
+	SuiXing map[string][]string `json:"sui_xing"` // 宫名 → 杂曜列表
 	SiHua   map[string]string   `json:"si_hua"`
+
+	// Brightness 主星亮度（《紫微斗数全书》派：庙/旺/得/利/平/不/陷），
+	// 键为主星名，与 ZhuXing 落宫一一对应
+	Brightness map[string]string `json:"brightness"`
 
 	Analysis string `json:"analysis"`
 }
@@ -497,9 +534,14 @@ func distributeZhuXing(chart *ZiweiChart, lunarDayNum int, lunarMonth int) {
 	}{
 		{0, "紫微"}, {1, "天机"}, {3, "太阳"}, {4, "武曲"}, {5, "天同"}, {8, "廉贞"},
 	}
+	if chart.Brightness == nil {
+		chart.Brightness = make(map[string]string)
+	}
 	for _, s := range ziweiSeries {
-		p := palaceByZhi(fixIndex(ziweiPos-s.offset, 12))
+		zhi := fixIndex(ziweiPos-s.offset, 12)
+		p := palaceByZhi(zhi)
 		chart.ZhuXing[p] = append(chart.ZhuXing[p], s.star)
+		chart.Brightness[s.star] = brightnessOf(s.star, DizhiNames[zhi])
 	}
 
 	// 天府系（顺布）
@@ -511,9 +553,54 @@ func distributeZhuXing(chart *ZiweiChart, lunarDayNum int, lunarMonth int) {
 		{0, "天府"}, {1, "太阴"}, {2, "贪狼"}, {3, "巨门"}, {4, "天相"}, {5, "天梁"}, {6, "七杀"}, {10, "破军"},
 	}
 	for _, s := range tianfuSeries {
-		p := palaceByZhi(fixIndex(tianfuPos+s.offset, 12))
+		zhi := fixIndex(tianfuPos+s.offset, 12)
+		p := palaceByZhi(zhi)
 		chart.ZhuXing[p] = append(chart.ZhuXing[p], s.star)
+		chart.Brightness[s.star] = brightnessOf(s.star, DizhiNames[zhi])
 	}
+}
+
+// ============================================================
+// 主星亮度（全书派）
+// ============================================================
+
+// brightnessNames 亮度数值 → 中文档位：1=庙 2=旺 3=得 4=利 5=平 6=不 7=陷
+var brightnessNames = [8]string{"", "庙", "旺", "得", "利", "平", "不", "陷"}
+
+// zhuXingBrightnessRows 14 主星亮度表（《紫微斗数全书》派，按地支自子起）。
+// 数据整理自通行口径并经金标准盘核对的安星整数表（MIT 许可，
+// github.com/Renhuai123/ziwei-doushu school-data.ts SCHOOL_BRIGHTNESS_QS）；
+// 与 iztro 2.6.3 对拍：14 主星落宫亮度 14/14 命中，唯一派差为太阳在亥
+// （全书派记「不」，iztro 记「陷」）。
+var zhuXingBrightnessRows = []struct {
+	star  string
+	codes [12]uint8
+}{
+	{"紫微", [12]uint8{5, 1, 2, 2, 3, 2, 1, 1, 2, 2, 3, 2}},
+	{"天机", [12]uint8{1, 7, 3, 2, 4, 5, 1, 7, 3, 2, 4, 5}},
+	{"太阳", [12]uint8{7, 6, 2, 1, 2, 2, 1, 2, 3, 3, 5, 6}},
+	{"武曲", [12]uint8{2, 1, 3, 4, 1, 5, 2, 1, 3, 4, 1, 5}},
+	{"天同", [12]uint8{2, 6, 4, 5, 5, 1, 7, 6, 2, 5, 5, 1}},
+	{"廉贞", [12]uint8{5, 4, 1, 5, 4, 7, 5, 4, 1, 5, 4, 7}},
+	{"天府", [12]uint8{1, 1, 1, 3, 1, 3, 2, 1, 1, 3, 2, 1}},
+	{"太阴", [12]uint8{1, 1, 2, 7, 7, 7, 6, 6, 4, 2, 2, 1}},
+	{"贪狼", [12]uint8{2, 1, 5, 4, 1, 7, 2, 1, 5, 4, 1, 7}},
+	{"巨门", [12]uint8{2, 6, 1, 1, 7, 2, 2, 6, 1, 1, 7, 2}},
+	{"天相", [12]uint8{1, 1, 1, 7, 3, 3, 1, 3, 1, 7, 3, 3}},
+	{"天梁", [12]uint8{1, 2, 1, 1, 1, 3, 1, 2, 7, 3, 1, 7}},
+	{"七杀", [12]uint8{2, 1, 1, 2, 1, 5, 2, 1, 1, 2, 1, 5}},
+	{"破军", [12]uint8{1, 2, 3, 7, 2, 5, 1, 2, 3, 7, 2, 5}},
+}
+
+// brightnessOf 查主星在某地支的亮度档位（中文），未收录星返回空串
+func brightnessOf(star, zhi string) string {
+	col := getZhiIndex(zhi)
+	for _, r := range zhuXingBrightnessRows {
+		if r.star == star {
+			return brightnessNames[r.codes[col]]
+		}
+	}
+	return ""
 }
 
 // ============================================================
@@ -523,10 +610,11 @@ func distributeZhuXing(chart *ZiweiChart, lunarDayNum int, lunarMonth int) {
 // distributeFuXing 分布辅星（地支定位 → 宫名；十二宫自命宫地支逆行）
 // 月系：左辅辰(4)上起正月顺行，右弼戌(10)上起正月逆行；
 // 时系：文昌戌(10)上起子时逆行，文曲辰(4)上起子时顺行；
-// 年干系：天魁/天钺按口诀查表，禄存按口诀查表，擎羊居禄存下一宫、陀罗居上一宫。
-// 原实现把地支索引直接当宫位序（等价于假设命宫固定在寅），且
-// 左辅右弼文昌文曲的起宫均与口诀不符。
-func distributeFuXing(chart *ZiweiChart, lunarMonth, timeIndex, yearGanIndex int) {
+// 年干系：天魁/天钺按口诀查表，禄存按口诀查表，擎羊居禄存下一宫、陀罗居上一宫；
+// 时系+年支系：火星铃星按三合起点顺数生时，地空地劫自亥顺逆数生时；
+// 年支系：天空居年支下一位；年干支系：截空取阴阳相应支、旬空取旬中空亡与
+// 年支阴阳同支；天伤居交友宫、天使居疾厄宫。
+func distributeFuXing(chart *ZiweiChart, lunarMonth, timeIndex, yearGanIndex, yearZhiIndex int) {
 	for i := range Gongs {
 		chart.FuXing[Gongs[i]] = []string{}
 	}
@@ -567,6 +655,99 @@ func distributeFuXing(chart *ZiweiChart, lunarMonth, timeIndex, yearGanIndex int
 	place(luCunIdx, "禄存")
 	place(luCunIdx+1, "擎羊")
 	place(luCunIdx-1, "陀罗")
+
+	// 时系+年支系：火星铃星（先据生年支口诀定起子时位，顺数至生时）
+	huoLing := HuoLingTable[yearZhiIndex%4]
+	place(huoLing[0]+timeIndex, "火星")
+	place(huoLing[1]+timeIndex, "铃星")
+
+	// 时系：地空地劫（亥上子时顺安劫，逆回便是地空亡）
+	place(11-timeIndex, "地空")
+	place(11+timeIndex, "地劫")
+
+	// 年支系：天空（生年支顺数前一位）
+	place(yearZhiIndex+1, "天空")
+
+	// 年干支系：截路空亡（阳年支取截路支，阴年支取空亡支；
+	// 主流排盘另有正副双星同置成对两宫的派法）
+	jieKong := JieKongTable[yearGanIndex%5]
+	if YinZhiSet[yearZhiIndex] {
+		place(jieKong[0], "截空")
+	} else {
+		place(jieKong[1], "截空")
+	}
+
+	// 年干支系：旬空（年支所在旬的空亡两支中，取与年支阴阳性相同的支；
+	// 旬首支 = 年支 − 年干 + 10，其下一支即成对空亡的另一支）
+	xunKong := fixIndex(yearZhiIndex-yearGanIndex+10, 12)
+	if xunKong%2 != yearZhiIndex%2 {
+		xunKong = fixIndex(xunKong+1, 12)
+	}
+	place(xunKong, "旬空")
+
+	// 天伤天使：天伤居交友宫、天使居疾厄宫（以命宫起逆行宫序定位）
+	place(mingZhiIdx-7, "天伤")
+	place(mingZhiIdx-5, "天使")
+}
+
+// ============================================================
+// 杂曜分布
+// ============================================================
+
+// distributeSuiXing 分布杂曜（SuiXingList 12 颗）。
+// 年支系：红鸾（卯起子年逆数）与天喜（红鸾对宫）、天哭（午起子年逆行）
+// 与天虚（午起子年顺转）、孤辰寡宿（三合组查表）、劫煞（三合组查表）
+// 与亡神（劫煞对宫）、大耗（年支对宫，阳支顺行一位、阴支逆行一位）、
+// 龙池（辰起子年顺数）与凤阁（戌起子年逆数）；
+// 月系：天姚（丑起正月顺数）。
+func distributeSuiXing(chart *ZiweiChart, lunarMonth, yearZhiIndex int) {
+	if chart.SuiXing == nil {
+		chart.SuiXing = make(map[string][]string)
+	}
+	for i := range Gongs {
+		chart.SuiXing[Gongs[i]] = []string{}
+	}
+
+	mingRunes := []rune(chart.MingGong)
+	if len(mingRunes) < 2 {
+		return
+	}
+	mingZhiIdx := getZhiIndex(string(mingRunes[1]))
+	place := func(zhi int, star string) {
+		p := Gongs[fixIndex(mingZhiIdx-zhi, 12)]
+		chart.SuiXing[p] = append(chart.SuiXing[p], star)
+	}
+
+	// 闰月按其绝对值所属月份取用（与左辅右弼口径一致）
+	if lunarMonth < 0 {
+		lunarMonth = -lunarMonth
+	}
+
+	hongLuan := fixIndex(3-yearZhiIndex, 12)
+	place(hongLuan, "红鸾")
+	place(hongLuan+6, "天喜")
+
+	place(6-yearZhiIndex, "天哭")
+	place(6+yearZhiIndex, "天虚")
+
+	guGua := GuGuaTable[((yearZhiIndex+1)%12)/3]
+	place(guGua[0], "孤辰")
+	place(guGua[1], "寡宿")
+
+	jieSha := JieShaTable[yearZhiIndex%4]
+	place(jieSha, "劫煞")
+	place(jieSha+6, "亡神")
+
+	daHaoOffset := 1
+	if !YinZhiSet[yearZhiIndex] {
+		daHaoOffset = -1
+	}
+	place(yearZhiIndex+6+daHaoOffset, "大耗")
+
+	place(4+yearZhiIndex, "龙池")
+	place(10-yearZhiIndex, "凤阁")
+
+	place(1+lunarMonth-1, "天姚")
 }
 
 // ============================================================
@@ -609,6 +790,7 @@ func CalculateZiweiChart(year, month, day, hour int, gender string) *ZiweiChart 
 		Gender:  gender,
 		ZhuXing: make(map[string][]string),
 		FuXing:  make(map[string][]string),
+		SuiXing: make(map[string][]string),
 		SiHua:   make(map[string]string),
 		DaXian:  make(map[string]DaXianEntry),
 	}
@@ -619,6 +801,12 @@ func CalculateZiweiChart(year, month, day, hour int, gender string) *ZiweiChart 
 	chart.YueZhu = yueZhu
 	chart.RiZhu = riZhu
 	chart.ShiZhu = shiZhu
+
+	// 年支索引（火铃/天空/截空旬空/杂曜年支系安布依赖；四柱异常时按子起 0 兜底）
+	nianZhiIndex := 0
+	if runes := []rune(nianZhu); len(runes) >= 2 {
+		nianZhiIndex = getZhiIndex(string(runes[1]))
+	}
 
 	// 2. 计算命宫/身宫（干支格式）
 	timeIndex := hourToInt(hour)
@@ -638,8 +826,9 @@ func CalculateZiweiChart(year, month, day, hour int, gender string) *ZiweiChart 
 	// 6. 分布主星
 	distributeZhuXing(chart, lunarDayNum, lunarMonth)
 
-	// 7. 分布辅星
-	distributeFuXing(chart, lunarMonth, timeIndex, yearGanIndex)
+	// 7. 分布辅星与杂曜
+	distributeFuXing(chart, lunarMonth, timeIndex, yearGanIndex, nianZhiIndex)
+	distributeSuiXing(chart, lunarMonth, nianZhiIndex)
 
 	// 8. 计算大限
 	chart.DaXian = calculateDaXian(chart.NianZhu, chart.MingGong, chart.FiveElements, gender)
@@ -671,6 +860,11 @@ func getAllXingYao(chart *ZiweiChart) string {
 	// 辅星
 	if fuXing, ok := chart.FuXing["命宫"]; ok {
 		allStars = append(allStars, fuXing...)
+	}
+
+	// 杂曜
+	if suiXing, ok := chart.SuiXing["命宫"]; ok {
+		allStars = append(allStars, suiXing...)
 	}
 
 	if len(allStars) == 0 {
@@ -711,6 +905,35 @@ func generateAnalysis(chart *ZiweiChart) string {
 	}
 	if !hasFuXing {
 		analysis += "无特殊辅星\n"
+	}
+
+	analysis += "\n【杂曜】\n"
+	hasSuiXing := false
+	for _, gong := range Gongs {
+		if suiXing, ok := chart.SuiXing[gong]; ok && len(suiXing) > 0 {
+			analysis += fmt.Sprintf("%s：%s\n", gong, joinStars(suiXing))
+			hasSuiXing = true
+		}
+	}
+	if !hasSuiXing {
+		analysis += "无杂曜\n"
+	}
+
+	analysis += "\n【主星亮度】\n"
+	for _, gong := range Gongs {
+		stars := chart.ZhuXing[gong]
+		if len(stars) == 0 {
+			continue
+		}
+		parts := make([]string, 0, len(stars))
+		for _, s := range stars {
+			if b := chart.Brightness[s]; b != "" {
+				parts = append(parts, fmt.Sprintf("%s（%s）", s, b))
+			} else {
+				parts = append(parts, s)
+			}
+		}
+		analysis += fmt.Sprintf("%s：%s\n", gong, strings.Join(parts, "、"))
 	}
 
 	analysis += "\n【命宫主星分析】\n"
