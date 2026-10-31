@@ -83,6 +83,22 @@ func ValidateGender(gender string) error {
 	return nil
 }
 
+// NormalizeGender 把中文/英文/单字母性别枚举统一归一化为 canonical 值
+// "male"/"female"。项目里存在三套性别表示（API 的 male/female、SSR 表单的
+// 男/女、紫微域层的 男/女），历史原因混用导致 SSR "男" 永远匹配不上
+// fate 引擎 male/female 过滤（性别筛选静默失效），故在入口统一归一。
+// 无法识别的输入原样返回，由下游校验环节报错。
+func NormalizeGender(gender string) string {
+	switch strings.ToLower(strings.TrimSpace(gender)) {
+	case "男", "male", "m", "1":
+		return "male"
+	case "女", "female", "f", "0", "2":
+		return "female"
+	default:
+		return gender
+	}
+}
+
 // ValidateGivenName 验证名字
 func ValidateGivenName(name string) error {
 	// 先去除首尾空格，再判空，避免纯空格绕过校验
