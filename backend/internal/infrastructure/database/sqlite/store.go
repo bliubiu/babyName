@@ -114,6 +114,12 @@ func NewStore(dbPath string, dataDir string) (*Store, error) {
 		return nil, fmt.Errorf("failed to create tables: %w", err)
 	}
 
+	// 会话隔离列属于「存量库也要补齐」的演进项，必须在建表之后单独迁移；
+	// 索引依赖新列，不能提前写进 createTables 的建表清单。
+	if err := migrateSessionColumns(writeDB); err != nil {
+		return nil, err
+	}
+
 	// 物料表结构随库创建而就绪（表空；数据由 `materials import` 填充）
 	//
 	// 与 createTables 分开：物料表是「导入器的产物」，集中在 store_materials_schema.go 定义，
@@ -147,6 +153,7 @@ func createTables(db *sql.DB) error {
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS history (
 			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL DEFAULT '',
 			surname TEXT NOT NULL,
 			gender TEXT NOT NULL,
 			birth_date TEXT NOT NULL,
@@ -161,6 +168,7 @@ func createTables(db *sql.DB) error {
 		// 因此无需迁移即可读写小数。
 		`CREATE TABLE IF NOT EXISTS favorites (
 			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL DEFAULT '',
 			surname TEXT NOT NULL,
 			given_name TEXT NOT NULL,
 			pinyin TEXT NOT NULL,
@@ -243,6 +251,38 @@ func createTables(db *sql.DB) error {
 	return nil
 }
 
+// migrateSessionColumns 给已存在的 history/favorites 表补 session_id 列与索引。
+//
+// 存量记录的 session_id 默认为空串，**不会被任何会话查到**：这些记录产生于
+// 会话隔离之前，无法确定归属，宁可让它们从访客视图消失，也不能继续全网可见。
+// 索引在建列之后创建，避免旧库建表语句引用尚不存在的列而启动失败。
+func migrateSessionColumns(db *sql.DB) error {
+	for _, table := range []string{"history", "favorites"} {
+		cols, err := tableColumns(db, table)
+		if err != nil {
+			return err
+		}
+		if cols["session_id"] {
+			continue
+		}
+		if _, err := db.Exec("ALTER TABLE " + table + " ADD COLUMN session_id TEXT NOT NULL DEFAULT ''"); err != nil {
+			return fmt.Errorf("给 %s 补 session_id 列失败: %w", table, err)
+		}
+	}
+
+	indexes := []string{
+		`CREATE INDEX IF NOT EXISTS idx_history_session_created ON history(session_id, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_favorites_session_created ON favorites(session_id, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_favorites_session_name ON favorites(session_id, surname, given_name)`,
+	}
+	for _, q := range indexes {
+		if _, err := db.Exec(q); err != nil {
+			return fmt.Errorf("创建会话隔离索引失败: %w", err)
+		}
+	}
+	return nil
+}
+
 // hanziDataColumnMigrations hanzi_data 的增量补列清单：列名 → 完整列定义
 //
 // 新增列必须同时登记到本表，否则旧库升级后读写不一致（schema 漂移的护栏）
@@ -315,18 +355,25 @@ func (s *Store) SaveHistory(record *database.HistoryRecord) string {
 		record.CreatedAt = time.Now()
 	}
 
-	_, err := s.writeDB.Exec(
-		`INSERT INTO history (id, surname, gender, birth_date, birth_time, birth_location, results, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	// ON CONFLICT ... WHERE 只允许同一会话更新自己的记录：即使调用方
+	// 传入他人记录的 ID，UPDATE 也不会执行（RowsAffected=0），由这里显式报错。
+	result, err := s.writeDB.Exec(
+		`INSERT INTO history (id, session_id, surname, gender, birth_date, birth_time, birth_location, results, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET surname=excluded.surname, gender=excluded.gender,
 		   birth_date=excluded.birth_date, birth_time=excluded.birth_time,
-		   birth_location=excluded.birth_location, results=excluded.results, created_at=excluded.created_at`,
-		record.ID, record.Surname, record.Gender, record.BirthDate,
+		   birth_location=excluded.birth_location, results=excluded.results, created_at=excluded.created_at
+		 WHERE history.session_id = excluded.session_id`,
+		record.ID, record.SessionID, record.Surname, record.Gender, record.BirthDate,
 		record.BirthTime, record.BirthLocation, record.Results, record.CreatedAt,
 	)
 	if err != nil {
 		logger.Error("sqlite: SaveHistory failed", logger.ErrField(err))
 		// 失败时返回空字符串，让上层感知错误
+		return ""
+	}
+	if n, err := result.RowsAffected(); err == nil && n == 0 {
+		logger.Warn("sqlite: SaveHistory 拒绝跨会话覆盖", logger.String("id", record.ID))
 		return ""
 	}
 	return record.ID
@@ -341,11 +388,12 @@ func (s *Store) BatchSaveHistory(records []*database.HistoryRecord) []string {
 	}
 
 	stmt, err := tx.Prepare(
-		`INSERT INTO history (id, surname, gender, birth_date, birth_time, birth_location, results, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO history (id, session_id, surname, gender, birth_date, birth_time, birth_location, results, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET surname=excluded.surname, gender=excluded.gender,
 		   birth_date=excluded.birth_date, birth_time=excluded.birth_time,
-		   birth_location=excluded.birth_location, results=excluded.results, created_at=excluded.created_at`,
+		   birth_location=excluded.birth_location, results=excluded.results, created_at=excluded.created_at
+		 WHERE history.session_id = excluded.session_id`,
 	)
 	if err != nil {
 		logger.Error("sqlite: BatchSaveHistory prepare failed", logger.ErrField(err))
@@ -361,11 +409,15 @@ func (s *Store) BatchSaveHistory(records []*database.HistoryRecord) []string {
 		if record.CreatedAt.IsZero() {
 			record.CreatedAt = time.Now()
 		}
-		_, err := stmt.Exec(record.ID, record.Surname, record.Gender, record.BirthDate,
+		res, err := stmt.Exec(record.ID, record.SessionID, record.Surname, record.Gender, record.BirthDate,
 			record.BirthTime, record.BirthLocation, record.Results, record.CreatedAt)
 		if err != nil {
 			logger.Error("sqlite: BatchSaveHistory exec failed", logger.ErrField(err))
 			failedIndexes = append(failedIndexes, i)
+			continue
+		}
+		if n, err := res.RowsAffected(); err == nil && n == 0 {
+			logger.Warn("sqlite: BatchSaveHistory 拒绝跨会话覆盖", logger.String("id", record.ID))
 			continue
 		}
 		ids[i] = record.ID
@@ -384,13 +436,13 @@ func (s *Store) BatchSaveHistory(records []*database.HistoryRecord) []string {
 	return ids
 }
 
-func (s *Store) GetHistory() []*database.HistoryRecord {
+func (s *Store) GetHistory(sessionID string) []*database.HistoryRecord {
 	// 默认限制返回100条记录，防止内存溢出
-	return s.GetHistoryPageWithLimit(1, 100)
+	return s.GetHistoryPageWithLimit(sessionID, 1, 100)
 }
 
 // GetHistoryPageWithLimit 获取分页历史记录（内部方法）
-func (s *Store) GetHistoryPageWithLimit(page, limit int) []*database.HistoryRecord {
+func (s *Store) GetHistoryPageWithLimit(sessionID string, page, limit int) []*database.HistoryRecord {
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
@@ -398,7 +450,7 @@ func (s *Store) GetHistoryPageWithLimit(page, limit int) []*database.HistoryReco
 		page = 1
 	}
 	offset := (page - 1) * limit
-	rows, err := s.db.Query(`SELECT id, surname, gender, birth_date, birth_time, birth_location, results, created_at FROM history ORDER BY created_at DESC LIMIT ? OFFSET ?`, limit, offset)
+	rows, err := s.db.Query(`SELECT id, surname, gender, birth_date, birth_time, birth_location, results, created_at FROM history WHERE session_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, sessionID, limit, offset)
 	if err != nil {
 		logger.Error("sqlite: GetHistoryPageWithLimit failed", logger.ErrField(err))
 		return nil
@@ -412,6 +464,7 @@ func (s *Store) GetHistoryPageWithLimit(page, limit int) []*database.HistoryReco
 			logger.Error("sqlite: GetHistoryPageWithLimit scan failed", logger.ErrField(err))
 			continue
 		}
+		r.SessionID = sessionID
 		records = append(records, &r)
 	}
 	if err := rows.Err(); err != nil {
@@ -422,14 +475,14 @@ func (s *Store) GetHistoryPageWithLimit(page, limit int) []*database.HistoryReco
 	return records
 }
 
-func (s *Store) GetHistoryPage(page, limit int) ([]*database.HistoryRecord, int, error) {
+func (s *Store) GetHistoryPage(sessionID string, page, limit int) ([]*database.HistoryRecord, int, error) {
 	var total int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM history`).Scan(&total); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM history WHERE session_id = ?`, sessionID).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count history: %w", err)
 	}
 
 	offset := (page - 1) * limit
-	rows, err := s.db.Query(`SELECT id, surname, gender, birth_date, birth_time, birth_location, results, created_at FROM history ORDER BY created_at DESC LIMIT ? OFFSET ?`, limit, offset)
+	rows, err := s.db.Query(`SELECT id, surname, gender, birth_date, birth_time, birth_location, results, created_at FROM history WHERE session_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, sessionID, limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query history page: %w", err)
 	}
@@ -442,6 +495,7 @@ func (s *Store) GetHistoryPage(page, limit int) ([]*database.HistoryRecord, int,
 			logger.Error("sqlite: GetHistoryPage scan failed", logger.ErrField(err))
 			continue
 		}
+		r.SessionID = sessionID
 		records = append(records, &r)
 	}
 	if err := rows.Err(); err != nil {
@@ -452,9 +506,9 @@ func (s *Store) GetHistoryPage(page, limit int) ([]*database.HistoryRecord, int,
 	return records, total, nil
 }
 
-func (s *Store) GetHistoryByID(id string) *database.HistoryRecord {
+func (s *Store) GetHistoryByID(sessionID, id string) *database.HistoryRecord {
 	var r database.HistoryRecord
-	err := s.db.QueryRow(`SELECT id, surname, gender, birth_date, birth_time, birth_location, results, created_at FROM history WHERE id = ?`, id).
+	err := s.db.QueryRow(`SELECT id, surname, gender, birth_date, birth_time, birth_location, results, created_at FROM history WHERE id = ? AND session_id = ?`, id, sessionID).
 		Scan(&r.ID, &r.Surname, &r.Gender, &r.BirthDate, &r.BirthTime, &r.BirthLocation, &r.Results, &r.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -463,32 +517,33 @@ func (s *Store) GetHistoryByID(id string) *database.HistoryRecord {
 		logger.Error("sqlite: GetHistoryByID failed", logger.ErrField(err))
 		return nil
 	}
+	r.SessionID = sessionID
 	return &r
 }
 
-func (s *Store) DeleteHistory(id string) error {
-	_, err := s.writeDB.Exec(`DELETE FROM history WHERE id = ?`, id)
+func (s *Store) DeleteHistory(sessionID, id string) error {
+	_, err := s.writeDB.Exec(`DELETE FROM history WHERE id = ? AND session_id = ?`, id, sessionID)
 	if err != nil {
 		return fmt.Errorf("delete history: %w", err)
 	}
 	return nil
 }
 
-func (s *Store) BatchDeleteHistory(ids []string) error {
+func (s *Store) BatchDeleteHistory(sessionID string, ids []string) error {
 	tx, err := s.writeDB.Begin()
 	if err != nil {
 		return fmt.Errorf("batch delete history begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	stmt, err := tx.Prepare(`DELETE FROM history WHERE id = ?`)
+	stmt, err := tx.Prepare(`DELETE FROM history WHERE id = ? AND session_id = ?`)
 	if err != nil {
 		return fmt.Errorf("batch delete history prepare: %w", err)
 	}
 	defer stmt.Close()
 
 	for _, id := range ids {
-		if _, err := stmt.Exec(id); err != nil {
+		if _, err := stmt.Exec(id, sessionID); err != nil {
 			return fmt.Errorf("batch delete history exec: %w", err)
 		}
 	}
@@ -505,13 +560,14 @@ func (s *Store) SaveFavorite(record *database.FavoriteRecord) (string, error) {
 		record.CreatedAt = time.Now()
 	}
 
-	_, err := s.writeDB.Exec(
-		`INSERT INTO favorites (id, surname, given_name, pinyin, gender, score, source, notes, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	result, err := s.writeDB.Exec(
+		`INSERT INTO favorites (id, session_id, surname, given_name, pinyin, gender, score, source, notes, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET surname=excluded.surname, given_name=excluded.given_name,
 		   pinyin=excluded.pinyin, gender=excluded.gender, score=excluded.score,
-		   source=excluded.source, notes=excluded.notes, created_at=excluded.created_at`,
-		record.ID, record.Surname, record.GivenName, record.Pinyin, record.Gender,
+		   source=excluded.source, notes=excluded.notes, created_at=excluded.created_at
+		 WHERE favorites.session_id = excluded.session_id`,
+		record.ID, record.SessionID, record.Surname, record.GivenName, record.Pinyin, record.Gender,
 		record.Score, record.Source, record.Notes, record.CreatedAt,
 	)
 	if err != nil {
@@ -519,6 +575,11 @@ func (s *Store) SaveFavorite(record *database.FavoriteRecord) (string, error) {
 		// 写入失败必须把错误上抛（docs/29 A6）：此前吞错仍返回 ID，
 		// 服务层据此返回成功，收藏静默丢失且自学习照常入精选库
 		return "", err
+	}
+	if n, err := result.RowsAffected(); err == nil && n == 0 {
+		// 传入的 ID 属于其他会话：拒绝写入，避免跨会话覆盖/劫持收藏。
+		logger.Warn("sqlite: SaveFavorite 拒绝跨会话覆盖", logger.String("id", record.ID))
+		return "", fmt.Errorf("收藏记录不存在或无权修改")
 	}
 	return record.ID, nil
 }
@@ -532,9 +593,10 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string,
 	}
 
 	stmt, err := tx.Prepare(
-		`INSERT INTO favorites (id, surname, given_name, pinyin, gender, score, source, notes, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(id) DO UPDATE SET surname=excluded.surname, given_name=excluded.given_name`,
+		`INSERT INTO favorites (id, session_id, surname, given_name, pinyin, gender, score, source, notes, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(id) DO UPDATE SET surname=excluded.surname, given_name=excluded.given_name
+		 WHERE favorites.session_id = excluded.session_id`,
 	)
 	if err != nil {
 		logger.Error("sqlite: BatchSaveFavorite prepare failed", logger.ErrField(err))
@@ -551,7 +613,7 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string,
 		if record.CreatedAt.IsZero() {
 			record.CreatedAt = time.Now()
 		}
-		_, err := stmt.Exec(record.ID, record.Surname, record.GivenName, record.Pinyin,
+		res, err := stmt.Exec(record.ID, record.SessionID, record.Surname, record.GivenName, record.Pinyin,
 			record.Gender, record.Score, record.Source, record.Notes, record.CreatedAt)
 		if err != nil {
 			logger.Error("sqlite: BatchSaveFavorite exec failed", logger.ErrField(err))
@@ -559,6 +621,12 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string,
 				firstErr = err
 			}
 			failedIndexes = append(failedIndexes, i)
+			continue
+		}
+		if n, err := res.RowsAffected(); err == nil && n == 0 {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("收藏记录不存在或无权修改")
+			}
 			continue
 		}
 		ids[i] = record.ID
@@ -584,8 +652,8 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string,
 	return ids, firstErr
 }
 
-func (s *Store) GetFavorites() []*database.FavoriteRecord {
-	rows, err := s.db.Query(`SELECT id, surname, given_name, pinyin, gender, score, source, notes, created_at FROM favorites ORDER BY created_at DESC`)
+func (s *Store) GetFavorites(sessionID string) []*database.FavoriteRecord {
+	rows, err := s.db.Query(`SELECT id, surname, given_name, pinyin, gender, score, source, notes, created_at FROM favorites WHERE session_id = ? ORDER BY created_at DESC`, sessionID)
 	if err != nil {
 		logger.Error("sqlite: GetFavorites failed", logger.ErrField(err))
 		return nil
@@ -599,6 +667,7 @@ func (s *Store) GetFavorites() []*database.FavoriteRecord {
 			logger.Error("sqlite: GetFavorites scan failed", logger.ErrField(err))
 			continue
 		}
+		r.SessionID = sessionID
 		records = append(records, &r)
 	}
 	if err := rows.Err(); err != nil {
@@ -609,14 +678,14 @@ func (s *Store) GetFavorites() []*database.FavoriteRecord {
 	return records
 }
 
-func (s *Store) GetFavoritesPage(page, limit int) ([]*database.FavoriteRecord, int, error) {
+func (s *Store) GetFavoritesPage(sessionID string, page, limit int) ([]*database.FavoriteRecord, int, error) {
 	var total int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM favorites`).Scan(&total); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM favorites WHERE session_id = ?`, sessionID).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count favorites: %w", err)
 	}
 
 	offset := (page - 1) * limit
-	rows, err := s.db.Query(`SELECT id, surname, given_name, pinyin, gender, score, source, notes, created_at FROM favorites ORDER BY created_at DESC LIMIT ? OFFSET ?`, limit, offset)
+	rows, err := s.db.Query(`SELECT id, surname, given_name, pinyin, gender, score, source, notes, created_at FROM favorites WHERE session_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, sessionID, limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query favorites page: %w", err)
 	}
@@ -629,6 +698,7 @@ func (s *Store) GetFavoritesPage(page, limit int) ([]*database.FavoriteRecord, i
 			logger.Error("sqlite: GetFavoritesPage scan failed", logger.ErrField(err))
 			continue
 		}
+		r.SessionID = sessionID
 		records = append(records, &r)
 	}
 	if err := rows.Err(); err != nil {
@@ -639,38 +709,38 @@ func (s *Store) GetFavoritesPage(page, limit int) ([]*database.FavoriteRecord, i
 	return records, total, nil
 }
 
-func (s *Store) DeleteFavorite(id string) error {
-	_, err := s.writeDB.Exec(`DELETE FROM favorites WHERE id = ?`, id)
+func (s *Store) DeleteFavorite(sessionID, id string) error {
+	_, err := s.writeDB.Exec(`DELETE FROM favorites WHERE id = ? AND session_id = ?`, id, sessionID)
 	if err != nil {
 		return fmt.Errorf("delete favorite: %w", err)
 	}
 	return nil
 }
 
-func (s *Store) BatchDeleteFavorite(ids []string) error {
+func (s *Store) BatchDeleteFavorite(sessionID string, ids []string) error {
 	tx, err := s.writeDB.Begin()
 	if err != nil {
 		return fmt.Errorf("batch delete favorites begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	stmt, err := tx.Prepare(`DELETE FROM favorites WHERE id = ?`)
+	stmt, err := tx.Prepare(`DELETE FROM favorites WHERE id = ? AND session_id = ?`)
 	if err != nil {
 		return fmt.Errorf("batch delete favorites prepare: %w", err)
 	}
 	defer stmt.Close()
 
 	for _, id := range ids {
-		if _, err := stmt.Exec(id); err != nil {
+		if _, err := stmt.Exec(id, sessionID); err != nil {
 			return fmt.Errorf("batch delete favorites exec: %w", err)
 		}
 	}
 	return tx.Commit()
 }
 
-func (s *Store) GetFavoriteByName(surname, givenName string) *database.FavoriteRecord {
+func (s *Store) GetFavoriteByName(sessionID, surname, givenName string) *database.FavoriteRecord {
 	var r database.FavoriteRecord
-	err := s.db.QueryRow(`SELECT id, surname, given_name, pinyin, gender, score, source, notes, created_at FROM favorites WHERE surname = ? AND given_name = ?`, surname, givenName).
+	err := s.db.QueryRow(`SELECT id, surname, given_name, pinyin, gender, score, source, notes, created_at FROM favorites WHERE session_id = ? AND surname = ? AND given_name = ?`, sessionID, surname, givenName).
 		Scan(&r.ID, &r.Surname, &r.GivenName, &r.Pinyin, &r.Gender, &r.Score, &r.Source, &r.Notes, &r.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -679,6 +749,7 @@ func (s *Store) GetFavoriteByName(surname, givenName string) *database.FavoriteR
 		logger.Error("sqlite: GetFavoriteByName failed", logger.ErrField(err))
 		return nil
 	}
+	r.SessionID = sessionID
 	return &r
 }
 
@@ -911,8 +982,8 @@ func (s *Store) LoadAllCuratedNames() ([]database.CuratedNameEntry, error) {
 	var result []database.CuratedNameEntry
 	for rows.Next() {
 		var (
-			e             database.CuratedNameEntry
-			styles, tags  string
+			e            database.CuratedNameEntry
+			styles, tags string
 		)
 		if err := rows.Scan(&e.Name, &e.Pinyin, &e.Gender, &e.Score, &e.Source,
 			&e.Meaning, &e.Wuxing, &styles, &tags); err != nil {

@@ -41,17 +41,27 @@ func (m *mockFavoriteStore) BatchSaveFavorite(records []*database.FavoriteRecord
 	return ids, nil
 }
 
-func (m *mockFavoriteStore) GetFavorites() []*database.FavoriteRecord {
-	return m.favorites
+// testSessionID 服务层测试用会话标识（32 位十六进制，满足格式校验）。
+const testSessionID = "0123456789abcdef0123456789abcdef"
+
+func (m *mockFavoriteStore) GetFavorites(sessionID string) []*database.FavoriteRecord {
+	var out []*database.FavoriteRecord
+	for _, f := range m.favorites {
+		if f.SessionID == sessionID {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
-func (m *mockFavoriteStore) GetFavoritesPage(page, limit int) ([]*database.FavoriteRecord, int, error) {
-	return m.favorites, len(m.favorites), nil
+func (m *mockFavoriteStore) GetFavoritesPage(sessionID string, page, limit int) ([]*database.FavoriteRecord, int, error) {
+	out := m.GetFavorites(sessionID)
+	return out, len(out), nil
 }
 
-func (m *mockFavoriteStore) DeleteFavorite(id string) error {
+func (m *mockFavoriteStore) DeleteFavorite(sessionID, id string) error {
 	for i, f := range m.favorites {
-		if f.ID == id {
+		if f.ID == id && f.SessionID == sessionID {
 			m.favorites = append(m.favorites[:i], m.favorites[i+1:]...)
 			return nil
 		}
@@ -59,16 +69,16 @@ func (m *mockFavoriteStore) DeleteFavorite(id string) error {
 	return nil
 }
 
-func (m *mockFavoriteStore) BatchDeleteFavorite(ids []string) error {
+func (m *mockFavoriteStore) BatchDeleteFavorite(sessionID string, ids []string) error {
 	for _, id := range ids {
-		m.DeleteFavorite(id)
+		m.DeleteFavorite(sessionID, id)
 	}
 	return nil
 }
 
-func (m *mockFavoriteStore) GetFavoriteByName(surname, givenName string) *database.FavoriteRecord {
+func (m *mockFavoriteStore) GetFavoriteByName(sessionID, surname, givenName string) *database.FavoriteRecord {
 	for _, f := range m.favorites {
-		if f.Surname == surname && f.GivenName == givenName {
+		if f.SessionID == sessionID && f.Surname == surname && f.GivenName == givenName {
 			return f
 		}
 	}
@@ -115,6 +125,7 @@ func TestSaveFavorite_LowScore(t *testing.T) {
 	svc := NewFavoriteService(store)
 
 	id, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
+		SessionID: testSessionID,
 		Surname:   "张",
 		GivenName: "三",
 		Pinyin:    "zhang san",
@@ -138,6 +149,7 @@ func TestSaveFavorite_HighScore(t *testing.T) {
 	svc := NewFavoriteService(store)
 
 	id, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
+		SessionID: testSessionID,
 		Surname:   "李",
 		GivenName: "明轩",
 		Pinyin:    "li mingxuan",
@@ -164,12 +176,14 @@ func TestSaveFavorite_Existing(t *testing.T) {
 	// 预置一条已存在的收藏
 	store.favorites = append(store.favorites, &database.FavoriteRecord{
 		ID:        "existing-id",
+		SessionID: testSessionID,
 		Surname:   "王",
 		GivenName: "涵",
 	})
 	svc := NewFavoriteService(store)
 
 	id, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
+		SessionID: testSessionID,
 		Surname:   "王",
 		GivenName: "涵",
 		Score:     90,
@@ -189,15 +203,16 @@ func TestSaveFavorite_Existing(t *testing.T) {
 func TestCheckFavorite(t *testing.T) {
 	store := &mockFavoriteStore{}
 	store.favorites = append(store.favorites, &database.FavoriteRecord{
+		SessionID: testSessionID,
 		Surname:   "赵",
 		GivenName: "宇",
 	})
 	svc := NewFavoriteService(store)
 
-	if !svc.CheckFavorite(context.Background(), "赵", "宇") {
+	if !svc.CheckFavorite(context.Background(), testSessionID, "赵", "宇") {
 		t.Error("CheckFavorite(\"赵\",\"宇\") = false, 期望 true（已收藏）")
 	}
-	if svc.CheckFavorite(context.Background(), "赵", "三") {
+	if svc.CheckFavorite(context.Background(), testSessionID, "赵", "三") {
 		t.Error("CheckFavorite(\"赵\",\"三\") = true, 期望 false（未收藏）")
 	}
 }
@@ -207,12 +222,13 @@ func TestDeleteFavorite(t *testing.T) {
 	store := &mockFavoriteStore{}
 	store.favorites = append(store.favorites, &database.FavoriteRecord{
 		ID:        "del-1",
+		SessionID: testSessionID,
 		Surname:   "钱",
 		GivenName: "睿",
 	})
 	svc := NewFavoriteService(store)
 
-	if err := svc.DeleteFavorite(context.Background(), "del-1"); err != nil {
+	if err := svc.DeleteFavorite(context.Background(), testSessionID, "del-1"); err != nil {
 		t.Fatalf("DeleteFavorite 返回错误: %v", err)
 	}
 	if len(store.favorites) != 0 {
@@ -242,6 +258,7 @@ func TestSaveFavorite_DecimalScore(t *testing.T) {
 	svc := NewFavoriteService(store)
 
 	_, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
+		SessionID: testSessionID,
 		Surname:   "张",
 		GivenName: "珀熙",
 		Pinyin:    "zhang poxi",
@@ -276,6 +293,7 @@ func TestSaveFavorite_WriteFailurePropagates(t *testing.T) {
 	svc := NewFavoriteService(store)
 
 	id, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
+		SessionID: testSessionID,
 		Surname:   "李",
 		GivenName: "明轩",
 		Pinyin:    "li mingxuan",
@@ -313,7 +331,8 @@ func TestSaveFavorite_触发门禁复审回流(t *testing.T) {
 	svc.SetGateReviewRecorder(rec)
 
 	if _, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
-		Surname: "张", GivenName: "珀熙", Score: 90,
+		SessionID: testSessionID,
+		Surname:   "张", GivenName: "珀熙", Score: 90,
 	}); err != nil {
 		t.Fatalf("SaveFavorite 出错: %v", err)
 	}
@@ -326,7 +345,8 @@ func TestSaveFavorite_触发门禁复审回流(t *testing.T) {
 func TestSaveFavorite_未注入记录器不panic(t *testing.T) {
 	svc := NewFavoriteService(&mockFavoriteStore{})
 	if _, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
-		Surname: "李", GivenName: "明轩", Score: 85,
+		SessionID: testSessionID,
+		Surname:   "李", GivenName: "明轩", Score: 85,
 	}); err != nil {
 		t.Fatalf("未注入记录器时收藏应正常: %v", err)
 	}
@@ -336,14 +356,15 @@ func TestSaveFavorite_未注入记录器不panic(t *testing.T) {
 func TestSaveFavorite_已存在不回流(t *testing.T) {
 	store := &mockFavoriteStore{}
 	store.favorites = append(store.favorites, &database.FavoriteRecord{
-		ID: "existing-id", Surname: "王", GivenName: "涵",
+		ID: "existing-id", SessionID: testSessionID, Surname: "王", GivenName: "涵",
 	})
 	svc := NewFavoriteService(store)
 	rec := &mockReviewRecorder{}
 	svc.SetGateReviewRecorder(rec)
 
 	id, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
-		Surname: "王", GivenName: "涵", Score: 90,
+		SessionID: testSessionID,
+		Surname:   "王", GivenName: "涵", Score: 90,
 	})
 	if err != nil {
 		t.Fatalf("SaveFavorite 出错: %v", err)
@@ -364,7 +385,8 @@ func TestSaveFavorite_写库失败不回流(t *testing.T) {
 	svc.SetGateReviewRecorder(rec)
 
 	if _, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
-		Surname: "李", GivenName: "明轩", Score: 95,
+		SessionID: testSessionID,
+		Surname:   "李", GivenName: "明轩", Score: 95,
 	}); err == nil {
 		t.Fatal("写库失败应返回错误")
 	}
@@ -420,7 +442,8 @@ func TestSaveFavorite_评分越界不触发自学习(t *testing.T) {
 	store := &mockFavoriteStore{}
 	svc := NewFavoriteService(store)
 	_, err := svc.SaveFavorite(context.Background(), &FavoriteRecord{
-		Surname: "王", GivenName: "涵", Score: 999,
+		SessionID: testSessionID,
+		Surname:   "王", GivenName: "涵", Score: 999,
 	})
 	if err == nil {
 		t.Fatal("评分 999 应被拦截")

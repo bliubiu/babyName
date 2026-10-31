@@ -2,6 +2,7 @@ package memory
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -69,19 +70,26 @@ func (s *Store) SaveHistory(record *database.HistoryRecord) string {
 		record.CreatedAt = time.Now()
 	}
 
+	// 已存在的 ID 属于其他会话时拒绝覆盖（与 SQLite 实现同口径）。
+	if existing, ok := s.History[record.ID]; ok && existing.SessionID != record.SessionID {
+		return ""
+	}
+
 	s.History[record.ID] = record
 	return record.ID
 }
 
-func (s *Store) GetHistoryPage(page, limit int) ([]*database.HistoryRecord, int, error) {
+func (s *Store) GetHistoryPage(sessionID string, page, limit int) ([]*database.HistoryRecord, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	total := len(s.History)
-	records := make([]*database.HistoryRecord, 0, total)
+	records := make([]*database.HistoryRecord, 0, len(s.History))
 	for _, record := range s.History {
-		records = append(records, record)
+		if record.SessionID == sessionID {
+			records = append(records, record)
+		}
 	}
+	total := len(records)
 
 	// 按时间倒序排列（最新在前）
 	sort.Slice(records, func(i, j int) bool {
@@ -92,13 +100,15 @@ func (s *Store) GetHistoryPage(page, limit int) ([]*database.HistoryRecord, int,
 	return records[start:end], total, nil
 }
 
-func (s *Store) GetHistory() []*database.HistoryRecord {
+func (s *Store) GetHistory(sessionID string) []*database.HistoryRecord {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	records := make([]*database.HistoryRecord, 0, len(s.History))
 	for _, record := range s.History {
-		records = append(records, record)
+		if record.SessionID == sessionID {
+			records = append(records, record)
+		}
 	}
 
 	sort.Slice(records, func(i, j int) bool {
@@ -107,24 +117,25 @@ func (s *Store) GetHistory() []*database.HistoryRecord {
 	return records
 }
 
-func (s *Store) GetHistoryByID(id string) *database.HistoryRecord {
+func (s *Store) GetHistoryByID(sessionID, id string) *database.HistoryRecord {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	r := s.History[id]
 	// 返回拷贝，避免外部修改污染内部数据
-	if r == nil {
+	if r == nil || r.SessionID != sessionID {
 		return nil
 	}
 	copyR := *r
 	return &copyR
 }
 
-func (s *Store) DeleteHistory(id string) error {
+func (s *Store) DeleteHistory(sessionID, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.History[id]; !ok {
+	r, ok := s.History[id]
+	if !ok || r.SessionID != sessionID {
 		return nil
 	}
 
@@ -144,6 +155,9 @@ func (s *Store) BatchSaveHistory(records []*database.HistoryRecord) []string {
 		if record.CreatedAt.IsZero() {
 			record.CreatedAt = time.Now()
 		}
+		if existing, ok := s.History[record.ID]; ok && existing.SessionID != record.SessionID {
+			continue
+		}
 
 		s.History[record.ID] = record
 		ids[i] = record.ID
@@ -152,15 +166,21 @@ func (s *Store) BatchSaveHistory(records []*database.HistoryRecord) []string {
 	return ids
 }
 
-func (s *Store) BatchDeleteHistory(ids []string) error {
+func (s *Store) BatchDeleteHistory(sessionID string, ids []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for _, id := range ids {
-		delete(s.History, id)
+		if r, ok := s.History[id]; ok && r.SessionID == sessionID {
+			delete(s.History, id)
+		}
 	}
 
 	return nil
+}
+
+func favoriteNameKey(sessionID, surname, givenName string) string {
+	return sessionID + ":" + surname + ":" + givenName
 }
 
 func (s *Store) SaveFavorite(record *database.FavoriteRecord) (string, error) {
@@ -174,22 +194,27 @@ func (s *Store) SaveFavorite(record *database.FavoriteRecord) (string, error) {
 		record.CreatedAt = time.Now()
 	}
 
+	if existing, ok := s.Favorites[record.ID]; ok && existing.SessionID != record.SessionID {
+		return "", fmt.Errorf("收藏记录不存在或无权修改")
+	}
+
 	s.Favorites[record.ID] = record
-	// 更新按名称索引
-	key := record.Surname + ":" + record.GivenName
-	s.FavoritesByName[key] = record
+	// 更新按名称索引（名称索引按会话隔离，同名收藏可存在于不同会话）
+	s.FavoritesByName[favoriteNameKey(record.SessionID, record.Surname, record.GivenName)] = record
 	return record.ID, nil
 }
 
-func (s *Store) GetFavoritesPage(page, limit int) ([]*database.FavoriteRecord, int, error) {
+func (s *Store) GetFavoritesPage(sessionID string, page, limit int) ([]*database.FavoriteRecord, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	total := len(s.Favorites)
-	records := make([]*database.FavoriteRecord, 0, total)
+	records := make([]*database.FavoriteRecord, 0, len(s.Favorites))
 	for _, record := range s.Favorites {
-		records = append(records, record)
+		if record.SessionID == sessionID {
+			records = append(records, record)
+		}
 	}
+	total := len(records)
 
 	sort.Slice(records, func(i, j int) bool {
 		return records[i].CreatedAt.After(records[j].CreatedAt)
@@ -199,13 +224,15 @@ func (s *Store) GetFavoritesPage(page, limit int) ([]*database.FavoriteRecord, i
 	return records[start:end], total, nil
 }
 
-func (s *Store) GetFavorites() []*database.FavoriteRecord {
+func (s *Store) GetFavorites(sessionID string) []*database.FavoriteRecord {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	records := make([]*database.FavoriteRecord, 0, len(s.Favorites))
 	for _, record := range s.Favorites {
-		records = append(records, record)
+		if record.SessionID == sessionID {
+			records = append(records, record)
+		}
 	}
 
 	sort.Slice(records, func(i, j int) bool {
@@ -214,32 +241,30 @@ func (s *Store) GetFavorites() []*database.FavoriteRecord {
 	return records
 }
 
-func (s *Store) DeleteFavorite(id string) error {
+func (s *Store) DeleteFavorite(sessionID, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	record, ok := s.Favorites[id]
-	if !ok {
+	if !ok || record.SessionID != sessionID {
 		return nil
 	}
 
 	// 从名称索引中删除
-	key := record.Surname + ":" + record.GivenName
-	delete(s.FavoritesByName, key)
+	delete(s.FavoritesByName, favoriteNameKey(record.SessionID, record.Surname, record.GivenName))
 
 	// 从主映射中删除
 	delete(s.Favorites, id)
 	return nil
 }
 
-func (s *Store) GetFavoriteByName(surname, givenName string) *database.FavoriteRecord {
+func (s *Store) GetFavoriteByName(sessionID, surname, givenName string) *database.FavoriteRecord {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	key := surname + ":" + givenName
-	r := s.FavoritesByName[key]
+	r := s.FavoritesByName[favoriteNameKey(sessionID, surname, givenName)]
 	// 返回拷贝，避免外部修改污染内部数据
-	if r == nil {
+	if r == nil || r.SessionID != sessionID {
 		return nil
 	}
 	copyR := *r
@@ -258,26 +283,27 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string,
 		if record.CreatedAt.IsZero() {
 			record.CreatedAt = time.Now()
 		}
+		if existing, ok := s.Favorites[record.ID]; ok && existing.SessionID != record.SessionID {
+			continue
+		}
 
 		s.Favorites[record.ID] = record
 		// 更新按名称索引
-		key := record.Surname + ":" + record.GivenName
-		s.FavoritesByName[key] = record
+		s.FavoritesByName[favoriteNameKey(record.SessionID, record.Surname, record.GivenName)] = record
 		ids[i] = record.ID
 	}
 
 	return ids, nil
 }
 
-func (s *Store) BatchDeleteFavorite(ids []string) error {
+func (s *Store) BatchDeleteFavorite(sessionID string, ids []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for _, id := range ids {
-		if record, ok := s.Favorites[id]; ok {
+		if record, ok := s.Favorites[id]; ok && record.SessionID == sessionID {
 			// 从名称索引中删除
-			key := record.Surname + ":" + record.GivenName
-			delete(s.FavoritesByName, key)
+			delete(s.FavoritesByName, favoriteNameKey(record.SessionID, record.Surname, record.GivenName))
 			// 从主映射中删除
 			delete(s.Favorites, id)
 		}

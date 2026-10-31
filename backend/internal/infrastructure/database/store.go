@@ -17,14 +17,17 @@ type PageResult[T any] struct {
 }
 
 // HistoryStore 历史记录存储接口
+//
+// 读/删方法均以 sessionID 作用域：历史记录含生辰与完整生成结果，
+// 任何跨会话读取或删除都必须被存储层拒绝（不能只靠上层过滤）。
 type HistoryStore interface {
 	SaveHistory(record *HistoryRecord) string
 	BatchSaveHistory(records []*HistoryRecord) []string
-	GetHistory() []*HistoryRecord
-	GetHistoryPage(page, limit int) ([]*HistoryRecord, int, error)
-	GetHistoryByID(id string) *HistoryRecord
-	DeleteHistory(id string) error
-	BatchDeleteHistory(ids []string) error
+	GetHistory(sessionID string) []*HistoryRecord
+	GetHistoryPage(sessionID string, page, limit int) ([]*HistoryRecord, int, error)
+	GetHistoryByID(sessionID, id string) *HistoryRecord
+	DeleteHistory(sessionID, id string) error
+	BatchDeleteHistory(sessionID string, ids []string) error
 }
 
 // FavoriteStore 收藏存储接口
@@ -34,11 +37,11 @@ type FavoriteStore interface {
 	SaveFavorite(record *FavoriteRecord) (string, error)
 	// BatchSaveFavorite 批量保存；返回各记录 ID（失败位为空串）与首个错误
 	BatchSaveFavorite(records []*FavoriteRecord) ([]string, error)
-	GetFavorites() []*FavoriteRecord
-	GetFavoritesPage(page, limit int) ([]*FavoriteRecord, int, error)
-	DeleteFavorite(id string) error
-	BatchDeleteFavorite(ids []string) error
-	GetFavoriteByName(surname, givenName string) *FavoriteRecord
+	GetFavorites(sessionID string) []*FavoriteRecord
+	GetFavoritesPage(sessionID string, page, limit int) ([]*FavoriteRecord, int, error)
+	DeleteFavorite(sessionID, id string) error
+	BatchDeleteFavorite(sessionID string, ids []string) error
+	GetFavoriteByName(sessionID, surname, givenName string) *FavoriteRecord
 }
 
 // HanziStore 汉字查询接口
@@ -174,7 +177,10 @@ type Store interface {
 
 // HistoryRecord 历史记录结构
 type HistoryRecord struct {
-	ID            string    `json:"id"`
+	ID string `json:"id"`
+	// SessionID 记录归属的访客会话标识；不对外序列化（json:"-"），
+	// 避免把 bearer 标识随列表/详情响应泄露给其他调用方。
+	SessionID     string    `json:"-"`
 	Surname       string    `json:"surname"`
 	Gender        string    `json:"gender"`
 	BirthDate     string    `json:"birth_date"`
@@ -186,7 +192,9 @@ type HistoryRecord struct {
 
 // FavoriteRecord 收藏记录结构
 type FavoriteRecord struct {
-	ID        string    `json:"id"`
+	ID string `json:"id"`
+	// SessionID 记录归属的访客会话标识；不对外序列化。
+	SessionID string    `json:"-"`
 	Surname   string    `json:"surname"`
 	GivenName string    `json:"given_name"`
 	Pinyin    string    `json:"pinyin"`

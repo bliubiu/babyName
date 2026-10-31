@@ -8,6 +8,7 @@ import (
 	"name/internal/application/response"
 	"name/internal/application/services"
 	"name/internal/infrastructure/logger"
+	"name/internal/infrastructure/middleware"
 )
 
 type HistoryHandler struct {
@@ -58,9 +59,9 @@ func parsePagination(c *gin.Context, defaultLimit int) (page int, limit int, ok 
 	return page, limit, true
 }
 
-// GetHistory 获取历史记录
+// GetHistory 获取当前会话的历史记录
 // @Summary 获取历史记录
-// @Description 获取所有历史记录，支持分页（limit 上限 100）
+// @Description 获取当前会话的历史记录，支持分页（limit 上限 100）
 // @Tags 历史记录
 // @Accept json
 // @Produce json
@@ -75,8 +76,14 @@ func (h *HistoryHandler) GetHistory(c *gin.Context) {
 	if !ok {
 		return
 	}
+	sid, err := middleware.EnsureSessionID(c)
+	if err != nil {
+		logger.Error("GetHistory: 初始化会话失败", zap.Error(err))
+		response.ErrorJSON(c, 500, "会话初始化失败，请稍后重试")
+		return
+	}
 
-	result, total, err := h.service.GetHistoryPage(c.Request.Context(), page, limit)
+	result, total, err := h.service.GetHistoryPage(c.Request.Context(), sid, page, limit)
 	if err != nil {
 		logger.Error("GetHistory: failed", zap.Error(err))
 		response.ErrorJSON(c, 500, "获取历史记录失败")
@@ -93,10 +100,11 @@ func (h *HistoryHandler) GetHistory(c *gin.Context) {
 
 // SaveHistory 保存历史记录
 // @Summary 保存历史记录
-// @Description 保存一条历史记录
+// @Description 保存一条归属于当前会话的历史记录（会话由 nm_sid cookie 或 X-Session-ID 头确定）
 // @Tags 历史记录
 // @Accept json
 // @Produce json
+// @Param X-Session-ID header string false "会话标识（无 cookie 的客户端使用）"
 // @Param request body services.HistoryRecord true "历史记录请求参数"
 // @Success 200 {object} object "成功，返回记录ID"
 // @Failure 400 {object} response.Response "请求参数错误"
@@ -109,6 +117,14 @@ func (h *HistoryHandler) SaveHistory(c *gin.Context) {
 		response.ErrorJSON(c, 400, "请求参数格式错误")
 		return
 	}
+	sid, err := middleware.EnsureSessionID(c)
+	if err != nil {
+		logger.Error("SaveHistory: 初始化会话失败", zap.Error(err))
+		response.ErrorJSON(c, 500, "会话初始化失败，请稍后重试")
+		return
+	}
+	// 归属由服务端会话决定，忽略客户端可能提交的 SessionID 字段（json:"-" 已屏蔽）。
+	req.SessionID = sid
 
 	id, err := h.service.SaveHistory(c.Request.Context(), &req)
 	if err != nil {
@@ -122,18 +138,25 @@ func (h *HistoryHandler) SaveHistory(c *gin.Context) {
 
 // DeleteHistory 删除历史记录
 // @Summary 删除历史记录
-// @Description 根据ID删除一条历史记录
+// @Description 根据ID删除当前会话的一条历史记录
 // @Tags 历史记录
 // @Accept json
 // @Produce json
+// @Param X-Session-ID header string false "会话标识（无 cookie 的客户端使用）"
 // @Param id path string true "历史记录ID"
 // @Success 200 {object} object "成功"
 // @Failure 500 {object} response.Response "服务器内部错误"
 // @Router /history/{id} [delete]
 func (h *HistoryHandler) DeleteHistory(c *gin.Context) {
 	id := c.Param("id")
+	sid, err := middleware.EnsureSessionID(c)
+	if err != nil {
+		logger.Error("DeleteHistory: 初始化会话失败", zap.Error(err))
+		response.ErrorJSON(c, 500, "会话初始化失败，请稍后重试")
+		return
+	}
 
-	if err := h.service.DeleteHistory(c.Request.Context(), id); err != nil {
+	if err := h.service.DeleteHistory(c.Request.Context(), sid, id); err != nil {
 		logger.Error("DeleteHistory: failed", zap.Error(err))
 		response.ErrorJSON(c, 500, "删除历史记录失败")
 		return
