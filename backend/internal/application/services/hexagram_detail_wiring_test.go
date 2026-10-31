@@ -43,3 +43,22 @@ func TestFateHexagramForNames_ReturnsDetail(t *testing.T) {
 		t.Fatalf("单卦与详情本卦不一致：%s vs %+v", hex.Name, detail.OriginalHexagram)
 	}
 }
+
+// TestMeihuaStrokesForNames 姓名卦笔画口径锁（docs/42 P0-1）：
+// 康熙姓笔画优先 / 查库失败 rune 兜底 / 名笔画 ≤0 兜底 10。
+// 两个服务（name_service 与 fate_name_service）共用此口径，不得再各自实现。
+func TestMeihuaStrokesForNames(t *testing.T) {
+	s, g := meihuaStrokesForNames("王", 7)
+	if s != 4 {
+		t.Errorf("「王」姓氏笔画 = %d, want 4（康熙）", s)
+	}
+	if g != 3 {
+		t.Errorf("名笔画 = %d, want 3（全名7-姓4）", g)
+	}
+	if _, g2 := meihuaStrokesForNames("王", 2); g2 != 10 {
+		t.Errorf("名笔画≤0 兜底 = %d, want 10", g2)
+	}
+	if s3, _ := meihuaStrokesForNames("", 0); s3 != 0 {
+		t.Errorf("空姓兜底 = %d, want 0", s3)
+	}
+}

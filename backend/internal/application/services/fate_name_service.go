@@ -342,17 +342,7 @@ func (s *FateNameService) hexagramForNames(names []*name.NameAnalysis, req *Gene
 	if s.hexagramFinder == nil || len(names) == 0 {
 		return nil, nil
 	}
-	surnameStrokes := 0
-	if l1, l2, err := NewHanziDataProvider().GetSurnameStrokes(req.Surname); err == nil {
-		surnameStrokes = l1 + l2
-	}
-	if surnameStrokes == 0 {
-		surnameStrokes = len([]rune(req.Surname))
-	}
-	givenStrokes := names[0].Strokes - surnameStrokes
-	if givenStrokes <= 0 {
-		givenStrokes = 10
-	}
+	surnameStrokes, givenStrokes := meihuaStrokesForNames(req.Surname, names[0].Strokes)
 	return s.hexagramFinder.FindByMeihuaName(surnameStrokes, givenStrokes),
 		s.hexagramFinder.FindMeihuaDetail(surnameStrokes, givenStrokes)
 }

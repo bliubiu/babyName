@@ -44,22 +44,6 @@ func TestCalculateDayanNumber_ChangeYaoReachable(t *testing.T) {
 	}
 }
 
-// TestGetHexagramByStrokes_MatchesTrigrams 姓名卦按先天上下卦查表
-func TestGetHexagramByStrokes_MatchesTrigrams(t *testing.T) {
-	for strokes := 1; strokes <= 64; strokes++ {
-		h := GetHexagramByStrokes(strokes)
-		if h == nil {
-			t.Fatalf("GetHexagramByStrokes(%d)=nil", strokes)
-		}
-		wantU := TrigramFromStrokes(strokes / 8)
-		wantL := TrigramFromStrokes(strokes)
-		if h.UpperTrigram != wantU || h.LowerTrigram != wantL {
-			t.Fatalf("笔画 %d：卦 %s 上下卦 %d/%d，期望 %d/%d（先天八卦）",
-				strokes, h.Name, h.UpperTrigram, h.LowerTrigram, wantU, wantL)
-		}
-	}
-}
-
 // TestTrigramLookup_KingWenAnchors 组合码当卦序号的反例锚点
 // 上兑下兑：组合码 (2-1)*8+2 = 10 是第 10 卦「履」（上乾下兑）；
 // 正确按上下卦查表应得第 58 卦「兑」。其余三处同构。

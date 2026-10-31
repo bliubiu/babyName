@@ -140,19 +140,6 @@ func GetHexagramByNumber(num int) *Hexagram {
 	return nil
 }
 
-// GetHexagramByStrokes 根据笔画数起卦
-func GetHexagramByStrokes(strokes int) *Hexagram {
-	lowerTrigram := ((strokes - 1) % 8) + 1
-	upperTrigram := (((strokes / 8) - 1) % 8) + 1
-	if upperTrigram < 1 {
-		upperTrigram = 1
-	}
-
-	// 上下卦组合码与通行本卦序是两套编号，不能互查
-	// （例：上兑下兑组合码 10 ≠ 第 10 卦「履」），按先天上下卦查本表
-	return FindHexagramByTrigrams(upperTrigram, lowerTrigram)
-}
-
 // isYangYao 阳爻判定：7 少阳 / 9 老阳为阳，6 老阴 / 8 少阴为阴
 func isYangYao(yao int) bool {
 	return yao == 7 || yao == 9

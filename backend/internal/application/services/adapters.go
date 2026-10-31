@@ -55,10 +55,6 @@ func (a *BaziAdapter) Analyze(year, month, day, hour, minute int) (*bazi.BaziAna
 // HexagramAdapter 易经卦象适配器
 type HexagramAdapter struct{}
 
-func (a *HexagramAdapter) FindByStrokes(strokes int) *yijing.Hexagram {
-	return yijing.GetHexagramByStrokes(strokes)
-}
-
 func (a *HexagramAdapter) FindByMeihuaName(surnameStrokes, givenStrokes int) *yijing.Hexagram {
 	return yijing.GetHexagramByMeihuaName(surnameStrokes, givenStrokes)
 }

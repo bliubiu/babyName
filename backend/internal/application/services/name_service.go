@@ -513,29 +513,36 @@ func convertFateToNameNames(results []fate.NameResult, gender string, sourceClas
 	return names
 }
 
+// meihuaStrokesForNames 梅花姓名起卦的笔画口径（全项目唯一，防双口径漂移，docs/42 P0-1）：
+// 姓氏取康熙笔画优先（复姓为两字之和），查库失败兜底 rune 计数；
+// 名笔画 = 首个候选全名笔画 - 姓笔画，≤0 时兜底 10。
+func meihuaStrokesForNames(surname string, fullNameStrokes int) (int, int) {
+	surnameStrokes := 0
+	if l1, l2, err := NewHanziDataProvider().GetSurnameStrokes(surname); err == nil {
+		surnameStrokes = l1 + l2
+	}
+	if surnameStrokes == 0 {
+		surnameStrokes = len([]rune(surname)) // 极端兜底
+	}
+	givenStrokes := fullNameStrokes - surnameStrokes
+	if givenStrokes <= 0 {
+		givenStrokes = 10
+	}
+	return surnameStrokes, givenStrokes
+}
+
 // calculateHexagramAndZiweiParallel 并行计算易经卦象和紫微斗数
 // 姓名卦采用梅花易数：姓笔画→上卦，名笔画→下卦（取首个候选名）；
 // 同时返回完整梅花详情（本/变/互卦与动爻，docs/42 P0-4）
 func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziAnalysis *bazi.BaziAnalysis, req *GenerateRequest) (*yijing.Hexagram, *yijing.HexagramMatch, *yijing.PlumBlossomResult, *ziwei.ZiweiChart, time.Duration) {
 	start := time.Now()
 
-	// 姓氏笔画（康熙优先）
-	surnameStrokes := 0
-	if l1, l2, err := NewHanziDataProvider().GetSurnameStrokes(req.Surname); err == nil {
-		surnameStrokes = l1 + l2
-	}
-	if surnameStrokes == 0 {
-		surnameStrokes = len([]rune(req.Surname)) // 极端兜底
-	}
-
-	// 名笔画：取首个候选的名部分笔画（全名笔画 - 姓笔画）
-	givenStrokes := 0
+	// 姓名笔画口径统一走 meihuaStrokesForNames（康熙姓笔画优先，docs/42 P0-1）
+	fullNameStrokes := 0
 	if len(names) > 0 {
-		givenStrokes = names[0].Strokes - surnameStrokes
+		fullNameStrokes = names[0].Strokes
 	}
-	if givenStrokes <= 0 {
-		givenStrokes = 10
-	}
+	surnameStrokes, givenStrokes := meihuaStrokesForNames(req.Surname, fullNameStrokes)
 
 	var hexagram *yijing.Hexagram
 	var hexagramMatch *yijing.HexagramMatch

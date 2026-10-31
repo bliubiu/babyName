@@ -32,28 +32,6 @@ func TestGetHexagramByNumberCoverage(t *testing.T) {
 	}
 }
 
-// TestGetHexagramByStrokesCoverage tests GetHexagramByStrokes
-func TestGetHexagramByStrokesCoverage(t *testing.T) {
-	h := GetHexagramByStrokes(1)
-	if h == nil {
-		t.Fatal("GetHexagramByStrokes(1) should not be nil")
-	}
-	if h.UpperTrigram < 1 || h.UpperTrigram > 8 {
-		t.Errorf("UpperTrigram = %d, want 1-8", h.UpperTrigram)
-	}
-	if h.LowerTrigram < 1 || h.LowerTrigram > 8 {
-		t.Errorf("LowerTrigram = %d, want 1-8", h.LowerTrigram)
-	}
-
-	// Test various stroke counts
-	for strokes := 1; strokes <= 50; strokes++ {
-		h := GetHexagramByStrokes(strokes)
-		if h == nil {
-			t.Errorf("GetHexagramByStrokes(%d) should not be nil", strokes)
-		}
-	}
-}
-
 // TestTrigramFromStrokesCoverage tests TrigramFromStrokes
 func TestTrigramFromStrokesCoverage(t *testing.T) {
 	tests := []struct {
