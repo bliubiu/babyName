@@ -10,6 +10,7 @@ import (
 	"name/internal/domain/bazi"
 	"name/internal/domain/fate"
 	"name/internal/domain/name"
+	"name/internal/domain/yijing"
 	"name/internal/infrastructure/logger"
 
 	"go.uber.org/zap"
@@ -55,6 +56,12 @@ type EvaluateResponse struct {
 	Risks []fate.RiskItem `json:"risks"`
 	// RiskLevel 汇总风险等级（pass / warn / fail）
 	RiskLevel string `json:"risk_level"`
+	// Hexagram 梅花姓名卦经文卡（docs/42 P2-10：测名页卦象接线，与结果页同构）
+	Hexagram *yijing.Hexagram `json:"hexagram,omitempty"`
+	// HexagramInterp 64 卦差异化四象限解读（事业/感情/健康/财运 + 宜忌，P1-⑦ 接线）
+	HexagramInterp *yijing.HexagramInterpretation `json:"hexagram_interpretation,omitempty"`
+	// TiYong 体用断卦（顶层便捷字段，与 Name.TiYong 同值）
+	TiYong *yijing.TiYongAnalysis `json:"tiyong,omitempty"`
 }
 
 // Evaluate 测名：对给定姓名出完整评分报告与风险清单
@@ -120,6 +127,25 @@ func (s *NameService) Evaluate(ctx context.Context, req *EvaluateRequest) (*Eval
 		zodiacName = s.zodiacFinder.FindByYear(req.BirthYear)
 	}
 
+	// 6. 梅花姓名卦 + 体用断卦 + 差异化解读（docs/42 P2-10 测名页接线）。
+	// 卦象字段挂 Name 下（与 /generate names[] 元素同构，NameDetail 嵌入渲染
+	// 自动生效），经文卡与四象限解读为顶层便捷字段；卦象评分归引擎（P3-12）。
+	var season string
+	var xys []string
+	if baziAnalysis != nil {
+		season, xys = baziAnalysis.Season, baziAnalysis.Xiyongshen
+	}
+	var hexagram *yijing.Hexagram
+	var hexagramInterp *yijing.HexagramInterpretation
+	if s.hexagramFinder != nil {
+		surnameStrokes, givenStrokes := meihuaStrokesForNames(req.Surname, n.Strokes)
+		hexagram = s.hexagramFinder.FindByMeihuaName(surnameStrokes, givenStrokes)
+		n.HexagramDetail, n.TiYong = perNameHexagram(s.hexagramFinder, surnameStrokes, n.Strokes, season, xys)
+		if hexagram != nil {
+			hexagramInterp = yijing.InterpretHexagram(hexagram, xys)
+		}
+	}
+
 	logger.Info("Evaluate: completed",
 		zap.String("full_name", n.FullName),
 		zap.Float64("total", score.Total),
@@ -127,12 +153,15 @@ func (s *NameService) Evaluate(ctx context.Context, req *EvaluateRequest) (*Eval
 	)
 
 	return &EvaluateResponse{
-		FullName:  n.FullName,
-		Name:      n,
-		Bazi:      *baziAnalysis,
-		Zodiac:    zodiacName,
-		Risks:     risks,
-		RiskLevel: string(fate.OverallRiskLevel(risks)),
+		FullName:       n.FullName,
+		Name:           n,
+		Bazi:           *baziAnalysis,
+		Zodiac:         zodiacName,
+		Risks:          risks,
+		RiskLevel:      string(fate.OverallRiskLevel(risks)),
+		Hexagram:       hexagram,
+		HexagramInterp: hexagramInterp,
+		TiYong:         n.TiYong,
 	}, nil
 }
 

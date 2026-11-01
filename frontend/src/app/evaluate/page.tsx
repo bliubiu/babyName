@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { evaluateName } from '@/lib/api';
 import { EvaluateRequest, RiskItem } from '@/types';
@@ -8,6 +8,10 @@ import { useNameStore } from '@/lib/store';
 import { useToast } from '@/components/Toast';
 import { validateBirthTime, validateSurname } from '@/lib/validation';
 import Navigation from '@/components/Navigation';
+
+// 测名页卦象区（docs/42 P2-10 接线）：经文卡 + 三卦并排详解，与结果页同构
+const HexagramDisplay = lazy(() => import('@/components/HexagramDisplay'));
+const HexagramDetailDisplay = lazy(() => import('@/components/HexagramDetailDisplay'));
 
 // 风险等级展示配置
 const riskLevelStyle: Record<RiskItem['level'], { label: string; cls: string }> = {
@@ -192,6 +196,28 @@ export default function EvaluatePage() {
                 <p className="text-sm text-ink-light mt-4 leading-relaxed">{result.name.meaning}</p>
               )}
             </div>
+
+            {/* 卦象（本卦经文 + 四象限解读，docs/42 P2-10） */}
+            {result.hexagram && (
+              <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载卦象...</div>}>
+                <HexagramDisplay
+                  hexagram={result.hexagram}
+                  yaoLines={result.name.hexagram_detail?.original_yao_lines}
+                  movingYao={result.name.hexagram_detail?.moving_yao}
+                  interp={result.hexagram_interpretation}
+                />
+              </Suspense>
+            )}
+
+            {/* 卦象详解：本/互/变三卦并排 + 体用断卦 */}
+            {result.name.hexagram_detail && (
+              <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载卦象详解...</div>}>
+                <HexagramDetailDisplay
+                  detail={result.name.hexagram_detail}
+                  tiyong={result.name.tiyong}
+                />
+              </Suspense>
+            )}
 
             {/* 风险体检 */}
             <div className="consultation-sheet corner-decor py-5 px-6">

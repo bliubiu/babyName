@@ -293,7 +293,7 @@ const cachedFavorites = useMemo<FavoriteData[]>(
     );
   }
 
-  const { bazi, nayin, zodiac, hexagram, hexagram_detail, tiyong, ziwei, names } = result;
+  const { bazi, nayin, zodiac, hexagram, hexagram_detail, hexagram_interpretation, tiyong, ziwei, names } = result;
 
   const handleCompare = () => {
     if (compareNames.length < 2) {
@@ -336,6 +336,7 @@ const cachedFavorites = useMemo<FavoriteData[]>(
               hexagram={hexagram}
               yaoLines={hexagram_detail?.original_yao_lines}
               movingYao={hexagram_detail?.moving_yao}
+              interp={hexagram_interpretation}
             />
           </Suspense>
         )}

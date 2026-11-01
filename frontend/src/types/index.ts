@@ -128,6 +128,19 @@ export interface HexagramMatch {
   wuxing_compat: string;
 }
 
+/** 64 卦差异化四象限解读（docs/42 P1-⑦，与后端 yijing.HexagramInterpretation 一致） */
+export interface HexagramInterpretation {
+  overall: string;
+  career: string;
+  love: string;
+  health: string;
+  fortune: string;
+  /** 宜 */
+  auspicious: string;
+  /** 忌 */
+  inauspicious: string;
+}
+
 /** 梅花易数完整起卦结果：本卦/变卦/互卦/动爻与六爻值（docs/42 P0-4） */
 export interface HexagramDetail {
   /** 本卦 */
@@ -232,6 +245,8 @@ export interface GenerateResponse {
     hexagram_detail?: HexagramDetail;
     /** 体用断卦结构化字段（docs/42 P1-③） */
     tiyong?: TiYong;
+    /** 64 卦差异化四象限解读（docs/42 P1-⑦ 接线） */
+    hexagram_interpretation?: HexagramInterpretation;
     ziwei?: ZiweiChart;
     names: Name[];
     suggestions?: string[];
@@ -338,6 +353,12 @@ export interface EvaluateResponse {
     zodiac: string;
     risks: RiskItem[];
     risk_level: 'pass' | 'warn' | 'fail';
+    /** 梅花姓名卦经文卡（docs/42 P2-10 测名页接线） */
+    hexagram?: Hexagram;
+    /** 64 卦差异化四象限解读 */
+    hexagram_interpretation?: HexagramInterpretation;
+    /** 体用断卦（与 name.tiyong 同值） */
+    tiyong?: TiYong;
   };
 }
 

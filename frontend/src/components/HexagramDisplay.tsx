@@ -1,12 +1,15 @@
 'use client';
 
-import type { Hexagram } from '@/types';
+import { useState } from 'react';
+import type { Hexagram, HexagramInterpretation } from '@/types';
 import {
   TRIGRAM_GUADE,
   TRIGRAM_NAMES,
   TRIGRAM_SYMBOLS,
   TRIGRAM_WUXING,
   buildHexagramYaoLines,
+  getYaoName,
+  isYangYao,
 } from '@/lib/hexagram';
 import HexagramLines from './HexagramLines';
 
@@ -16,13 +19,18 @@ interface HexagramDisplayProps {
   yaoLines?: number[];
   /** 动爻位置 1-6（自下而上） */
   movingYao?: number | null;
+  /** 64 卦差异化四象限解读（docs/42 P1-⑦ 接线），缺省不渲染 */
+  interp?: HexagramInterpretation | null;
 }
 
 export default function HexagramDisplay({
   hexagram,
   yaoLines,
   movingYao,
+  interp,
 }: HexagramDisplayProps) {
+  const [showYaoText, setShowYaoText] = useState(false);
+
   if (!hexagram) {
     return (
       <div className="text-center py-6 text-ink-light/40 text-sm">
@@ -121,6 +129,92 @@ export default function HexagramDisplay({
           <div className="p-3 bg-crimson/3 rounded-xl border border-crimson/8">
             <span className="text-xs text-crimson/70 font-medium">解读</span>
             <p className="text-ink text-sm mt-1.5 leading-relaxed">{hexagram.interpretation}</p>
+          </div>
+        )}
+
+        {/* 四象限差异化解读（docs/42 P1-⑦ 接线） */}
+        {interp && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {(
+              [
+                ['事业', interp.career],
+                ['感情', interp.love],
+                ['健康', interp.health],
+                ['财运', interp.fortune],
+              ] as const
+            ).map(([label, text]) => (
+              <div key={label} className="p-2.5 bg-warm-white/60 rounded-xl">
+                <span className="text-xs text-jade font-medium">{label}</span>
+                <p className="text-ink text-xs mt-1 leading-relaxed">{text}</p>
+              </div>
+            ))}
+            {(interp.auspicious || interp.inauspicious) && (
+              <div className="col-span-2 md:col-span-4 p-2.5 bg-warm-white/60 rounded-xl">
+                <p className="text-xs text-ink-light/80 leading-relaxed">
+                  {interp.auspicious && (
+                    <>
+                      <span className="text-jade font-medium">宜</span>
+                      ：{interp.auspicious}
+                    </>
+                  )}
+                  {interp.auspicious && interp.inauspicious && '　'}
+                  {interp.inauspicious && (
+                    <>
+                      <span className="text-crimson/70 font-medium">忌</span>
+                      ：{interp.inauspicious}
+                    </>
+                  )}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 逐爻经文：爻辞 + 小象传（折叠，docs/42 P1 数据已结构化，此前无出口） */}
+        {(hexagram.yao_ci?.length ?? 0) > 0 && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowYaoText((v) => !v)}
+              className="w-full flex items-center justify-center gap-1.5 text-xs text-jade/70 hover:text-jade transition-colors py-1"
+              aria-expanded={showYaoText}
+            >
+              {showYaoText ? '收起逐爻经文' : '展开逐爻经文（爻辞 · 小象）'}
+            </button>
+            {showYaoText && (
+              <ol className="space-y-2 mt-2">
+                {hexagram.yao_ci.map((ci, idx) => {
+                  const yaoName = getYaoName(idx + 1, lines[idx] ?? 0);
+                  const xiaoXiang = hexagram.xiao_xiang?.[idx];
+                  return (
+                    <li
+                      key={idx}
+                      className={`p-2.5 rounded-xl ${
+                        movingYao === idx + 1
+                          ? 'bg-crimson/5 border border-crimson/20'
+                          : 'bg-warm-white/60'
+                      }`}
+                    >
+                      <span
+                        className={`text-xs font-serif font-medium ${
+                          movingYao === idx + 1 ? 'text-crimson' : 'text-jade'
+                        }`}
+                      >
+                        {yaoName || `第${idx + 1}爻`}
+                        {movingYao === idx + 1 && '（动）'}
+                        {isYangYao(lines[idx] ?? 0) ? ' ⚊' : ' ⚋'}
+                      </span>
+                      <p className="text-ink text-sm mt-1 leading-relaxed">{ci}</p>
+                      {xiaoXiang && (
+                        <p className="text-ink-light/70 text-xs mt-1 leading-relaxed">
+                          《象》曰：{xiaoXiang}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
           </div>
         )}
       </div>

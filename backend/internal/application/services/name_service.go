@@ -154,6 +154,8 @@ type GenerateResponse struct {
 	HexagramMatch *yijing.HexagramMatch `json:"hexagram_match,omitempty"`
 	// HexagramDetail 梅花完整起卦：本/变/互卦、动爻与六爻（docs/42 P0-4）
 	HexagramDetail *yijing.PlumBlossomResult `json:"hexagram_detail,omitempty"`
+	// HexagramInterp 64 卦差异化四象限解读（事业/感情/健康/财运 + 宜忌，docs/42 P1-⑦ 接线）
+	HexagramInterp *yijing.HexagramInterpretation `json:"hexagram_interpretation,omitempty"`
 	// TiYong 体用断卦（docs/42 P1-③）：动者为用，体用生克 + 卦气旺衰 +
 	// 喜用神对照，文字化解读替代纯打分。HexagramMatch 由其结论兼容映射。
 	TiYong  *yijing.TiYongAnalysis `json:"tiyong,omitempty"`
@@ -172,6 +174,8 @@ type GenerateWithAnalysisResponse struct {
 	Hexagram *yijing.Hexagram  `json:"hexagram"`
 	// HexagramDetail 梅花完整起卦：本/变/互卦、动爻与六爻（docs/42 P0-4）
 	HexagramDetail *yijing.PlumBlossomResult `json:"hexagram_detail,omitempty"`
+	// HexagramInterp 64 卦差异化四象限解读（事业/感情/健康/财运 + 宜忌，docs/42 P1-⑦ 接线）
+	HexagramInterp *yijing.HexagramInterpretation `json:"hexagram_interpretation,omitempty"`
 	Ziwei          *ziwei.ZiweiChart         `json:"ziwei,omitempty"`
 	Names          []*name.NameAnalysis      `json:"names"`
 	Suggestions    []string                  `json:"suggestions"`
@@ -635,16 +639,27 @@ func (s *NameService) buildResponse(
 ) *GenerateResponse {
 	nayin := baziAnalysis.Nayin
 
+	// docs/42 P1-⑦：64 卦差异化四象限解读接线（喜用神命中断语由域函数内附）
+	var hexagramInterp *yijing.HexagramInterpretation
+	if hexagram != nil {
+		var xys []string
+		if baziAnalysis != nil {
+			xys = baziAnalysis.Xiyongshen
+		}
+		hexagramInterp = yijing.InterpretHexagram(hexagram, xys)
+	}
+
 	return &GenerateResponse{
-		Bazi:           *baziAnalysis,
-		Nayin:          nayin,
-		Zodiac:         zodiacName,
-		Hexagram:       hexagram,
-		HexagramMatch:  hexagramMatchFromTiYong(tiYong),
-		HexagramDetail: hexagramDetail,
-		TiYong:         tiYong,
-		Ziwei:          ziweiChart,
-		Names:          names,
+		Bazi:               *baziAnalysis,
+		Nayin:              nayin,
+		Zodiac:             zodiacName,
+		Hexagram:           hexagram,
+		HexagramMatch:      hexagramMatchFromTiYong(tiYong),
+		HexagramDetail:     hexagramDetail,
+		HexagramInterp:     hexagramInterp,
+		TiYong:             tiYong,
+		Ziwei:              ziweiChart,
+		Names:              names,
 	}
 }
 

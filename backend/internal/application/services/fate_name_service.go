@@ -304,6 +304,10 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 
 	// 补齐易经卦象与紫微斗数（梅花易数：姓上卦、名下卦）
 	response.Hexagram, response.HexagramDetail = s.hexagramForNames(names, req)
+	// docs/42 P1-⑦：64 卦差异化四象限解读（喜用神取响应八字，与生成口径同源）
+	if response.Hexagram != nil {
+		response.HexagramInterp = yijing.InterpretHexagram(response.Hexagram, response.Bazi.Xiyongshen)
+	}
 	// docs/42 P3-11：每个候选名独立起卦（fate 路径无出生季节输入，卦气旺衰留空）
 	s.attachFatePerNameHexagrams(names, req, response.Bazi.Xiyongshen)
 	response.Ziwei = s.ziweiForRequest(req)
