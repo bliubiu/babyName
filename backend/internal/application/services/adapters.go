@@ -72,10 +72,6 @@ func (a *HexagramAdapter) FindAll() []yijing.Hexagram {
 	return yijing.GetAllHexagrams()
 }
 
-func (a *HexagramAdapter) MatchXiyongshen(hexagram *yijing.Hexagram, xiyongshen []string) *yijing.HexagramMatch {
-	return yijing.MatchHexagramWithXiyongshen(hexagram, xiyongshen)
-}
-
 // ZiweiAdapter 紫微斗数适配器
 type ZiweiAdapter struct{}
 

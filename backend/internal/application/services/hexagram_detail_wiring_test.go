@@ -25,9 +25,53 @@ func TestHexagramAdapter_FindMeihuaDetail(t *testing.T) {
 func TestBuildResponse_CarriesHexagramDetail(t *testing.T) {
 	detail := (&HexagramAdapter{}).FindMeihuaDetail(4, 3)
 	s := &NameService{}
-	resp := s.buildResponse(&bazi.BaziAnalysis{}, nil, detail.OriginalHexagram, nil, detail, nil, "鼠")
+	resp := s.buildResponse(&bazi.BaziAnalysis{}, nil, detail.OriginalHexagram, detail, nil, nil, "鼠")
 	if resp.HexagramDetail != detail {
 		t.Fatal("GenerateResponse.HexagramDetail 未接线")
+	}
+}
+
+// TestBuildResponse_CarriesTiYong 体用断卦结论接线（docs/42 P1-③）：
+// GenerateResponse.TiYong 必须携带结构化体用分析；旧字段 HexagramMatch
+// 由体用结论兼容映射（Score 吉85/中65/凶40 三档）。
+func TestBuildResponse_CarriesTiYong(t *testing.T) {
+	detail := (&HexagramAdapter{}).FindMeihuaDetail(8, 1)
+	// 上坤土、下乾金、五爻动（上卦动）：用=坤土、体=乾金，土生金 → 用生体吉；
+	// 体乾金逢秋旺，金为喜用神
+	tiYong := yijing.AnalyzeTiYong(8, 1, 5, "秋", []string{"金"})
+	s := &NameService{}
+	resp := s.buildResponse(&bazi.BaziAnalysis{}, nil, detail.OriginalHexagram, detail, tiYong, nil, "鼠")
+	if resp.TiYong != tiYong {
+		t.Fatal("GenerateResponse.TiYong 未接线")
+	}
+	if resp.HexagramMatch == nil {
+		t.Fatal("HexagramMatch 兼容映射不应为空（前端仍读 hexagram_match）")
+	}
+	if resp.HexagramMatch.Score != 85 {
+		t.Errorf("用生体（坤土生乾金）应映射吉档 85 分，实得 %d", resp.HexagramMatch.Score)
+	}
+	if resp.HexagramMatch.Reason != tiYong.Text {
+		t.Errorf("Reason 应为文字化解读，实得 %q", resp.HexagramMatch.Reason)
+	}
+	if resp.HexagramMatch.WuxingCompat != tiYong.WangShuai {
+		t.Errorf("WuxingCompat 应为卦气旺衰 %q，实得 %q", tiYong.WangShuai, resp.HexagramMatch.WuxingCompat)
+	}
+}
+
+// TestHexagramMatchFromTiYong 体用吉凶 → 三档分数映射锁
+func TestHexagramMatchFromTiYong(t *testing.T) {
+	if hexagramMatchFromTiYong(nil) != nil {
+		t.Error("nil 体用结论应映射 nil")
+	}
+	cases := []struct{ verdict string; wantScore int }{
+		{"吉", 85}, {"中", 65}, {"凶", 40},
+	}
+	for _, c := range cases {
+		ti := &yijing.TiYongAnalysis{Verdict: c.verdict, Text: "测试解读", WangShuai: "旺"}
+		m := hexagramMatchFromTiYong(ti)
+		if m == nil || m.Score != c.wantScore {
+			t.Errorf("verdict=%s 应映射 %d 分，实得 %+v", c.verdict, c.wantScore, m)
+		}
 	}
 }
 

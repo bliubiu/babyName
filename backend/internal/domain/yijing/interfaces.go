@@ -11,5 +11,4 @@ type HexagramFinder interface {
 	FindMeihuaDetail(surnameStrokes, givenStrokes int) *PlumBlossomResult
 	FindByNumber(id int) *Hexagram
 	FindAll() []Hexagram
-	MatchXiyongshen(hexagram *Hexagram, xiyongshen []string) *HexagramMatch
 }

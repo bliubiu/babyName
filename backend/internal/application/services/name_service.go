@@ -154,8 +154,11 @@ type GenerateResponse struct {
 	HexagramMatch *yijing.HexagramMatch `json:"hexagram_match,omitempty"`
 	// HexagramDetail 梅花完整起卦：本/变/互卦、动爻与六爻（docs/42 P0-4）
 	HexagramDetail *yijing.PlumBlossomResult `json:"hexagram_detail,omitempty"`
-	Ziwei          *ziwei.ZiweiChart         `json:"ziwei,omitempty"`
-	Names          []name.Name               `json:"names"`
+	// TiYong 体用断卦（docs/42 P1-③）：动者为用，体用生克 + 卦气旺衰 +
+	// 喜用神对照，文字化解读替代纯打分。HexagramMatch 由其结论兼容映射。
+	TiYong  *yijing.TiYongAnalysis `json:"tiyong,omitempty"`
+	Ziwei   *ziwei.ZiweiChart      `json:"ziwei,omitempty"`
+	Names   []name.Name            `json:"names"`
 	// GenerationID 本轮生成会话标识：凭它可调 POST /names/generate/explore
 	// 从同一候选表中「换一批」（探索模式，与 Top-N 零交集）。空表示本轮不支持。
 	GenerationID string `json:"generation_id,omitempty"`
@@ -205,11 +208,11 @@ func (s *NameService) GenerateWithProgress(ctx context.Context, req *GenerateReq
 	if onProgress != nil {
 		onProgress("命理扩展", 98)
 	}
-	hexagram, hexagramMatch, hexagramDetail, ziweiChart, parallelDuration := s.calculateHexagramAndZiweiParallel(names, baziAnalysis, req)
+	hexagram, tiYong, hexagramDetail, ziweiChart, parallelDuration := s.calculateHexagramAndZiweiParallel(names, baziAnalysis, req)
 
 	// 4. 构建响应
 	zodiacName := s.zodiacFinder.FindByYear(req.BirthYear)
-	response := s.buildResponse(baziAnalysis, names, hexagram, hexagramMatch, hexagramDetail, ziweiChart, zodiacName)
+	response := s.buildResponse(baziAnalysis, names, hexagram, hexagramDetail, tiYong, ziweiChart, zodiacName)
 	response.GenerationID = generationID
 
 	// 5. 记录日志
@@ -534,7 +537,7 @@ func meihuaStrokesForNames(surname string, fullNameStrokes int) (int, int) {
 // calculateHexagramAndZiweiParallel 并行计算易经卦象和紫微斗数
 // 姓名卦采用梅花易数：姓笔画→上卦，名笔画→下卦（取首个候选名）；
 // 同时返回完整梅花详情（本/变/互卦与动爻，docs/42 P0-4）
-func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziAnalysis *bazi.BaziAnalysis, req *GenerateRequest) (*yijing.Hexagram, *yijing.HexagramMatch, *yijing.PlumBlossomResult, *ziwei.ZiweiChart, time.Duration) {
+func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziAnalysis *bazi.BaziAnalysis, req *GenerateRequest) (*yijing.Hexagram, *yijing.TiYongAnalysis, *yijing.PlumBlossomResult, *ziwei.ZiweiChart, time.Duration) {
 	start := time.Now()
 
 	// 姓名笔画口径统一走 meihuaStrokesForNames（康熙姓笔画优先，docs/42 P0-1）
@@ -545,7 +548,7 @@ func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziA
 	surnameStrokes, givenStrokes := meihuaStrokesForNames(req.Surname, fullNameStrokes)
 
 	var hexagram *yijing.Hexagram
-	var hexagramMatch *yijing.HexagramMatch
+	var tiYong *yijing.TiYongAnalysis
 	var hexagramDetail *yijing.PlumBlossomResult
 	var ziweiChart *ziwei.ZiweiChart
 
@@ -558,12 +561,17 @@ func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziA
 	go func() {
 		defer wg.Done()
 		h := s.hexagramFinder.FindByMeihuaName(surnameStrokes, givenStrokes)
-		m := s.hexagramFinder.MatchXiyongshen(h, baziAnalysis.Xiyongshen)
 		d := s.hexagramFinder.FindMeihuaDetail(surnameStrokes, givenStrokes)
+		// 体用断卦（docs/42 P1-③）：动者为用，结合出生季节（卦气旺衰）与喜用神
+		var t *yijing.TiYongAnalysis
+		if d != nil && d.OriginalHexagram != nil {
+			t = yijing.AnalyzeTiYong(d.UpperTrigramID, d.LowerTrigramID, d.MovingYao,
+				baziAnalysis.Season, baziAnalysis.Xiyongshen)
+		}
 
 		hexagramMutex.Lock()
 		hexagram = h
-		hexagramMatch = m
+		tiYong = t
 		hexagramDetail = d
 		hexagramMutex.Unlock()
 	}()
@@ -597,7 +605,7 @@ func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziA
 		zap.Duration("duration", duration),
 	)
 
-	return hexagram, hexagramMatch, hexagramDetail, ziweiChart, duration
+	return hexagram, tiYong, hexagramDetail, ziweiChart, duration
 }
 
 // buildResponse 构建响应对象
@@ -605,8 +613,8 @@ func (s *NameService) buildResponse(
 	baziAnalysis *bazi.BaziAnalysis,
 	names []name.Name,
 	hexagram *yijing.Hexagram,
-	hexagramMatch *yijing.HexagramMatch,
 	hexagramDetail *yijing.PlumBlossomResult,
+	tiYong *yijing.TiYongAnalysis,
 	ziweiChart *ziwei.ZiweiChart,
 	zodiacName string,
 ) *GenerateResponse {
@@ -617,10 +625,32 @@ func (s *NameService) buildResponse(
 		Nayin:          nayin,
 		Zodiac:         zodiacName,
 		Hexagram:       hexagram,
-		HexagramMatch:  hexagramMatch,
+		HexagramMatch:  hexagramMatchFromTiYong(tiYong),
 		HexagramDetail: hexagramDetail,
+		TiYong:         tiYong,
 		Ziwei:          ziweiChart,
 		Names:          names,
+	}
+}
+
+// hexagramMatchFromTiYong 把体用断卦结论映射为旧版 HexagramMatch 契约，
+// 保持 /names/generate 响应字段 hexagram_match 向后兼容。
+// 「不打分、读象」后 Score 退化为吉凶三档：吉 85 / 中 65 / 凶 40。
+func hexagramMatchFromTiYong(t *yijing.TiYongAnalysis) *yijing.HexagramMatch {
+	if t == nil {
+		return nil
+	}
+	score := 65
+	switch t.Verdict {
+	case "吉":
+		score = 85
+	case "凶":
+		score = 40
+	}
+	return &yijing.HexagramMatch{
+		Score:        score,
+		Reason:       t.Text,
+		WuxingCompat: t.WangShuai,
 	}
 }
 
