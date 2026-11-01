@@ -5,6 +5,25 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.01.0]
+
+**修复三个既有测试失败：CLI JSON 输出污染、golden 快照基线漂移（语料丢失）、classics 诗词匹配 2 例**
+
+### 🐛 Bug Fixes 问题修复
+- 【CLI·日志污染 stdout】`namer-cli -format json` 的输出被 zap INFO 日志行混入而破坏 JSON 解析。`logger.Config` 新增 `FileOnly` 开关（日志仅落盘、不写标准输出），`namer-cli` 启用；同时 logger 包新增 `Close()` 释放按天轮转 sink 的文件句柄（Windows 下 t.TempDir 清理需要），CLI 退出前调用。新增 `TestInit_FileOnly不写标准输出`（os.Pipe 劫持 stdout 断言零泄漏）
+- 【数据事故·语料清空】`data/shijing.json` / `data/chuci.json` 被清空为 `null`（今晨重跑 `export_data` 固化；该命令「从 JSON 读入 `ShijingNames` 再原样写回」属回写自身，文件一旦为空则永久丢失）。因 `data/` 被 .gitignore 且 `loadClassicSafe`/dataloader 静默降级，语料丢失对 git 与常规测试均不可见，直接导致 golden 快照基线漂移（「艳璟」失去《诗经》出典加分被反超、「珞」系跌出 Top10）与 classics 两例失败（「窈」命中唐诗古柏行而非《关雎》）。现从 chinese-poetry 上游恢复：诗经 305 首（156KB）、楚辞 65 首（141KB），字段与 `ShiJingEntry`/`ChuCiEntry` 完全对齐
+- 【golden·语料守卫缺失】`TestGoldenNames` 新增 `requireClassicCorpus` 前置 fail-fast 断言（`GetShijingPoetryChars`/`GetChuciPoetryChars` 非空）：语料再丢失时报「语料未就绪，禁止直接 UPDATE_GOLDEN=1 重建基线掩盖数据事故」，而不是莫名的快照 diff。两个红灯场景（诗经丢/楚辞丢）与绿灯均已验证
+
+### 📈 Improvements 性能/体验优化
+- 【测试·哨兵口径】守卫刻意不用 `HasPoetryChar("窈")` / `GetPoetryCharList("诗经")`——二者均先命中硬编码 `PoetrySources` 名句库（「窈」与「诗经」key 都存在），语料丢失后断言恒真测不出事故；守卫同时锁定调用时序：必须在 `setupFateNameServiceE2E` 之后调用，否则 `poetryIdxOnce` 会在 `data.Init` 前以空语料固化索引，反而制造假漂移（本次踩坑实录）
+
+### ✅ 验证
+- `go build ./...` 退出 0；logger / namer-cli / classics / services 四包 `go test -count=1` 全绿；`TestGoldenNames_快照比对` 在还原基线后恢复 PASS（未重建基线）；classics `TestQueryNamePoetry_Yaotiao_ShiJing` 等诗词语料匹配用例全绿
+- 红灯验证：临时移走 shijing.json / chuci.json 各跑一次，守卫均 Fatal 且信息明确
+
+### 🔧 Dependencies 依赖更新
+- 无新增运行时依赖
+
 ## [2026.10.31.6]
 
 **易经：金标准对拍从「抽样15卦」升级为全量64卦，并打通彖传/小象传结构化管线**

@@ -23,6 +23,7 @@ import (
 	"strings"
 	"testing"
 
+	"name/internal/domain/classics"
 	"name/internal/domain/fate"
 )
 
@@ -135,10 +136,36 @@ func goldenSnapshotPath() string {
 	return filepath.Join(filepath.Dir(file), "testdata", "golden_names.json")
 }
 
+// requireClassicCorpus 语料就绪守卫（fail-fast）
+//
+// data/ 不入 git（.gitignore），shijing.json/chuci.json 一旦丢失或损坏，
+// 评分链静默降级（loadClassicSafe 吞错），快照只会以「莫名漂移」的形式失败——
+// 2026.11.01 语料清空事故中差点被误判为规则变更而重建基线。
+//
+// ⚠ 必须在 setupFateNameServiceE2E **之后**调用：本函数触发的诗词索引惰性构建
+// （poetryIdxOnce 包级一次性）若发生在 data.Init 前，索引会以空语料固化
+// （Once 不再重跑），出典分整体丢失造成假漂移。
+//
+// 断言口径用 GetShijingPoetryChars/GetChuciPoetryChars 直读提取数据——
+// 不用 HasPoetryChar("窈") / GetPoetryCharList("诗经")：二者都会先命中
+// 硬编码 PoetrySources 名句库（「窈」「诗经」key 均存在），语料丢失后恒真，测不出事故。
+func requireClassicCorpus(t *testing.T) {
+	t.Helper()
+	if len(classics.GetShijingPoetryChars()) == 0 {
+		t.Fatal("诗经语料未就绪（提取用字 0 条）：data/shijing.json 缺失或为空。" +
+			"请从 chinese-poetry 上游恢复语料后重跑，禁止直接 UPDATE_GOLDEN=1 重建基线掩盖数据事故")
+	}
+	if len(classics.GetChuciPoetryChars()) == 0 {
+		t.Fatal("楚辞语料未就绪（提取用字 0 条）：data/chuci.json 缺失或为空。" +
+			"请从 chinese-poetry 上游恢复语料后重跑，禁止直接 UPDATE_GOLDEN=1 重建基线掩盖数据事故")
+	}
+}
+
 // TestGoldenNames_同进程可复现 前置契约：同进程内重复生成必须逐字节一致。
 // 若不成立，快照比对本身失去意义（先失败在这里而不是 diff 出一堆噪音）。
 func TestGoldenNames_同进程可复现(t *testing.T) {
 	svc := setupFateNameServiceE2E(t)
+	requireClassicCorpus(t)
 	for _, c := range goldenCases() {
 		first := generateGoldenCase(t, svc, c)
 		second := generateGoldenCase(t, svc, c)
@@ -157,6 +184,7 @@ func TestGoldenNames_同进程可复现(t *testing.T) {
 // 重建必须在 commit message 中逐条说明变化原因（预期行为变更 or 缺陷）。
 func TestGoldenNames_快照比对(t *testing.T) {
 	svc := setupFateNameServiceE2E(t)
+	requireClassicCorpus(t)
 	path := goldenSnapshotPath()
 
 	actual := goldenCases()

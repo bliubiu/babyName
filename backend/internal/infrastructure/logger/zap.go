@@ -12,6 +12,9 @@ import (
 var (
 	Log   *zap.Logger
 	Sugar *zap.SugaredLogger
+
+	// globalSink Init 建立的按天轮转落盘 sink，Close 时关闭当前日志文件句柄
+	globalSink *dailySink
 )
 
 type Config struct {
@@ -21,6 +24,9 @@ type Config struct {
 	// 绝对路径原样使用，相对路径相对 cwd；空值固定「项目根/logs/」。
 	// 文件名固定 namer-YYYYMMDD.log，按天轮转，由 dailySink 统一管理。
 	OutputPath string `mapstructure:"output_path"`
+	// FileOnly 日志仅落盘、不写标准输出。CLI/JSON 工具场景必开：
+	// 否则 INFO 日志行会混入 stdout 破坏 JSON 解析（如 namer-cli）。
+	FileOnly bool `mapstructure:"file_only"`
 }
 
 func Init(cfg *Config) error {
@@ -72,11 +78,16 @@ func Init(cfg *Config) error {
 	// 按天轮转落盘：文件名 namer-YYYYMMDD.log 由 dailySink 维护，
 	// 跨天自动切换 + 保留 32 天清理（超过该职责的收入不再交给调用方）。
 	sink := newDailySink(dir, time.Now)
+	globalSink = sink
 
-	writeSyncer := zapcore.NewMultiWriteSyncer(
-		zapcore.AddSync(sink),
-		zapcore.AddSync(os.Stdout),
-	)
+	// FileOnly：仅落盘（CLI/JSON 工具场景），否则落盘 + 标准输出
+	writeSyncer := zapcore.WriteSyncer(zapcore.AddSync(sink))
+	if !cfg.FileOnly {
+		writeSyncer = zapcore.NewMultiWriteSyncer(
+			writeSyncer,
+			zapcore.AddSync(os.Stdout),
+		)
+	}
 
 	core := zapcore.NewCore(
 		encoder,
@@ -219,6 +230,14 @@ func With(fields ...zap.Field) *zap.Logger {
 func Sync() {
 	if Log != nil {
 		_ = Log.Sync()
+	}
+}
+
+// Close 关闭日志文件句柄（Init 建立的落盘 sink）。
+// CLI 等短生命周期进程退出前应调用，避免 Windows 下文件被占用。
+func Close() {
+	if globalSink != nil {
+		_ = globalSink.Close()
 	}
 }
 
