@@ -14,6 +14,7 @@ import { NameFilters } from '@/components/NameFilter';
 
 const BaziAnalysis = lazy(() => import('@/components/BaziAnalysis'));
 const HexagramDisplay = lazy(() => import('@/components/HexagramDisplay'));
+const HexagramDetailDisplay = lazy(() => import('@/components/HexagramDetailDisplay'));
 const ZiweiDisplay = lazy(() => import('@/components/ZiweiDisplay'));
 const NameCard = lazy(() => import('@/components/NameCard').then(module => ({
   default: module.default
@@ -292,7 +293,7 @@ const cachedFavorites = useMemo<FavoriteData[]>(
     );
   }
 
-  const { bazi, nayin, zodiac, hexagram, ziwei, names } = result;
+  const { bazi, nayin, zodiac, hexagram, hexagram_detail, tiyong, ziwei, names } = result;
 
   const handleCompare = () => {
     if (compareNames.length < 2) {
@@ -328,10 +329,21 @@ const cachedFavorites = useMemo<FavoriteData[]>(
           <BaziAnalysis bazi={bazi} nayin={nayin} zodiac={zodiac} />
         </Suspense>
 
-        {/* 卦象 */}
+        {/* 卦象（本卦经文） */}
         {hexagram && (
           <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载卦象...</div>}>
-            <HexagramDisplay hexagram={hexagram} />
+            <HexagramDisplay
+              hexagram={hexagram}
+              yaoLines={hexagram_detail?.original_yao_lines}
+              movingYao={hexagram_detail?.moving_yao}
+            />
+          </Suspense>
+        )}
+
+        {/* 卦象详解：本/互/变三卦并排 + 体用断卦（docs/42 P2-9/10） */}
+        {hexagram_detail && (
+          <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载卦象详解...</div>}>
+            <HexagramDetailDisplay detail={hexagram_detail} tiyong={tiyong} />
           </Suspense>
         )}
 

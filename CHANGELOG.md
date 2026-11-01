@@ -5,6 +5,28 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.01.1]
+
+**前端消费卦象详情：SVG 爻画、本/互/变三卦并排、体用断卦可视化（docs/42 P2-8/9/10）**
+
+### ✨ New Features 新增功能
+- 【易经·爻画组件】新增 `HexagramLines` SVG 六爻组件替代 Unicode 符号拼接：自下而上绘制，阳爻单横、阴爻双段；动爻朱色高亮 + 脉动动画 + 传统 〇/× 标记，含无障碍 aria 标签
+- 【易经·卦象详解】新增 `HexagramDetailDisplay` 组件：本/互/变三卦并排（本卦高亮并标注动爻爻名）、动爻爻辞、体用断卦结构化展示（吉/中/凶徽章配色、体用五行生克、卦气旺衰、喜用神对照）、综合解读；result 页懒加载接入，正式消费后端 `hexagram_detail` 与 `tiyong` 字段
+- 【易经·前端口径模块】新增 `src/lib/hexagram.ts`：八卦卦名/三画符/五行/三爻表与后端 `trigramYaoMaps` 逐项锁死，`buildHexagramYaoLines`、`getYaoName` 与后端 `GetYaoName` 同规则，防爻画颠倒类 P0 回归
+- 【类型】`types/index.ts` 新增 `TiYong`/`HexagramMatch` 接口，`Hexagram` 补 `tuan_ci`/`xiao_xiang`，`GenerateResponse.data` 补 `tiyong` 并收紧 `hexagram_match` 类型
+
+### 🐛 Bug Fixes 问题修复
+- 【易经·卦名显示】`HexagramDisplay` 上下卦此前误显示八卦序号数字（如「第6卦」），现显示卦名 + 三画符 + 五行（如「☵ 坎卦 · 水」）；标题改「第{number}卦 · 卦名」
+
+### 📈 Improvements 性能/体验优化
+- 【易经·经文展示】`HexagramDisplay` 新增六爻画与彖传展示（爻值优先取 `hexagram_detail.original_yao_lines`，缺省按上下卦推导）；`hexagram_match` 为体用断卦兼容映射（同文本），不再单独渲染避免重复
+
+### ✅ 验证
+- vitest 11 文件 106 用例全绿（新增 31 例：hexagram 16、HexagramLines 8、HexagramDetailDisplay 7，丰#55 金标准盘夹具）；`pnpm lint` 0 错误；`pnpm build` 通过；后端 yijing/ziwei/services 回归全绿
+
+### 🔧 Dependencies 依赖更新
+- 无新增依赖
+
 ## [2026.11.01.0]
 
 **修复三个既有测试失败：CLI JSON 输出污染、golden 快照基线漂移（语料丢失）、classics 诗词匹配 2 例**

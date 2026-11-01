@@ -91,7 +91,39 @@ export interface Hexagram {
   gua_ci: string;
   xiang_ci: string;
   yao_ci: string[];
+  /** 彖传（运行时由 data/yijing.json / SQLite 装载注入，内存兜底模式为空） */
+  tuan_ci?: string;
+  /** 小象传（逐爻，与爻辞对齐） */
+  xiao_xiang?: string[];
   interpretation: string;
+}
+
+/** 体用断卦（docs/42 P1-③，与后端 yijing.TiYongAnalysis JSON 一致） */
+export interface TiYong {
+  /** 体卦名（静卦） */
+  ti_gua: string;
+  /** 用卦名（动爻所在卦） */
+  yong_gua: string;
+  ti_wuxing: string;
+  yong_wuxing: string;
+  /** 用生体/比和/体克用/体生用/用克体 */
+  relation: string;
+  /** 吉/中/凶 */
+  verdict: string;
+  /** 体卦旺衰：旺/相/休/囚/死（无出生季节时为空） */
+  wang_shuai: string;
+  /** 体卦与八字喜用神关系说明（无输入时空时为空） */
+  xiyong_note: string;
+  /** 文字化解读 */
+  text: string;
+}
+
+/** 卦象匹配（旧契约兼容字段，现由体用断卦结论映射：吉85/中65/凶40） */
+export interface HexagramMatch {
+  score: number;
+  reason: string;
+  /** 现承载体卦旺衰 */
+  wuxing_compat: string;
 }
 
 /** 梅花易数完整起卦结果：本卦/变卦/互卦/动爻与六爻值（docs/42 P0-4） */
@@ -188,9 +220,12 @@ export interface GenerateResponse {
     nayin: string;
     zodiac: string;
     hexagram: Hexagram;
-    hexagram_match?: Record<string, unknown>;
+    /** 旧契约兼容字段：由体用断卦结论映射（吉85/中65/凶40） */
+    hexagram_match?: HexagramMatch;
     /** 梅花完整起卦：本/变/互卦、动爻与六爻（docs/42 P0-4） */
     hexagram_detail?: HexagramDetail;
+    /** 体用断卦结构化字段（docs/42 P1-③） */
+    tiyong?: TiYong;
     ziwei?: ZiweiChart;
     names: Name[];
     suggestions?: string[];
