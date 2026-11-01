@@ -5,6 +5,30 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.01.2] 与 [2026.11.01.3]
+
+**易经 P1 收尾 + P3 每名起卦（.2）/ 紫微 Excel 派 12 杂曜（.3）；另含语料覆空事故处置（.2 内）**
+
+### 🐛 Bug Fixes 问题修复
+- 【数据事故·语料覆空（二次发生）】重跑 `export_data` 再度将 `shijing.json`/`chuci.json` 覆写为 null（`data.Init` 语料迁 SQLite 后不再向 `classics.ShijingNames` 灌数，而导出仍按内存回写——CHANGELOG 2026.11.01.0 记录过同一事故）。已从 chinese-poetry 上游字节级还原（305 首/156972B、65 首/141832B），`classics` 守卫与 `TestGoldenNames_快照比对` 复绿验证无漂移；并**整段移除 export_data 对诗经/楚辞的回写逻辑**（上游导入件非派生产物，永不再写），事故根因就此拔除
+- 【易经·解读模板句】`InterpretHexagram` 的事业/爱情/健康/财运原为全卦共用模板句，现按 64 卦逐卦差异化（每卦四句独立成文，取意卦辞/大象传/卦德），越界卦回落通用模板；宜忌维持通用口径
+
+### ✨ New Features 新增功能
+- 【易经·卦德字段】`Hexagram` 新增 `GuaDe`（八卦卦德推导：乾健/坤顺/震动/巽入/坎陷/离丽/艮止/兑悦；八纯卦单字，异卦「上X下Y」），贯通硬编码表 init、JSON 装载、SQLite 装载、export_data 导出与 check_json 校验；前端上下卦展示卦德字
+- 【易经·每候选名独立起卦】`name.Name`/`NameAnalysis` 新增 `hexagram_detail`/`tiyong`，NameService 与 FateNameService 两路对全候选名单独起卦 + 体用断卦（此前仅 names[0]）；顶层字段维持首名值向后兼容；前端 `NameDetail` 嵌入渲染本/互/变三卦 + 体用
+- 【紫微·Excel 派杂曜】安布天刑/三台/八座/恩光/天贵/天才/天寿/台辅/封诰/天官/天福/天厨共 12 颗（`SuiXingList` 扩至 24）：天官/天福/天厨年干查表、三台八座（左辅右弼起初一顺/逆数至生日）、恩光天贵（文昌文曲起退一步）、天才天寿（命/身宫起子年顺数）、台辅封诰（午/寅起子时顺数）、天刑（酉起正月）；晚子时日系偏移按次日计（iztro fixLunarDayIndex 口径）；8 盘 96 项落宫与 iztro 2.6.3 实排全对拍，24 颗全盘唯一落位有断言
+
+### 📈 Improvements 性能/体验优化
+- 【易经·数据校验】`check_json` 新增卦德非空且与推导一致校验（复用 `yijing.GuaDeOf` 单一真源）
+- 【前端·卦象】`HexagramDetailDisplay` 支持嵌入模式（名字详解内嵌无外层卡片）；`lib/hexagram.ts` 补 `TRIGRAM_GUADE`/`getHexagramGuaDe` 与后端同规则锁死
+
+### ✅ 验证
+- 后端 yijing/ziwei/name/classics/infrastructure/materials/cmd 及 services（除 golden 基线）全绿；前端 vitest 110 例、lint 0 错误、build 通过
+- `TestGoldenNames_快照比对` 由并行会话新增的卦象评分器（gua_xiang_rater，docs/42 P3-12）引入预期漂移，归其重建基线，非本轮展示字段所致
+
+### 🔧 Dependencies 依赖更新
+- 无新增依赖（iztro 仅作临时对拍工具，未入库）
+
 ## [2026.11.01.1]
 
 **前端消费卦象详情：SVG 爻画、本/互/变三卦并排、体用断卦可视化（docs/42 P2-8/9/10）**
