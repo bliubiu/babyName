@@ -67,6 +67,15 @@ func main() {
 				if len(yao) != want {
 					fail("yijing.json", "卦 %s 爻辞 %d 条，期望 %d", name, len(yao), want)
 				}
+				// 彖传/小象传：docs/玄学/易经 语料结构化字段（docs/42 P1）
+				tuan, _ := h["tuan_ci"].(string)
+				if strings.TrimSpace(tuan) == "" {
+					fail("yijing.json", "卦 %s 彖传为空", name)
+				}
+				xiao, _ := h["xiao_xiang"].([]any)
+				if len(xiao) != len(yao) {
+					fail("yijing.json", "卦 %s 小象 %d 条，应与爻辞 %d 条对齐", name, len(xiao), len(yao))
+				}
 			}
 		}
 	}

@@ -5,6 +5,31 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.10.31.6]
+
+**易经：金标准对拍从「抽样15卦」升级为全量64卦，并打通彖传/小象传结构化管线**
+
+### 🐛 Bug Fixes 问题修复
+- 【易经·金标准覆盖窄】旧 `canonical_test.go` 仅抽样 15 卦象辞做黄金标准，其余 63 卦的卦辞/爻辞无全文核对，单卦文本错误无法被发现。现新增 `canonical_full_test.go`：以 `docs/玄学/易经/*.md`（独立撰写的通行本语料，非派生）为唯一独立金标准，对全部 64 卦的卦辞/象辞/爻辞做对拍（`strings.Contains(doc, code)` 子串包含匹配，容忍代码侧凝练）；新增 `TestHexagram_GoldenGuaCi` / `GoldenXiangCi` / `GoldenYaoCi` 三套全量用例
+- 【易经·黄金解析单一真源】抽出 `canonical_docs.go`：`parseHexagramDocFull` 统一解析 64 份文档（兼顾「合体式」乾与「常规式」文档；正则 `yaoSaidRe` 精准排除文言「九四曰」泄漏，同时保留含「曰」的爻辞行如大畜九三「曰闲舆卫」、困上六「曰动悔」），供测试、`cmd/export_data` JSON 生成、物料导入三条链路共用，消除解析口径漂移
+- 【易经·异体字折叠】`variantReplacer` 新增 `佑→祐`、`畲→畬`（自天祐之 / 不菑畬，代码统一用后者）；连同既有 `於→于`、`牀→床`、`無→无`、`遯→遁`、`啕→咷`、`豶→豮`，对金标准文本归一后再比对
+- 【易经·代码真实错误修正】`hexagram.go` 修正两处讹误：屯 #3 九四「乘马班如，求婚媾，往吉无不利」→ 删冗余「往吉」；明夷 #36 九四「入于左腹，获明夷之心，于出门庭」→「出于门庭」
+- 【易经·语料修正】`docs/玄学/易经`：晋 #34 象曰「硕鼠贞厉」→「鼫鼠贞厉」；鼎 #49 象曰「覆公□」→「覆公餗」（缺字补全）
+
+### 🔧 物料管线（docs/42 P1：彖传/小象传结构化）
+- `materials/schema.Hexagram` 新增 `TuanCi`（彖传）、`XiaoXiang`（小象传，逐爻，与爻辞对齐）
+- `store_materials_schema` 给 `yijing_hexagrams` 表增量补列（`tuan_ci` / `xiao_xiang`，幂等 ALTER 可重入）
+- `store_materials_import` / `store_materials_load` 接入彖传/小象传的写入与回读
+- `cmd/export_data` 新增 `mergeYijingCanonical`：基于本源文件位置向上探测 `docs/玄学/易经`，经 `yijing.ParseCanonicalDocs` 解析后合并彖传/小象传到 `yijing.json`（文档缺失不阻塞导出）
+- `cmd/check_json` 新增校验：彖传非空、小象条数与爻辞对齐
+- 删除 `docs/DOCKER_QUICKSTART.md`（镜像内已无对应流程，常驻文档误导）
+
+### ✅ 验证
+- `go build ./...` 退出 0；`go test -count=1 ./internal/domain/yijing/` 全绿（`GoldenGuaCi` / `GoldenXiangCi` / `GoldenYaoCi` / `CanonicalXiangCi` / `XiangCiNotEqualGuaCi` / `StructuralIntegrity` / `TrigramsBijection` 等 PASS）；`sqlite` / `materials` 包测试全绿
+
+### 🔧 Dependencies 依赖更新
+- 无新增运行时依赖
+
 ## [2026.10.31.5]
 
 **修复紫微斗数「算而不显」展示断点 + 易经 GetYaoName 爻名缺陷**

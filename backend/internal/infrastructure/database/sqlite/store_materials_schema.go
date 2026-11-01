@@ -119,6 +119,8 @@ var materialTableDDL = []string{
 		gua_ci         TEXT NOT NULL DEFAULT '',
 		xiang_ci       TEXT NOT NULL DEFAULT '',
 		yao_ci         TEXT NOT NULL DEFAULT '[]',
+		tuan_ci        TEXT NOT NULL DEFAULT '',
+		xiao_xiang     TEXT NOT NULL DEFAULT '[]',
 		interpretation TEXT NOT NULL DEFAULT ''
 	)`,
 
@@ -236,6 +238,13 @@ var curatedNamesColumnMigrations = []struct{ column, definition string }{
 	{"tags", "TEXT NOT NULL DEFAULT '[]'"},
 }
 
+// yijingHexagramsColumnMigrations yijing_hexagrams 的增量补列清单：
+// 彖传/小象传自 docs/玄学/易经 语料结构化后加入（docs/42 P1）
+var yijingHexagramsColumnMigrations = []struct{ column, definition string }{
+	{"tuan_ci", "TEXT NOT NULL DEFAULT ''"},
+	{"xiao_xiang", "TEXT NOT NULL DEFAULT '[]'"},
+}
+
 // materialTables 全部物料表名（守护测试与文档用）
 var materialTables = []string{
 	"kangxi_strokes", "hanzi_data", "char_groups",
@@ -262,8 +271,30 @@ func createMaterialTables(db *sql.DB) error {
 	if err := migrateCuratedNamesColumns(db); err != nil {
 		return err
 	}
+	if err := migrateYijingHexagramsColumns(db); err != nil {
+		return err
+	}
 	if err := migrateClassicsSchema(db); err != nil {
 		return err
+	}
+	return nil
+}
+
+// migrateYijingHexagrams 给已存在的 yijing_hexagrams 表补齐缺失的新列
+// （彖传/小象传，docs/42 P1）。先探测列是否存在再 ALTER，幂等可重入。
+func migrateYijingHexagramsColumns(db *sql.DB) error {
+	existing, err := tableColumns(db, "yijing_hexagrams")
+	if err != nil {
+		return err
+	}
+	for _, m := range yijingHexagramsColumnMigrations {
+		if existing[m.column] {
+			continue
+		}
+		stmt := fmt.Sprintf("ALTER TABLE yijing_hexagrams ADD COLUMN %s %s", m.column, m.definition)
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("yijing_hexagrams 补列 %s 失败: %w", m.column, err)
+		}
 	}
 	return nil
 }

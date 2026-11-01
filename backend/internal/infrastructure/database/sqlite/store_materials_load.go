@@ -363,7 +363,7 @@ func (s *Store) loadYijingFromDB() bool {
 		return false
 	}
 	rows, err := s.db.Query(`SELECT id, name, number, symbol, upper_trigram, lower_trigram,
-		gua_ci, xiang_ci, yao_ci, interpretation FROM yijing_hexagrams ORDER BY id`)
+		gua_ci, xiang_ci, yao_ci, tuan_ci, xiao_xiang, interpretation FROM yijing_hexagrams ORDER BY id`)
 	if err != nil {
 		logger.Error("sqlite: 查询 yijing_hexagrams 失败", logger.ErrField(err))
 		return false
@@ -373,14 +373,19 @@ func (s *Store) loadYijingFromDB() bool {
 	var list []yijing.Hexagram
 	for rows.Next() {
 		var (
-			h     yijing.Hexagram
-			yaoCi string
+			h         yijing.Hexagram
+			yaoCi     string
+			tuanCi    string
+			xiaoXiang string
 		)
 		if err := rows.Scan(&h.ID, &h.Name, &h.Number, &h.Symbol, &h.UpperTrigram,
-			&h.LowerTrigram, &h.GuaCi, &h.XiangCi, &yaoCi, &h.Interpretation); err != nil {
+			&h.LowerTrigram, &h.GuaCi, &h.XiangCi, &yaoCi, &tuanCi, &xiaoXiang,
+			&h.Interpretation); err != nil {
 			continue
 		}
 		h.YaoCi = unmarshalTags(yaoCi)
+		h.TuanCi = tuanCi
+		h.XiaoXiang = unmarshalTags(xiaoXiang)
 		list = append(list, h)
 	}
 	if err := rows.Err(); err != nil || len(list) == 0 {

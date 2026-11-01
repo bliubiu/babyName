@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"database/sql"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,7 +58,7 @@ func writeMinimalMaterials(t *testing.T) string {
 		t.Fatalf("写入禁忌表失败: %v", err)
 	}
 
-	yijing := `[{"id":1,"name":"乾","number":1,"symbol":"☰","upper_trigram":7,"lower_trigram":7,"gua_ci":"元亨利贞","xiang_ci":"天行健","yao_ci":["初九","九二","九三"],"interpretation":"刚健中正"}]`
+	yijing := `[{"id":1,"name":"乾","number":1,"symbol":"☰","upper_trigram":7,"lower_trigram":7,"gua_ci":"元亨利贞","xiang_ci":"天行健","yao_ci":["初九","九二","九三"],"tuan_ci":"大哉乾元，万物资始","xiao_xiang":["天行健，君子以自强不息","见龙在田，德施普也","终日乾乾，反复道也"],"interpretation":"刚健中正"}]`
 	if err := os.WriteFile(filepath.Join(dir, "yijing.json"), []byte(yijing), 0o644); err != nil {
 		t.Fatalf("写入易经失败: %v", err)
 	}
@@ -230,6 +231,37 @@ func TestImport_门禁与禁忌独立入库(t *testing.T) {
 	}
 	if bad != 2 {
 		t.Errorf("禁忌组合数期望 2，实得 %d", bad)
+	}
+}
+
+func TestImport_易经彖传与小象入库(t *testing.T) {
+	dir := writeMinimalMaterials(t)
+	s := newTestStore(t)
+	importMinimal(t, s, dir, ImportOptions{})
+
+	// 彖传文本必须落库（体用卦解读依赖）
+	var tuan string
+	if err := s.db.QueryRow("SELECT tuan_ci FROM yijing_hexagrams WHERE id = 1").Scan(&tuan); err != nil {
+		t.Fatalf("查询 tuan_ci 失败: %v", err)
+	}
+	if tuan != "大哉乾元，万物资始" {
+		t.Errorf("彖传期望「大哉乾元，万物资始」，实得 %q", tuan)
+	}
+
+	// 小象必须与爻辞逐条落库（逐爻解读依赖）
+	var xiaoXiang string
+	if err := s.db.QueryRow("SELECT xiao_xiang FROM yijing_hexagrams WHERE id = 1").Scan(&xiaoXiang); err != nil {
+		t.Fatalf("查询 xiao_xiang 失败: %v", err)
+	}
+	var arr []string
+	if err := json.Unmarshal([]byte(xiaoXiang), &arr); err != nil {
+		t.Fatalf("xiao_xiang 应为 JSON 数组，实得 %q: %v", xiaoXiang, err)
+	}
+	if len(arr) != 3 {
+		t.Errorf("小象期望 3 条（与爻辞对齐），实得 %d", len(arr))
+	}
+	if len(arr) > 0 && arr[0] != "天行健，君子以自强不息" {
+		t.Errorf("小象首条期望「天行健，君子以自强不息」，实得 %q", arr[0])
 	}
 }
 

@@ -116,6 +116,8 @@ type Hexagram struct {
 	GuaCi          string   `json:"guaCi"`
 	XiangCi        string   `json:"xiangCi"`
 	YaoCi          []string `json:"yaoCi"`
+	TuanCi         string   `json:"tuanCi"`     // 彖传
+	XiaoXiang      []string `json:"xiaoXiang"`  // 小象传（逐爻，与爻辞对齐）
 	Interpretation string   `json:"interpretation"`
 }
 

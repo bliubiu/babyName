@@ -3,7 +3,6 @@ package yijing
 import (
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -60,6 +59,8 @@ var (
 		"遯", "遁",
 		"啕", "咷",
 		"豶", "豮",
+		"佑", "祐", // 自天祐之，代码统一用「祐」
+		"畲", "畬", // 不菑畬，代码统一用「畬」
 	)
 )
 
@@ -70,102 +71,10 @@ func normalize(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// cnDigit 单个中文数字字符 → 0-9
-func cnDigit(r rune) int {
-	switch r {
-	case '一':
-		return 1
-	case '二':
-		return 2
-	case '三':
-		return 3
-	case '四':
-		return 4
-	case '五':
-		return 5
-	case '六':
-		return 6
-	case '七':
-		return 7
-	case '八':
-		return 8
-	case '九':
-		return 9
-	}
-	return 0
-}
-
-// parseChineseNum 解析 1-64 的中文数字（如 二十三 → 23，六十四 → 64）
-func parseChineseNum(s string) int {
-	s = strings.TrimSpace(s)
-	if s == "十" {
-		return 10
-	}
-	ten := strings.Index(s, "十")
-	if ten < 0 {
-		return cnDigit([]rune(s)[0])
-	}
-	left := s[:ten]
-	right := s[ten+len("十"):]
-	tens := 1
-	if left != "" {
-		tens = cnDigit([]rune(left)[0])
-	}
-	ones := 0
-	if right != "" {
-		ones = cnDigit([]rune(right)[0])
-	}
-	return tens*10 + ones
-}
-
-// parseHexagramDoc 从单篇经传文档解析出 卦序、卦名、卦辞全文、大象、爻辞序列表
+// parseHexagramDoc 委托到 parseHexagramDocFull（canonical_docs.go 单一真源），
+// 只取金标准对拍所需的字段子集
 func parseHexagramDoc(content string) (number int, name, guaCiFull, daXiang string, yaoCi []string) {
-	titleRe := regexp.MustCompile(`《易经》第(.+?)卦\s+(\S+?)\s`)
-	if m := titleRe.FindStringSubmatch(content); m != nil {
-		number = parseChineseNum(m[1])
-		name = m[2]
-	}
-
-	// 卦辞全文：名：之后，至首个 彖曰 / 象曰 / 文言 之前（含后续续句）
-	headerRe := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(name) + `：(.+)$`)
-	if m := headerRe.FindStringSubmatch(content); m != nil {
-		rest := m[1]
-		if idx := strings.Index(rest, "。彖曰"); idx >= 0 {
-			guaCiFull = rest[:idx]
-		} else if idx := strings.Index(rest, "。象曰"); idx >= 0 {
-			guaCiFull = rest[:idx]
-		} else if idx := strings.Index(rest, "。文言"); idx >= 0 {
-			guaCiFull = rest[:idx]
-		} else {
-			guaCiFull = rest
-		}
-	}
-
-	// 大象（彖曰 之后的第一个 象曰：）：取至行尾，兼容「雷出地奋，豫。先王以作乐崇德」
-	// 等两句式大象，避免在首个句号处误截断（对拍按子串判定，多截无害）
-	tIdx := strings.Index(content, "。彖曰")
-	if tIdx < 0 {
-		tIdx = strings.Index(content, "彖曰")
-	}
-	if tIdx < 0 {
-		tIdx = 0 // 防御：无彖曰时从全文检索（正常卦文档均有彖曰）
-	}
-	if xIdx := strings.Index(content[tIdx:], "象曰："); xIdx >= 0 {
-		xIdx += tIdx
-		raw := content[xIdx+len("象曰："):]
-		if nl := strings.IndexAny(raw, "\r\n"); nl >= 0 {
-			raw = raw[:nl]
-		}
-		daXiang = raw
-	}
-
-	// 爻辞：以 爻位前缀（初/九/六/上/用 + 六九）起的行，排除 象曰/彖曰/文言
-	yaoRe := regexp.MustCompile(`^(初[六九]|九[二三四五]|六[二三四五]|上[六九]|用[六九])[：:](.+)$`)
-	for _, line := range strings.Split(content, "\n") {
-		if m := yaoRe.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
-			yaoCi = append(yaoCi, m[2])
-		}
-	}
+	number, name, guaCiFull, daXiang, _, _, yaoCi = parseHexagramDocFull(content)
 	return
 }
 

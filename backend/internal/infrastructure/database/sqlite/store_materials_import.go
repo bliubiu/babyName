@@ -949,6 +949,7 @@ func (s *Store) importYijing(def schema.Definition, src string, res ImportResult
 			ID: h.ID, Name: h.Name, Number: h.Number, Symbol: h.Symbol,
 			UpperTrigram: h.UpperTrigram, LowerTrigram: h.LowerTrigram,
 			GuaCi: h.GuaCi, XiangCi: h.XiangCi, YaoCi: normalize.Tags(h.YaoCi),
+			TuanCi: h.TuanCi, XiaoXiang: normalize.Tags(h.XiaoXiang),
 			Interpretation: h.Interpretation,
 		})
 	}
@@ -970,15 +971,16 @@ func (s *Store) importYijing(def schema.Definition, src string, res ImportResult
 
 	return *s.runImport(def.Name, def.Tables, &res, opt, func(tx *sql.Tx) (int, error) {
 		stmt, err := tx.Prepare(`INSERT INTO yijing_hexagrams(id, name, number, symbol,
-			upper_trigram, lower_trigram, gua_ci, xiang_ci, yao_ci, interpretation)
-			VALUES(?,?,?,?,?,?,?,?,?,?)`)
+			upper_trigram, lower_trigram, gua_ci, xiang_ci, yao_ci, tuan_ci, xiao_xiang, interpretation)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
 		if err != nil {
 			return 0, err
 		}
 		defer func() { _ = stmt.Close() }()
 		for _, h := range items {
 			if _, err := stmt.Exec(h.ID, h.Name, h.Number, h.Symbol, h.UpperTrigram,
-				h.LowerTrigram, h.GuaCi, h.XiangCi, mustJSON(h.YaoCi), h.Interpretation); err != nil {
+				h.LowerTrigram, h.GuaCi, h.XiangCi, mustJSON(h.YaoCi), h.TuanCi, mustJSON(h.XiaoXiang),
+				h.Interpretation); err != nil {
 				return 0, fmt.Errorf("写入卦象 %d 失败: %w", h.ID, err)
 			}
 		}
