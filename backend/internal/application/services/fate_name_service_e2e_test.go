@@ -193,6 +193,10 @@ func TestFateNameService_E2E_SingleName(t *testing.T) {
 	if resp.Hexagram == nil || resp.Hexagram.Name == "" {
 		t.Error("Hexagram（姓名卦象）未填充（Q5 补齐项）")
 	}
+	// docs/42 P1-⑦：analysis 路径同样携带四象限差异化解读
+	if resp.HexagramInterp == nil || resp.HexagramInterp.Career == "" {
+		t.Error("HexagramInterp（64卦差异化解读）未填充")
+	}
 	if resp.Ziwei == nil {
 		t.Error("Ziwei（紫微排盘）未填充（Q5 补齐项）")
 	}
