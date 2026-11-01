@@ -43,6 +43,34 @@ export const TRIGRAM_WUXING: Record<number, string> = {
   8: '土',
 };
 
+/** 八卦 ID → 卦德（《说卦传》乾健坤顺震动巽入坎陷离丽艮止，兑说通悦） */
+export const TRIGRAM_GUADE: Record<number, string> = {
+  1: '健',
+  2: '悦',
+  3: '丽',
+  4: '动',
+  5: '入',
+  6: '陷',
+  7: '止',
+  8: '顺',
+};
+
+/**
+ * 六爻卦之卦德：八纯卦（上下同卦）取单字，异卦「上X下Y」。
+ * 与后端 yijing.GuaDeOf 同规则（docs/42 P1-⑤收尾）。
+ */
+export function getHexagramGuaDe(
+  upperTrigramId: number,
+  lowerTrigramId: number
+): string {
+  const u = TRIGRAM_GUADE[upperTrigramId];
+  const l = TRIGRAM_GUADE[lowerTrigramId];
+  if (!u || !l) {
+    return '';
+  }
+  return upperTrigramId === lowerTrigramId ? u : `上${u}下${l}`;
+}
+
 /** 八卦 ID → 三爻值（自下而上，7=阳 / 8=阴），先天口诀：乾三连、兑上缺、离中虚、震仰盂、巽下断、坎中满、艮覆碗、坤六断 */
 export const TRIGRAM_YAO: Record<number, [number, number, number]> = {
   1: [7, 7, 7],

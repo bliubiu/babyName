@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"name/internal/domain/classics"
 	"name/internal/domain/hanzi"
 	"name/internal/domain/yijing"
 	"name/internal/domain/zodiac"
@@ -70,19 +69,10 @@ func main() {
 		fmt.Printf("导出易经数据: %d 卦（其中 %d 卦合并了彖传/小象）\n", len(yjExport), n)
 	}
 
-	// 导出诗经数据
-	if err := writeJSON(filepath.Join(dataDir, "shijing.json"), classics.ShijingNames); err != nil {
-		fmt.Printf("导出诗经数据失败: %v\n", err)
-	} else {
-		fmt.Printf("导出诗经数据: %d 条\n", len(classics.ShijingNames))
-	}
-
-	// 导出楚辞数据
-	if err := writeJSON(filepath.Join(dataDir, "chuci.json"), classics.ChuciNames); err != nil {
-		fmt.Printf("导出楚辞数据失败: %v\n", err)
-	} else {
-		fmt.Printf("导出楚辞数据: %d 条\n", len(classics.ChuciNames))
-	}
+	// 诗经/楚辞语料为 chinese-poetry 上游导入件（docs/12、CHANGELOG 2026.11.01.0），
+	// 不是本命令的派生产物：严禁在此回写。曾两次因「data.Init 未灌数 → 回写 null」
+	// 覆空 shijing.json/chuci.json（156KB/141KB 语料丢失，golden 快照漂移），
+	// 现整段移除回写逻辑；上游更新请直接从 chinese-poetry 仓库重新下载覆盖。
 
 	// 导出生肖数据
 	if err := writeJSON(filepath.Join(dataDir, "zodiac.json"), zodiac.ZodiacList); err != nil {
@@ -142,5 +132,8 @@ func mergeYijingCanonical() ([]yijing.Hexagram, int) {
 		out[i].XiaoXiang = d.XiaoXiang
 		merged++
 	}
+	// 卦德随导出固化（docs/42 P1-⑤收尾）：硬编码表 init 已补算，
+	// 此处对副本再兜底一次，保证 yijing.json 始终携带 gua_de。
+	yijing.EnsureGuaDe(out)
 	return out, merged
 }

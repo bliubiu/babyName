@@ -304,6 +304,8 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 
 	// 补齐易经卦象与紫微斗数（梅花易数：姓上卦、名下卦）
 	response.Hexagram, response.HexagramDetail = s.hexagramForNames(names, req)
+	// docs/42 P3-11：每个候选名独立起卦（fate 路径无出生季节输入，卦气旺衰留空）
+	s.attachFatePerNameHexagrams(names, req, response.Bazi.Xiyongshen)
 	response.Ziwei = s.ziweiForRequest(req)
 
 	logger.Info("GenerateWithAnalysis: completed via fate engine",
@@ -345,6 +347,19 @@ func (s *FateNameService) hexagramForNames(names []*name.NameAnalysis, req *Gene
 	surnameStrokes, givenStrokes := meihuaStrokesForNames(req.Surname, names[0].Strokes)
 	return s.hexagramFinder.FindByMeihuaName(surnameStrokes, givenStrokes),
 		s.hexagramFinder.FindMeihuaDetail(surnameStrokes, givenStrokes)
+}
+
+// attachFatePerNameHexagrams 为每个候选名独立起卦（docs/42 P3-11，fate 路径）。
+// 姓笔画整批一致；fate 引擎未提供出生季节，卦气旺衰留空（TiYongAnalysis 允许）。
+func (s *FateNameService) attachFatePerNameHexagrams(names []*name.NameAnalysis, req *GenerateRequest, xiyongshen []string) {
+	if s.hexagramFinder == nil || len(names) == 0 {
+		return
+	}
+	surnameStrokes, _ := meihuaStrokesForNames(req.Surname, names[0].Strokes)
+	for _, n := range names {
+		n.HexagramDetail, n.TiYong = perNameHexagram(
+			s.hexagramFinder, surnameStrokes, n.Strokes, "", xiyongshen)
+	}
 }
 
 // ziweiForRequest 按出生时间进行紫微排盘（无分析器时返回 nil）

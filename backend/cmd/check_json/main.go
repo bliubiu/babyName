@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"name/internal/domain/yijing"
 )
 
 type issue struct {
@@ -75,6 +77,16 @@ func main() {
 				xiao, _ := h["xiao_xiang"].([]any)
 				if len(xiao) != len(yao) {
 					fail("yijing.json", "卦 %s 小象 %d 条，应与爻辞 %d 条对齐", name, len(xiao), len(yao))
+				}
+				// 卦德：由上下八卦推导（docs/42 P1-⑤收尾），非空且与推导值一致
+				guaDe, _ := h["gua_de"].(string)
+				up, _ := h["upper_trigram"].(float64)
+				low, _ := h["lower_trigram"].(float64)
+				wantDe := yijing.GuaDeOf(int(up), int(low))
+				if guaDe == "" {
+					fail("yijing.json", "卦 %s 卦德为空", name)
+				} else if wantDe != "" && guaDe != wantDe {
+					fail("yijing.json", "卦 %s 卦德 %q 与推导值 %q 不一致", name, guaDe, wantDe)
 				}
 			}
 		}

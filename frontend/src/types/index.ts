@@ -95,6 +95,8 @@ export interface Hexagram {
   tuan_ci?: string;
   /** 小象传（逐爻，与爻辞对齐） */
   xiao_xiang?: string[];
+  /** 卦德（八卦卦德推导：八纯卦单字，异卦「上X下Y」，docs/42 P1-⑤收尾） */
+  gua_de?: string;
   interpretation: string;
 }
 
@@ -210,6 +212,10 @@ export interface Name extends NameBase {
     score: number;
     detail: string;
   }>;
+  /** 每候选名独立梅花卦象（docs/42 P3-11）：本/变/互卦与动爻 */
+  hexagram_detail?: HexagramDetail;
+  /** 每候选名独立体用断卦（卦象不计入评分，docs/42 P3-12） */
+  tiyong?: TiYong;
 }
 
 export interface GenerateResponse {

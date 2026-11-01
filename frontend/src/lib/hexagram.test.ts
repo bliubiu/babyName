@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
+  TRIGRAM_GUADE,
   TRIGRAM_NAMES,
   TRIGRAM_SYMBOLS,
   TRIGRAM_WUXING,
   TRIGRAM_YAO,
   buildHexagramYaoLines,
+  getHexagramGuaDe,
   getYaoName,
   isYangYao,
 } from './hexagram';
@@ -94,5 +96,31 @@ describe('isYangYao', () => {
     expect(isYangYao(9)).toBe(true);
     expect(isYangYao(8)).toBe(false);
     expect(isYangYao(6)).toBe(false);
+  });
+});
+
+describe('卦德（与后端 GuaDeOf 同规则）', () => {
+  it('八卦卦德表：乾健坤顺震动巽入坎陷离丽艮止兑悦', () => {
+    expect(TRIGRAM_GUADE[1]).toBe('健');
+    expect(TRIGRAM_GUADE[2]).toBe('悦');
+    expect(TRIGRAM_GUADE[3]).toBe('丽');
+    expect(TRIGRAM_GUADE[4]).toBe('动');
+    expect(TRIGRAM_GUADE[5]).toBe('入');
+    expect(TRIGRAM_GUADE[6]).toBe('陷');
+    expect(TRIGRAM_GUADE[7]).toBe('止');
+    expect(TRIGRAM_GUADE[8]).toBe('顺');
+  });
+
+  it('八纯卦单字，异卦「上X下Y」', () => {
+    expect(getHexagramGuaDe(1, 1)).toBe('健');
+    expect(getHexagramGuaDe(8, 8)).toBe('顺');
+    expect(getHexagramGuaDe(6, 4)).toBe('上陷下动'); // 屯
+    expect(getHexagramGuaDe(4, 3)).toBe('上动下丽'); // 丰
+    expect(getHexagramGuaDe(8, 1)).toBe('上顺下健'); // 泰
+  });
+
+  it('非法八卦 ID 返回空串', () => {
+    expect(getHexagramGuaDe(0, 4)).toBe('');
+    expect(getHexagramGuaDe(6, 9)).toBe('');
   });
 });

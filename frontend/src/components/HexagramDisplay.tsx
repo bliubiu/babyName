@@ -2,6 +2,7 @@
 
 import type { Hexagram } from '@/types';
 import {
+  TRIGRAM_GUADE,
   TRIGRAM_NAMES,
   TRIGRAM_SYMBOLS,
   TRIGRAM_WUXING,
@@ -60,7 +61,7 @@ export default function HexagramDisplay({
           </div>
         </div>
 
-        {/* 上下卦：显示卦名与五行（此前误显示八卦序号数字） */}
+        {/* 上下卦：卦名 + 五行 + 卦德（此前误显示八卦序号数字） */}
         <div className="grid grid-cols-2 gap-3">
           <div className="text-center p-3 bg-warm-white/60 rounded-xl">
             <span className="text-xs text-jade">上卦</span>
@@ -68,6 +69,8 @@ export default function HexagramDisplay({
               {TRIGRAM_SYMBOLS[hexagram.upper_trigram]}{' '}
               {TRIGRAM_NAMES[hexagram.upper_trigram] ?? '?'}卦 ·{' '}
               {TRIGRAM_WUXING[hexagram.upper_trigram] ?? '?'}
+              {TRIGRAM_GUADE[hexagram.upper_trigram] &&
+                ` · ${TRIGRAM_GUADE[hexagram.upper_trigram]}`}
             </p>
           </div>
           <div className="text-center p-3 bg-warm-white/60 rounded-xl">
@@ -76,9 +79,18 @@ export default function HexagramDisplay({
               {TRIGRAM_SYMBOLS[hexagram.lower_trigram]}{' '}
               {TRIGRAM_NAMES[hexagram.lower_trigram] ?? '?'}卦 ·{' '}
               {TRIGRAM_WUXING[hexagram.lower_trigram] ?? '?'}
+              {TRIGRAM_GUADE[hexagram.lower_trigram] &&
+                ` · ${TRIGRAM_GUADE[hexagram.lower_trigram]}`}
             </p>
           </div>
         </div>
+
+        {/* 卦德 */}
+        {hexagram.gua_de && (
+          <div className="text-center text-xs text-jade/70">
+            卦德：{hexagram.gua_de}
+          </div>
+        )}
 
         {/* 卦辞 */}
         {hexagram.gua_ci && (

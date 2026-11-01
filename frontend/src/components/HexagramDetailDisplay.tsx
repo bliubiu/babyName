@@ -8,6 +8,8 @@ interface HexagramDetailDisplayProps {
   detail: HexagramDetail;
   /** 体用断卦（docs/42 P1-③），缺省时不渲染该块 */
   tiyong?: TiYong | null;
+  /** 嵌入模式：去除外层卡片与标题（用于名字详解内嵌，docs/42 P3-11） */
+  embedded?: boolean;
 }
 
 /** 三卦小卡标题 → 辅助说明 */
@@ -45,6 +47,7 @@ interface HexagramSlot {
 export default function HexagramDetailDisplay({
   detail,
   tiyong,
+  embedded = false,
 }: HexagramDetailDisplayProps) {
   const movingName = getYaoName(
     detail.moving_yao,
@@ -92,13 +95,23 @@ export default function HexagramDetailDisplay({
   ];
 
   return (
-    <div className="card mb-4 md:mb-6 animate-fade-in-up">
-      <div className="flex items-center gap-3 mb-4">
-        <h3 className="section-title">卦象详解</h3>
-        <span className="text-xs text-ink-light/60">
-          本 · 互 · 变 三卦并参，第{detail.moving_yao}爻动
-        </span>
-      </div>
+    <div className={embedded ? 'animate-fade-in-up' : 'card mb-4 md:mb-6 animate-fade-in-up'}>
+      {!embedded && (
+        <div className="flex items-center gap-3 mb-4">
+          <h3 className="section-title">卦象详解</h3>
+          <span className="text-xs text-ink-light/60">
+            本 · 互 · 变 三卦并参，第{detail.moving_yao}爻动
+          </span>
+        </div>
+      )}
+      {embedded && (
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-xs text-jade font-medium">梅花卦象</span>
+          <span className="text-[11px] text-ink-light/50">
+            本 · 互 · 变 并参，第{detail.moving_yao}爻动
+          </span>
+        </div>
+      )}
 
       {/* 三卦并排 */}
       <div className="grid grid-cols-3 gap-2 md:gap-3 mb-4">

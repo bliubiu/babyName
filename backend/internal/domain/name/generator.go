@@ -3,6 +3,7 @@ package name
 import (
 	"name/internal/domain/classics"
 	"name/internal/domain/hanzi"
+	"name/internal/domain/yijing"
 )
 
 // Name 名字结构
@@ -51,6 +52,11 @@ type Name struct {
 	SancaiAnalysis  string  `json:"sancai_analysis"`  // 三才分析详情
 	Hexagram        string  `json:"hexagram"`         // 卦象名称
 	HexagramMeaning string  `json:"hexagram_meaning"` // 卦象解读
+
+	// HexagramDetail/TiYong 每候选名独立梅花起卦与体用断卦（docs/42 P3-11），
+	// 供前端在名字详解内嵌展示；卦象评分口径见 fate 卦象评分器（docs/42 P3-12）。
+	HexagramDetail *yijing.PlumBlossomResult `json:"hexagram_detail,omitempty"`
+	TiYong         *yijing.TiYongAnalysis    `json:"tiyong,omitempty"`
 
 	// ScoreDetail 各维度评分明细（维度名/分数/依据文字）
 	//
@@ -159,6 +165,11 @@ type NameAnalysis struct {
 	CantoneseScore float64 `json:"cantonese_score,omitempty"`
 	// CantoneseScoreDetail 粤语分维度明细（粤语音律/粤语谐音），仅在开启粤语评分时非空。
 	CantoneseScoreDetail []ScoreDetailItem `json:"cantonese_score_detail,omitempty"`
+
+	// HexagramDetail/TiYong 每候选名独立梅花起卦与体用断卦（docs/42 P3-11，
+	// 与 Name 同字段口径；卦象评分口径见 fate 卦象评分器，docs/42 P3-12）。
+	HexagramDetail *yijing.PlumBlossomResult `json:"hexagram_detail,omitempty"`
+	TiYong         *yijing.TiYongAnalysis    `json:"tiyong,omitempty"`
 }
 
 // NameChar 汉字字符

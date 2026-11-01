@@ -22,6 +22,9 @@ func LoadFromJSON(dataDir string) error {
 		return err
 	}
 
+	// JSON 未含卦德时按上下卦补算（docs/42 P1-⑤收尾，与硬编码表同口径）
+	EnsureGuaDe(list)
+
 	yjMu.Lock()
 	defer yjMu.Unlock()
 
@@ -38,6 +41,9 @@ func ReloadFromJSON(dataDir string) error {
 //
 // 与 LoadFromJSON 互为两条来源：运行时统一走 SQLite 后不再解析 JSON。
 func SetHexagrams(list []Hexagram) {
+	// SQLite 旧库行可能无卦德值，装载时统一补算（幂等）
+	EnsureGuaDe(list)
+
 	yjMu.Lock()
 	defer yjMu.Unlock()
 	HexagramList = list

@@ -140,4 +140,12 @@ describe('HexagramDetailDisplay 本/互/变三卦并排', () => {
     render(<HexagramDetailDisplay detail={sparse} />);
     expect(screen.getAllByText('—')).toHaveLength(2);
   });
+
+  it('嵌入模式：去除外层标题，显示内嵌小标题', () => {
+    render(<HexagramDetailDisplay detail={detail} embedded />);
+    expect(screen.queryByText('卦象详解')).not.toBeInTheDocument();
+    expect(screen.getByText('梅花卦象')).toBeInTheDocument();
+    // 三卦并排与体用数据仍在
+    expect(screen.getByText('本卦')).toBeInTheDocument();
+  });
 });

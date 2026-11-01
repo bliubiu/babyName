@@ -587,6 +587,21 @@ func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziA
 
 	wg.Wait()
 
+	// docs/42 P3-11：每个候选名独立起卦（此前仅 names[0] 有卦象）。
+	// 姓笔画整批一致，仅名笔画随名变化；卦象不计入评分（P3-12 口径）。
+	if s.hexagramFinder != nil && len(names) > 0 {
+		surnameStrokes, _ := meihuaStrokesForNames(req.Surname, names[0].Strokes)
+		var season string
+		var xys []string
+		if baziAnalysis != nil {
+			season, xys = baziAnalysis.Season, baziAnalysis.Xiyongshen
+		}
+		for i := range names {
+			names[i].HexagramDetail, names[i].TiYong = perNameHexagram(
+				s.hexagramFinder, surnameStrokes, names[i].Strokes, season, xys)
+		}
+	}
+
 	duration := time.Since(start)
 
 	hexagramName := ""
@@ -631,6 +646,32 @@ func (s *NameService) buildResponse(
 		Ziwei:          ziweiChart,
 		Names:          names,
 	}
+}
+
+// perNameHexagram 单候选名的梅花详情与体用断卦（docs/42 P3-11 两条生成路径共用核心）。
+// 名笔画 = 全名笔画 - 姓笔画，≤0 时与 meihuaStrokesForNames 同口径兜底 10。
+func perNameHexagram(
+	finder yijing.HexagramFinder,
+	surnameStrokes, fullNameStrokes int,
+	season string,
+	xiyongshen []string,
+) (*yijing.PlumBlossomResult, *yijing.TiYongAnalysis) {
+	if finder == nil {
+		return nil, nil
+	}
+	given := fullNameStrokes - surnameStrokes
+	if given <= 0 {
+		given = 10
+	}
+	d := finder.FindMeihuaDetail(surnameStrokes, given)
+	if d == nil {
+		return nil, nil
+	}
+	var t *yijing.TiYongAnalysis
+	if d.OriginalHexagram != nil {
+		t = yijing.AnalyzeTiYong(d.UpperTrigramID, d.LowerTrigramID, d.MovingYao, season, xiyongshen)
+	}
+	return d, t
 }
 
 // hexagramMatchFromTiYong 把体用断卦结论映射为旧版 HexagramMatch 契约，
