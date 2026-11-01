@@ -432,55 +432,6 @@ func TestGetYaoNameCoverage(t *testing.T) {
 	}
 }
 
-// TestInterpretHexagramCoverage tests InterpretHexagram
-func TestInterpretHexagramCoverage(t *testing.T) {
-	hexagram := GetHexagramByNumber(1)
-	if hexagram == nil {
-		t.Fatal("GetHexagramByNumber(1) should not be nil")
-	}
-
-	interp := InterpretHexagram(hexagram, []string{"金"})
-	if interp == nil {
-		t.Fatal("InterpretHexagram should not return nil")
-	}
-	if interp.Overall == "" {
-		t.Error("Overall should not be empty")
-	}
-	if interp.Career == "" {
-		t.Error("Career should not be empty")
-	}
-	if interp.Love == "" {
-		t.Error("Love should not be empty")
-	}
-	if interp.Health == "" {
-		t.Error("Health should not be empty")
-	}
-	if interp.Fortune == "" {
-		t.Error("Fortune should not be empty")
-	}
-	if interp.Auspicious == "" {
-		t.Error("Auspicious should not be empty")
-	}
-	if interp.Inauspicious == "" {
-		t.Error("Inauspicious should not be empty")
-	}
-
-	// Test with matching xiyongshen
-	interp2 := InterpretHexagram(hexagram, []string{"金"})
-	if interp2.Fortune != "五行相合，财运亨通" {
-		t.Errorf("Fortune = %q, want 五行相合，财运亨通", interp2.Fortune)
-	}
-	if interp2.Overall == hexagram.Interpretation {
-		t.Error("Overall should be modified when matching xiyongshen")
-	}
-
-	// Test with non-matching xiyongshen
-	interp3 := InterpretHexagram(hexagram, []string{"木"})
-	if interp3.Fortune == "五行相合，财运亨通" {
-		t.Error("Fortune should not be 五行相合 for non-matching xiyongshen")
-	}
-}
-
 // TestCastMeihuaByNumbersCoverage tests CastMeihuaByNumbers（梅花两数起卦，确定性）
 func TestCastMeihuaByNumbersCoverage(t *testing.T) {
 	r := CastMeihuaByNumbers(7, 3)

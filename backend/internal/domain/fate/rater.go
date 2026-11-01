@@ -422,24 +422,26 @@ func (r *WuxingRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 //
 // 移除了 WuGeRater（熊崎五格数理），新增 SancaiRater（天地人三才）+ NoveltyRater（新颖度）
 // + FrequencyRater（人名频率），权重重新分配：
-//   - WuxingRater     24%（命理层核心）
-//   - WenHuaRater     14%（字象层）
-//   - YinYunRater     14%（字象层）
-//   - ShengXiaoRater  11%（命理层）
-//   - SancaiRater      8%（三才）
-//   - NoveltyRater    14%（新颖度，区分度核心）
-//   - BigramRater      9%（诗词二字共现频率）
-//   - FrequencyRater   6%（人名频率，真实语料统计）
+//   - WuxingRater     21%（命理层核心）
+//   - WenHuaRater     13%（字象层）
+//   - YinYunRater     13%（字象层）
+//   - ShengXiaoRater  10%（命理层）
+//   - SancaiRater      7%（三才）
+//   - NoveltyRater    13%（新颖度，区分度核心）
+//   - BigramRater      8%（诗词二字共现频率）
+//   - FrequencyRater   5%（人名频率，真实语料统计）
+//   - GuaXiangRater   10%（卦象体用，docs/42 P3-12 新增）
 func DefaultRaters() []Rater {
 	return []Rater{
-		NewWuxingRaterWithWeight(0.24),    // 24% 命理层
-		NewWenHuaRaterWithWeight(0.14),    // 14% 字象层
-		NewYinYunRaterWithWeight(0.14),    // 14% 字象层
-		NewShengXiaoRaterWithWeight(0.11), // 11% 命理层
-		NewSancaiRaterWithWeight(0.08),    //  8% 三才
-		NewNoveltyRaterWithWeight(0.14),   // 14% 新颖度
-		NewBigramRaterWithWeight(0.09),    //  9% 共现分
-		NewFrequencyRaterWithWeight(0.06), //  6% 人名频率
+		NewWuxingRaterWithWeight(0.21),    // 21% 命理层
+		NewWenHuaRaterWithWeight(0.13),    // 13% 字象层
+		NewYinYunRaterWithWeight(0.13),    // 13% 字象层
+		NewShengXiaoRaterWithWeight(0.10), // 10% 命理层
+		NewSancaiRaterWithWeight(0.07),    //  7% 三才
+		NewNoveltyRaterWithWeight(0.13),   // 13% 新颖度
+		NewBigramRaterWithWeight(0.08),    //  8% 共现分
+		NewFrequencyRaterWithWeight(0.05), //  5% 人名频率
+		NewGuaXiangRaterWithWeight(0.10),  // 10% 卦象体用（docs/42 P3-12）
 	}
 }
 

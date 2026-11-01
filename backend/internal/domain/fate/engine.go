@@ -473,6 +473,8 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	if err != nil {
 		return nil, fmt.Errorf("获取姓氏笔画失败: %w", err)
 	}
+	// 姓氏康熙笔画注入 FateData，供卦象评分器按统一口径起卦（docs/42 P3-12）
+	fateData.SurnameStrokes = l1 + l2
 
 	// 3. 构建查询条件并加载汉字
 	query := NewBasicCharacterQuery()
@@ -1243,6 +1245,7 @@ func singleNameCandidate(a charInfo, surnamePinyin, surnameJyutping string) *Nam
 		Pinyin1:        a.pinyin,
 		WuXing1:        a.ch.WuXing,
 		Stroke1:        a.stroke,
+		KangxiStroke1:  kangxiStrokeOf(a.ch),
 		HasPoetry:      a.poetryFound,
 		PoetryFrom:     a.poetryDesc,
 		IsRegular:      a.ch.IsRegular,
@@ -1276,6 +1279,9 @@ func doubleNameCandidate(
 		WuXing2:       b.ch.WuXing,
 		Stroke1:       a.stroke,
 		Stroke2:       b.stroke,
+		// 康熙笔画（未收录降级科学笔画）：供卦象评分器按统一口径起卦（docs/42 P3-12）
+		KangxiStroke1: kangxiStrokeOf(a.ch),
+		KangxiStroke2: kangxiStrokeOf(b.ch),
 		Meaning1:      a.ch.Meaning,
 		Meaning2:      b.ch.Meaning,
 		Radical1:      a.ch.Radical,

@@ -547,6 +547,8 @@ func (a *BaziAnalyzerAdapter) Analyze(born time.Time, gender fate.Gender) (*fate
 			QiangRuo:    baziResult.DayMasterStrength,
 		},
 		TiaoHouYongShen: joinStrings(baziResult.TiaohouShen, "、"),
+		// 出生季节（月支节气月）：卦气旺衰依据（docs/42 P3-12 卦象评分）
+		BirthSeason: baziResult.Season,
 	}
 
 	// fallback: 若 balance 法未产出用神，用 bazi 原始映射

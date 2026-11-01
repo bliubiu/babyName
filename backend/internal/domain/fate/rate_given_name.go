@@ -84,6 +84,14 @@ func RateGivenName(
 	surnamePinyin := firstPinyinForSurname(surname, provider)
 	surnameJyutping := yue.PrimaryJyutping(surname)
 
+	// 卦象评分（docs/42 P3-12）需要姓氏康熙笔画；fateData 未注入时幂等补查。
+	// 与 engine.generate 的注入同源（GetSurnameStrokes 康熙口径）。
+	if fateData != nil && fateData.SurnameStrokes == 0 {
+		if l1, l2, err := provider.GetSurnameStrokes(surname); err == nil {
+			fateData.SurnameStrokes = l1 + l2
+		}
+	}
+
 	var cand *NameCandidate
 	if len(infos) == 2 {
 		a, b := infos[0], infos[1]

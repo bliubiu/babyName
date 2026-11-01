@@ -86,6 +86,12 @@ type NameCandidate struct {
 	PoetryFrom string // 诗词来源
 	IsRegular  bool   // 是否为常用字
 
+	// KangxiStroke1/KangxiStroke2 逐字康熙笔画（未收录降级科学笔画，与
+	// GivenNameStrokes 同规则）。供卦象评分器按「姓康熙 %8 上卦、名康熙总和
+	// %8 下卦」口径起卦，与结果页姓名卦口径一致（docs/42 P3-12）。
+	KangxiStroke1 int
+	KangxiStroke2 int
+
 	// IsCurated1/IsCurated2 逐字是否在人工策展起名分类覆盖表中（由 hanzi 层经 Adapter 透传）
 	// 策展覆盖表（约 446 字）是荒谬字与好字的强区分信号：好字 8/12 在表内，
 	// 荒谬字（贪/疟/骂/吠/靶等）21/22 不在表内。WenHuaRater 据此给策展字文化加分，
@@ -171,6 +177,13 @@ type FateData struct {
 	BaziInfo        BaziInfo   `json:"bazi_info"`
 	WuXingXiji      WuXingXiji `json:"wu_xing_xiji"`
 	TiaoHouYongShen string     `json:"tiao_hou_yong_shen"` // 调候用神
+
+	// SurnameStrokes 姓氏康熙笔画（复姓为两字之和），梅花起卦上卦基数。
+	// 由 engine.generate 查 GetSurnameStrokes 后注入；测名路径由
+	// RateGivenName 幂等补查（docs/42 P3-12 卦象评分）。
+	SurnameStrokes int `json:"surname_strokes,omitempty"`
+	// BirthSeason 出生季节（春/夏/秋/冬，按月支节气月判定），卦气旺衰依据。
+	BirthSeason string `json:"birth_season,omitempty"`
 }
 
 // NameScore 名字评分
