@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"name/internal/infrastructure/logger"
+	"name/internal/materials/schema"
 )
 
 // 经典语料解析与落库（docs/31 ADR-008：经典物料接入统一导入器）
@@ -185,33 +186,20 @@ var classicsFileCategory = map[string]string{
 	"wenzimengqiu.json":          "蒙学",
 }
 
-// 排除的文件（与 classics 域运行期字集无关：字库/词库/策展名/生肖）
-var excludedClassicsFiles = map[string]bool{
-	"hanzi.json":          true,
-	"word.json":           true,
-	"curated_names.json":  true,
-	"standard_chars.json": true,
-	"zodiac.json":         true,
-}
-
 // classicsSourceFiles 返回待导入的经典文件名（字典序，保证导入结果可复现）
+//
+// 清单唯一真源为 schema.ClassicsFiles（Definition.Files），本函数只做
+// 「清单 → 存在性过滤」：不再反向扫描目录，避免目录里多出的 JSON 被静默
+// 多导，也避免清单漏登记导致静默少导。文件缺失时跳过，保持 classics
+// Required=false 的可选语义（缺失清单由 materials manifest --check 暴露）。
 func classicsSourceFiles(dataDir string) []string {
-	entries, err := os.ReadDir(dataDir)
-	if err != nil {
-		return nil
-	}
-	var out []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+	def := schema.Registry[schema.ClassicsMaterial]
+	out := make([]string, 0, len(def.Files))
+	for _, name := range def.Files {
+		if _, err := os.Stat(filepath.Join(dataDir, filepath.FromSlash(name))); err != nil {
 			continue
 		}
-		if excludedClassicsFiles[e.Name()] {
-			continue
-		}
-		if _, ok := classicsFileCategory[e.Name()]; !ok {
-			continue
-		}
-		out = append(out, e.Name())
+		out = append(out, name)
 	}
 	sort.Strings(out)
 	return out

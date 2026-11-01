@@ -50,6 +50,8 @@ func main() {
 		err = runLoad(args)
 	case "status":
 		err = runStatus(args)
+	case "manifest":
+		err = runManifest(args)
 	case "lock-init":
 		err = runLockInit(args)
 	case "lock-verify":
@@ -90,6 +92,7 @@ func printHelp() {
   materials import [选项]     从 JSON/CSV 源导入物料到 SQLite（归一化+校验+单事务写入）
   materials load   [选项]     从 SQLite 库装载物料到内存索引（运行期装载路径自检）
   materials status  [选项]     列出各物料的版本、指纹与行数
+  materials manifest [选项]    打印/校验入库源清单（物料 → 源文件，部署核对用）
   materials lock-init [选项]   生成门禁物料订阅清单 materials.lock（上游源+产物指纹）
   materials lock-verify [选项] 校验 materials.lock 中登记的产物指纹是否一致
   materials lock-diff [选项]   对两版本文本行差分，生成 gate_patch.jsonl 补丁
@@ -117,6 +120,11 @@ load 选项:
 
 status 选项:
   --db      string   SQLite 库路径（默认读配置 database.path 的绝对路径；可显式覆盖）
+
+manifest 选项:
+  --data    string   物料源目录（默认 ./data）
+  --check            校验清单内必需源文件是否齐全（缺失即非 0 退出）
+  --json             以 JSON 输出清单（供 CI 消费）
 
 订阅管线选项（docs/33 门禁层 M5）:
   lock-init:   --data ./data --out ./data/materials.lock --version 1.0 [--source naming_gate=repo@commit,...]
@@ -349,6 +357,85 @@ func runStatus(args []string) error {
 	// 经典语料字集/条目统计（docs/39 巡检增强）：逐 material 核对字集是否落库，
 	// 标记「已登记物料但字集缺失」的静默遗漏（元曲/乐府/辞赋曾属此类）。
 	printClassicsReport(store)
+	return nil
+}
+
+// manifestFileRow 入库清单中单个源文件的存在性状态（JSON 输出用）
+type manifestFileRow struct {
+	Material string `json:"material"`
+	File     string `json:"file"`
+	Required bool   `json:"required"`
+	Exists   bool   `json:"exists"`
+}
+
+// runManifest 打印/校验入库源清单（docs/40）
+//
+// 清单来自 schema.Definitions（单文件 Source / 多文件 Files），不做目录扫描，
+// 因此目录里多出的 JSON 不会被误纳入；--check 只校验必需源文件是否齐全。
+func runManifest(args []string) error {
+	fs := flag.NewFlagSet("manifest", flag.ExitOnError)
+	dataDir := fs.String("data", "./data", "物料源目录")
+	check := fs.Bool("check", false, "校验清单内必需源文件是否齐全（缺失即失败）")
+	asJSON := fs.Bool("json", false, "以 JSON 输出（供 CI 消费）")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	entries := schema.Manifest()
+	rows := make([]manifestFileRow, 0, len(schema.AllSourceFiles()))
+	unique := make(map[string]bool)
+	missing := make(map[string]bool)
+	for _, e := range entries {
+		for _, f := range e.Files {
+			_, err := os.Stat(filepath.Join(*dataDir, filepath.FromSlash(f)))
+			exists := err == nil
+			rows = append(rows, manifestFileRow{
+				Material: e.Material,
+				File:     f,
+				Required: e.Required,
+				Exists:   exists,
+			})
+			unique[f] = true
+			if e.Required && !exists {
+				missing[f] = true
+			}
+		}
+	}
+
+	if *asJSON {
+		if err := printJSON(rows); err != nil {
+			return err
+		}
+	} else {
+		fmt.Printf("入库源清单：%d 个物料、%d 个唯一文件\n", len(entries), len(unique))
+		fmt.Printf("%-20s %-6s %-6s %s\n", "物料", "必需", "状态", "源文件")
+		fmt.Println(strings.Repeat("-", 72))
+		for _, r := range rows {
+			required, status := "-", "✓"
+			if r.Required {
+				required = "是"
+			}
+			if !r.Exists {
+				status = "✗"
+			}
+			fmt.Printf("%-20s %-6s %-6s %s\n", r.Material, required, status, r.File)
+		}
+	}
+
+	if !*check {
+		return nil
+	}
+	if len(missing) > 0 {
+		names := make([]string, 0, len(missing))
+		for f := range missing {
+			names = append(names, f)
+		}
+		sort.Strings(names)
+		return fmt.Errorf("必需源文件缺失 %d 项: %s", len(names), strings.Join(names, ", "))
+	}
+	if !*asJSON {
+		fmt.Printf("\n校验通过：清单内必需源文件齐全（%d 个唯一文件）\n", len(unique))
+	}
 	return nil
 }
 

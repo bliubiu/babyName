@@ -422,7 +422,7 @@ func assignBigramTiers(freq []*BigramFrequency) {
 
 // ────────────────────────── 工具函数 ──────────────────────────
 
-// findProjectRoot 从给定目录向上查找包含 backend/data/corpus 的项目根目录
+// findProjectRoot 从给定目录向上查找包含 backend/data/raw/corpus 的项目根目录
 func findProjectRoot(startDir string) string {
 	dir := startDir
 	for {

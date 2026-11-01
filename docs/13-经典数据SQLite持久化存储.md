@@ -121,7 +121,7 @@ classics_books        classics_sections       classics_paragraphs
 | 文件 | 排除原因 |
 |------|---------|
 | `hanzi.json` | 已有单独的 hanzi 表导入 |
-| `word.json` | 词汇数据，非经典文本 |
+| `word.json` | 词汇数据，非经典文本；已移至 `data/raw/word.json`，仅离线导出使用（docs/40） |
 | `curated_names.json` | 精选名字库，单独管理 |
 | `standard_chars.json` | 标准用字，偏旁部首数据 |
 | `zodiac.json` | 已有内存加载 + SQLite Store 引用 |
@@ -376,5 +376,5 @@ ORDER BY b.category;
 
 1. **首次启动耗时**：导入 23 个 JSON 文件（含大文件 shici.json ~6.8MB、yuanqu.json ~4.1MB）可能需要数秒，后续启动秒过。
 2. **内存数据与 SQLite 共存**：原有 domain 包的内存加载不变（`dataloader.Init()`），SQLite 导入是额外持久化层，两者数据源相同。
-3. **未覆盖的文件**：`word.json` 等非经典文件未纳入，如有需要可后续扩展。
+3. **未覆盖的文件**：`word.json` 等非经典文件未纳入；`word.json` 已移至 `data/raw/`，仅离线导出使用。完整入库边界见 `docs/40-入库源清单与物料边界.md`。
 4. **中文全文搜索**：当前使用 `LIKE` 模糊匹配，如需高效的全文检索（分词、相关性排序），后续可添加 SQLite FTS5 虚拟表。

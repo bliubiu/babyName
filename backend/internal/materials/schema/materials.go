@@ -36,8 +36,17 @@ const (
 type Definition struct {
 	// Name 物料名（materials_state 表的 material 列）
 	Name string
-	// Source 相对 dataDir 的源文件路径
+	// Source 相对 dataDir 的主源文件路径
+	//
+	// 单文件物料以它为准；多文件物料（当前仅 classics）仍保留主文件作为
+	// 哨兵/报告锚点，实际清单以 Files 为准。
 	Source string
+	// Files 多文件物料的源文件清单（相对 dataDir）
+	//
+	// 空表示单文件物料（以 Source 为准）。非空时该清单是部署核对与导入的
+	// 唯一权威：`materials manifest` 由此输出，classics 导入由此派生文件名。
+	// 与 Source 同时存在时，Source 必须也出现在 Files 中（由守护测试保证）。
+	Files []string
 	// DependsOn 依赖的物料名，导入顺序据此拓扑排列
 	DependsOn []string
 	// Tables 该物料写入的表（文档与守护测试用）
@@ -119,7 +128,7 @@ var Definitions = []Definition{
 		DependsOn: []string{NamerMaterial}, Tables: []string{"curated_names"}, Required: false,
 	},
 	{
-		Name: ClassicsMaterial, Source: "shijing.json",
+		Name: ClassicsMaterial, Source: "shijing.json", Files: ClassicsFiles,
 		DependsOn: []string{NamerMaterial},
 		Tables: []string{
 			"classics_books", "classics_sections",

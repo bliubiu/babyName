@@ -228,6 +228,82 @@ func asUnknownError(err error, target **UnknownMaterialError) bool {
 	return ok
 }
 
+// TestManifest_覆盖全部物料且文件非空 守护 docs/40：入库清单由
+// schema.Definitions 单一真源派生，任何物料都必须至少声明一个源文件。
+func TestManifest_覆盖全部物料且文件非空(t *testing.T) {
+	m := Manifest()
+	if len(m) != len(Definitions) {
+		t.Fatalf("Manifest 有 %d 项，期望 %d 项", len(m), len(Definitions))
+	}
+	for i, d := range Definitions {
+		if m[i].Material != d.Name {
+			t.Errorf("第 %d 项物料期望 %q，实得 %q", i, d.Name, m[i].Material)
+		}
+		if len(m[i].Files) == 0 {
+			t.Errorf("物料 %q 未声明任何源文件", d.Name)
+		}
+	}
+}
+
+// TestAllSourceFiles_去重且有序 守护部署核对清单的确定性：
+// 同一文件可服务多个物料（如 yijing.json），但清单只能出现一次。
+func TestAllSourceFiles_去重且有序(t *testing.T) {
+	files := AllSourceFiles()
+	if len(files) == 0 {
+		t.Fatal("AllSourceFiles 不应为空")
+	}
+	for i := 1; i < len(files); i++ {
+		if files[i-1] >= files[i] {
+			t.Fatalf("源文件清单非严格字典序或存在重复：%v", files)
+		}
+	}
+}
+
+// TestDefinition_SourceFiles清单优先 多文件物料以 Files 为准，
+// 单文件物料回退 Source，且返回副本不可反向污染注册表。
+func TestDefinition_SourceFiles清单优先(t *testing.T) {
+	multi := Definition{Source: "a.json", Files: []string{"a.json", "b.json"}}
+	got := multi.SourceFiles()
+	if !reflect.DeepEqual(got, []string{"a.json", "b.json"}) {
+		t.Fatalf("多文件清单期望 [a.json b.json]，实得 %v", got)
+	}
+	got[0] = "mutated.json"
+	if multi.Files[0] != "a.json" {
+		t.Error("SourceFiles 应返回副本，调用方修改不应污染 Definition.Files")
+	}
+
+	single := Definition{Source: "only.json"}
+	if got := single.SourceFiles(); !reflect.DeepEqual(got, []string{"only.json"}) {
+		t.Fatalf("单文件回退期望 [only.json]，实得 %v", got)
+	}
+}
+
+// TestClassicsFiles_主文件在清单内且无重复 守护 classics 多文件清单：
+// Source 哨兵必须也在 Files 中，否则指纹/跳过语义会与导入清单脱节。
+func TestClassicsFiles_主文件在清单内且无重复(t *testing.T) {
+	def := Registry[ClassicsMaterial]
+	if len(def.Files) == 0 {
+		t.Fatal("classics 未登记 Files 清单")
+	}
+	seen := make(map[string]bool, len(def.Files))
+	foundSource := false
+	for _, f := range def.Files {
+		if seen[f] {
+			t.Errorf("classics 清单存在重复文件 %q", f)
+		}
+		seen[f] = true
+		if f == def.Source {
+			foundSource = true
+		}
+		if len(f) < 5 || f[len(f)-5:] != ".json" {
+			t.Errorf("classics 清单文件 %q 不是 .json", f)
+		}
+	}
+	if !foundSource {
+		t.Errorf("classics 主文件 %q 未包含在 Files 清单中", def.Source)
+	}
+}
+
 // TestPathOrEmpty TopoSort 顶层 path 恒为 nil、依赖路径恒非空，
 // 两个分支直接调用来守护（未导出辅助函数的契约）
 func TestPathOrEmpty(t *testing.T) {

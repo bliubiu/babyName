@@ -5,6 +5,23 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.01.5]
+
+**物料管线：入库源清单单一真源化 + word.json 退场（docs/40）**
+
+### ✨ New Features 新增功能
+- 【物料管线】`materials manifest` 子命令：按 `schema.Definitions` 打印/校验入库源清单（`--check` 必需源缺失非 0 退出、`--json` 供 CI 消费）；清单不做目录扫描，目录多出的 JSON 不会被误纳入
+- 【物料边界】`schema` 新增 `Manifest()`/`AllSourceFiles()`，作为入库源清单唯一真源（33 个唯一源文件/12 类物料）；`classicsSourceFiles` 由 `schema.ClassicsFiles` 派生，废除「目录扫描 + 排除表」双口径，清单漏登记由守护测试拦截
+
+### 📈 Improvements 性能/体验优化
+- 【镜像体积】`word.json`（26MB）移入 `data/raw/` 仅作离线导出原料，运行期依赖退场（docs/34 阶段 A 配套），被 `.dockerignore` 挡在镜像外
+
+### 📚 Docs 文档更新
+- 新增《40-入库源清单与物料边界》；docs/13、docs/40 同步入库边界说明
+
+### ✅ 验证
+- `materials/schema`、`infrastructure/database/sqlite` 全绿（含 manifest 守护测试）
+
 ## [2026.11.01.4]
 
 **卦象体用评分计入总分（docs/42 P3-12）+ 旧模板句测试清理**

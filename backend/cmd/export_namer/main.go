@@ -3,7 +3,7 @@
 // 数据来源：
 //   - gsc_pinyin.csv （汉字、拼音、部首、笔画、五行）
 //   - hanzi.json    （释义补充）
-//   - word.json     （释义二次补充）
+//   - raw/word.json （释义二次补充，仅离线导出原料）
 //
 // 输出：
 //   - namer.json    （结构化汉字数据，包含五行自动校正、起名分类标注）
@@ -130,9 +130,10 @@ func main() {
 	hzMap := loadHanziMap(hzPath)
 	fmt.Printf("✅ hanzi.json 加载: %d 字（命中 %d/8105）\n", len(hzMap), countOverlap(records, hzMap))
 
-	// 3. 加载 word.json（在线汉语字典，真实释义来源）
-	//    word.json 同时被运行时 LoadWordData 使用，故保留在运行时 data/ 根目录。
-	wdPath := filepath.Join(absData, "word.json")
+	// 3. 加载 raw/word.json（在线汉语字典，真实释义来源）
+	//    word 物料已于运行时退场（docs/34 阶段 A），word.json 仅保留为
+	//    离线导出原料，故放在 data/raw/ 下，不进入运行期入库清单。
+	wdPath := filepath.Join(rawDir, "word.json")
 	wdMap := loadWordMap(wdPath)
 	fmt.Printf("✅ word.json 加载: %d 字（命中 %d/8105）\n", len(wdMap), countOverlapStr(records, wdMap))
 
