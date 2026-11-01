@@ -34,6 +34,8 @@ func newAuxChart(mingZhiIdx, yearGanIdx, yearZhiIdx int) *ZiweiChart {
 		SuiXing:  make(map[string][]string),
 		NianZhu:  getGanZhi(yearGanIdx, yearZhiIdx),
 		MingGong: getGanZhi(TigerRule[yearGanIdx]+fixIndex(mingZhiIdx-2, 12), mingZhiIdx),
+		// 身宫取命宫对宫（天寿安布依赖身宫支；表驱动测试只需确定性值）
+		ShenGong: getGanZhi(TigerRule[yearGanIdx]+fixIndex(mingZhiIdx-2+6, 12), fixIndex(mingZhiIdx+6, 12)),
 	}
 }
 
@@ -241,10 +243,18 @@ func TestDistributeSuiXing_表驱动(t *testing.T) {
 		{0, 1, "凤阁", 10}, {9, 1, "凤阁", 1},
 		// 天姚=丑+月−1（顺数生月）：正月丑、七月未、腊月子
 		{0, 1, "天姚", 1}, {0, 7, "天姚", 7}, {0, 12, "天姚", 0},
+		// Excel 派扩展：天刑=酉+月−1；天官/天福/天厨按年干查表（此处 yearGan=0 甲）：
+		// 天官未(7)、天福酉(9)、天厨巳(5)；台辅=午+时、封诰=寅+时（此处 timeIndex=0）
+		{0, 1, "天刑", 9}, {0, 7, "天刑", 3},
+		{0, 1, "天官", 7}, {0, 1, "天福", 9}, {0, 1, "天厨", 5},
+		{0, 1, "台辅", 6}, {0, 1, "封诰", 2},
+		// 天才=命宫支(0)+年支；天寿=身宫支(6，辅助函数取命宫对宫)+年支
+		{0, 1, "天才", 0}, {0, 1, "天寿", 6},
+		{7, 1, "天才", 7}, {7, 1, "天寿", 1},
 	}
 	for i, c := range cases {
 		chart := newAuxChart(0, 0, c.yearZhi)
-		distributeSuiXing(chart, c.month, 17, c.yearZhi)
+		distributeSuiXing(chart, c.month, 17, c.yearZhi, 0, 0)
 		containsStar(t, chart.SuiXing, palaceAt(0, c.want), c.star, "杂曜表%d", i)
 	}
 }

@@ -29,10 +29,16 @@ var FuXingList = []string{
 	"天伤", "天使",
 }
 
+// SuiXingList 杂曜清单（24 颗）：原 12 颗 + Excel 派扩展 12 颗
+// （天刑/三台/八座/恩光/天贵/天才/天寿/台辅/封诰/天官/天福/天厨，
+// docs/41 第 7 节遗留项），安布口径与 iztro 2.6.3 对拍（见 ziwei_excel_test.go）。
 var SuiXingList = []string{
 	"天姚", "天哭", "天虚", "龙池", "凤阁",
 	"红鸾", "天喜", "孤辰", "寡宿",
 	"亡神", "劫煞", "大耗",
+	"天刑", "三台", "八座", "恩光", "天贵",
+	"天才", "天寿", "台辅", "封诰",
+	"天官", "天福", "天厨",
 }
 
 // TigerRule 五虎遁：年干 → 正月天干起始索引
@@ -113,6 +119,22 @@ var GuGuaTable = [4][2]int{{2, 10}, {5, 1}, {8, 4}, {11, 7}}
 // → 劫煞支（子起索引）。「申子辰人蛇开口，亥卯未人猴速走，
 // 寅午戌人猪面黑，巳酉丑人虎咆哮」；亡神居劫煞对宫，并入本表推算。
 var JieShaTable = [4]int{5, 2, 11, 8}
+
+// tianGuanTable 天官查表（年干系，子起索引）。
+// 口诀「甲喜羊鸡乙龙猴，丙年蛇鼠一窝谋。丁虎擒猪戊玉兔，己鸡居然与虎俦。
+// 庚猪马辛鸡蛇走，壬犬马癸马蛇游」前字为天官：
+// 甲未 乙辰 丙巳 丁寅 戊卯 己酉 庚亥 辛酉 壬戌 癸午（与 iztro 2.6.3 一致）
+var tianGuanTable = [10]int{7, 4, 5, 2, 3, 9, 11, 9, 10, 6}
+
+// tianFuXingTable 天福查表（年干系，子起索引）。口诀后字为天福：
+// 甲酉 乙申 丙子 丁亥 戊卯 己寅 庚午 辛巳 壬午 癸巳（与 iztro 2.6.3 一致）
+var tianFuXingTable = [10]int{9, 8, 0, 11, 3, 2, 6, 5, 6, 5}
+
+// tianChuTable 天厨查表（年干系，子起索引）。
+// 口诀「甲丁食蛇口，乙戊辛马方。丙从鼠口得，己食于猴房。
+// 庚食虎头上，壬鸡癸猪堂」：
+// 甲巳 乙午 丙子 丁巳 戊午 己申 庚寅 辛午 壬酉 癸亥（与 iztro 2.6.3 一致）
+var tianChuTable = [10]int{5, 6, 0, 5, 6, 8, 2, 6, 9, 11}
 
 type ZiweiChart struct {
 	Year   int    `json:"year"`
@@ -680,13 +702,20 @@ func distributeFuXing(chart *ZiweiChart, lunarMonth, lunarDayNum, timeIndex, yea
 // 杂曜分布
 // ============================================================
 
-// distributeSuiXing 分布杂曜（SuiXingList 12 颗）。
+// distributeSuiXing 分布杂曜（SuiXingList 24 颗）。
 // 年支系：红鸾（卯起子年逆数）与天喜（红鸾对宫）、天哭（午起子年逆行）
 // 与天虚（午起子年顺转）、孤辰寡宿（三合组查表）、劫煞（三合组查表）
 // 与亡神（劫煞对宫）、大耗（年支对宫，阳支顺行一位、阴支逆行一位）、
-// 龙池（辰起子年顺数）与凤阁（戌起子年逆数）；
-// 月系：天姚（丑起正月顺数）。
-func distributeSuiXing(chart *ZiweiChart, lunarMonth, lunarDayNum, yearZhiIndex int) {
+// 龙池（辰起子年顺数）与凤阁（戌起子年逆数）、
+// 天才（命宫起子年顺数至生年支）与天寿（身宫起子年顺数至生年支）；
+// 月系：天姚（丑起正月顺数）、天刑（酉起正月顺数）；
+// 日系：三台（左辅起初一顺数至生日）、八座（右弼起初一逆数至生日）、
+// 恩光（文昌起初一顺数至生日再退一步）、天贵（文曲起初一顺数至生日再退一步），
+// 晚子时（timeIndex>=12）日系偏移按次日计（iztro fixLunarDayIndex 口径）；
+// 时系：台辅（午起子时顺数至生时）、封诰（寅起子时顺数至生时）；
+// 年干系：天官/天福/天厨查表（tianGuanTable/tianFuXingTable/tianChuTable）。
+// Excel 派扩展 12 颗与 iztro 2.6.3 实排 8 盘对拍（ziwei_excel_test.go，docs/41 遗留）。
+func distributeSuiXing(chart *ZiweiChart, lunarMonth, lunarDayNum, yearZhiIndex, yearGanIndex, timeIndex int) {
 	if chart.SuiXing == nil {
 		chart.SuiXing = make(map[string][]string)
 	}
@@ -732,6 +761,44 @@ func distributeSuiXing(chart *ZiweiChart, lunarMonth, lunarDayNum, yearZhiIndex 
 	place(10-yearZhiIndex, "凤阁")
 
 	place(1+m-1, "天姚")
+
+	// ---- Excel 派扩展（docs/41 遗留，口径对齐 iztro 2.6.3）----
+
+	// 月系：天刑（酉起正月顺数至生月）
+	place(9+m-1, "天刑")
+
+	// 日系：三台/八座（左辅右弼起初一，顺/逆数至生日）、
+	// 恩光/天贵（文昌文曲起初一顺数至生日再退一步）；晚子时生日按次日计
+	dayOffset := lunarDayNum - 1
+	if timeIndex >= 12 {
+		dayOffset = lunarDayNum
+	}
+	zuoFu := fixIndex(4 + m - 1, 12)
+	youBi := fixIndex(10 - (m - 1), 12)
+	wenChang := fixIndex(10-timeIndex, 12)
+	wenQu := fixIndex(4+timeIndex, 12)
+	place(zuoFu+dayOffset, "三台")
+	place(youBi-dayOffset, "八座")
+	place(wenChang+dayOffset-1, "恩光")
+	place(wenQu+dayOffset-1, "天贵")
+
+	// 年支系：天才（命宫起子年顺数至生年支）、天寿（身宫起子年顺数至生年支）
+	shenRunes := []rune(chart.ShenGong)
+	if len(shenRunes) >= 2 {
+		shenZhiIdx := getZhiIndex(string(shenRunes[1]))
+		place(mingZhiIdx+yearZhiIndex, "天才")
+		place(shenZhiIdx+yearZhiIndex, "天寿")
+	}
+
+	// 时系：台辅（午起子时顺数至生时）、封诰（寅起子时顺数至生时）；
+	// 晚子时 timeIndex=12 经 place 内取模归位子时（iztro fixIndex(12)=0 同口径）
+	place(6+timeIndex, "台辅")
+	place(2+timeIndex, "封诰")
+
+	// 年干系：天官/天福/天厨查表
+	place(tianGuanTable[yearGanIndex], "天官")
+	place(tianFuXingTable[yearGanIndex], "天福")
+	place(tianChuTable[yearGanIndex], "天厨")
 }
 
 // ============================================================
@@ -801,7 +868,7 @@ func CalculateZiweiChart(year, month, day, hour int, gender string) *ZiweiChart 
 
 	// 7. 分布辅星与杂曜
 	distributeFuXing(chart, lunarMonth, lunarDayNum, timeIndex, yearGanIndex, nianZhiIndex)
-	distributeSuiXing(chart, lunarMonth, lunarDayNum, nianZhiIndex)
+	distributeSuiXing(chart, lunarMonth, lunarDayNum, nianZhiIndex, yearGanIndex, timeIndex)
 
 	// 8. 计算大限（依赖五行局；五行局未定时跳过）
 	if fiveOK {
