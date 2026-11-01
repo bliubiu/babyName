@@ -122,6 +122,7 @@
 - 统一错误处理，所有错误信息都必须使用中文，禁止打印明文密码等敏感信息
 - 数据默认保存`data`目录下，使用sqlite(wal模式)持久化数据
 - 及时更新文档
+- git@github.com:bliubiu/babyName.git 
 
 
 
@@ -244,13 +245,14 @@
 ### 参考文档
 
 - https://github.com/jaywcjlove/table-of-general-standard-chinese-characters # 通用规范汉字表
-
 - https://github.com/uiwjs/province-city-china # 省、市、区县、乡镇街道 json,csv,sql数据
 - https://github.com/pwxcoo/chinese-xinhua  # 字典
-
 - `chinese-poetry`（中华古诗词数据库）
 - `Chinese-Names-Corpus`（中文姓名语料）
 - `chineseStroke`（笔画数据）
+- https://github.com/Renhuai123/ziwei-doushu （紫微斗数）
+  - https://github.com/Renhuai123/ziwei-doushu/releases/tag/v4.0-13d （数据集）
+- https://github.com/SylarLong/iztro （紫微斗数排盘）
 
 
 
