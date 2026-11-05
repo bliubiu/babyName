@@ -329,6 +329,14 @@ func migrateClassicsSchema(db *sql.DB) error {
 		}
 	}
 	if needsRebuild {
+		// 四步重建包单事务（docs/43 P1-6）：SQLite 的 DDL（CREATE/DROP/ALTER）
+		// 可回滚，任一步失败即整体回滚——旧表数据完好、无 _new 孤儿表残留。
+		// 原实现逐条 Exec 自动提交，中途失败时 CREATE 出的 _new 表已落库，
+		// 残留表会阻断下次重建（再次 CREATE 报 already exists）。
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("开启重建事务失败: %w", err)
+		}
 		for _, q := range []string{
 			`CREATE TABLE classics_extracts_new (
 				material TEXT NOT NULL,
@@ -344,9 +352,13 @@ func migrateClassicsSchema(db *sql.DB) error {
 			`DROP TABLE classics_extracts`,
 			`ALTER TABLE classics_extracts_new RENAME TO classics_extracts`,
 		} {
-			if _, err := db.Exec(q); err != nil {
-				return fmt.Errorf("重建 classics_extracts 失败（%s）: %w", q, err)
+			if _, err := tx.Exec(q); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("重建 classics_extracts 失败（已整体回滚）（%s）: %w", q, err)
 			}
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("提交重建事务失败: %w", err)
 		}
 		changed = true
 		logger.Info("sqlite: classics_extracts 已去除冗余列",
