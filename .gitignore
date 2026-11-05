@@ -41,7 +41,14 @@ frontend/.e2e/
 *.sqlite3
 backend/data/
 *.backup
-data/
+# data/ 原始物料不入库（约 190M）；仅白名单入库 CI 门禁最小集
+# （dim_audit 依赖：namer.json + 四大经典诗词索引，见 docs/43 P0-1 阶段0-2）
+data/*
+!data/namer.json
+!data/shijing.json
+!data/chuci.json
+!data/shici.json
+!data/yuanqu.json
 
 # 日志文件
 logs/

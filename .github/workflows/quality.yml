@@ -26,7 +26,7 @@ jobs:
       - name: 安装 Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version-file: backend/go.mod
           cache: true
           cache-dependency-path: backend/go.sum
 
@@ -49,14 +49,30 @@ jobs:
       - name: 安装 Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version-file: backend/go.mod
           cache: true
           cache-dependency-path: backend/go.sum
 
+      # docs/43 P0-1：data/ 全量物料（约 60M）不随仓库分发，仅 dim_audit 最小集入库。
+      # 先用 manifest --check 校验必需源文件，缺失时显式警告并跳过本 job，
+      # 而不是让 import 在半途静默失败、门禁必红。
+      - name: 校验全量物料（缺失则显式跳过 E2E）
+        working-directory: backend
+        id: manifest
+        run: |
+          if go run ./cmd/materials manifest --check --data ../data; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::data/ 全量物料未随仓库分发（仓库仅入库 dim_audit 最小集），quality-e2e 显式跳过；如需 E2E 门禁请按 docs/40 物料清单准备 data/"
+          fi
+
       - name: 构建物料库 namer.db
+        if: steps.manifest.outputs.ready == 'true'
         working-directory: backend
         run: go run ./cmd/materials import --data ../data --db ./namer.db
 
       - name: 运行全量验证（自动构建+启服务+E2E）
+        if: steps.manifest.outputs.ready == 'true'
         working-directory: ${{ github.workspace }}
         run: bash scripts/verify-quality.sh
