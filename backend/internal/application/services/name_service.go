@@ -367,6 +367,7 @@ func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateReq
 			RequiredChars:   req.SelectedChars,
 			PinyinInitial:   req.PinyinInitial,
 			ExtraChars:      extraChars,
+			EnableCantonese: req.EnableCantonese,
 		},
 		AvoidElderNames: req.AvoidElderNames,
 	}
@@ -514,6 +515,15 @@ func convertFateToNameNames(results []fate.NameResult, gender string, sourceClas
 		//   NameCard/NameDetail 的「优先 score_detail」分支永不执行，
 		//   FullReport 只能本地自造命理文案 —— docs/24 P2-5。）
 		applyFateScoreDetail(&n, nr.Score)
+		// 粤拼标注与独立粤语分回填（与 /generate/analysis 路径同口径，docs/43 P1-2）：
+		// 粤拼始终透传；粤语分仅在引擎侧开启粤语评分时非 nil。
+		if nr.Jyutping != "" {
+			n.Jyutping = nr.Jyutping
+		}
+		if nr.CantoneseScore != nil {
+			n.CantoneseScore = nr.CantoneseScore.Total
+			n.CantoneseScoreDetail = buildCantoneseScoreDetail(nr.CantoneseScore)
+		}
 		n.Reasons = nr.Reasons
 		names[i] = n
 	}
