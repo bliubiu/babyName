@@ -5,6 +5,25 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.06.1]
+
+**《43-质量审查报告》阶段 0 整改：P0 CI 门禁 + P1 粤语开关/第 9 维卦象/BOM**
+
+### ✨ New Features 新增功能
+- 【评分透传】`score_detail` 补第 9 维「卦象」（P1-1，`89f34c5`）：`buildScoreDetail` 白名单与 `DefaultRaters` 九维对齐，前端明细加权重现 TotalScore；三道守护测试防再漂移（DefaultRaters 逐维对齐 / 真实链路加权和 ≈ 总分 / 九维全落位）
+- 【粤语评分】`/names/generate` 补装配 `EnableCantonese` 与粤语分映射（P1-2，`b88e329`）：`name.Name` 补 `Jyutping`/`CantoneseScore`/`CantoneseScoreDetail` 字段（与 `NameAnalysis` 同口径），新增生成路径粤语 e2e 守护
+
+### 🐛 Bug Fixes 问题修复
+- 【CI 门禁】修复 P0-1（`42a6dc8`）：`data/` 白名单入库 dim_audit 最小集 5 文件（namer + 诗经/楚辞/诗词/元曲，约 16M）；quality-e2e 改为 `materials manifest --check` 前置校验，全量物料缺失时 `::warning::` 显式跳过而非静默必红；`go-version: 1.22` 改 `go-version-file: backend/go.mod` 消除版本漂移
+- 【编码】去除 `store_materials_import_classics.go` UTF-8 BOM（P1-7，`e0f0c2f`），覆盖率插桩恢复（sqlite 包实测 66.2%）
+
+### 📚 Docs 文档更新
+- 《43-质量审查报告》评审修订（`a7ba355`）：喜用神编号 P1-2→P1-3 消除双编号冲突、修 P3-1 失效引用、§〇 补登报告自身提交号
+
+### ✅ 验证
+- `go build ./...` / `go vet ./...` / `go test ./... -count=1` 全绿；`SKIP_SERVER=1 verify-quality.sh` 快路径全过
+- 最小集 dim_audit 实测 147 项全过（含诗词出典 30 项）；manifest --check 33 个必需文件齐全
+
 ## [2026.11.06.0]
 
 **《43-项目实施质量审查报告》评审后编号修订（纯文档）**
