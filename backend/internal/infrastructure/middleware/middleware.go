@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -17,7 +18,7 @@ func ZapLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
-		query := c.Request.URL.RawQuery
+		query := sanitizeQuery(c.Request.URL.RawQuery) // docs/43 P1-10：敏感键打码+截断
 
 		c.Next()
 
@@ -42,7 +43,7 @@ func ZapLogger() gin.HandlerFunc {
 		}
 
 		if len(c.Errors) > 0 {
-			fields = append(fields, logger.String("errors", c.Errors.String()))
+			fields = append(fields, logger.String("errors", truncateString(c.Errors.String(), maxLogFieldRunes)))
 		}
 
 		if c.Writer.Status() >= 500 {
@@ -63,7 +64,7 @@ func ZapRecovery() gin.HandlerFunc {
 					logger.String("method", c.Request.Method),
 					logger.String("path", c.Request.URL.Path),
 					logger.String("ip", c.ClientIP()),
-					logger.Any("error", err),
+					logger.String("error", truncateString(fmt.Sprint(err), maxLogFieldRunes)),
 				}
 				logger.Error("Panic Recovered", fields...)
 				c.AbortWithStatusJSON(500, gin.H{

@@ -82,8 +82,8 @@ func (h *NameAsyncHandler) Explore(c *gin.Context) {
 	}
 	result, err := h.names.ExploreNames(c.Request.Context(), &req)
 	if err != nil {
-		logger.Warn("Explore: failed", zap.Error(err), zap.String("generation_id", req.GenerationID))
-		response.ErrorJSON(c, 400, err.Error())
+		// 服务层错误细节只落日志，不回传客户端（docs/43 P1-10）
+		writeServiceError(c, err, "Explore", "换一批失败，请稍后重试")
 		return
 	}
 	response.SuccessJSON(c, result)

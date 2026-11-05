@@ -28,6 +28,13 @@ import (
 // （空库回落场景实测：每次 /names/generate 都返回 500，掩盖了真实的
 // 「物料缺失 → 候选池为空」业务语义）。
 func writeGenerateError(c *gin.Context, err error, scope string) {
+	writeServiceError(c, err, scope, "生成名字失败，请稍后重试")
+}
+
+// writeServiceError 服务层错误的统一受控出口（docs/43 P1-10）：
+// 超时→503、业务 AppError→受控消息、其余→500 固定兜底文案。
+// 内部错误细节（err.Error()）只落服务端日志，绝不回传客户端。
+func writeServiceError(c *gin.Context, err error, scope, fallbackMsg string) {
 	logger.Error(scope+": failed", zap.Error(err))
 	if stderrors.Is(err, context.DeadlineExceeded) {
 		response.ErrorJSON(c, 503, "请求超时，请稍后重试")
