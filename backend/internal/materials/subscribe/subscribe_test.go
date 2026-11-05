@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"name/internal/domain/fate"
 	"name/internal/materials/schema"
 )
 
@@ -82,7 +83,7 @@ func TestWriteFile_原子替换不留半截文件(t *testing.T) {
 
 // TestWriteFile_父目录缺失时报错 覆盖原子写的失败分支：
 // CreateTemp 在不存在目录上失败时必须返回错误，且不留半截目标文件
-//（调用方对生效物料的写入失败应当显式可见，而不是被静默吞掉）。
+// （调用方对生效物料的写入失败应当显式可见，而不是被静默吞掉）。
 func TestWriteFile_父目录缺失时报错(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "不存在子目录", "x.json")
 	if err := writeFile(path, []byte("{}")); err == nil {
@@ -341,9 +342,9 @@ func TestApplyToFileAllowlist(t *testing.T) {
 	writeText(t, filepath.Join(dir, "allowlist.json"), `{"version":"1.0","chars":[],"combos":[],"blessings":["去病"]}`)
 
 	entries := []PatchEntry{
-		{Material: schema.AllowlistMaterial, Kind: schema.AllowKindChar, Op: OpAdd, Entry: "好"},
-		{Material: schema.AllowlistMaterial, Kind: schema.AllowKindCombo, Op: OpAdd, Entry: "去病"},
-		{Material: schema.AllowlistMaterial, Kind: schema.AllowKindBlessing, Op: OpRemove, Entry: "去病"},
+		{Material: schema.AllowlistMaterial, Kind: fate.AllowKindChar, Op: OpAdd, Entry: "好"},
+		{Material: schema.AllowlistMaterial, Kind: fate.AllowKindCombo, Op: OpAdd, Entry: "去病"},
+		{Material: schema.AllowlistMaterial, Kind: fate.AllowKindBlessing, Op: OpRemove, Entry: "去病"},
 	}
 	if err := ApplyToFile(dir, schema.AllowlistMaterial, entries); err != nil {
 		t.Fatalf("应用 allowlist 出错: %v", err)
@@ -374,10 +375,10 @@ func TestApplyToFileRedline(t *testing.T) {
 	writeText(t, filepath.Join(dir, "compliance_redline.json"), `{"version":"1.0","state_orgs":["国务院"],"places":[],"persons":[]}`)
 
 	entries := []PatchEntry{
-		{Material: schema.ComplianceRedlineMaterial, Kind: schema.RedlineKindStateOrg, Op: OpAdd, Entry: "省政府"},
-		{Material: schema.ComplianceRedlineMaterial, Kind: schema.RedlineKindPlace, Op: OpAdd, Entry: "北京"},
-		{Material: schema.ComplianceRedlineMaterial, Kind: schema.RedlineKindPerson, Op: OpAdd, Entry: "秦桧"},
-		{Material: schema.ComplianceRedlineMaterial, Kind: schema.RedlineKindStateOrg, Op: OpRemove, Entry: "国务院"},
+		{Material: schema.ComplianceRedlineMaterial, Kind: fate.RedlineKindStateOrg, Op: OpAdd, Entry: "省政府"},
+		{Material: schema.ComplianceRedlineMaterial, Kind: fate.RedlineKindPlace, Op: OpAdd, Entry: "北京"},
+		{Material: schema.ComplianceRedlineMaterial, Kind: fate.RedlineKindPerson, Op: OpAdd, Entry: "秦桧"},
+		{Material: schema.ComplianceRedlineMaterial, Kind: fate.RedlineKindStateOrg, Op: OpRemove, Entry: "国务院"},
 	}
 	if err := ApplyToFile(dir, schema.ComplianceRedlineMaterial, entries); err != nil {
 		t.Fatalf("应用 redline 出错: %v", err)

@@ -40,9 +40,9 @@ func ToPatch(items []fate.ReviewItem) ([]subscribe.PatchEntry, error) {
 				})
 			}
 		case fate.ReviewFalsePositive:
-			kind := schema.AllowKindCombo
+			kind := fate.AllowKindCombo
 			if singleRune(target) {
-				kind = schema.AllowKindChar
+				kind = fate.AllowKindChar
 			}
 			entries = append(entries, subscribe.PatchEntry{
 				Material: schema.AllowlistMaterial, Kind: kind, Op: subscribe.OpAdd, Entry: target,

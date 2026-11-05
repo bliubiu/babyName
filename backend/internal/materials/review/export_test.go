@@ -46,10 +46,10 @@ func TestToPatch_误报进白名单(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("应生成 2 条补丁，实得 %d", len(got))
 	}
-	if got[0].Material != schema.AllowlistMaterial || got[0].Kind != schema.AllowKindChar || got[0].Entry != "伙" {
+	if got[0].Material != schema.AllowlistMaterial || got[0].Kind != fate.AllowKindChar || got[0].Entry != "伙" {
 		t.Fatalf("单字误报应为 allowlist(char): %+v", got[0])
 	}
-	if got[1].Material != schema.AllowlistMaterial || got[1].Kind != schema.AllowKindCombo || got[1].Entry != "康泰" {
+	if got[1].Material != schema.AllowlistMaterial || got[1].Kind != fate.AllowKindCombo || got[1].Entry != "康泰" {
 		t.Fatalf("组合误报应为 allowlist(combo): %+v", got[1])
 	}
 }
@@ -84,7 +84,7 @@ func TestToPatch_命中值回退与空值(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("应生成 2 条补丁（跳过空值），实得 %d: %+v", len(got), got)
 	}
-	if got[0].Material != schema.AllowlistMaterial || got[0].Kind != schema.AllowKindCombo || got[0].Entry != "张珀熙" {
+	if got[0].Material != schema.AllowlistMaterial || got[0].Kind != fate.AllowKindCombo || got[0].Entry != "张珀熙" {
 		t.Fatalf("应回退 Name 且视为组合: %+v", got[0])
 	}
 	if got[1].Material != schema.GateMaterial || got[1].Entry != "涵" {

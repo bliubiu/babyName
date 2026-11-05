@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"name/internal/domain/fate"
 	"name/internal/domain/hanzi"
 	"name/internal/domain/name"
 	"name/internal/domain/yijing"
@@ -627,7 +628,7 @@ func (s *Store) importNamer(def schema.Definition, src string, res ImportResult,
 			KangxiStrokes: kangxi[nc.Char],
 			Radical:       nc.Radical, Meaning: nc.Meaning, Wuxing: wuxing,
 			Level: nc.Level, Gender: normalize.Gender(nc.Gender),
-			Tone: nc.Tone,
+			Tone:       nc.Tone,
 			UsageLevel: nc.UsageLevel, PositiveScore: nc.PositiveScore,
 			NamePenalty:  nc.NamePenalty,
 			IsPolyphonic: nc.IsPolyphonic, IsRare: nc.IsRare, IsNegative: nc.IsNegative,
@@ -875,15 +876,15 @@ func (s *Store) importAllowlist(def schema.Definition, src string, res ImportRes
 		var errs validate.Errors
 		for _, c := range normalize.Tags(doc.Chars) {
 			errs = append(errs, validate.Rune(def.Name, "char", c)...)
-			rows = append(rows, kindRow{entry: c, kind: schema.AllowKindChar})
+			rows = append(rows, kindRow{entry: c, kind: fate.AllowKindChar})
 		}
 		for _, c := range normalize.Tags(doc.Combos) {
 			errs = append(errs, validate.Combo(def.Name, c)...)
-			rows = append(rows, kindRow{entry: c, kind: schema.AllowKindCombo})
+			rows = append(rows, kindRow{entry: c, kind: fate.AllowKindCombo})
 		}
 		for _, c := range normalize.Tags(doc.Blessings) {
 			errs = append(errs, validate.Combo(def.Name, c)...)
-			rows = append(rows, kindRow{entry: c, kind: schema.AllowKindBlessing})
+			rows = append(rows, kindRow{entry: c, kind: fate.AllowKindBlessing})
 		}
 		return doc.Version, rows, errs, nil
 	}
@@ -914,15 +915,15 @@ func (s *Store) importComplianceRedline(def schema.Definition, src string, res I
 		var errs validate.Errors
 		for _, e := range normalize.Tags(doc.StateOrgs) {
 			errs = append(errs, validate.Entity(def.Name, "state_org", e)...)
-			rows = append(rows, kindRow{entry: e, kind: schema.RedlineKindStateOrg})
+			rows = append(rows, kindRow{entry: e, kind: fate.RedlineKindStateOrg})
 		}
 		for _, e := range normalize.Tags(doc.Places) {
 			errs = append(errs, validate.Entity(def.Name, "place", e)...)
-			rows = append(rows, kindRow{entry: e, kind: schema.RedlineKindPlace})
+			rows = append(rows, kindRow{entry: e, kind: fate.RedlineKindPlace})
 		}
 		for _, e := range normalize.Tags(doc.Persons) {
 			errs = append(errs, validate.Entity(def.Name, "person", e)...)
-			rows = append(rows, kindRow{entry: e, kind: schema.RedlineKindPerson})
+			rows = append(rows, kindRow{entry: e, kind: fate.RedlineKindPerson})
 		}
 		return doc.Version, rows, errs, nil
 	}
@@ -1145,7 +1146,7 @@ func readStringSlice(src string) ([]string, error) {
 // 少量差异参数；新增同类物料只需在注册表登记 + 写一个分发函数。
 
 // importStringSliceMaterial 「JSON 字符串数组 → 单列单表」物料的骨架
-//（naming_gate / forbidden_combos）
+// （naming_gate / forbidden_combos）
 //
 // version 由调用方按条目数生成（各物料版本串格式不同）；
 // check 为逐条校验函数（签名兼容 validate.Rune / validate.Combo 的适配）。
@@ -1197,7 +1198,7 @@ type kindRow struct {
 }
 
 // importKindRowsMaterial 「多分类 JSON 对象 → (entry, kind) 两列表」物料的骨架
-//（allowlist / compliance_redline）
+// （allowlist / compliance_redline）
 //
 // read 由调用方提供：负责读文件、按类别字段归一 + 逐类校验，返回
 // 版本串与 (entry, kind) 行集合；骨架统一做 failValidate 与去重落库

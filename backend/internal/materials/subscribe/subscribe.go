@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"name/internal/domain/fate"
 	"name/internal/materials/checksum"
 	"name/internal/materials/schema"
 )
@@ -392,26 +393,26 @@ func ApplyToFile(dataDir, material string, entries []PatchEntry) error {
 		if err := readJSON(path, &f); err != nil {
 			return err
 		}
-		byKind, err := groupByKind(owned, []string{schema.AllowKindChar, schema.AllowKindCombo, schema.AllowKindBlessing})
+		byKind, err := groupByKind(owned, []string{fate.AllowKindChar, fate.AllowKindCombo, fate.AllowKindBlessing})
 		if err != nil {
 			return err
 		}
-		f.Chars = ApplyToSet(f.Chars, byKind[schema.AllowKindChar])
-		f.Combos = ApplyToSet(f.Combos, byKind[schema.AllowKindCombo])
-		f.Blessings = ApplyToSet(f.Blessings, byKind[schema.AllowKindBlessing])
+		f.Chars = ApplyToSet(f.Chars, byKind[fate.AllowKindChar])
+		f.Combos = ApplyToSet(f.Combos, byKind[fate.AllowKindCombo])
+		f.Blessings = ApplyToSet(f.Blessings, byKind[fate.AllowKindBlessing])
 		return writeJSON(path, f)
 	case schema.ComplianceRedlineMaterial:
 		var f redlineFile
 		if err := readJSON(path, &f); err != nil {
 			return err
 		}
-		byKind, err := groupByKind(owned, []string{schema.RedlineKindStateOrg, schema.RedlineKindPlace, schema.RedlineKindPerson})
+		byKind, err := groupByKind(owned, []string{fate.RedlineKindStateOrg, fate.RedlineKindPlace, fate.RedlineKindPerson})
 		if err != nil {
 			return err
 		}
-		f.StateOrgs = ApplyToSet(f.StateOrgs, byKind[schema.RedlineKindStateOrg])
-		f.Places = ApplyToSet(f.Places, byKind[schema.RedlineKindPlace])
-		f.Persons = ApplyToSet(f.Persons, byKind[schema.RedlineKindPerson])
+		f.StateOrgs = ApplyToSet(f.StateOrgs, byKind[fate.RedlineKindStateOrg])
+		f.Places = ApplyToSet(f.Places, byKind[fate.RedlineKindPlace])
+		f.Persons = ApplyToSet(f.Persons, byKind[fate.RedlineKindPerson])
 		return writeJSON(path, f)
 	default:
 		return fmt.Errorf("物料 %s 暂不支持补丁应用", material)

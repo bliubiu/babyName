@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"name/internal/materials/schema"
 )
 
 // compliance_redline_test.go 守护 L5 合规红线（docs/33 门禁层 M2）：
@@ -23,9 +22,9 @@ func resetRedline(t *testing.T) {
 func TestComplianceRedline_分类装载与计数(t *testing.T) {
 	resetRedline(t)
 	SetComplianceRedline([]RedlineEntry{
-		{Entry: "省高院", Kind: schema.RedlineKindStateOrg},
-		{Entry: "钓鱼岛", Kind: schema.RedlineKindPlace},
-		{Entry: "秦桧", Kind: schema.RedlineKindPerson},
+		{Entry: "省高院", Kind: RedlineKindStateOrg},
+		{Entry: "钓鱼岛", Kind: RedlineKindPlace},
+		{Entry: "秦桧", Kind: RedlineKindPerson},
 	})
 
 	stateOrg, place, person := ComplianceRedlineCounts()
@@ -37,8 +36,8 @@ func TestComplianceRedline_分类装载与计数(t *testing.T) {
 func TestComplianceRedline_空条目与未知kind被忽略(t *testing.T) {
 	resetRedline(t)
 	SetComplianceRedline([]RedlineEntry{
-		{Entry: "", Kind: schema.RedlineKindStateOrg},
-		{Entry: "  ", Kind: schema.RedlineKindPlace},
+		{Entry: "", Kind: RedlineKindStateOrg},
+		{Entry: "  ", Kind: RedlineKindPlace},
 		{Entry: "某实体", Kind: "未知类型"},
 	})
 	if stateOrg, place, person := ComplianceRedlineCounts(); stateOrg != 0 || place != 0 || person != 0 {
@@ -49,7 +48,7 @@ func TestComplianceRedline_空条目与未知kind被忽略(t *testing.T) {
 // TestComplianceRedline_命中机关单位 动态机关 + 内置兜底都必须命中
 func TestComplianceRedline_命中机关单位(t *testing.T) {
 	resetRedline(t)
-	SetComplianceRedline([]RedlineEntry{{Entry: "省高院", Kind: schema.RedlineKindStateOrg}})
+	SetComplianceRedline([]RedlineEntry{{Entry: "省高院", Kind: RedlineKindStateOrg}})
 
 	if !IsComplianceRedline("省高院") {
 		t.Error("动态机关单位「省高院」全名应命中")
@@ -65,7 +64,7 @@ func TestComplianceRedline_命中机关单位(t *testing.T) {
 // TestComplianceRedline_命中争议地名
 func TestComplianceRedline_命中争议地名(t *testing.T) {
 	resetRedline(t)
-	SetComplianceRedline([]RedlineEntry{{Entry: "北京", Kind: schema.RedlineKindPlace}})
+	SetComplianceRedline([]RedlineEntry{{Entry: "北京", Kind: RedlineKindPlace}})
 
 	if !IsComplianceRedline("北京") || !IsComplianceRedline("李北京") {
 		t.Error("争议地名「北京」应命中全名与包含")
@@ -75,7 +74,7 @@ func TestComplianceRedline_命中争议地名(t *testing.T) {
 // TestComplianceRedline_命中负面历史人物
 func TestComplianceRedline_命中负面历史人物(t *testing.T) {
 	resetRedline(t)
-	SetComplianceRedline([]RedlineEntry{{Entry: "秦桧", Kind: schema.RedlineKindPerson}})
+	SetComplianceRedline([]RedlineEntry{{Entry: "秦桧", Kind: RedlineKindPerson}})
 
 	if !IsComplianceRedline("秦桧") || !IsComplianceRedline("李秦桧") {
 		t.Error("负面历史人物「秦桧」应命中全名与包含")
@@ -86,11 +85,11 @@ func TestComplianceRedline_命中负面历史人物(t *testing.T) {
 func TestComplianceRedline_白名单优先于红线(t *testing.T) {
 	resetRedline(t)
 	t.Cleanup(func() { SetAllowlist(nil) })
-	SetComplianceRedline([]RedlineEntry{{Entry: "北京", Kind: schema.RedlineKindPlace}})
+	SetComplianceRedline([]RedlineEntry{{Entry: "北京", Kind: RedlineKindPlace}})
 	if !IsComplianceRedline("李北京") {
 		t.Fatal("前置条件：李北京 应命中")
 	}
-	SetAllowlist([]AllowEntry{{Entry: "北京", Kind: schema.AllowKindCombo}})
+	SetAllowlist([]AllowEntry{{Entry: "北京", Kind: AllowKindCombo}})
 	if IsComplianceRedline("李北京") {
 		t.Error("白名单优先于黑名单：北京 被豁免后不应再命中红线")
 	}
@@ -102,7 +101,7 @@ func TestComplianceRedline_白名单优先于红线(t *testing.T) {
 // TestComplianceRedline_单字条目被忽略 单字条目不参与匹配（避免误伤）
 func TestComplianceRedline_单字条目被忽略(t *testing.T) {
 	resetRedline(t)
-	SetComplianceRedline([]RedlineEntry{{Entry: "京", Kind: schema.RedlineKindPlace}})
+	SetComplianceRedline([]RedlineEntry{{Entry: "京", Kind: RedlineKindPlace}})
 	if IsComplianceRedline("京") || IsComplianceRedline("李京") {
 		t.Error("单字条目不参与红线匹配")
 	}
@@ -135,7 +134,7 @@ func TestLoadComplianceRedlineFromJSON(t *testing.T) {
 // TestLoadComplianceRedlineFromJSON_文件缺失降级内置JSON 缺失只清空动态集合，内置兜底仍生效
 func TestLoadComplianceRedlineFromJSON_文件缺失降级内置JSON(t *testing.T) {
 	resetRedline(t)
-	SetComplianceRedline([]RedlineEntry{{Entry: "北京", Kind: schema.RedlineKindPlace}})
+	SetComplianceRedline([]RedlineEntry{{Entry: "北京", Kind: RedlineKindPlace}})
 	if err := LoadComplianceRedlineFromJSON(t.TempDir()); err != nil {
 		t.Fatalf("文件缺失不应报错（降级内置兜底）: %v", err)
 	}

@@ -19,8 +19,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"name/internal/materials/schema"
 )
 
 var (
@@ -51,11 +49,11 @@ func SetAllowlist(entries []AllowEntry) {
 			continue
 		}
 		switch e.Kind {
-		case schema.AllowKindChar:
+		case AllowKindChar:
 			chars[entry] = true
-		case schema.AllowKindCombo:
+		case AllowKindCombo:
 			combos[entry] = true
-		case schema.AllowKindBlessing:
+		case AllowKindBlessing:
 			blessings[entry] = true
 		default:
 			continue
@@ -97,13 +95,13 @@ func LoadAllowlistFromJSON(dataDir string) error {
 
 	entries := make([]AllowEntry, 0, len(doc.Chars)+len(doc.Combos)+len(doc.Blessings))
 	for _, c := range doc.Chars {
-		entries = append(entries, AllowEntry{Entry: c, Kind: schema.AllowKindChar})
+		entries = append(entries, AllowEntry{Entry: c, Kind: AllowKindChar})
 	}
 	for _, c := range doc.Combos {
-		entries = append(entries, AllowEntry{Entry: c, Kind: schema.AllowKindCombo})
+		entries = append(entries, AllowEntry{Entry: c, Kind: AllowKindCombo})
 	}
 	for _, c := range doc.Blessings {
-		entries = append(entries, AllowEntry{Entry: c, Kind: schema.AllowKindBlessing})
+		entries = append(entries, AllowEntry{Entry: c, Kind: AllowKindBlessing})
 	}
 	SetAllowlist(entries)
 	return nil

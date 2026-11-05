@@ -59,9 +59,9 @@ func TestImport_合规红线落库与kind(t *testing.T) {
 
 	got := queryCompliance(t, s)
 	want := map[string]string{
-		"省高院": schema.RedlineKindStateOrg,
-		"北京":  schema.RedlineKindPlace,
-		"秦桧":  schema.RedlineKindPerson,
+		"省高院": fate.RedlineKindStateOrg,
+		"北京":  fate.RedlineKindPlace,
+		"秦桧":  fate.RedlineKindPerson,
 	}
 	if len(got) != len(want) {
 		t.Fatalf("合规红线条目数期望 %d，实得 %d：%v", len(want), len(got), got)

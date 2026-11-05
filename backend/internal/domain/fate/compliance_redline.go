@@ -21,8 +21,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"name/internal/materials/schema"
 )
 
 var (
@@ -67,11 +65,11 @@ func SetComplianceRedline(entries []RedlineEntry) {
 			continue
 		}
 		switch e.Kind {
-		case schema.RedlineKindStateOrg:
+		case RedlineKindStateOrg:
 			stateOrg[entry] = true
-		case schema.RedlineKindPlace:
+		case RedlineKindPlace:
 			place[entry] = true
-		case schema.RedlineKindPerson:
+		case RedlineKindPerson:
 			person[entry] = true
 		}
 	}
@@ -114,13 +112,13 @@ func LoadComplianceRedlineFromJSON(dataDir string) error {
 
 	entries := make([]RedlineEntry, 0, len(doc.StateOrgs)+len(doc.Places)+len(doc.Persons))
 	for _, e := range doc.StateOrgs {
-		entries = append(entries, RedlineEntry{Entry: e, Kind: schema.RedlineKindStateOrg})
+		entries = append(entries, RedlineEntry{Entry: e, Kind: RedlineKindStateOrg})
 	}
 	for _, e := range doc.Places {
-		entries = append(entries, RedlineEntry{Entry: e, Kind: schema.RedlineKindPlace})
+		entries = append(entries, RedlineEntry{Entry: e, Kind: RedlineKindPlace})
 	}
 	for _, e := range doc.Persons {
-		entries = append(entries, RedlineEntry{Entry: e, Kind: schema.RedlineKindPerson})
+		entries = append(entries, RedlineEntry{Entry: e, Kind: RedlineKindPerson})
 	}
 	SetComplianceRedline(entries)
 	return nil

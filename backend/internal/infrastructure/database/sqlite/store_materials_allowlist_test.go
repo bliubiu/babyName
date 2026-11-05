@@ -58,7 +58,7 @@ func TestImport_白名单物料落库与kind(t *testing.T) {
 	}
 
 	got := queryAllowlist(t, s)
-	want := map[string]string{"某": schema.AllowKindChar, "康泰": schema.AllowKindCombo, "去病": schema.AllowKindBlessing}
+	want := map[string]string{"某": fate.AllowKindChar, "康泰": fate.AllowKindCombo, "去病": fate.AllowKindBlessing}
 	if len(got) != len(want) {
 		t.Fatalf("白名单条目数期望 %d，实得 %d：%v", len(want), len(got), got)
 	}

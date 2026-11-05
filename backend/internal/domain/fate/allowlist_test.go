@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"name/internal/materials/schema"
 )
 
 // allowlist_test.go 守护显式白名单（docs/33 门禁层 M1）：
@@ -23,9 +21,9 @@ func resetAllowlist(t *testing.T) {
 func TestAllowlist_分类装载与计数(t *testing.T) {
 	resetAllowlist(t)
 	SetAllowlist([]AllowEntry{
-		{Entry: "伙", Kind: schema.AllowKindChar},
-		{Entry: "父母", Kind: schema.AllowKindCombo},
-		{Entry: "康泰", Kind: schema.AllowKindBlessing},
+		{Entry: "伙", Kind: AllowKindChar},
+		{Entry: "父母", Kind: AllowKindCombo},
+		{Entry: "康泰", Kind: AllowKindBlessing},
 	})
 
 	chars, combos, blessings := AllowlistCounts()
@@ -46,8 +44,8 @@ func TestAllowlist_分类装载与计数(t *testing.T) {
 func TestAllowlist_空条目与未知kind被忽略(t *testing.T) {
 	resetAllowlist(t)
 	SetAllowlist([]AllowEntry{
-		{Entry: "", Kind: schema.AllowKindChar},
-		{Entry: "  ", Kind: schema.AllowKindCombo},
+		{Entry: "", Kind: AllowKindChar},
+		{Entry: "  ", Kind: AllowKindCombo},
 		{Entry: "某", Kind: "未知类型"},
 	})
 	chars, combos, blessings := AllowlistCounts()
@@ -62,7 +60,7 @@ func TestAllowlist_字级豁免优先于门禁字(t *testing.T) {
 	if !IsNonNamingChar("伙") {
 		t.Skip("前提不成立：伙 不在已加载的门禁字表中")
 	}
-	SetAllowlist([]AllowEntry{{Entry: "伙", Kind: schema.AllowKindChar}})
+	SetAllowlist([]AllowEntry{{Entry: "伙", Kind: AllowKindChar}})
 	if IsNonNamingChar("伙") {
 		t.Error("白名单优先于黑名单：伙 被豁免后不应再判为门禁字")
 	}
@@ -79,7 +77,7 @@ func TestAllowlist_组合级豁免优先于禁忌组合(t *testing.T) {
 	if !IsBadCombo("父", "母") {
 		t.Skip("前提不成立：父母 不在硬编码禁忌组合中")
 	}
-	SetAllowlist([]AllowEntry{{Entry: "父母", Kind: schema.AllowKindCombo}})
+	SetAllowlist([]AllowEntry{{Entry: "父母", Kind: AllowKindCombo}})
 	if IsBadCombo("父", "母") || IsBadCombo("母", "父") {
 		t.Error("白名单优先于黑名单：父母 被豁免后不应再判为禁忌组合")
 	}
@@ -91,7 +89,7 @@ func TestAllowlist_组合级豁免优先于历史人物(t *testing.T) {
 	if !IsHistoricalFigureCombo("仲", "尼") {
 		t.Skip("前提不成立：仲尼 不在历史人物专名表中")
 	}
-	SetAllowlist([]AllowEntry{{Entry: "仲尼", Kind: schema.AllowKindCombo}})
+	SetAllowlist([]AllowEntry{{Entry: "仲尼", Kind: AllowKindCombo}})
 	if IsHistoricalFigureCombo("仲", "尼") {
 		t.Error("白名单优先于黑名单：仲尼 被豁免后不应再判为历史人物组合")
 	}
@@ -106,7 +104,7 @@ func TestAllowlist_祈福组合动态并入内置(t *testing.T) {
 	if IsBlessingCombo("康", "泰") {
 		t.Error("未装载动态前 康泰 不应命中")
 	}
-	SetAllowlist([]AllowEntry{{Entry: "康泰", Kind: schema.AllowKindBlessing}})
+	SetAllowlist([]AllowEntry{{Entry: "康泰", Kind: AllowKindBlessing}})
 	if !IsBlessingCombo("康", "泰") || !IsBlessingCombo("泰", "康") {
 		t.Error("动态祈福组合应正反序命中")
 	}
@@ -134,7 +132,7 @@ func TestLoadAllowlistFromJSON(t *testing.T) {
 // TestLoadAllowlistFromJSON_文件缺失降级内置JSON 缺失只清空动态集合并警告，不报错
 func TestLoadAllowlistFromJSON_文件缺失降级内置JSON(t *testing.T) {
 	resetAllowlist(t)
-	SetAllowlist([]AllowEntry{{Entry: "伙", Kind: schema.AllowKindChar}})
+	SetAllowlist([]AllowEntry{{Entry: "伙", Kind: AllowKindChar}})
 	if err := LoadAllowlistFromJSON(t.TempDir()); err != nil {
 		t.Fatalf("文件缺失不应报错（降级内置默认）: %v", err)
 	}
@@ -204,8 +202,8 @@ func TestAllowlist_整体文本豁免查询(t *testing.T) {
 		t.Error("未装载前不应命中")
 	}
 	SetAllowlist([]AllowEntry{
-		{Entry: "父母", Kind: schema.AllowKindCombo},
-		{Entry: "伙", Kind: schema.AllowKindChar},
+		{Entry: "父母", Kind: AllowKindCombo},
+		{Entry: "伙", Kind: AllowKindChar},
 	})
 	if !IsAllowlistedText("父母") || !IsAllowlistedText("伙") {
 		t.Error("装载后整体文本应命中（任意 kind）")
