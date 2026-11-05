@@ -3,6 +3,11 @@ package fate
 // BalanceXiYongJi 平衡用神法 - 根据日主强弱取喜用忌仇
 // 日主强：克我者（官杀）为用神，我生者（食伤）为喜神，同我者（比劫）为忌神
 // 日主弱：生我者（印）为用神，同我者（比劫）为喜神，克我者（官杀）为忌神
+//
+// Deprecated（docs/43 P1-3）：生产装配已收敛到 bazi weighted 算法为唯一
+// 权威（BaziAnalyzerAdapter.Analyze + bazi.DeriveJiChou），本函数与
+// calculateXiyongshenWeighted 的强弱口径不同（total/2 vs 40/28/18），
+// 不再用于响应展示与评分器输入；保留仅供对照与历史测试。
 func BalanceXiYongJi(baziInfo BaziInfoForGeJu) XiYongJiChou {
 	riZhuGan := string([]rune(baziInfo.SiZhu[2])[:1])
 	riZhuWuxing := wuxingOfTianGan(riZhuGan)

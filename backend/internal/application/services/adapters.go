@@ -511,24 +511,24 @@ func (a *BaziAnalyzerAdapter) Analyze(born time.Time, gender fate.Gender) (*fate
 	zodiacName := zodiac.GetZodiacByYear(year).Name
 	fourPillars := baziGanzhiToArray(baziResult.Bazi)
 
-	// 使用 fate 层的平衡用神法计算完整喜用忌仇四神
-	baziInfo := fate.BaziInfoForGeJu{
-		SiZhu: fourPillars,
+	// 喜用神单一真源（docs/43 P1-3）：以 bazi weighted 算法（calculateXiyongshenWeighted）
+	// 为唯一权威——喜用神列表、强弱、忌仇全部同源于本次 AnalyzeBazi 结果。
+	// 此前此处另调 fate.BalanceXiYongJi（total/2 简单多数判强弱）再与
+	// bazi 的 DayMasterStrength 混装，同一响应内喜用神与强弱栏可能自相矛盾；
+	// 测名路径（fate_name_service.classicXiyongShen）早已统一为经典口径，
+	// 本适配器是最后一块，收敛后 /generate、/generate/analysis、测名三链路同源。
+	xiYongShen := baziResult.Xiyongshen
+	yongShen := ""
+	xi := ""
+	if len(xiYongShen) > 0 {
+		yongShen = xiYongShen[0]
+		xi = xiYongShen[0]
 	}
-	xiyong := fate.BalanceXiYongJi(baziInfo)
-
-	// 构建喜用神排序列表：用神 > 喜神
-	xiYongShen := make([]string, 0, 2)
-	if xiyong.Yong != "" {
-		xiYongShen = append(xiYongShen, xiyong.Yong)
+	if len(xiYongShen) > 1 {
+		xi = xiYongShen[1]
 	}
-	if xiyong.Xi != "" && xiyong.Xi != xiyong.Yong {
-		xiYongShen = append(xiYongShen, xiyong.Xi)
-	}
-	// fallback: 若 balance 法未能产出，使用 bazi 层原始结果
-	if len(xiYongShen) == 0 {
-		xiYongShen = baziResult.Xiyongshen
-	}
+	// 忌/仇按同一强弱结论推导（weighted 算法无忌仇概念，扶抑法补齐）
+	ji, chou := bazi.DeriveJiChou(baziResult.RishouWuxing, baziResult.DayMasterStrength)
 
 	// 构建 FateData
 	fateData := &fate.FateData{
@@ -538,10 +538,10 @@ func (a *BaziAnalyzerAdapter) Analyze(born time.Time, gender fate.Gender) (*fate
 		},
 		WuXingXiji: fate.WuXingXiji{
 			XiYongShen:  xiYongShen,
-			YongShen:    xiyong.Yong,
-			Xi:          xiyong.Xi,
-			Ji:          xiyong.Ji,
-			Chou:        xiyong.Chou,
+			YongShen:    yongShen,
+			Xi:          xi,
+			Ji:          ji,
+			Chou:        chou,
 			RiZhu:       baziResult.Rishou,
 			RiZhuWuXing: baziResult.RishouWuxing,
 			QiangRuo:    baziResult.DayMasterStrength,
@@ -549,15 +549,6 @@ func (a *BaziAnalyzerAdapter) Analyze(born time.Time, gender fate.Gender) (*fate
 		TiaoHouYongShen: joinStrings(baziResult.TiaohouShen, "、"),
 		// 出生季节（月支节气月）：卦气旺衰依据（docs/42 P3-12 卦象评分）
 		BirthSeason: baziResult.Season,
-	}
-
-	// fallback: 若 balance 法未产出用神，用 bazi 原始映射
-	if fateData.WuXingXiji.YongShen == "" && len(baziResult.Xiyongshen) > 0 {
-		fateData.WuXingXiji.YongShen = baziResult.Xiyongshen[0]
-		fateData.WuXingXiji.Xi = baziResult.Xiyongshen[0]
-	}
-	if fateData.WuXingXiji.Ji == "" && len(baziResult.Xiyongshen) > 1 {
-		fateData.WuXingXiji.Ji = baziResult.Xiyongshen[1]
 	}
 
 	// 设置四柱五行和纳音
