@@ -190,7 +190,7 @@ func assembleEvaluatedName(provider *HanziDataProvider, surname, given, gender s
 		}
 	}
 	enrichPoetryForName(&n, given, sourceClassic)
-	// 八维分数 + 依据文字 + score_detail，与 /generate、/generate/analysis 同源映射
+	// 九维分数 + 依据文字 + score_detail，与 /generate、/generate/analysis 同源映射
 	applyFateScoreDetail(&n, score)
 	return n
 }

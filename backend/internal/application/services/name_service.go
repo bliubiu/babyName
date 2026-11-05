@@ -133,7 +133,7 @@ type GenerateRequest struct {
 
 	// EnableCantonese 是否开启粤语评分。
 	// 开启后结果附带独立「粤语分」（粤语音律 + 粤语谐音），并以固定权重轻量并入
-	// 综合分影响排序；关闭时综合分完全由普通话八维决定。粤拼标注始终返回。
+	// 综合分影响排序；关闭时综合分完全由普通话九维决定。粤拼标注始终返回。
 	EnableCantonese bool `json:"enable_cantonese"`
 
 	// 避讳长辈：父系/母系直系长辈姓名（建议往上两代）
@@ -789,8 +789,10 @@ func applyFateScoreDetail(n *name.Name, score fate.NameScore) {
 // buildScoreDetail 按固定维度顺序输出评分明细（供 /generate 与 /generate/analysis 共用）。
 // 顺序与 DefaultRaters 权重降序一致，确保推荐名展示稳定；维度内聚为
 // 「维度名/分数/依据文字」，前端无需硬编码维度即可渲染评分分解。
+// 注意：白名单必须与 fate.DefaultRaters() 逐维对齐，否则加权和 ≠ TotalScore
+// （守护测试 TestBuildScoreDetail_CoversAllDefaultRaters）。
 func buildScoreDetail(items map[string]float64, details map[string]string) []name.ScoreDetailItem {
-	detailOrder := []string{"五行八字", "文化印象", "音韵", "新颖度", "生肖", "共现", "三才", "人名频率"}
+	detailOrder := []string{"五行八字", "文化印象", "音韵", "新颖度", "生肖", "卦象", "共现", "三才", "人名频率"}
 	var out []name.ScoreDetailItem
 	for _, dim := range detailOrder {
 		score, ok := items[dim]

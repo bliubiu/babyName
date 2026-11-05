@@ -211,11 +211,11 @@ func RateNameScore(candidate *NameCandidate, fateData *FateData, raters []Rater)
 	return math.Round(total*10) / 10
 }
 
-// ——— 粤语评分聚合（独立于普通话八维体系）———
+// ——— 粤语评分聚合（独立于普通话九维体系）———
 //
 // 粤语分由 YueYinYunRater（粤语音律）+ YueHomophoneRater（粤语谐音）两项聚合成，
 // 经 RateCantonese / RateCantoneseScore 计算。两项权重在 DefaultCantoneseRaters
-// 内自行归一（和为 1.0），与普通话八维的权重体系互不干扰。
+// 内自行归一（和为 1.0），与普通话九维的权重体系互不干扰。
 //
 // 设计要点：
 //   - 粤语维度不进入 cappedDimNames 封顶集合——封顶是为了压制「非策展双名」的机械
@@ -418,7 +418,7 @@ func (r *WuxingRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 	return NameRating{Score: score, Detail: detail}
 }
 
-// DefaultRaters 返回默认的八维评分器列表
+// DefaultRaters 返回默认的九维评分器列表
 //
 // 移除了 WuGeRater（熊崎五格数理），新增 SancaiRater（天地人三才）+ NoveltyRater（新颖度）
 // + FrequencyRater（人名频率），权重重新分配：

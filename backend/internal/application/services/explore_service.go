@@ -16,7 +16,7 @@ import (
 // 实现要点：
 //   - 生成完成时已把 Top-N 全部 MarkShown（registerExploreContext），因此
 //     ExcellentTable.Explore 只会返回未上过榜的候选——与本次结果**零交集**；
-//   - 每个采样条目用与测名同一条装配链（fate.RateGivenName）回算完整八维
+//   - 每个采样条目用与测名同一条装配链（fate.RateGivenName）回算完整九维
 //     分数与依据文字，保证「换一批」出来的名字与结果页/测名页同分同口径；
 //   - Explore 自带已展示去重与 100 名展示上限，同一会话反复调用不重复。
 

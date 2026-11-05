@@ -13,13 +13,15 @@ package services
 // 事一次做完，并与 /generate/analysis 共用 buildScoreDetail 的维度顺序。
 //
 // 本文件断言：
-//   - 八个维度（含三才）的分数都落到 name.Name 对应字段
+//   - 九个维度（含三才、卦象）的分数都落到 name.Name 对应字段
 //   - 依据文字落到既有文字字段，且缺失时不冲掉调用方已填的文案
 //   - score_detail 的维度顺序稳定、条目数与命中维度一致
 //   - 真实链路（fate 引擎 → convertFateToNameNames）确实产出 score_detail
+//   - score_detail 白名单与 DefaultRaters 逐维对齐，加权和重现 TotalScore
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"name/internal/domain/fate"
@@ -28,30 +30,32 @@ import (
 
 // scoreDetailOrder 与 DefaultRaters 权重降序一致的维度顺序（回归基准）
 var scoreDetailOrder = []string{
-	"五行八字", "文化印象", "音韵", "新颖度", "生肖", "共现", "三才", "人名频率",
+	"五行八字", "文化印象", "音韵", "新颖度", "生肖", "卦象", "共现", "三才", "人名频率",
 }
 
-// fullFateScore 构造八维度齐备的引擎评分（分数 + 依据文字）
+// fullFateScore 构造九维度齐备的引擎评分（分数 + 依据文字）
 func fullFateScore() fate.NameScore {
 	return fate.NameScore{
 		Total: 91.5,
 		Grade: "上上",
 		Items: map[string]float64{
 			"五行八字": 95, "文化印象": 88, "音韵": 90, "新颖度": 76,
-			"生肖": 84, "共现": 70, "三才": 92, "人名频率": 66,
+			"生肖": 84, "卦象": 85, "共现": 70, "三才": 92, "人名频率": 66,
 		},
 		Details: map[string]string{
 			"五行八字": "名字五行属水，与喜用神相合",
 			"文化印象": "「清」字取意清澈明净",
 			"音韵":   "声调平仄交替，读来朗朗上口",
 			"三才":   "天格木、人格水、地格金，三才相生",
+			"卦象":   "体卦震木，用卦生体，吉",
 		},
 	}
 }
 
-// TestApplyFateScoreDetail_MapsAllDimensions 八维度分数与依据文字全部落到 name.Name
+// TestApplyFateScoreDetail_MapsAllDimensions 九维度分数与依据文字全部落到 name.Name
 //
-// 其中「三才 → SancaiScore」是本次修复的漏映射点，必须单独钉住。
+// 其中「三才 → SancaiScore」是历史漏映射点；「卦象」无专属分数字段，
+// 经 score_detail 数组透传（见该测试第 ③ 段），由 DefaultRaters 守护测试钉住。
 func TestApplyFateScoreDetail_MapsAllDimensions(t *testing.T) {
 	n := name.Name{}
 	applyFateScoreDetail(&n, fullFateScore())
@@ -192,6 +196,41 @@ func TestBuildScoreDetail_SkipsMissingDimensions(t *testing.T) {
 	}
 }
 
+// TestBuildScoreDetail_CoversAllDefaultRaters 明细白名单与评分器清单逐维对齐
+//
+// 守护 docs/42 P3-12 类回归：新增第 N 维评分器而 buildScoreDetail 白名单
+// 未同步时，本测试即红（历史上「卦象」10% 因漏维导致明细与总分恒差）。
+func TestBuildScoreDetail_CoversAllDefaultRaters(t *testing.T) {
+	raters := fate.DefaultRaters()
+	items := make(map[string]float64, len(raters))
+	for _, r := range raters {
+		items[r.Name()] = 60
+	}
+
+	got := buildScoreDetail(items, nil)
+	if len(got) != len(raters) {
+		names := make([]string, 0, len(got))
+		for _, g := range got {
+			names = append(names, g.Name)
+		}
+		t.Fatalf("score_detail 输出 %d 维，DefaultRaters 共 %d 维，存在漏维；实际输出 %v",
+			len(got), len(raters), names)
+	}
+
+	gotSet := make(map[string]bool, len(got))
+	for _, g := range got {
+		gotSet[g.Name] = true
+		if g.Score != 60 {
+			t.Errorf("维度 %q 分数 = %v，期望 60（透传失真）", g.Name, g.Score)
+		}
+	}
+	for _, r := range raters {
+		if !gotSet[r.Name()] {
+			t.Errorf("维度 %q 在 DefaultRaters 中但 score_detail 白名单缺失", r.Name())
+		}
+	}
+}
+
 // TestGenerate_EmitsScoreDetail 真实链路回归：/names/generate 必须带 score_detail
 //
 // 这是 P2-5 的端到端断言——修复前该字段恒为空（omitempty ⇒ 响应里根本没有），
@@ -244,14 +283,34 @@ func TestGenerate_EmitsScoreDetail(t *testing.T) {
 		if !hasText {
 			t.Errorf("%s score_detail 全部无依据文字，用户仍看不出「为什么好」", n.FullName)
 		}
-		// 三才分与 score_detail 中的三才条目应一致
-		for _, item := range n.ScoreDetail {
-			if item.Name == "三才" && item.Score != n.SancaiScore {
-				t.Errorf("%s 三才分不一致: score=%v sancai_score=%v",
-					n.FullName, item.Score, n.SancaiScore)
+	// 三才分与 score_detail 中的三才条目应一致
+			for _, item := range n.ScoreDetail {
+				if item.Name == "三才" && item.Score != n.SancaiScore {
+					t.Errorf("%s 三才分不一致: score=%v sancai_score=%v",
+						n.FullName, item.Score, n.SancaiScore)
+				}
+			}
+
+			// 加权重现 TotalScore：Σ weight_i × score_i ≈ total_score。
+			// 引擎合成后按 0.1 取整（rater.go:101），容差 0.051；
+			// score_detail 漏维（如历史漏「卦象」10%，差 4~10 分）时守护即红。
+			weights := make(map[string]float64)
+			for _, r := range fate.DefaultRaters() {
+				weights[r.Name()] = r.Weight()
+			}
+			var weighted float64
+			for _, item := range n.ScoreDetail {
+				w, ok := weights[item.Name]
+				if !ok {
+					continue // 未知维度已在上方断言报错
+				}
+				weighted += item.Score * w
+			}
+			if diff := math.Abs(weighted - n.TotalScore); diff > 0.051 {
+				t.Errorf("%s 加权和 %v ≠ TotalScore %v（差 %v），score_detail 存在漏维或分数错位",
+					n.FullName, weighted, n.TotalScore, diff)
 			}
 		}
-	}
 
 	if withDetail != len(names) {
 		t.Errorf("带 score_detail 的名字数 = %d/%d，期望全部", withDetail, len(names))

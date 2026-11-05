@@ -3,7 +3,7 @@
 # verify-quality.sh — 起名链路质量与解析说明「一键验证」
 #
 # 覆盖四道防线（详见 docs/22、docs/28、docs/33）：
-#   ① 单元层（不需服务）：fate 评分正确性 / 评分快照防漂移 / 八维 score_detail 透传
+#   ① 单元层（不需服务）：fate 评分正确性 / 评分快照防漂移 / 九维 score_detail 透传
 #   ② 门禁审计（不需服务）：quality gate 覆盖分析
 #   ②+ 专项维度巡检（不需服务）：dim_audit 四维度已知答案+不变量
 #      （八字/五行/生肖/诗词出典准确性，直接吃真实 domain 逻辑）
@@ -105,7 +105,7 @@ fi
 run_phase "单元: fate 评分/喜用神/来源加分" \
   go -C "$BACKEND_DIR" test ./internal/domain/fate/ -count=1
 
-run_phase "单元: 评分快照防漂移(golden) + 八维依据透传(score_detail)" \
+run_phase "单元: 评分快照防漂移(golden) + 九维依据透传(score_detail)" \
   go -C "$BACKEND_DIR" test ./internal/application/services -run 'TestGoldenNames|TestGenerate_EmitsScoreDetail|TestApplyFateScoreDetail' -count=1
 
 # ---------------------------------------------------------------------------
