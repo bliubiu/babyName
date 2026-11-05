@@ -5,6 +5,23 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.06.2]
+
+**《43-质量审查报告》阶段 1 整改：外键 / 表重建事务 / 覆盖率门禁**
+
+### ✨ New Features 新增功能
+- 【质量门禁】verify-quality.sh 接入 `go vet ./...` 与核心九包覆盖率门禁（P1-8，`e6e5156`）：fate/services/bazi/yijing/ziwei/zodiac/yue/name/namestat 逐包断言 ≥75%（实测 76.1%~94.9% 全过）；CI 两 job 与 pre-push 经脚本自动继承
+
+### 🐛 Bug Fixes 问题修复
+- 【数据库】启用外键约束（P1-5，`92c67d9`）：写连接串追加 `_pragma=foreign_keys(ON)`，孤儿行写入被拒；启用后实测抓到重灌清表序违规（DELETE classics_books 先于 classics_sections → FK 违规），修正 schema 真源中 classics 的 Tables 声明序（子表先删）
+- 【数据库】classics_extracts 四步重建包单事务（P1-6，`47cfa52`）：SQLite DDL 可回滚，中途失败整体回滚、无 `_new` 孤儿表残留；故障注入测试钉住（旧表 char=NULL 行使第二步失败，断言数据完好且无残留）
+
+### 📚 Docs 文档更新
+- 《43-质量审查报告》§〇 补记阶段 1 整改提交与 P1-3 喜用神双口径的方案调研结论（推荐 bazi 层 weighted 算法为权威，待产品口径决策后实施）
+
+### ✅ 验证
+- `go build ./...` / `go vet ./...` / `go test ./... -count=1` 全绿；`SKIP_SERVER=1 verify-quality.sh` 快路径全过（含新门禁阶段）
+
 ## [2026.11.06.1]
 
 **《43-质量审查报告》阶段 0 整改：P0 CI 门禁 + P1 粤语开关/第 9 维卦象/BOM**
