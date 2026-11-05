@@ -13,7 +13,7 @@ import (
 
 	"go.uber.org/zap"
 	"name/internal/domain/hanzi"
-	"name/internal/infrastructure/logger"
+	"name/internal/domain/log"
 )
 
 // ============================================================
@@ -150,7 +150,7 @@ func ensureShiCiLoaded() {
 		return
 	}
 	if !waitShiCiLoaded(ready, shiciLoadTimeout) {
-		logger.Warn("唐诗宋词数据等待超时，本次请求降级为不含诗词共现数据",
+		log.Warn("唐诗宋词数据等待超时，本次请求降级为不含诗词共现数据",
 			zap.Duration("timeout", shiciLoadTimeout))
 	}
 }
@@ -182,13 +182,13 @@ func runShiCiLoad(loader func() error, ready chan struct{}) {
 	defer close(ready)
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Error("唐诗宋词后台加载 panic，已降级为无诗词共现数据",
+			log.Error("唐诗宋词后台加载 panic，已降级为无诗词共现数据",
 				zap.Any("panic", r))
 		}
 	}()
 
 	if err := loader(); err != nil {
-		logger.Error("唐诗宋词后台加载失败", zap.Error(err))
+		log.Error("唐诗宋词后台加载失败", zap.Error(err))
 	}
 }
 
@@ -209,7 +209,7 @@ func loadShiCiAsync(dataDir string) {
 		return loadShiCiFromJSON(dataDir)
 	}, ready)
 
-	logger.Info("唐诗宋词数据已提交后台加载（6.7MB），不阻塞启动")
+	log.Info("唐诗宋词数据已提交后台加载（6.7MB），不阻塞启动")
 }
 
 // ============================================================
@@ -231,7 +231,7 @@ func loadShiJingFromJSON(dataDir string) error {
 
 	extracted := extractFromEntries(toPoemEntries(entries))
 	setExtracted(&ShijingExtracted, extracted)
-	logger.Info("已从诗经提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
+	log.Info("已从诗经提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
 	return nil
 }
 
@@ -250,7 +250,7 @@ func loadChuCiFromJSON(dataDir string) error {
 
 	extracted := extractFromEntries(toPoemEntries(entries))
 	setExtracted(&ChuciExtracted, extracted)
-	logger.Info("已从楚辞提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
+	log.Info("已从楚辞提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
 	return nil
 }
 
@@ -282,7 +282,7 @@ func loadGuWenFromJSON(dataDir string) error {
 
 	extracted := extractFromEntries(entries)
 	setExtracted(&GuwenGuanzhiExtracted, extracted)
-	logger.Info("已从古文观止提取起名用字", zap.Int("articles", len(entries)), zap.Int("chars", len(extracted)))
+	log.Info("已从古文观止提取起名用字", zap.Int("articles", len(entries)), zap.Int("chars", len(extracted)))
 	return nil
 }
 
@@ -301,7 +301,7 @@ func loadShiCiFromJSON(dataDir string) error {
 
 	extracted := extractFromEntries(toPoemEntries(entries))
 	setExtracted(&ShiCiExtracted, extracted)
-	logger.Info("已从唐诗宋词提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
+	log.Info("已从唐诗宋词提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
 	return nil
 }
 
@@ -368,7 +368,7 @@ func loadYuanQuFromJSON(dataDir string) error {
 
 	extracted := extractFromEntries(toPoemEntries(entries))
 	setExtracted(&YuanQuExtracted, extracted)
-	logger.Info("已从元曲提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
+	log.Info("已从元曲提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
 	return nil
 }
 
@@ -387,7 +387,7 @@ func loadYueFuFromJSON(dataDir string) error {
 
 	extracted := extractFromEntries(toPoemEntries(entries))
 	setExtracted(&YueFuExtracted, extracted)
-	logger.Info("已从乐府提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
+	log.Info("已从乐府提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
 	return nil
 }
 
@@ -406,7 +406,7 @@ func loadCiFuFromJSON(dataDir string) error {
 
 	extracted := extractFromEntries(toPoemEntries(entries))
 	setExtracted(&CiFuExtracted, extracted)
-	logger.Info("已从辞赋提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
+	log.Info("已从辞赋提取起名用字", zap.Int("poems", len(entries)), zap.Int("chars", len(extracted)))
 	return nil
 }
 
@@ -456,7 +456,7 @@ func loadQianjiashiFromJSON(dataDir string) error {
 
 	extracted := extractFromEntries(entries)
 	setExtracted(&QianjiashiExtracted, extracted)
-	logger.Info("已从千家诗提取起名用字", zap.Int("sections", len(entries)), zap.Int("chars", len(extracted)))
+	log.Info("已从千家诗提取起名用字", zap.Int("sections", len(entries)), zap.Int("chars", len(extracted)))
 	return nil
 }
 
@@ -526,7 +526,7 @@ func loadClassicFromJSON(dataDir, filename, source string, target *[]PoetryChar)
 		totalSections++
 		totalLines += len(ch.Paragraphs)
 	}
-	logger.Info("已从经典提取起名用字", zap.String("source", source), zap.Int("sections", totalSections), zap.Int("chars", len(extracted)))
+	log.Info("已从经典提取起名用字", zap.String("source", source), zap.Int("sections", totalSections), zap.Int("chars", len(extracted)))
 	return nil
 }
 

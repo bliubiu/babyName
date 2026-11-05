@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
-	"name/internal/infrastructure/logger"
+	"name/internal/domain/log"
 )
 
 // LoadFromJSON 从 JSON 文件加载诗词数据
@@ -20,7 +20,7 @@ func LoadFromJSON(dataDir string) error {
 		return fmt.Errorf("楚辞加载失败: %w", err)
 	}
 	if err := loadGuWenFromJSON(dataDir); err != nil {
-		logger.Warn("古文观止加载跳过", zap.Error(err))
+		log.Warn("古文观止加载跳过", zap.Error(err))
 	}
 
 	// shici.json（6.7MB）→ 后台异步加载，不阻塞 HTTP 启动
@@ -28,18 +28,18 @@ func LoadFromJSON(dataDir string) error {
 
 	// 元曲 / 乐府 / 辞赋：补齐起名字集提取，修复出典加分遗漏（E2）
 	if err := loadYuanQuFromJSON(dataDir); err != nil {
-		logger.Warn("元曲加载跳过", zap.Error(err))
+		log.Warn("元曲加载跳过", zap.Error(err))
 	}
 	if err := loadYueFuFromJSON(dataDir); err != nil {
-		logger.Warn("乐府加载跳过", zap.Error(err))
+		log.Warn("乐府加载跳过", zap.Error(err))
 	}
 	if err := loadCiFuFromJSON(dataDir); err != nil {
-		logger.Warn("辞赋加载跳过", zap.Error(err))
+		log.Warn("辞赋加载跳过", zap.Error(err))
 	}
 
 	// 构建增强的诗词索引（支持从名字反查诗词出处）
 	if err := BuildPoemIndexFromJSON(dataDir); err != nil {
-		logger.Warn("诗词索引构建失败", zap.Error(err))
+		log.Warn("诗词索引构建失败", zap.Error(err))
 	}
 
 	// ===== P2：儒家经典 =====
@@ -60,7 +60,7 @@ func LoadFromJSON(dataDir string) error {
 	loadClassicSafe(dataDir, "zhuzijiaxun.json", "朱子家训", &ZhuzijiaxunExtracted)
 	// 千家诗：paragraphs 含嵌套形态，需专用加载器展平（修复字集静默遗漏）
 	if err := loadQianjiashiFromJSON(dataDir); err != nil {
-		logger.Warn("千家诗加载跳过", zap.Error(err))
+		log.Warn("千家诗加载跳过", zap.Error(err))
 	}
 	loadClassicSafe(dataDir, "wenzimengqiu.json", "文字蒙求", &WenzimengqiuExtracted)
 	loadClassicSafe(dataDir, "baijiaxing.json", "百家姓", &BaijiaxingExtracted)
@@ -71,7 +71,7 @@ func LoadFromJSON(dataDir string) error {
 // loadClassicSafe 安全加载经典文件，失败仅打印警告不中断流程
 func loadClassicSafe(dataDir, filename, name string, target *[]PoetryChar) {
 	if err := loadClassicFromJSON(dataDir, filename, name, target); err != nil {
-		logger.Warn("经典加载跳过", zap.String("name", name), zap.Error(err))
+		log.Warn("经典加载跳过", zap.String("name", name), zap.Error(err))
 	}
 }
 

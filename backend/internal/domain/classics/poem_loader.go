@@ -9,7 +9,7 @@ import (
 	"unicode"
 
 	"go.uber.org/zap"
-	"name/internal/infrastructure/logger"
+	"name/internal/domain/log"
 )
 
 // GlobalPoemIndex 全局诗词索引，启动时构建
@@ -31,22 +31,22 @@ func BuildPoemIndexFromJSON(dataDir string) error {
 
 	// 加载诗经
 	if err := loadShijingToIndex(idx, dataDir); err != nil {
-		logger.Warn("加载诗经到索引失败", zap.Error(err))
+		log.Warn("加载诗经到索引失败", zap.Error(err))
 	}
 
 	// 加载楚辞
 	if err := loadChuciToIndex(idx, dataDir); err != nil {
-		logger.Warn("加载楚辞到索引失败", zap.Error(err))
+		log.Warn("加载楚辞到索引失败", zap.Error(err))
 	}
 
 	// 加载唐诗宋词
 	if err := loadShiciToIndex(idx, dataDir); err != nil {
-		logger.Warn("加载唐诗宋词到索引失败", zap.Error(err))
+		log.Warn("加载唐诗宋词到索引失败", zap.Error(err))
 	}
 
 	// 加载元曲
 	if err := loadYuanquToIndex(idx, dataDir); err != nil {
-		logger.Warn("加载元曲到索引失败", zap.Error(err))
+		log.Warn("加载元曲到索引失败", zap.Error(err))
 	}
 
 	// 设置全局索引
@@ -55,7 +55,7 @@ func BuildPoemIndexFromJSON(dataDir string) error {
 	poemIndexMu.Unlock()
 
 	stats := idx.GetStats()
-	logger.Info("诗词索引构建完成",
+	log.Info("诗词索引构建完成",
 		zap.Int("总条目", stats["total_entries"]),
 		zap.Int("涵盖汉字", stats["total_chars"]),
 		zap.Int("朝代数", stats["dynasties"]),
@@ -97,7 +97,7 @@ func loadShijingToIndex(idx *PoemIndex, dataDir string) error {
 		idx.AddEntry(pe)
 	}
 
-	logger.Info("诗经已加载到索引", zap.Int("条目数", len(entries)))
+	log.Info("诗经已加载到索引", zap.Int("条目数", len(entries)))
 	return nil
 }
 
@@ -135,7 +135,7 @@ func loadChuciToIndex(idx *PoemIndex, dataDir string) error {
 		idx.AddEntry(pe)
 	}
 
-	logger.Info("楚辞已加载到索引", zap.Int("条目数", len(entries)))
+	log.Info("楚辞已加载到索引", zap.Int("条目数", len(entries)))
 	return nil
 }
 
@@ -181,7 +181,7 @@ func loadShiciToIndex(idx *PoemIndex, dataDir string) error {
 		idx.AddEntry(pe)
 	}
 
-	logger.Info("唐诗宋词已加载到索引", zap.Int("条目数", len(entries)))
+	log.Info("唐诗宋词已加载到索引", zap.Int("条目数", len(entries)))
 	return nil
 }
 
@@ -224,7 +224,7 @@ func loadYuanquToIndex(idx *PoemIndex, dataDir string) error {
 		idx.AddEntry(pe)
 	}
 
-	logger.Info("元曲已加载到索引", zap.Int("条目数", len(raw.YuanquYi.GuanHanqing)))
+	log.Info("元曲已加载到索引", zap.Int("条目数", len(raw.YuanquYi.GuanHanqing)))
 	return nil
 }
 

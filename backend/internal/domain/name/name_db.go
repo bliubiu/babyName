@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 	"name/internal/domain/hanzi"
-	"name/internal/infrastructure/logger"
+	"name/internal/domain/log"
 )
 
 // ============================================================
@@ -102,22 +102,22 @@ func NewNameDB(dataDir string, opts ...NameDBOption) (*NameDB, error) {
 func (db *NameDB) Load() error {
 	// 加载精选候选名库（JSON 种子）
 	if err := db.loadCuratedNames(); err != nil {
-		logger.Warn("加载精选候选名库失败", zap.Error(err))
+		log.Warn("加载精选候选名库失败", zap.Error(err))
 	}
 
 	// 从持久化存储加载用户自学习精选名
 	if err := db.loadCuratedFromPersister(); err != nil {
-		logger.Warn("加载自学习精选名失败", zap.Error(err))
+		log.Warn("加载自学习精选名失败", zap.Error(err))
 	}
 
 	// 加载诗云等开源项目精选名字库
 	if err := db.loadShiYunNames(); err != nil {
-		logger.Warn("加载诗云精选名字库失败", zap.Error(err))
+		log.Warn("加载诗云精选名字库失败", zap.Error(err))
 	}
 
 	// 加载标准起名用字
 	if err := db.loadStandardChars(); err != nil {
-		logger.Warn("加载标准起名用字失败", zap.Error(err))
+		log.Warn("加载标准起名用字失败", zap.Error(err))
 	}
 
 	return nil
@@ -190,7 +190,7 @@ func (db *NameDB) loadCuratedNames() error {
 		db.nameIndex[n.Name] = true
 	}
 
-	logger.Info("已加载精选候选名库", zap.Int("count", len(names)))
+	log.Info("已加载精选候选名库", zap.Int("count", len(names)))
 	return nil
 }
 
@@ -228,7 +228,7 @@ func (db *NameDB) loadCuratedFromPersister() error {
 		}
 	}
 	if added > 0 {
-		logger.Info("已合并自学习精选名", zap.Int("added", added))
+		log.Info("已合并自学习精选名", zap.Int("added", added))
 	}
 	return nil
 }
@@ -254,7 +254,7 @@ func (db *NameDB) AddCuratedName(name, pinyin, gender string, score float64, sou
 	if db.persister != nil {
 		go func() {
 			if err := db.persister.SaveCuratedName(name, pinyin, gender, score, source); err != nil {
-				logger.Warn("持久化精选名失败", zap.String("name", name), zap.Error(err))
+				log.Warn("持久化精选名失败", zap.String("name", name), zap.Error(err))
 			}
 		}()
 	}
@@ -284,13 +284,13 @@ func (db *NameDB) loadShiYunNames() error {
 		path := filepath.Join(db.dataDir, name)
 		data, err := os.ReadFile(path)
 		if err != nil {
-			logger.Warn("跳过诗云文件（读取失败）", zap.String("file", name), zap.Error(err))
+			log.Warn("跳过诗云文件（读取失败）", zap.String("file", name), zap.Error(err))
 			continue
 		}
 
 		var nameList []string
 		if err := json.Unmarshal(data, &nameList); err != nil {
-			logger.Warn("跳过诗云文件（JSON解析失败）", zap.String("file", name), zap.Error(err))
+			log.Warn("跳过诗云文件（JSON解析失败）", zap.String("file", name), zap.Error(err))
 			continue
 		}
 
@@ -320,7 +320,7 @@ func (db *NameDB) loadShiYunNames() error {
 	}
 
 	if totalImported > 0 {
-		logger.Info("已加载诗云精选名字库", zap.Int("files", len(allNames)), zap.Int("total_before_dedup", totalImported))
+		log.Info("已加载诗云精选名字库", zap.Int("files", len(allNames)), zap.Int("total_before_dedup", totalImported))
 	}
 	return nil
 }
@@ -358,7 +358,7 @@ func (db *NameDB) loadStandardChars() error {
 		}
 	}
 
-	logger.Info("已加载标准起名用字", zap.Int("radical_groups", len(groups)), zap.Int("chars", len(db.charIndex)))
+	log.Info("已加载标准起名用字", zap.Int("radical_groups", len(groups)), zap.Int("chars", len(db.charIndex)))
 	return nil
 }
 

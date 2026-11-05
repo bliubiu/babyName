@@ -7,6 +7,8 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"name/internal/domain/log"
 )
 
 var (
@@ -274,3 +276,17 @@ func ErrField(err error) Field {
 func Stringer(key string, value fmt.Stringer) Field {
 	return zap.Stringer(key, value)
 }
+
+// ——— 领域日志端口适配（docs/43 P1-9）———
+
+// domainLogger 把本包全局 zap 门面适配为领域日志端口 domain/log.Logger。
+type domainLogger struct{}
+
+func (domainLogger) Debug(msg string, fields ...zap.Field) { Debug(msg, fields...) }
+func (domainLogger) Info(msg string, fields ...zap.Field)  { Info(msg, fields...) }
+func (domainLogger) Warn(msg string, fields ...zap.Field)  { Warn(msg, fields...) }
+func (domainLogger) Error(msg string, fields ...zap.Field) { Error(msg, fields...) }
+
+// AsDomainLogger 返回领域日志端口的实现（组合根在 logger.Init 后注入：
+// log.SetLogger(logger.AsDomainLogger())）。
+func AsDomainLogger() log.Logger { return domainLogger{} }

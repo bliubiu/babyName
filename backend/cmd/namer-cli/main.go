@@ -28,6 +28,7 @@ import (
 
 	"name/internal/application/services"
 	"name/internal/domain/fate"
+	"name/internal/domain/log"
 	"name/internal/domain/name"
 	"name/internal/infrastructure/data"
 	"name/internal/infrastructure/database/sqlite"
@@ -220,6 +221,7 @@ func generate(req *services.GenerateRequest, dataDir string, dbPath string) (*se
 		fmt.Fprintf(os.Stderr, "警告: 日志系统初始化失败(%v)，使用标准输出\n", logErr)
 	}
 	defer logger.Sync()
+	log.SetLogger(logger.AsDomainLogger()) // 领域日志端口注入（docs/43 P1-9）
 
 	// 3. 同步起名分类索引到 fate 层（前置条件）
 	services.SyncNamingIndexFromHanzi()

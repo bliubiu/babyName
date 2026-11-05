@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"name/internal/domain/bazi/tyme"
-	"name/internal/infrastructure/logger"
+	"name/internal/domain/log"
 )
 
 type HolidayType string
@@ -121,7 +121,7 @@ func (hs *HolidayService) GetHoliday(year, month, day int) (*Holiday, error) {
 	var legalHoliday *tyme.LegalHoliday
 	legalHoliday, err = tyme.LegalHoliday{}.FromYmd(year, month, day)
 	if err != nil {
-		logger.Warn("法定节假日解析失败，按非节假日处理",
+		log.Warn("法定节假日解析失败，按非节假日处理",
 			zap.String("date", fmt.Sprintf("%04d-%02d-%02d", year, month, day)), zap.Error(err))
 		legalHoliday = nil
 	}
@@ -222,7 +222,7 @@ func (hs *HolidayService) IsVacationDay(year, month, day int) bool {
 	var legalHoliday *tyme.LegalHoliday
 	legalHoliday, err := tyme.LegalHoliday{}.FromYmd(year, month, day)
 	if err != nil {
-		logger.Warn("法定节假日解析失败，按非节假日处理",
+		log.Warn("法定节假日解析失败，按非节假日处理",
 			zap.String("date", fmt.Sprintf("%04d-%02d-%02d", year, month, day)), zap.Error(err))
 		legalHoliday = nil
 	}
@@ -248,7 +248,7 @@ func (hs *HolidayService) IsWorkDay(year, month, day int) bool {
 	var legalHoliday *tyme.LegalHoliday
 	legalHoliday, err := tyme.LegalHoliday{}.FromYmd(year, month, day)
 	if err != nil {
-		logger.Warn("法定节假日解析失败，按非节假日处理",
+		log.Warn("法定节假日解析失败，按非节假日处理",
 			zap.String("date", fmt.Sprintf("%04d-%02d-%02d", year, month, day)), zap.Error(err))
 		legalHoliday = nil
 	}

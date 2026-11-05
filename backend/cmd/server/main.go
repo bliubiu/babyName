@@ -17,6 +17,7 @@ import (
 	"name/internal/application/handlers"
 	"name/internal/application/services"
 	"name/internal/domain/fate"
+	"name/internal/domain/log"
 	"name/internal/domain/name"
 	"name/internal/infrastructure/config"
 	"name/internal/infrastructure/data"
@@ -135,6 +136,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "警告: 日志系统初始化失败(%v)，使用标准输出\n", err)
 	}
 	defer logger.Sync()
+	// 领域层日志端口注入（docs/43 P1-9）：domain 包统一经 domain/log 门面
+	// 写日志，实现由基础设施适配；未注入时领域日志为 no-op。
+	log.SetLogger(logger.AsDomainLogger())
 
 	// 注册门禁命中审计落地器（docs/33 M3）：命中事件写成结构化日志
 	gateaudit.Install()
