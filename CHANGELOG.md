@@ -5,6 +5,24 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.06.4]
+
+**《43-质量审查报告》P1-9/P1-10 批次：分层越界治理 + 日志脱敏**
+
+### ✨ New Features 新增功能
+- 【架构】领域日志端口 `internal/domain/log`（P1-9，`358b09a`）：bazi/classics/name 五文件 43 处调用仅改 import，no-op 默认 + 组合根注入（cmd/server、cmd/namer-cli），`domain → infrastructure/logger` 越界清零
+- 【架构】门禁 kind 枚举下沉 fate（P1-9，`c3269e2`）：AllowKind*/RedlineKind* 由 materials/schema 移入 `fate/kinds.go`，schema 不再定义领域枚举
+
+### 🐛 Bug Fixes 问题修复
+- 【安全】访问日志脱敏（P1-10，`2a82ce4`）：RawQuery 敏感键打码（password/token/secret/key/phone/mobile/idcard）+ rune 截断 256；c.Errors/panic 值截断；畸形查询串零 panic
+- 【安全】Explore 接口服务层错误不再直传客户端（P1-10，`2a82ce4`）：抽通用受控出口 `writeServiceError`（超时→503 / AppError→受控消息 / 其余→500 固定文案）
+
+### 📚 Docs 文档更新
+- 报告 §〇 补记本批三项提交与三条甄别/豁免记录（normalize 复用为刻意设计、report_service→pdf 属 application→infra 合法方向、10 处 validator 回传为受控文案）
+
+### ✅ 验证
+- `go build ./...` / `go vet ./...` / `go test ./... -count=1` 全绿
+
 ## [2026.11.06.3]
 
 **《43-质量审查报告》阶段 1 收尾：喜用神收敛单一真源（P1-3）**
