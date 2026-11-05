@@ -100,6 +100,12 @@ if ! command -v curl >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
+# 0.5 静态检查（不需服务）：go vet 全量
+#     docs/43 P1-8：此前 vet 仅手工执行，门禁未覆盖。
+# ---------------------------------------------------------------------------
+run_phase "静态检查: go vet ./..." go -C "$BACKEND_DIR" vet ./...
+
+# ---------------------------------------------------------------------------
 # 1. 单元层（不需服务）
 # ---------------------------------------------------------------------------
 run_phase "单元: fate 评分/喜用神/来源加分" \
@@ -120,6 +126,53 @@ run_phase "门禁审计: gate_audit -static-only" \
 # ---------------------------------------------------------------------------
 run_phase "专项维度巡检: dim_audit（八字/五行/生肖/诗词）" \
   go -C "$BACKEND_DIR" run ./tools/dim_audit -data "$DATA_DIR"
+
+# ---------------------------------------------------------------------------
+# 2++. 覆盖率门禁（不需服务）：核心命理/评分/应用包覆盖率不低于统一基线
+#     AGENTS.md 的 100% 为远期目标；首期基线取实测最低核心包（fate 76.1%）
+#     取整为 75%，避免 CI 首跑即红（docs/43 P1-8）；后续按「基线 +1~2pp」
+#     逐步上调。hanzi/classics（56~58%）暂缓纳入，补测后加回名单。
+#     可用 COVERAGE_MIN 环境变量临时调整。
+# ---------------------------------------------------------------------------
+COVERAGE_MIN="${COVERAGE_MIN:-75}"
+COVERAGE_PKGS=(
+  internal/domain/fate
+  internal/application/services
+  internal/domain/bazi
+  internal/domain/yijing
+  internal/domain/ziwei
+  internal/domain/zodiac
+  internal/domain/yue
+  internal/domain/name
+  internal/domain/namestat
+)
+
+coverage_gate() {
+  local failed=0
+  for pkg in "${COVERAGE_PKGS[@]}"; do
+    local out
+    if ! out=$(go -C "$BACKEND_DIR" test "./$pkg" -count=1 -cover 2>&1); then
+      fail "覆盖率门禁: $pkg 测试失败"
+      failed=1
+      continue
+    fi
+    local cov
+    cov=$(printf '%s' "$out" | grep -oE 'coverage: [0-9.]+%' | grep -oE '[0-9.]+')
+    if [ -z "$cov" ]; then
+      fail "覆盖率门禁: $pkg 未能解析覆盖率输出"
+      failed=1
+      continue
+    fi
+    if awk -v c="$cov" -v m="$COVERAGE_MIN" 'BEGIN{exit (c>=m)?0:1}'; then
+      pass "覆盖率门禁: $pkg = ${cov}% ≥ ${COVERAGE_MIN}%"
+    else
+      fail "覆盖率门禁: $pkg = ${cov}% < ${COVERAGE_MIN}%（需补测）"
+      failed=1
+    fi
+  done
+  return "$failed"
+}
+run_phase "覆盖率门禁: 核心九包 ≥ ${COVERAGE_MIN}%" coverage_gate
 
 # ---------------------------------------------------------------------------
 # 3. 端到端（需服务）
