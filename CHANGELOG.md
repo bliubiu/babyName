@@ -5,6 +5,26 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.06.3]
+
+**《43-质量审查报告》阶段 1 收尾：喜用神收敛单一真源（P1-3）**
+
+### ⚠️ Breaking Changes 破坏性变更
+- 【评分口径】喜用神/强弱/忌仇收敛到 bazi weighted 算法为唯一权威，`WuxingRater` 的评分输入口径变更 → **部分名字综合分与 golden 快照发生变化**（实测名单与排名不变、仅分数调整，如王清 73.2→75.1）；golden 基线已按 `UPDATE_GOLDEN=1` 机制重建并逐条核对
+
+### ✨ New Features 新增功能
+- 【命理层】bazi 新增 `DeriveJiChou`（扶抑法推导忌/仇）：身旺忌比劫仇印、身弱忌官杀仇财、身中中性；weighted 算法补齐四神产出，命理层一次性决策、字象层纯消费
+
+### 🐛 Bug Fixes 问题修复
+- 【喜用神双口径】`BaziAnalyzerAdapter.Analyze` 不再调用 `fate.BalanceXiYongJi`（total/2 简单多数判强弱）与 bazi weighted（40/28/18 阈值）混装——此前同一响应内喜用神与强弱栏可能自相矛盾，且旧 fallback 错把 `Xiyongshen[1]`（喜神）当忌神；收敛后 `/generate`、`/generate/analysis`、测名三链路与响应展示全部同源（`fate.BalanceXiYongJi` 标记 Deprecated 仅供对照）
+- 一致性守护测试钉住：适配器产出的喜用神列表/用神/强弱/忌仇与直接调 bazi 权威源逐项相等
+
+### 📚 Docs 文档更新
+- 《43-质量审查报告》§〇 补记 P1-3 实施结论；阶段 1 的 P1 全部闭环（P1-9 端口化、P1-10 日志脱敏除外，另行排期）
+
+### ✅ 验证
+- `go build ./...` / `go vet ./...` / `go test ./... -count=1` 全绿；golden 快照重建后全过；`SKIP_SERVER=1 verify-quality.sh` 快路径全过
+
 ## [2026.11.06.2]
 
 **《43-质量审查报告》阶段 1 整改：外键 / 表重建事务 / 覆盖率门禁**
