@@ -130,8 +130,11 @@ var Definitions = []Definition{
 	{
 		Name: ClassicsMaterial, Source: "shijing.json", Files: ClassicsFiles,
 		DependsOn: []string{NamerMaterial},
+		// 表序即导入事务的清表序（runImport 按 Tables 逐表 DELETE）：
+		// 子表 classics_sections 经外键引用 classics_books（docs/43 P1-5 启用
+		// foreign_keys），必须先删子表再删父表，否则重灌时 FK 违规。
 		Tables: []string{
-			"classics_books", "classics_sections",
+			"classics_sections", "classics_books",
 			"classics_extracts", "classics_poem_entries",
 		},
 		Required: false,

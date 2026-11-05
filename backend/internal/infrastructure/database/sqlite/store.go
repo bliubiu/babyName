@@ -31,7 +31,10 @@ func NewStore(dbPath string, dataDir string) (*Store, error) {
 	// busy_timeout=5000：modernc.org/sqlite 默认 0——WAL checkpoint、
 	// 外部工具（备份/导入）持锁瞬间，读写路径会直接抛 "database is locked"
 	// 而不是等待；给 5 秒重试窗口（docs/28 W5 审计结论）。
-	writeDB, err := sql.Open("sqlite", dbPath+"?_txlock=immediate&_pragma=busy_timeout(5000)")
+	// foreign_keys(ON)：启用 name_feedback.request_id / classics_sections.book_id
+	// 声明的外键约束（SQLite 默认关闭，声明形同虚设，docs/43 P1-5）；
+	// 连接串参数在每连接建立时执行，不依赖调用顺序。读连接 mode=ro 无写路径，无需启用。
+	writeDB, err := sql.Open("sqlite", dbPath+"?_txlock=immediate&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite write connection: %w", err)
 	}
