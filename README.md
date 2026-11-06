@@ -27,7 +27,7 @@
 
 | 层级     | 技术                                     |
 | -------- | ---------------------------------------- |
-| 前端     | Next.js 14 + React 18 + TypeScript       |
+| 前端     | Next.js 16.2+ + React 19.2+ + TypeScript 7.0+ |
 | 样式     | Tailwind CSS                             |
 | 状态管理 | Zustand                                  |
 | 图表库   | ECharts                                  |
@@ -112,25 +112,26 @@ cd backend
 **参数选项：**
 
 ```bash
--port 8080        # 指定端口（默认8080）
--host localhost   # 指定主机（默认localhost）
--mode all         # 运行模式：backend 或 all
--db memory        # 数据库类型：memory（默认，重启后数据丢失）
--db sqlite        # 数据库类型：sqlite（推荐，数据持久化）
--dsn name.db # SQLite 数据库文件路径（配合 -db sqlite 使用）
+-port 8080            # 指定端口（默认取配置文件 application.yml）
+-host localhost       # 指定主机
+-mode all             # 运行模式：backend 或 all（覆盖配置文件）
+-static ./frontend/out  # 静态文件目录（覆盖配置文件）
+-log ./logs           # 日志目录（namer-YYYYMMDD.log 按天轮转）
+-db ./namer.db        # SQLite 数据库文件路径（不传走配置文件）
+-rate-capacity 100    # 令牌桶限流容量（覆盖配置文件）
 ```
 
 **示例：**
 
 ```bash
 # 使用 SQLite 持久化存储（推荐）
-.\namer.exe -mode all -db sqlite -dsn name.db
+.\namer.exe -mode all -db .\namer.db
 
 # 使用端口8083
 .\namer.exe -mode all -port 8083
 
 # 使用端口8084 + SQLite
-.\namer.exe -mode all -db sqlite -port 8084
+.\namer.exe -mode all -db .\namer.db -port 8084
 ```
 
 ### 方式二：前后端分离
@@ -371,7 +372,7 @@ go build -o namer.exe ./cmd/server/
 .\scripts\build.ps1
 
 # 启动 SQLite 模式（数据持久化，重启不丢失）
-.\namer.exe -mode all -db sqlite -dsn name.db
+.\namer.exe -mode all -db .\namer.db
 ```
 
 运行时数据从二进制同级的 `data/` 目录加载（汉字库、人名频率、命名质量门禁字表、经典文献等）。

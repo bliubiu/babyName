@@ -66,13 +66,11 @@ func LoadFromJSON(dataDir string) error {
 	//     不删除本轮新增的键），失败后会残留半截数据。
 	newData := make(map[string]Hanzi, len(jsonList))
 	for _, jh := range jsonList {
-		// 五行判定优先级：覆盖表(字义法) > 部首映射(字形法) > JSON原始值(兜底)
-		wuxing := jh.Wuxing
-		if overrideWx, ok := CharacterWuxingOverride[jh.Char]; ok {
-			wuxing = overrideWx
-		} else if radWx := GetWuxingByRadical(jh.Radical); radWx != "" {
-			wuxing = radWx
-		}
+		// 五行判定统一走 ResolveWuxing 单一真源（docs/43 P2-3）：
+		// 覆盖表(字义法) > JSON 人工校正值 > 部首映射(字形法)。
+		// 此前此处内联「覆盖表 > 部首 > JSON 原值」，人工校正会被部首覆盖丢失，
+		// 且与 ApplyWuxingOverrides（ResolveWuxing 批量应用）口径相反。
+		wuxing := ResolveWuxing(jh.Char, jh.Wuxing, jh.Radical)
 
 		// 起名分类：优先使用 JSON 自带的标注，否则自动分类
 		namingCats := jh.NamingCategories

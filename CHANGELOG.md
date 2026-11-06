@@ -131,6 +131,19 @@
 - 本轮为只读审查，未改动生产代码；`go build ./...` / `go vet ./...` / `go test ./... -count=1` 实测退出码均为 0
 - 覆盖率总览因本机 Go 工具链缺 `covdata` 且 sqlite 包含 UTF-8 BOM 未能产出，已在报告中显式降级说明
 
+## [2026.11.01.6]
+
+**卦象出口收尾：测名页卦象接线、64卦四象限解读上 API、小象传/逐爻经文展示**
+
+### ✨ New Features 新增功能
+- 【测名·卦象接线】`EvaluateResponse` 新增 `hexagram`/`hexagram_interpretation`/`tiyong`，`Name` 挂 `hexagram_detail`（与 /generate names[] 同构）；前端测名页渲染经文卡（HexagramDisplay）与本/互/变三卦详解（HexagramDetailDisplay），与结果页同构——docs/42 P2-10 的 evaluate 偏差就此收尾（此前测名页完全没有卦象区）
+- 【易经·四象限解读出口】`GenerateResponse`/`GenerateWithAnalysisResponse` 新增 `hexagram_interpretation`：64 卦差异化解读（InterpretHexagram，P1-⑦）正式接线到 generate/analysis/evaluate 三路响应，前端 HexagramDisplay 以事业/感情/健康/财运四卡 + 宜忌渲染
+- 【易经·逐爻经文】HexagramDisplay 新增「逐爻经文」折叠区：逐爻展示爻名（初九/六二…，动爻朱色标注）+ 爻辞 + 《象》曰小象传（P1-⑤ 结构化数据此前无前端出口）
+
+### ✅ 验证
+- 后端 services 全绿（新增 buildResponse 四象限接线、Evaluate e2e 卦象接线 2 例；golden 快照在并行会话重建基线后与本轮改动共存通过）
+- 前端 vitest 115 例全绿（新增 HexagramDisplay 组件测试 5 例：卦序卦名/上下卦卦德/彖传/四象限/逐爻折叠）；lint 0 错误；build 通过
+
 ## [2026.11.01.5]
 
 **物料管线：入库源清单单一真源化 + word.json 退场（docs/40）**
@@ -163,19 +176,6 @@
 
 ### ✅ 验证
 - fate 包全绿（新增 6 组用例：映射纯函数/未知关系回落/降级链/真实起卦+缓存一致性/skipDetail 分值不变/九维权和与卦象 10%）；golden 快照因评分体系变更预期漂移（如 male-2024-spring-single 首位「王春」74.1→「王正」75.8），`UPDATE_GOLDEN=1` 重建后复跑稳定（services ok 25.8s）；ziwei 对拍、namer-cli 单跑通过（全量并发下的连带超时，非回归）
-
-## [2026.11.01.4]
-
-**卦象出口收尾：测名页卦象接线、64卦四象限解读上 API、小象传/逐爻经文展示**
-
-### ✨ New Features 新增功能
-- 【测名·卦象接线】`EvaluateResponse` 新增 `hexagram`/`hexagram_interpretation`/`tiyong`，`Name` 挂 `hexagram_detail`（与 /generate names[] 同构）；前端测名页渲染经文卡（HexagramDisplay）与本/互/变三卦详解（HexagramDetailDisplay），与结果页同构——docs/42 P2-10 的 evaluate 偏差就此收尾（此前测名页完全没有卦象区）
-- 【易经·四象限解读出口】`GenerateResponse`/`GenerateWithAnalysisResponse` 新增 `hexagram_interpretation`：64 卦差异化解读（InterpretHexagram，P1-⑦）正式接线到 generate/analysis/evaluate 三路响应，前端 HexagramDisplay 以事业/感情/健康/财运四卡 + 宜忌渲染
-- 【易经·逐爻经文】HexagramDisplay 新增「逐爻经文」折叠区：逐爻展示爻名（初九/六二…，动爻朱色标注）+ 爻辞 + 《象》曰小象传（P1-⑤ 结构化数据此前无前端出口）
-
-### ✅ 验证
-- 后端 services 全绿（新增 buildResponse 四象限接线、Evaluate e2e 卦象接线 2 例；golden 快照在并行会话重建基线后与本轮改动共存通过）
-- 前端 vitest 115 例全绿（新增 HexagramDisplay 组件测试 5 例：卦序卦名/上下卦卦德/彖传/四象限/逐爻折叠）；lint 0 错误；build 通过
 
 ## [2026.11.01.2] 与 [2026.11.01.3]
 
