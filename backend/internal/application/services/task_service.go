@@ -119,7 +119,7 @@ func (ts *TaskService) Submit(req *GenerateRequest) (string, error) {
 	select {
 	case ts.running <- struct{}{}:
 	default:
-		logger.Warn("GenerateTask: rejected, too many running tasks",
+		logger.Warn("异步生成：运行中任务过多，拒绝提交",
 			zap.Int("running", len(ts.running)),
 			zap.Int("limit", taskMaxRunning),
 		)
@@ -228,7 +228,7 @@ func (ts *TaskService) run(ctx context.Context, id string, task *GenerateTask, r
 			task.status = TaskStatusFailed
 			task.errMsg = "生成过程异常，请稍后重试"
 			task.mu.Unlock()
-			logger.Error("GenerateTask: panic", zap.String("task_id", id), zap.Any("panic", r))
+			logger.Error("异步生成：panic 已恢复", zap.String("task_id", id), zap.Any("panic", r))
 		}
 	}()
 
@@ -253,7 +253,7 @@ func (ts *TaskService) run(ctx context.Context, id string, task *GenerateTask, r
 	// 已被淘汰：不要回填结果。GenerateResponse 持有完整候选与解析结果，
 	// 给一个查不到的任务留着它纯属浪费内存。
 	if task.evicted {
-		logger.Info("GenerateTask: canceled by eviction", zap.String("task_id", id))
+		logger.Info("异步生成：任务因淘汰被取消", zap.String("task_id", id))
 		return
 	}
 
@@ -264,7 +264,7 @@ func (ts *TaskService) run(ctx context.Context, id string, task *GenerateTask, r
 		} else {
 			task.errMsg = "名字生成失败，请调整筛选条件或稍后重试"
 		}
-		logger.Warn("GenerateTask: failed",
+		logger.Warn("异步生成：任务失败",
 			zap.String("task_id", id),
 			zap.String("surname", req.Surname),
 			zap.Error(err),
@@ -275,7 +275,7 @@ func (ts *TaskService) run(ctx context.Context, id string, task *GenerateTask, r
 	task.stage = "完成"
 	task.percent = 100
 	task.result = result
-	logger.Info("GenerateTask: success",
+	logger.Info("异步生成：任务完成",
 		zap.String("task_id", id),
 		zap.String("surname", req.Surname),
 		zap.Int("count", len(result.Names)),

@@ -146,7 +146,7 @@ func (s *NameService) Evaluate(ctx context.Context, req *EvaluateRequest) (*Eval
 		}
 	}
 
-	logger.Info("Evaluate: completed",
+	logger.Info("测名完成",
 		zap.String("full_name", n.FullName),
 		zap.Float64("total", score.Total),
 		zap.Int("risk_items", len(risks)),

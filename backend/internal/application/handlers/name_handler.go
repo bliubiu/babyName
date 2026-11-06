@@ -35,7 +35,7 @@ func writeGenerateError(c *gin.Context, err error, scope string) {
 // 超时→503、业务 AppError→受控消息、其余→500 固定兜底文案。
 // 内部错误细节（err.Error()）只落服务端日志，绝不回传客户端。
 func writeServiceError(c *gin.Context, err error, scope, fallbackMsg string) {
-	logger.Error(scope+": failed", zap.Error(err))
+	logger.Error(scope+"：失败", zap.Error(err))
 	if stderrors.Is(err, context.DeadlineExceeded) {
 		response.ErrorJSON(c, 503, "请求超时，请稍后重试")
 		return
@@ -62,7 +62,7 @@ func NewNameHandler(service services.NameServiceInterface) *NameHandler {
 func (h *NameHandler) validateGenerateRequest(c *gin.Context) (*services.GenerateRequest, bool) {
 	var req services.GenerateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Warn("NameHandler: invalid request", zap.Error(err))
+		logger.Warn("姓名服务：请求解析失败", zap.Error(err))
 		response.ErrorJSON(c, 400, "请求参数格式错误")
 		return nil, false
 	}
@@ -71,25 +71,25 @@ func (h *NameHandler) validateGenerateRequest(c *gin.Context) (*services.Generat
 	req.Surname = strings.TrimSpace(req.Surname)
 
 	if err := validator.ValidateSurname(req.Surname); err != nil {
-		logger.Warn("NameHandler: invalid surname", zap.Error(err), zap.String("surname", req.Surname))
+		logger.Warn("姓名服务：姓氏非法", zap.Error(err), zap.String("surname", req.Surname))
 		response.ErrorJSON(c, 400, err.Error())
 		return nil, false
 	}
 
 	if err := validator.ValidateGender(req.Gender); err != nil {
-		logger.Warn("NameHandler: invalid gender", zap.Error(err))
+		logger.Warn("姓名服务：性别非法", zap.Error(err))
 		response.ErrorJSON(c, 400, err.Error())
 		return nil, false
 	}
 
 	if err := validator.ValidateDate(req.BirthYear, req.BirthMonth, req.BirthDay); err != nil {
-		logger.Warn("NameHandler: invalid date", zap.Error(err))
+		logger.Warn("姓名服务：日期非法", zap.Error(err))
 		response.ErrorJSON(c, 400, err.Error())
 		return nil, false
 	}
 
 	if err := validator.ValidateTime(req.BirthHour, req.BirthMinute); err != nil {
-		logger.Warn("NameHandler: invalid time", zap.Error(err))
+		logger.Warn("姓名服务：时辰非法", zap.Error(err))
 		response.ErrorJSON(c, 400, err.Error())
 		return nil, false
 	}
@@ -104,7 +104,7 @@ func (h *NameHandler) Generate(c *gin.Context) {
 		return
 	}
 
-	logger.Info("Generate: creating names",
+	logger.Info("开始生成名字",
 		zap.String("surname", req.Surname),
 		zap.String("gender", req.Gender),
 	)
@@ -121,7 +121,7 @@ func (h *NameHandler) Generate(c *gin.Context) {
 func (h *NameHandler) Evaluate(c *gin.Context) {
 	var req services.EvaluateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Warn("Evaluate: invalid request", zap.Error(err))
+		logger.Warn("测名：请求解析失败", zap.Error(err))
 		response.ErrorJSON(c, 400, "请求参数格式错误")
 		return
 	}
@@ -146,7 +146,7 @@ func (h *NameHandler) Evaluate(c *gin.Context) {
 		return
 	}
 
-	logger.Info("Evaluate: start",
+	logger.Info("开始测名",
 		zap.String("full_name", req.Surname+req.GivenName),
 		zap.String("gender", req.Gender),
 	)

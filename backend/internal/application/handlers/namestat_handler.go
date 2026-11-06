@@ -29,7 +29,7 @@ func NewNameStatHandler() *NameStatHandler {
 // @Router /namestat/{name} [get]
 func (h *NameStatHandler) GetNameStats(c *gin.Context) {
 	name := c.Param("name")
-	logger.Info("GetNameStats called", zap.String("name", name))
+	logger.Info("名字统计查询", zap.String("name", name))
 	stats := namestat.GetNameStats(name)
 	response.SuccessJSON(c, stats)
 }
@@ -58,7 +58,7 @@ func (h *NameStatHandler) GetTopNames(c *gin.Context) {
 		kind = "all"
 	}
 
-	logger.Info("GetTopNames called", zap.Int("limit", limit), zap.String("kind", kind))
+	logger.Info("榜单查询", zap.Int("limit", limit), zap.String("kind", kind))
 	stats := namestat.GetTopNames(limit, kind)
 	response.SuccessJSON(c, stats)
 }

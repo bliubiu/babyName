@@ -54,7 +54,7 @@ func (h *HuangliHandler) GetHuangli(c *gin.Context) {
 		return
 	}
 
-	logger.Info("GetHuangli called", zap.Int("year", year), zap.Int("month", month), zap.Int("day", day))
+	logger.Info("黄历查询", zap.Int("year", year), zap.Int("month", month), zap.Int("day", day))
 
 	// 真实日历校验：2024-02-30 这类「格式合法但不存在」的日期会让
 	// tyme.SolarDay{}.FromYmd 返回 nil，下游直接 nil 解引用（docs/29 A2）
@@ -66,7 +66,7 @@ func (h *HuangliHandler) GetHuangli(c *gin.Context) {
 	// 捕获可能的 panic
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Error("GetHuangli panicked", zap.Any("recover", r))
+			logger.Error("黄历查询 panic 已恢复", zap.Any("recover", r))
 			response.ErrorJSON(c, 500, "获取黄历信息失败，请稍后重试")
 			return
 		}
@@ -79,7 +79,7 @@ func (h *HuangliHandler) GetHuangli(c *gin.Context) {
 		return
 	}
 
-	logger.Debug("Huangli data generated",
+	logger.Debug("黄历数据已生成",
 		zap.String("year", huangli.Year),
 		zap.String("month", huangli.Month),
 		zap.String("day", huangli.Day),
@@ -154,7 +154,7 @@ func (h *HuangliHandler) GetLunarCalendar(c *gin.Context) {
 		return
 	}
 
-	logger.Info("GetLunarCalendar called", zap.Int("year", year), zap.Int("month", month), zap.Int("day", day), zap.Int("hour", hour), zap.Int("minute", minute))
+	logger.Info("农历查询", zap.Int("year", year), zap.Int("month", month), zap.Int("day", day), zap.Int("hour", hour), zap.Int("minute", minute))
 	lunar := bazi.GetLunarCalendar(year, month, day, hour, minute)
 	if lunar == nil {
 		// 领域层对不存在的日期返回 nil（如 1900 前的年份超出 tyme 支持）
@@ -163,7 +163,7 @@ func (h *HuangliHandler) GetLunarCalendar(c *gin.Context) {
 	}
 
 	// 调试日志：输出农历数据详情
-	logger.Debug("Lunar calendar data generated",
+	logger.Debug("农历数据已生成",
 		zap.String("yearGan", lunar.YearGan),
 		zap.String("yearZhi", lunar.YearZhi),
 		zap.String("monthGan", lunar.MonthGan),
@@ -215,7 +215,7 @@ func (h *HuangliHandler) GetLunarMonthCalendar(c *gin.Context) {
 		return
 	}
 
-	logger.Info("GetLunarMonthCalendar called", zap.Int("year", year), zap.Int("month", month), zap.Int("days", len(calendar)))
+	logger.Info("农历月历查询", zap.Int("year", year), zap.Int("month", month), zap.Int("days", len(calendar)))
 	response.SuccessJSON(c, gin.H{
 		"year":  year,
 		"month": month,

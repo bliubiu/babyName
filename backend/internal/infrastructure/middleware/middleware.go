@@ -47,11 +47,11 @@ func ZapLogger() gin.HandlerFunc {
 		}
 
 		if c.Writer.Status() >= 500 {
-			logger.Error("Server Error", fields...)
+			logger.Error("服务端错误", fields...)
 		} else if c.Writer.Status() >= 400 {
-			logger.Warn("Client Error", fields...)
+			logger.Warn("客户端错误", fields...)
 		} else {
-			logger.Info("Request", fields...)
+			logger.Info("请求完成", fields...)
 		}
 	}
 }
@@ -66,7 +66,7 @@ func ZapRecovery() gin.HandlerFunc {
 					logger.String("ip", c.ClientIP()),
 					logger.String("error", truncateString(fmt.Sprint(err), maxLogFieldRunes)),
 				}
-				logger.Error("Panic Recovered", fields...)
+				logger.Error("panic 已恢复", fields...)
 				c.AbortWithStatusJSON(500, gin.H{
 					"code":    500,
 					"success": false,
@@ -352,7 +352,7 @@ func IPRateLimitWithLimiter(capacity, rate float64) (gin.HandlerFunc, *IPRateLim
 	handler := func(c *gin.Context) {
 		ip := c.ClientIP()
 		if !limiter.GetLimiter(ip).Allow() {
-			logger.Warn("IP rate limit exceeded",
+			logger.Warn("IP 限流触发",
 				logger.String("ip", ip),
 				logger.String("path", c.Request.URL.Path),
 			)
@@ -412,7 +412,7 @@ func RequestTimeout(timeout time.Duration) gin.HandlerFunc {
 		// 处理链已返回。若因 deadline 到期而提前退出、且没有任何响应写出，
 		// 补一个 503——此时仍处于 gin 的串行流程内，写响应是安全的。
 		if ctx.Err() == context.DeadlineExceeded && !c.Writer.Written() {
-			logger.Warn("Request timeout",
+			logger.Warn("请求超时",
 				logger.String("method", c.Request.Method),
 				logger.String("path", c.Request.URL.Path),
 				logger.Duration("timeout", timeout),

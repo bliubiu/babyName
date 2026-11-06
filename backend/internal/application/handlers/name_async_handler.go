@@ -34,14 +34,14 @@ func (h *NameAsyncHandler) GenerateAsync(c *gin.Context) {
 	taskID, err := h.tasks.Submit(req)
 	if err != nil {
 		// 并发任务已满：这是「稍后重试」而非服务端故障，用 503 而非 500
-		logger.Warn("GenerateAsync: submit rejected",
+		logger.Warn("异步生成：提交被拒",
 			zap.String("surname", req.Surname),
 			zap.Error(err),
 		)
 		response.ErrorJSON(c, 503, "当前生成任务过多，请稍后重试")
 		return
 	}
-	logger.Info("GenerateAsync: task submitted",
+	logger.Info("异步生成：任务已提交",
 		zap.String("task_id", taskID),
 		zap.String("surname", req.Surname),
 	)

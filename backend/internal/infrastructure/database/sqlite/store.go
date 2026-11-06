@@ -70,7 +70,7 @@ func NewStore(dbPath string, dataDir string) (*Store, error) {
 	// 验证 WAL 模式是否生效
 	var journalMode string
 	if err := writeDB.QueryRow("PRAGMA journal_mode").Scan(&journalMode); err != nil || journalMode != "wal" {
-		logger.Warn("sqlite: WAL mode may not be enabled", logger.String("journal_mode", journalMode))
+		logger.Warn("sqlite: WAL 模式可能未生效", logger.String("journal_mode", journalMode))
 	}
 
 	// 读连接池：WAL 模式下读不阻塞写，可并发
@@ -371,7 +371,7 @@ func (s *Store) SaveHistory(record *database.HistoryRecord) string {
 		record.BirthTime, record.BirthLocation, record.Results, record.CreatedAt,
 	)
 	if err != nil {
-		logger.Error("sqlite: SaveHistory failed", logger.ErrField(err))
+		logger.Error("sqlite: 保存历史失败", logger.ErrField(err))
 		// 失败时返回空字符串，让上层感知错误
 		return ""
 	}
@@ -386,7 +386,7 @@ func (s *Store) BatchSaveHistory(records []*database.HistoryRecord) []string {
 	ids := make([]string, len(records))
 	tx, err := s.writeDB.Begin()
 	if err != nil {
-		logger.Error("sqlite: BatchSaveHistory begin tx failed", logger.ErrField(err))
+		logger.Error("sqlite: 批量保存历史：开启事务失败", logger.ErrField(err))
 		return ids
 	}
 
@@ -399,7 +399,7 @@ func (s *Store) BatchSaveHistory(records []*database.HistoryRecord) []string {
 		 WHERE history.session_id = excluded.session_id`,
 	)
 	if err != nil {
-		logger.Error("sqlite: BatchSaveHistory prepare failed", logger.ErrField(err))
+		logger.Error("sqlite: 批量保存历史：预编译失败", logger.ErrField(err))
 		_ = tx.Rollback()
 		return ids
 	}
@@ -415,7 +415,7 @@ func (s *Store) BatchSaveHistory(records []*database.HistoryRecord) []string {
 		res, err := stmt.Exec(record.ID, record.SessionID, record.Surname, record.Gender, record.BirthDate,
 			record.BirthTime, record.BirthLocation, record.Results, record.CreatedAt)
 		if err != nil {
-			logger.Error("sqlite: BatchSaveHistory exec failed", logger.ErrField(err))
+			logger.Error("sqlite: 批量保存历史：执行失败", logger.ErrField(err))
 			failedIndexes = append(failedIndexes, i)
 			continue
 		}
@@ -428,7 +428,7 @@ func (s *Store) BatchSaveHistory(records []*database.HistoryRecord) []string {
 	_ = stmt.Close()
 
 	if err := tx.Commit(); err != nil {
-		logger.Error("sqlite: BatchSaveHistory commit failed", logger.ErrField(err))
+		logger.Error("sqlite: 批量保存历史：提交失败", logger.ErrField(err))
 		return ids
 	}
 
@@ -455,7 +455,7 @@ func (s *Store) GetHistoryPageWithLimit(sessionID string, page, limit int) []*da
 	offset := (page - 1) * limit
 	rows, err := s.db.Query(`SELECT id, surname, gender, birth_date, birth_time, birth_location, results, created_at FROM history WHERE session_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, sessionID, limit, offset)
 	if err != nil {
-		logger.Error("sqlite: GetHistoryPageWithLimit failed", logger.ErrField(err))
+		logger.Error("sqlite: 分页查询历史失败", logger.ErrField(err))
 		return nil
 	}
 	defer rows.Close()
@@ -464,7 +464,7 @@ func (s *Store) GetHistoryPageWithLimit(sessionID string, page, limit int) []*da
 	for rows.Next() {
 		var r database.HistoryRecord
 		if err := rows.Scan(&r.ID, &r.Surname, &r.Gender, &r.BirthDate, &r.BirthTime, &r.BirthLocation, &r.Results, &r.CreatedAt); err != nil {
-			logger.Error("sqlite: GetHistoryPageWithLimit scan failed", logger.ErrField(err))
+			logger.Error("sqlite: 分页查询历史：扫描失败", logger.ErrField(err))
 			continue
 		}
 		r.SessionID = sessionID
@@ -472,7 +472,7 @@ func (s *Store) GetHistoryPageWithLimit(sessionID string, page, limit int) []*da
 	}
 	if err := rows.Err(); err != nil {
 		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
-		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+		logger.Error("sqlite: 遍历结果集中途失败", logger.ErrField(err))
 	}
 
 	return records
@@ -495,7 +495,7 @@ func (s *Store) GetHistoryPage(sessionID string, page, limit int) ([]*database.H
 	for rows.Next() {
 		var r database.HistoryRecord
 		if err := rows.Scan(&r.ID, &r.Surname, &r.Gender, &r.BirthDate, &r.BirthTime, &r.BirthLocation, &r.Results, &r.CreatedAt); err != nil {
-			logger.Error("sqlite: GetHistoryPage scan failed", logger.ErrField(err))
+			logger.Error("sqlite: 查询历史：扫描失败", logger.ErrField(err))
 			continue
 		}
 		r.SessionID = sessionID
@@ -503,7 +503,7 @@ func (s *Store) GetHistoryPage(sessionID string, page, limit int) ([]*database.H
 	}
 	if err := rows.Err(); err != nil {
 		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
-		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+		logger.Error("sqlite: 遍历结果集中途失败", logger.ErrField(err))
 	}
 
 	return records, total, nil
@@ -517,7 +517,7 @@ func (s *Store) GetHistoryByID(sessionID, id string) *database.HistoryRecord {
 		if err == sql.ErrNoRows {
 			return nil
 		}
-		logger.Error("sqlite: GetHistoryByID failed", logger.ErrField(err))
+		logger.Error("sqlite: 按 ID 查询历史失败", logger.ErrField(err))
 		return nil
 	}
 	r.SessionID = sessionID
@@ -574,7 +574,7 @@ func (s *Store) SaveFavorite(record *database.FavoriteRecord) (string, error) {
 		record.Score, record.Source, record.Notes, record.CreatedAt,
 	)
 	if err != nil {
-		logger.Error("sqlite: SaveFavorite failed", logger.ErrField(err))
+		logger.Error("sqlite: 保存收藏失败", logger.ErrField(err))
 		// 写入失败必须把错误上抛（docs/29 A6）：此前吞错仍返回 ID，
 		// 服务层据此返回成功，收藏静默丢失且自学习照常入精选库
 		return "", err
@@ -591,7 +591,7 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string,
 	ids := make([]string, len(records))
 	tx, err := s.writeDB.Begin()
 	if err != nil {
-		logger.Error("sqlite: BatchSaveFavorite begin tx failed", logger.ErrField(err))
+		logger.Error("sqlite: 批量保存收藏：开启事务失败", logger.ErrField(err))
 		return ids, err
 	}
 
@@ -602,7 +602,7 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string,
 		 WHERE favorites.session_id = excluded.session_id`,
 	)
 	if err != nil {
-		logger.Error("sqlite: BatchSaveFavorite prepare failed", logger.ErrField(err))
+		logger.Error("sqlite: 批量保存收藏：预编译失败", logger.ErrField(err))
 		_ = tx.Rollback()
 		return ids, err
 	}
@@ -619,7 +619,7 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string,
 		res, err := stmt.Exec(record.ID, record.SessionID, record.Surname, record.GivenName, record.Pinyin,
 			record.Gender, record.Score, record.Source, record.Notes, record.CreatedAt)
 		if err != nil {
-			logger.Error("sqlite: BatchSaveFavorite exec failed", logger.ErrField(err))
+			logger.Error("sqlite: 批量保存收藏：执行失败", logger.ErrField(err))
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -637,7 +637,7 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string,
 	_ = stmt.Close()
 
 	if err := tx.Commit(); err != nil {
-		logger.Error("sqlite: BatchSaveFavorite commit failed", logger.ErrField(err))
+		logger.Error("sqlite: 批量保存收藏：提交失败", logger.ErrField(err))
 		return ids, err
 	}
 
@@ -658,7 +658,7 @@ func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string,
 func (s *Store) GetFavorites(sessionID string) []*database.FavoriteRecord {
 	rows, err := s.db.Query(`SELECT id, surname, given_name, pinyin, gender, score, source, notes, created_at FROM favorites WHERE session_id = ? ORDER BY created_at DESC`, sessionID)
 	if err != nil {
-		logger.Error("sqlite: GetFavorites failed", logger.ErrField(err))
+		logger.Error("sqlite: 查询收藏失败", logger.ErrField(err))
 		return nil
 	}
 	defer rows.Close()
@@ -667,7 +667,7 @@ func (s *Store) GetFavorites(sessionID string) []*database.FavoriteRecord {
 	for rows.Next() {
 		var r database.FavoriteRecord
 		if err := rows.Scan(&r.ID, &r.Surname, &r.GivenName, &r.Pinyin, &r.Gender, &r.Score, &r.Source, &r.Notes, &r.CreatedAt); err != nil {
-			logger.Error("sqlite: GetFavorites scan failed", logger.ErrField(err))
+			logger.Error("sqlite: 查询收藏：扫描失败", logger.ErrField(err))
 			continue
 		}
 		r.SessionID = sessionID
@@ -675,7 +675,7 @@ func (s *Store) GetFavorites(sessionID string) []*database.FavoriteRecord {
 	}
 	if err := rows.Err(); err != nil {
 		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
-		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+		logger.Error("sqlite: 遍历结果集中途失败", logger.ErrField(err))
 	}
 
 	return records
@@ -698,7 +698,7 @@ func (s *Store) GetFavoritesPage(sessionID string, page, limit int) ([]*database
 	for rows.Next() {
 		var r database.FavoriteRecord
 		if err := rows.Scan(&r.ID, &r.Surname, &r.GivenName, &r.Pinyin, &r.Gender, &r.Score, &r.Source, &r.Notes, &r.CreatedAt); err != nil {
-			logger.Error("sqlite: GetFavoritesPage scan failed", logger.ErrField(err))
+			logger.Error("sqlite: 分页查询收藏：扫描失败", logger.ErrField(err))
 			continue
 		}
 		r.SessionID = sessionID
@@ -706,7 +706,7 @@ func (s *Store) GetFavoritesPage(sessionID string, page, limit int) ([]*database
 	}
 	if err := rows.Err(); err != nil {
 		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
-		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+		logger.Error("sqlite: 遍历结果集中途失败", logger.ErrField(err))
 	}
 
 	return records, total, nil
@@ -749,7 +749,7 @@ func (s *Store) GetFavoriteByName(sessionID, surname, givenName string) *databas
 		if err == sql.ErrNoRows {
 			return nil
 		}
-		logger.Error("sqlite: GetFavoriteByName failed", logger.ErrField(err))
+		logger.Error("sqlite: 按名查询收藏失败", logger.ErrField(err))
 		return nil
 	}
 	r.SessionID = sessionID
@@ -868,7 +868,7 @@ func (s *Store) SaveNameRequest(record *database.NameRequest) int64 {
 		record.Surname, record.Gender, record.BirthYear, record.BirthMonth, record.BirthDay, record.BirthHour,
 		record.Preferences, record.NameType, record.RequestHash, record.CreatedAt)
 	if err != nil {
-		logger.Error("SaveNameRequest failed", logger.ErrField(err))
+		logger.Error("sqlite: 保存名字请求失败", logger.ErrField(err))
 		return 0
 	}
 	id, _ := result.LastInsertId()
@@ -895,7 +895,7 @@ func (s *Store) SaveNameFeedback(record *database.NameFeedback) int64 {
 		record.RequestID, record.FullName, record.GivenName, record.IsLiked, record.IsSelected,
 		record.UserRating, record.FeedbackText, record.AlgorithmScore, record.WuxingMatch, record.DeviceInfo, record.CreatedAt)
 	if err != nil {
-		logger.Error("SaveNameFeedback failed", logger.ErrField(err))
+		logger.Error("sqlite: 保存名字反馈失败", logger.ErrField(err))
 		return 0
 	}
 	id, _ := result.LastInsertId()
@@ -921,7 +921,7 @@ func (s *Store) GetNameFeedbackByRequestID(requestID int64) []*database.NameFeed
 	}
 	if err := rows.Err(); err != nil {
 		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
-		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+		logger.Error("sqlite: 遍历结果集中途失败", logger.ErrField(err))
 	}
 
 	return result
@@ -952,7 +952,7 @@ func (s *Store) GetAlgorithmPerformance() ([]*database.AlgorithmPerformance, err
 	}
 	if err := rows.Err(); err != nil {
 		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
-		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+		logger.Error("sqlite: 遍历结果集中途失败", logger.ErrField(err))
 	}
 
 	return result, nil
@@ -998,7 +998,7 @@ func (s *Store) LoadAllCuratedNames() ([]database.CuratedNameEntry, error) {
 	}
 	if err := rows.Err(); err != nil {
 		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
-		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+		logger.Error("sqlite: 遍历结果集中途失败", logger.ErrField(err))
 	}
 
 	return result, nil
@@ -1076,7 +1076,7 @@ func (s *Store) QueryHanziByWuxing(wuxing string) ([]database.Hanzi, error) {
 	}
 	if err := rows.Err(); err != nil {
 		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
-		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+		logger.Error("sqlite: 遍历结果集中途失败", logger.ErrField(err))
 	}
 
 	return result, nil
@@ -1103,7 +1103,7 @@ func (s *Store) QueryHanziByStrokes(min, max int) ([]database.Hanzi, error) {
 	}
 	if err := rows.Err(); err != nil {
 		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
-		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+		logger.Error("sqlite: 遍历结果集中途失败", logger.ErrField(err))
 	}
 
 	return result, nil
@@ -1220,7 +1220,7 @@ func (s *Store) SearchHanziByFilter(
 	}
 	if err := rows.Err(); err != nil {
 		// 迭代中途的 IO/解码错误此前被当成「正常取完」，静默截断数据（docs/29 P3）
-		logger.Error("sqlite: rows iteration failed mid-scan", logger.ErrField(err))
+		logger.Error("sqlite: 遍历结果集中途失败", logger.ErrField(err))
 	}
 
 	// rows.Err 覆盖迭代中途的 IO/解码错误：不查就等于把截断结果当正常取完

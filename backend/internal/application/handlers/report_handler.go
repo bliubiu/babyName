@@ -34,14 +34,14 @@ func (h *ReportHandler) GeneratePDF(c *gin.Context) {
 		Data interface{} `json:"data"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Warn("GeneratePDF: invalid request", zap.Error(err))
+		logger.Warn("PDF 报告：请求解析失败", zap.Error(err))
 		response.ErrorJSON(c, 400, "请求参数格式错误")
 		return
 	}
 
 	result, err := h.service.GeneratePDF(c.Request.Context(), req.Data)
 	if err != nil {
-		logger.Error("GeneratePDF: failed", zap.Error(err))
+		logger.Error("PDF 报告生成失败", zap.Error(err))
 		response.ErrorJSON(c, 500, "生成PDF失败")
 		return
 	}

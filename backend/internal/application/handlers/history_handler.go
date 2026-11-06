@@ -85,7 +85,7 @@ func (h *HistoryHandler) GetHistory(c *gin.Context) {
 
 	result, total, err := h.service.GetHistoryPage(c.Request.Context(), sid, page, limit)
 	if err != nil {
-		logger.Error("GetHistory: failed", zap.Error(err))
+		logger.Error("查询历史失败", zap.Error(err))
 		response.ErrorJSON(c, 500, "获取历史记录失败")
 		return
 	}
@@ -113,7 +113,7 @@ func (h *HistoryHandler) GetHistory(c *gin.Context) {
 func (h *HistoryHandler) SaveHistory(c *gin.Context) {
 	var req services.HistoryRecord
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Warn("SaveHistory: invalid request", zap.Error(err))
+		logger.Warn("历史：请求解析失败", zap.Error(err))
 		response.ErrorJSON(c, 400, "请求参数格式错误")
 		return
 	}
@@ -128,7 +128,7 @@ func (h *HistoryHandler) SaveHistory(c *gin.Context) {
 
 	id, err := h.service.SaveHistory(c.Request.Context(), &req)
 	if err != nil {
-		logger.Error("SaveHistory: failed", zap.Error(err))
+		logger.Error("保存历史失败", zap.Error(err))
 		response.ErrorJSON(c, 500, "保存历史记录失败")
 		return
 	}
@@ -157,7 +157,7 @@ func (h *HistoryHandler) DeleteHistory(c *gin.Context) {
 	}
 
 	if err := h.service.DeleteHistory(c.Request.Context(), sid, id); err != nil {
-		logger.Error("DeleteHistory: failed", zap.Error(err))
+		logger.Error("删除历史失败", zap.Error(err))
 		response.ErrorJSON(c, 500, "删除历史记录失败")
 		return
 	}

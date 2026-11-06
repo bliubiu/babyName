@@ -312,7 +312,7 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 	s.attachFatePerNameHexagrams(names, req, response.Bazi.Xiyongshen)
 	response.Ziwei = s.ziweiForRequest(req)
 
-	logger.Info("GenerateWithAnalysis: completed via fate engine",
+	logger.Info("完整分析：经 fate 引擎完成",
 		zap.String("surname", req.Surname),
 		zap.Int("name_count", len(names)),
 	)

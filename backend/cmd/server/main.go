@@ -183,7 +183,7 @@ func main() {
 		ensureStaticDir(cfg.Static)
 	}
 
-	logger.Info("Starting NameMaster server",
+	logger.Info("服务启动中",
 		logger.String("host", cfg.Server.Host),
 		logger.Int("port", cfg.Server.Port),
 	)
@@ -226,16 +226,16 @@ func resolveStaticPath(cwd, static string) string {
 
 func ensureStaticDir(path string) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		logger.Warn("Frontend static files not found", logger.String("path", path))
+		logger.Warn("未找到前端静态目录", logger.String("path", path))
 		if err := os.MkdirAll(path, 0755); err != nil {
-			logger.Fatal("Failed to create static files directory", logger.ErrField(err))
+			logger.Fatal("创建静态文件目录失败", logger.ErrField(err))
 		}
 	}
 	indexPath := filepath.Join(path, "index.html")
 	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
-		logger.Warn("index.html not found in static directory", logger.String("path", indexPath))
+		logger.Warn("静态目录中未找到 index.html", logger.String("path", indexPath))
 	}
-	logger.Info("Using static files directory", logger.String("path", path))
+	logger.Info("使用静态文件目录", logger.String("path", path))
 }
 
 func printHelp() {
@@ -252,10 +252,10 @@ func printHelp() {
 
 func initStore(dbPath, dataDir string) database.Store {
 	if dbStore, err := sqlite.NewStore(dbPath, dataDir); err == nil {
-		logger.Info("Using SQLite store", logger.String("db", dbPath))
+		logger.Info("使用 SQLite 存储", logger.String("db", dbPath))
 		return dbStore
 	} else {
-		logger.Warn("Failed to open SQLite, falling back to memory store", logger.ErrField(err))
+		logger.Warn("打开 SQLite 失败，回落内存存储", logger.ErrField(err))
 		return memory.NewStore()
 	}
 }
@@ -486,7 +486,7 @@ func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store
 // --- 服务器启动 ---
 
 func startServer(router *gin.Engine, addr, cwd string, store database.Store, rateLimiter *middleware.IPRateLimiter, readHeaderTimeout time.Duration) {
-	logger.Info("Server starting", logger.String("addr", addr))
+	logger.Info("服务开始监听", logger.String("addr", addr))
 	displayAddr := addr
 	if strings.HasPrefix(displayAddr, ":") {
 		displayAddr = "localhost" + displayAddr
@@ -519,12 +519,12 @@ func startServer(router *gin.Engine, addr, cwd string, store database.Store, rat
 		_, certErr := os.Stat(certFile)
 		_, keyErr := os.Stat(keyFile)
 		if os.IsNotExist(certErr) || os.IsNotExist(keyErr) {
-			logger.Warn("TLS certificates not found, running in HTTP mode")
+			logger.Warn("未找到 TLS 证书，以 HTTP 模式运行")
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				errCh <- err
 			}
 		} else {
-			logger.Info("Running in HTTPS mode with HTTP/2 support")
+			logger.Info("以 HTTPS 模式运行（支持 HTTP/2）")
 			if err := srv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
 				errCh <- err
 			}
@@ -534,11 +534,11 @@ func startServer(router *gin.Engine, addr, cwd string, store database.Store, rat
 	// 等待中断信号或启动失败
 	select {
 	case sig := <-quit:
-		logger.Info("Shutting down server", logger.String("signal", sig.String()))
+		logger.Info("服务正在关闭", logger.String("signal", sig.String()))
 	case err := <-errCh:
 		// 启动失败同样要走完整清理：此前直接 return，跳过 store 关闭、
 		// 限流器停止与缓存释放，Windows 下残留句柄锁住 namer.db
-		logger.Error("Failed to start server", logger.ErrField(err))
+		logger.Error("服务启动失败", logger.ErrField(err))
 	}
 
 	// 给予 10 秒时间完成正在处理的请求
@@ -546,14 +546,14 @@ func startServer(router *gin.Engine, addr, cwd string, store database.Store, rat
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		logger.Error("Server forced to shutdown", logger.ErrField(err))
+		logger.Error("服务强制关闭", logger.ErrField(err))
 	}
 
 	// 关闭数据库连接
 	if store != nil {
 		if closer, ok := store.(interface{ Close() error }); ok {
 			if err := closer.Close(); err != nil {
-				logger.Error("Failed to close database", logger.ErrField(err))
+				logger.Error("关闭数据库失败", logger.ErrField(err))
 			}
 		}
 	}
@@ -563,7 +563,7 @@ func startServer(router *gin.Engine, addr, cwd string, store database.Store, rat
 		rateLimiter.Stop()
 	}
 
-	logger.Info("Server exited")
+	logger.Info("服务已退出")
 }
 
 // loadCulturalData 装载传统文化物料

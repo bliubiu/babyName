@@ -286,7 +286,7 @@ func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, b
 	generateDuration := time.Since(generateStart)
 
 	if err != nil {
-		logger.Warn("Generate: name generation failed",
+		logger.Warn("名字生成失败",
 			zap.String("surname", req.Surname),
 			zap.Error(err),
 		)
@@ -294,14 +294,14 @@ func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, b
 	}
 
 	if len(names) == 0 {
-		logger.Warn("Generate: no names generated",
+		logger.Warn("未生成任何名字",
 			zap.String("surname", req.Surname),
 			zap.String("gender", req.Gender),
 		)
 		return nil, "", generateDuration, errors.NewError(errors.ErrCodeBadRequest, "无法生成符合条件的名字，请调整筛选条件")
 	}
 
-	logger.Info("Generate: names generated successfully",
+	logger.Info("名字生成完成",
 		zap.String("surname", req.Surname),
 		zap.Int("count", len(names)),
 		zap.Duration("duration", generateDuration),
@@ -626,7 +626,7 @@ func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziA
 	if ziweiChart != nil {
 		ziweiMingGong = ziweiChart.MingGong
 	}
-	logger.Info("Parallel calculation completed",
+	logger.Info("并行计算完成",
 		zap.String("hexagram", hexagramName),
 		zap.Int("surname_strokes", surnameStrokes),
 		zap.Int("given_strokes", givenStrokes),
@@ -729,7 +729,7 @@ func (s *NameService) logGeneration(
 ) {
 	totalDuration := time.Since(start)
 
-	logger.Info("Generate: completed",
+	logger.Info("生成流程完成",
 		zap.String("surname", req.Surname),
 		zap.String("gender", req.Gender),
 		zap.Duration("total", totalDuration),

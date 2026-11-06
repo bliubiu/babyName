@@ -13,12 +13,12 @@ import (
 // validateFavoriteRecord 校验收藏记录核心字段，校验失败写入响应并返回 false
 func validateFavoriteRecord(c *gin.Context, req *services.FavoriteRecord) bool {
 	if err := validator.ValidateSurname(req.Surname); err != nil {
-		logger.Warn("SaveFavorite: invalid surname", zap.String("surname", req.Surname))
+		logger.Warn("收藏：姓氏非法", zap.String("surname", req.Surname))
 		response.ErrorJSON(c, 400, err.Error())
 		return false
 	}
 	if err := validator.ValidateGivenName(req.GivenName); err != nil {
-		logger.Warn("SaveFavorite: invalid given_name", zap.String("given_name", req.GivenName))
+		logger.Warn("收藏：名字非法", zap.String("given_name", req.GivenName))
 		response.ErrorJSON(c, 400, err.Error())
 		return false
 	}
@@ -59,7 +59,7 @@ func (h *FavoriteHandler) GetFavorites(c *gin.Context) {
 
 	records, total, err := h.service.GetFavoritesPage(c.Request.Context(), sid, page, limit)
 	if err != nil {
-		logger.Error("GetFavorites: failed", zap.Error(err))
+		logger.Error("查询收藏失败", zap.Error(err))
 		response.ErrorJSON(c, 500, "获取收藏列表失败")
 		return
 	}
@@ -89,7 +89,7 @@ func (h *FavoriteHandler) GetFavorites(c *gin.Context) {
 func (h *FavoriteHandler) SaveFavorite(c *gin.Context) {
 	var req services.FavoriteRecord
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Warn("SaveFavorite: invalid request", zap.Error(err))
+		logger.Warn("收藏：请求解析失败", zap.Error(err))
 		response.ErrorJSON(c, 400, "请求参数格式错误")
 		return
 	}
@@ -108,7 +108,7 @@ func (h *FavoriteHandler) SaveFavorite(c *gin.Context) {
 
 	id, err := h.service.SaveFavorite(c.Request.Context(), &req)
 	if err != nil {
-		logger.Error("SaveFavorite: failed", zap.Error(err))
+		logger.Error("保存收藏失败", zap.Error(err))
 		response.ErrorJSON(c, 500, "保存收藏失败")
 		return
 	}
@@ -137,7 +137,7 @@ func (h *FavoriteHandler) DeleteFavorite(c *gin.Context) {
 	}
 
 	if err := h.service.DeleteFavorite(c.Request.Context(), sid, id); err != nil {
-		logger.Error("DeleteFavorite: failed", zap.Error(err))
+		logger.Error("删除收藏失败", zap.Error(err))
 		response.ErrorJSON(c, 500, "删除收藏失败")
 		return
 	}
