@@ -131,6 +131,12 @@ func NewStore(dbPath string, dataDir string) (*Store, error) {
 		return nil, err
 	}
 
+	// 库结构版本登记与时间口径迁移（docs/43 P2-11）：v1 把运营表存量
+	// 本地时间归一 UTC，与写入端（time.Now().UTC()）统一口径。
+	if err := ensureSchemaVersion(writeDB); err != nil {
+		return nil, fmt.Errorf("schema 版本迁移失败: %w", err)
+	}
+
 	store := &Store{
 		db:        readDB,
 		writeDB:   writeDB,
@@ -355,7 +361,7 @@ func (s *Store) SaveHistory(record *database.HistoryRecord) string {
 		record.ID = uuid.New().String()
 	}
 	if record.CreatedAt.IsZero() {
-		record.CreatedAt = time.Now()
+		record.CreatedAt = time.Now().UTC() // docs/43 P2-11：时间口径统一 UTC（存量由 v1 迁移归一）
 	}
 
 	// ON CONFLICT ... WHERE 只允许同一会话更新自己的记录：即使调用方
@@ -503,7 +509,7 @@ func (s *Store) SaveFavorite(record *database.FavoriteRecord) (string, error) {
 		record.ID = uuid.New().String()
 	}
 	if record.CreatedAt.IsZero() {
-		record.CreatedAt = time.Now()
+		record.CreatedAt = time.Now().UTC() // docs/43 P2-11：时间口径统一 UTC（存量由 v1 迁移归一）
 	}
 
 	result, err := s.writeDB.Exec(
