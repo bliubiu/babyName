@@ -3,7 +3,8 @@
 import { lazy, Suspense, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { evaluateName } from '@/lib/api';
-import { EvaluateRequest, RiskItem } from '@/types';
+import { EvaluateRequest } from '@/types';
+import RiskList, { riskLevelSummary } from '@/components/RiskList';
 import { useNameStore } from '@/lib/store';
 import { useToast } from '@/components/Toast';
 import { validateBirthTime, validateSurname } from '@/lib/validation';
@@ -12,19 +13,6 @@ import Navigation from '@/components/Navigation';
 // 测名页卦象区（docs/42 P2-10 接线）：经文卡 + 三卦并排详解，与结果页同构
 const HexagramDisplay = lazy(() => import('@/components/HexagramDisplay'));
 const HexagramDetailDisplay = lazy(() => import('@/components/HexagramDetailDisplay'));
-
-// 风险等级展示配置
-const riskLevelStyle: Record<RiskItem['level'], { label: string; cls: string }> = {
-  pass: { label: '通过', cls: 'bg-jade/10 text-jade border-jade/20' },
-  warn: { label: '提示', cls: 'bg-gold/10 text-gold border-gold/30' },
-  fail: { label: '不建议', cls: 'bg-red-50 text-crimson border-crimson/20' },
-};
-
-const riskLevelSummary: Record<'pass' | 'warn' | 'fail', { label: string; cls: string }> = {
-  pass: { label: '风险体检全部通过', cls: 'text-jade' },
-  warn: { label: '有需要斟酌的提示项', cls: 'text-gold' },
-  fail: { label: '存在不建议使用的风险项', cls: 'text-crimson' },
-};
 
 export default function EvaluatePage() {
   const { showToast } = useToast();
@@ -219,23 +207,8 @@ export default function EvaluatePage() {
               </Suspense>
             )}
 
-            {/* 风险体检 */}
-            <div className="consultation-sheet corner-decor py-5 px-6">
-              <h2 className="section-title mb-4">风险体检</h2>
-              <p className={`text-sm mb-4 ${riskLevelSummary[result.risk_level].cls}`}>
-                {riskLevelSummary[result.risk_level].label}
-              </p>
-              <ul className="space-y-2.5">
-                {result.risks.map((item, idx) => (
-                  <li key={idx} className="flex items-start gap-3">
-                    <span className={`shrink-0 px-2 py-0.5 rounded-lg text-xs border ${riskLevelStyle[item.level].cls}`}>
-                      {item.category} · {riskLevelStyle[item.level].label}
-                    </span>
-                    <span className="text-sm text-ink-light leading-relaxed">{item.detail}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            {/* 风险体检（RiskList 组件与结果页同源复用，docs/43 P2-4） */}
+            <RiskList risks={result.risks} />
 
             {/* 八维评分明细（score_detail 与结果页同源） */}
             {result.name.score_detail && result.name.score_detail.length > 0 && (

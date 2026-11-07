@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import RiskList from './RiskList';
 import { Name } from '@/types';
 import { splitByMatchedChars } from '@/lib/poetryHighlight';
 import CantoneseScore from './CantoneseScore';
@@ -191,6 +192,10 @@ export default function NameDetail({ name }: NameDetailProps) {
               );
             })}
           </div>
+        )}
+        {/* 分级风险体检（docs/43 P2-4）：与测名页同源，结果页对称展示 */}
+        {name.risks && (
+          <RiskList risks={name.risks} embedded />
         )}
       </div>
     </div>

@@ -225,6 +225,8 @@ export interface Name extends NameBase {
     score: number;
     detail: string;
   }>;
+  /** 分级风险体检（docs/43 P2-4）：谐音/生僻字/多音字/门禁字/撞名热度等，与测名页同源 */
+  risks?: RiskItem[];
   /** 每候选名独立梅花卦象（docs/42 P3-11）：本/变/互卦与动爻 */
   hexagram_detail?: HexagramDetail;
   /** 每候选名独立体用断卦（卦象不计入评分，docs/42 P3-12） */
