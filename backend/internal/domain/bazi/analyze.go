@@ -2,6 +2,7 @@ package bazi
 
 import (
 	"fmt"
+	"hash/fnv"
 	"math"
 	"time"
 
@@ -318,7 +319,9 @@ func AnalyzeBazi(year, month, day, hour, minute int) (*BaziAnalysis, error) {
 	baziPattern := calculateBaziPattern(dayMasterStrength, rishouWuxing, season)
 	yongshenScore := calculateYongshenScore(xiyongshen, iyongshen, wuxing)
 
-	dayanResult := yijing.CastHexagramByDayan()
+	// 大衍起卦按生辰确定性播种（docs/43 P2-5）：同一生辰恒得同卦，
+	// 保障结果可复现与缓存；真随机起卦（真实占卜）走 yijing.CastHexagramByDayan。
+	dayanResult := yijing.CastHexagramByDayanSeeded(dayanSeed(year, month, day, hour, minute))
 	dayanHexagram := ""
 	dayanInterpretation := ""
 	if dayanResult != nil && dayanResult.Hexagram != nil {
@@ -674,4 +677,12 @@ func ParseTimeToHourMinute(timeStr string) (hour, minute int, err error) {
 	}
 	_, _ = fmt.Sscanf(timeStr, "%d:%d", &hour, &minute)
 	return hour, minute, nil
+}
+
+// dayanSeed 由生辰要素派生大衍起卦种子（docs/43 P2-5）：
+// 同一生辰恒得同一种子，从而同一生辰恒得同卦（可复现、可缓存）。
+func dayanSeed(year, month, day, hour, minute int) int64 {
+	h := fnv.New64a()
+	fmt.Fprintf(h, "%d|%d|%d|%d|%d", year, month, day, hour, minute)
+	return int64(h.Sum64())
 }

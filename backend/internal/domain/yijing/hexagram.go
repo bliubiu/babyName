@@ -439,11 +439,17 @@ func decideYaoFromChanges(changes []int) int {
 // 每变「分二、挂一、揲四、归奇」，三变后剩余策数除以四得 6/7/8/9
 // （老阴/少阳/少阴/老阳）。原实现以 sum%4 收敛，值域只有 {1,2,3,8}，
 // 老阴(6)/老阳(9) 永不可达，导致变爻恒为 0。
+// CalculateDayanNumber 大衍揲蓍得一爻数（6/7/8/9），使用全局随机源
 func CalculateDayanNumber() int {
+	return calculateDayanNumberFrom(nil)
+}
+
+// calculateDayanNumberFrom 大衍揲蓍核心（r=nil 时全局随机，docs/43 P2-5）
+func calculateDayanNumberFrom(r *rand.Rand) int {
 	sticks := 49
 	for i := 0; i < 3; i++ {
 		// 分二：任分两堆，两堆各至少一策（保证挂一后左手仍有策可揲）
-		left := randInt(2, sticks-2)
+		left := randIntFrom(r, 2, sticks-2)
 		right := sticks - left
 
 		// 挂一：从左手取一策置于一旁
@@ -467,7 +473,16 @@ func CalculateDayanNumber() int {
 func randInt(min, max int) int {
 	// 顶层 rand 自 Go 1.20 起自动播种且并发安全；旧实现每次调用
 	// rand.Seed(time.Now().UnixNano())（已废弃），并发同纳秒会得到相同序列
-	return min + rand.Intn(max-min+1)
+	return randIntFrom(nil, min, max)
+}
+
+// randIntFrom 在 [min, max] 内取随机整数；r 为 nil 时退化为全局随机源
+// （docs/43 P2-5：引入可控随机源以支持确定性播种起卦）
+func randIntFrom(r *rand.Rand, min, max int) int {
+	if r == nil {
+		return min + rand.Intn(max-min+1)
+	}
+	return min + r.Intn(max-min+1)
 }
 
 func GetYaoInfo(yao int) YaoResult {
@@ -562,13 +577,24 @@ func CastMeihuaByNumbers(n1, n2 int) *DayanResult {
 	}
 }
 
+// CastHexagramByDayan 真随机大衍起卦（真实占卜场景）
 func CastHexagramByDayan() *DayanResult {
+	return castDayan(nil)
+}
+
+// CastHexagramByDayanSeeded 按种子确定性起卦（docs/43 P2-5）：
+// 同一种子恒得同卦，供八字分析等要求可复现/可缓存的链路使用。
+func CastHexagramByDayanSeeded(seed int64) *DayanResult {
+	return castDayan(rand.New(rand.NewSource(seed)))
+}
+
+func castDayan(r *rand.Rand) *DayanResult {
 	var yaoLines []int
 	var dayanNumbers []int
 	var changeYaos []int
 
 	for i := 0; i < 6; i++ {
-		num := CalculateDayanNumber()
+		num := calculateDayanNumberFrom(r)
 		dayanNumbers = append(dayanNumbers, num)
 
 		yao := 0
