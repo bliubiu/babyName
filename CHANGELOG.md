@@ -5,6 +5,22 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.07.3]
+
+**《43-质量审查报告》P2 第四批：数据库一致性收官 + t.Skip 治理（P2 全部闭环）**
+
+### ✨ New Features 新增功能
+- 【数据库】v2 迁移删除五个空转索引（P2-11，`8dbe025`）：favorites 两索引与会话复合索引重复、hanzi_data 三索引无任何 SQL WHERE 使用；DDL 同步删除创建语句；v1/v2 逐步迁移重构
+- 【数据库】枚举 CHECK 约束（P2-11，`8dbe025`）：favorites.gender、hanzi_data.wuxing/gender 加 CHECK（新库生效，存量库由 Go 侧 normalize 兜底）
+- 【数据库】混合半态标记（P2-11，`8dbe025`）：部分物料失败即标记 PartialCommitted（此前仅派生维护失败才标记）
+- 【CI】最小物料集扩充（P2-8，本提交）：入库门禁/来源类测试依赖 6 文件（allowlist/compliance_redline/forbidden_combos/naming_quality/lunyu 约 130K + raw/kangxi-strokecount.csv 1.4M）——CI 激活约 13 处数据型 t.Skip（康熙加载/门禁表/来源加分/论语注入）
+
+### 📚 Docs 文档更新
+- t.Skip 38 处分类结论登记报告 §〇：约 13 处随物料集扩充在 CI 激活；其余为全量数据对拍（62M/14M 不入库）、runtime.Caller 设计内兜底与测试自防御，保留
+
+### ✅ 验证
+- `go build ./...` / `go vet ./...` / `go test ./... -count=1` 全绿；本地数据齐备时上述数据型测试 0 skip（数据在则跑语义复验）
+
 ## [2026.11.07.2]
 
 **《43-质量审查报告》P2 第三批：风险体检前端 + 四大上帝文件拆分（P2-9 收官）**

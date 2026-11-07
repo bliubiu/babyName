@@ -49,6 +49,16 @@ data/*
 !data/chuci.json
 !data/shici.json
 !data/yuanqu.json
+# P2-8：门禁/来源类测试的依赖物料（约 130K），CI 激活对应测试
+!data/allowlist.json
+!data/compliance_redline.json
+!data/forbidden_combos.json
+!data/naming_quality.json
+!data/lunyu.json
+# P2-8：康熙笔画表（1.4M，hanzi 并发与加载测试依赖）
+!data/raw/
+data/raw/*
+!data/raw/kangxi-strokecount.csv
 
 # 日志文件
 logs/
