@@ -31,10 +31,14 @@ type WeightedWuxing struct {
 	Tu   float64 `json:"tu"`
 }
 
+// 以下权重为工程标定值（docs/43 P2-6 登记）：依据传统命理通则
+// 「月令为提纲，旺衰由月令定其大纲」（如《渊海子平》论旺衰以月令为先）
+// 的相对重要性标定，非典籍直接给出的数值；调整任一系数都会改变
+// 八字强弱判定与全链路评分，须同步回归 golden 快照（UPDATE_GOLDEN=1）。
 const (
-	// MonthPillarWeight 月令权重：月支对全局旺衰影响最大
+	// MonthPillarWeight 月令权重：月支对全局旺衰影响最大（提纲通则）
 	MonthPillarWeight = 1.5
-	// StemWeight 天干权重
+	// StemWeight 天干权重（基准 1.0）
 	StemWeight = 1.0
 )
 
@@ -140,11 +144,15 @@ func calculateDayMasterStrengthWeighted(w *WeightedWuxing, rishouWuxing, monthBr
 
 	dayMasterValue := w.Get(rishouWuxing)
 
-	// 印绶（生我）也计入“得地/得生”
+	// 印绶（生我）也计入“得地/得生”。0.6 为工程标定：生扶弱于比劫
+	// 同类（同五行计满权），低于 1 防止印星过旺误判身旺（标定依据同上，
+	// docs/43 P2-6）。
 	shengWo := shengWoOf(rishouWuxing)
 	dayMasterValue += w.Get(shengWo) * 0.6
 
-	// 月支本气若与日主同五行，额外加权
+	// 月支本气若与日主同五行，额外加权 0.8（工程标定，docs/43 P2-6）：
+	// 对应「得令」通则——月支本气即日主为最强旺衰信号，仅次于直接
+	// 计满的比劫本权；0.8<1.0 避免与天干同权叠加导致身旺误判。
 	if monthBranch != "" {
 		if stems, ok := DizhiHiddenStems[monthBranch]; ok && len(stems) > 0 {
 			if wx, ok := WuxingMap[stems[0].Stem]; ok && wx == rishouWuxing {
@@ -153,6 +161,11 @@ func calculateDayMasterStrengthWeighted(w *WeightedWuxing, rishouWuxing, monthBr
 		}
 	}
 
+	// 40/28/18 阈值为工程标定（docs/43 P2-6）：把「同党（比劫+印）力量占比」
+	// 映射为四档强弱。传统命理对旺衰只分强弱两态、无量化阈值；此处档位
+	// 与分界按「身旺宜克泄、身弱宜生扶」的取用边界反推标定，使喜用神在
+	// 边界生辰上的取用与人工断例抽查一致。调整阈值会改变喜用神与全链路
+	// 评分，须同步回归 golden 快照与 dim_audit 已知答案。
 	ratio := dayMasterValue / total * 100
 	switch {
 	case ratio >= 40:

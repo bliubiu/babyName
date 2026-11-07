@@ -157,6 +157,13 @@ func geJuXiYongJi(geJu GeJuType, riZhuGan string, strength WuxingStrength, isYan
 }
 
 // === 各格局喜用神算法 ===
+//
+// 口径登记（docs/43 P2-6）：八个月柱十神格局函数中，正官/七杀/正财/
+// 正印/食神/伤官六格的喜用推导**忽略 strength 与 isYangRen 入参**
+// （仅偏财/偏印读取）——取用只按「格局名 → 固定生克组合」映射，未按
+// 日主强弱调整用神力度。此为 fate 层内部对照口径（生产装配已收敛到
+// bazi weighted，见 docs/43 P1-3），保留作格局论参照实现；若恢复使用
+// 须先补全「强弱修正取用」的传统规则（扶抑/调候优先级）。
 
 func geJuZhengGuanYong(gan string, _ WuxingStrength, _ bool) XiYongJiChou {
 	riWx := wuxingOfTianGan(gan)

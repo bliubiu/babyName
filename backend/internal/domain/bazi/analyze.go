@@ -10,6 +10,13 @@ import (
 	"name/internal/domain/yijing"
 )
 
+// 五行占比分档阈值与各档评分上限（docs/43 P2-6 登记）：
+// 均为工程标定值——传统命理对「五行力量占比」无统一量化分档，
+// 本组阈值按「太弱/偏弱/平衡/偏强/过旺」五档人工断例抽查标定，
+// 与 calculateXiyongshenWeighted 的 40/28/18（同党占比口径）不同源：
+// 此处是**单五行占比**分档（分析展示用），后者是**同党合计占比**
+// （喜用神决策用），两套口径服务不同问题，调整任一须回归 dim_audit
+// 与 golden 快照。
 const (
 	WuxingRatioTaiRuo    = 15.0
 	WuxingRatioPianRuo   = 25.0
@@ -435,6 +442,10 @@ var seasonWuxing = map[string]string{
 func calculateBaziPattern(dayMasterStrength, rishouWuxing, season string) string {
 	// 日主五行与季节当令五行比较；原实现直接拿五行跟「春/夏/秋/冬」
 	// 字符串比较，恒为 false，格局分支沦为死代码。
+	// 格局命名口径（docs/43 P2-6 登记）：此处为简化二分——按强弱定性
+	// 「正格（扶抑）/从弱格」，未实现传统格局论的专旺/化气/从儿等细分，
+	// 也不读取月令透干与羊刃（isYangRen）——作为展示口径可接受，
+	// 若未来用于取用决策须先补全格局判定。
 	seasonElement := seasonWuxing[season]
 	if dayMasterStrength == "身旺" || dayMasterStrength == "身中" {
 		if rishouWuxing == seasonElement {
@@ -450,6 +461,10 @@ func calculateBaziPattern(dayMasterStrength, rishouWuxing, season string) string
 	return "正格-普通格局"
 }
 
+// calculateYongshenScore 用神得分（docs/43 P2-6 登记）：
+// 基准 60（中平）、喜用神每五行 ×3、生克加成 ×2、忌神扣减均为工程标定值
+// ——传统命理无此量化模型，标定目标为「喜用神齐备的命造落在 75-90、
+// 忌神环伺落在 40-55」的人工断例抽查区间；调整须回归 dim_audit 与 golden。
 func calculateYongshenScore(xiyongshen []string, yiyongshen []string, wuxing *WuxingResult) int {
 	score := 60
 
