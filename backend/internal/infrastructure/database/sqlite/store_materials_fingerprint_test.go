@@ -273,3 +273,35 @@ func TestReadPing_正常库nil且异常报错(t *testing.T) {
 		t.Fatal("materials_state 缺失时 ReadPing 应报错（readyz 才会收敛 503）")
 	}
 }
+
+// TestImport_PartialCommittedOnMaterialFailure 部分物料失败 = 混合半态
+// （docs/43 P2-11）：逐物料独立事务下，失败物料之前成功者已落库，
+// 必须标记 PartialCommitted 供调用方提示修复路径。
+// 破坏方式：writeMinimalMaterials 基础上把 optional 物料 zodiac.json
+// 写成非法 JSON——依赖解析只查存在性，反序列化失败发生在 importOne
+// 事务内（r.Err 非空），前序物料已提交。
+func TestImport_PartialCommittedOnMaterialFailure(t *testing.T) {
+	dir := writeMinimalMaterials(t)
+	if err := os.WriteFile(filepath.Join(dir, "zodiac.json"), []byte("{ 非法"), 0o644); err != nil {
+		t.Fatalf("写入损坏的 zodiac.json 失败: %v", err)
+	}
+
+	s := newTestStore(t)
+	report, err := s.Import(ImportOptions{DataDir: dir})
+	if err != nil {
+		t.Fatalf("Import 返回错误: %v（物料级失败应通过 report 表达）", err)
+	}
+	if report == nil {
+		t.Fatal("report 为 nil")
+	}
+	if report.Failed == 0 {
+		t.Fatalf("损坏物料应失败，实得 Failed=%d（Skipped=%d Written=%d）",
+			report.Failed, report.Skipped, report.Written)
+	}
+	if report.Written == 0 {
+		t.Fatal("前序物料应已成功落库（否则不构成混合半态）")
+	}
+	if !report.PartialCommitted {
+		t.Error("存在失败物料但未标记 PartialCommitted——混合半态对调用方不可见")
+	}
+}

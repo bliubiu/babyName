@@ -133,6 +133,13 @@ func (s *Store) Import(opt ImportOptions) (*ImportReport, error) {
 		}
 	}
 
+	// 混合半态标记（docs/43 P2-11）：逐物料独立事务，任一物料失败时
+	// 前序成功物料已落库——库内即「部分新版本 + 部分缺失/旧版本」的
+	// 混合状态，与派生维护失败同属部分提交，调用方（CLI/CI）据此提示修复。
+	if report.Failed > 0 && !opt.DryRun {
+		report.PartialCommitted = true
+	}
+
 	// 派生维护：独立事务的收尾步骤（docs/40 A3）
 	if !opt.DryRun {
 		if err := s.runDerivedMaintenance(); err != nil {

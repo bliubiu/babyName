@@ -16,6 +16,9 @@ import (
 //   - 建表语句幂等（IF NOT EXISTS），缺列由迁移补齐，两条路径都要能跑。
 
 // materialTableDDL 物料表的建表语句（顺序即导入顺序无关，仅为可读性）
+// CHECK 约束口径（docs/43 P2-11）：枚举列受控词表由 DDL CHECK 与
+// Go 侧 normalize 双保险；SQLite 不支持 ALTER ADD CHECK，存量库仅靠
+// Go 侧校验兜底（CREATE TABLE IF NOT EXISTS 不重建既有表）。
 var materialTableDDL = []string{
 	// 康熙笔画：数理与卦象的笔画口径（AGENTS.md 要求「数理用康熙」）
 	`CREATE TABLE IF NOT EXISTS kangxi_strokes (
@@ -31,8 +34,8 @@ var materialTableDDL = []string{
 		kangxi_strokes INTEGER NOT NULL DEFAULT 0,
 		radical    TEXT NOT NULL DEFAULT '',
 		meaning    TEXT NOT NULL DEFAULT '',
-		wuxing     TEXT NOT NULL DEFAULT '',
-		gender     TEXT NOT NULL DEFAULT '',
+		wuxing     TEXT NOT NULL DEFAULT '' CHECK (wuxing IN ('金', '木', '水', '火', '土') OR wuxing = ''),
+		gender     TEXT NOT NULL DEFAULT '' CHECK (gender IN ('male', 'female', 'neutral') OR gender = ''),
 		level      INTEGER NOT NULL DEFAULT 0,
 		tone       INTEGER NOT NULL DEFAULT 0,
 		name_freq_tier INTEGER NOT NULL DEFAULT 0,
@@ -54,9 +57,8 @@ var materialTableDDL = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_hanzi_data_wuxing ON hanzi_data(wuxing)`,
 	`CREATE INDEX IF NOT EXISTS idx_hanzi_data_strokes ON hanzi_data(strokes)`,
-	`CREATE INDEX IF NOT EXISTS idx_hanzi_data_pinyin ON hanzi_data(pinyin)`,
-	`CREATE INDEX IF NOT EXISTS idx_hanzi_data_level ON hanzi_data(level)`,
-	`CREATE INDEX IF NOT EXISTS idx_hanzi_data_gender ON hanzi_data(gender)`,
+	// docs/43 P2-11：pinyin/level/gender 三列无任何 SQL WHERE 使用
+	//（services 层拿不到这些列，见 store_hanzi_data.go 注释），不建索引。
 
 	// 偏旁分组（实测 29 组小表）
 	`CREATE TABLE IF NOT EXISTS char_groups (

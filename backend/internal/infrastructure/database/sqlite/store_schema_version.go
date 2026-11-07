@@ -15,6 +15,7 @@ package sqlite
 
 import (
 	"database/sql"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,20 +23,40 @@ import (
 )
 
 // schemaVersionCurrent 当前库结构版本。
-// v1：运营表 created_at 归一 UTC（本文件 ensureSchemaVersion）。
-const schemaVersionCurrent = 1
+// v1：运营表 created_at 归一 UTC（migrateV1TimesToUTC）。
+// v2：删除空转索引（docs/43 P2-11：favorites 两索引与 session 复合索引
+// 重复、hanzi_data 三索引无任何 SQL 使用），降低无谓写入成本。
+const schemaVersionCurrent = 2
 
-// ensureSchemaVersion 读取 user_version 并按需执行迁移，最后登记版本。
+// ensureSchemaVersion 读取 user_version 并逐步执行迁移，最后登记版本。
 // 必须在建表（createTables）之后调用。
 func ensureSchemaVersion(db *sql.DB) error {
 	var v int
 	if err := db.QueryRow("PRAGMA user_version").Scan(&v); err != nil {
 		return err
 	}
-	if v >= schemaVersionCurrent {
-		return nil
-	}
 
+	if v < 1 {
+		if err := migrateV1TimesToUTC(db); err != nil {
+			return err
+		}
+	}
+	if v < 2 {
+		if err := migrateV2DropUnusedIndexes(db); err != nil {
+			return err
+		}
+	}
+	if v < schemaVersionCurrent {
+		if _, err := db.Exec("PRAGMA user_version = " + strconv.Itoa(schemaVersionCurrent)); err != nil {
+			return err
+		}
+		logger.Info("sqlite: 库结构版本已登记", logger.Int("user_version", schemaVersionCurrent))
+	}
+	return nil
+}
+
+// migrateV1TimesToUTC 运营表存量时间归一 UTC。
+func migrateV1TimesToUTC(db *sql.DB) error {
 	for _, table := range []string{"history", "favorites"} {
 		n, err := migrateTimesToUTC(db, table)
 		if err != nil {
@@ -46,11 +67,33 @@ func ensureSchemaVersion(db *sql.DB) error {
 				logger.String("表", table), logger.Int64("行数", n))
 		}
 	}
-
 	if _, err := db.Exec("PRAGMA user_version = 1"); err != nil {
 		return err
 	}
-	logger.Info("sqlite: 库结构版本已登记", logger.Int("user_version", schemaVersionCurrent))
+	return nil
+}
+
+// unusedIndexes v2 要删除的空转索引（docs/43 P2-11 实测全仓无 SQL 使用；
+// favorites 查询全部按 session_id 过滤，正确的复合索引已由
+// migrateSessionColumns 建立，以下均为冗余写入成本）。
+var unusedIndexes = []string{
+	"idx_favorites_name",
+	"idx_favorites_created_at",
+	"idx_hanzi_data_pinyin",
+	"idx_hanzi_data_level",
+	"idx_hanzi_data_gender",
+}
+
+// migrateV2DropUnusedIndexes 删除空转索引。
+func migrateV2DropUnusedIndexes(db *sql.DB) error {
+	for _, idx := range unusedIndexes {
+		if _, err := db.Exec("DROP INDEX IF EXISTS " + idx); err != nil {
+			return err
+		}
+	}
+	if _, err := db.Exec("PRAGMA user_version = 2"); err != nil {
+		return err
+	}
 	return nil
 }
 

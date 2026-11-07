@@ -175,17 +175,15 @@ func createTables(db *sql.DB) error {
 			surname TEXT NOT NULL,
 			given_name TEXT NOT NULL,
 			pinyin TEXT NOT NULL,
-			gender TEXT NOT NULL,
+			gender TEXT NOT NULL CHECK (gender IN ('male', 'female', 'neutral') OR gender = ''),
 			score REAL NOT NULL,
 			source TEXT,
 			notes TEXT,
 			created_at TIMESTAMP NOT NULL
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_favorites_name ON favorites(surname, given_name)`,
-		// 收藏列表按 created_at DESC 分页查询（GetFavoritesPage），无索引时
-		// 收藏变多后每页都要全表扫描 + 排序（历史缺陷：只有姓名索引）
-		`CREATE INDEX IF NOT EXISTS idx_favorites_created_at ON favorites(created_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at)`,
+		// 收藏/历史列表按「会话内 created_at DESC」分页查询（GetFavoritesPage
+		// 等），复合索引 (session_id, created_at DESC) 由 migrateSessionColumns
+		// 统一建立；docs/43 P2-11 删除了与此模式不匹配的空转单列索引。
 		`CREATE TABLE IF NOT EXISTS name_requests (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			surname TEXT NOT NULL,
