@@ -515,6 +515,9 @@ func convertFateToNameNames(results []fate.NameResult, gender string, sourceClas
 		//   NameCard/NameDetail 的「优先 score_detail」分支永不执行，
 		//   FullReport 只能本地自造命理文案 —— docs/24 P2-5。）
 		applyFateScoreDetail(&n, nr.Score)
+		// 分级风险体检（docs/43 P2-4）：与测名页同源同判，结果页可对称展示
+		// 安全结论；引擎门禁已过滤高危组合，此处为面向用户的复核清单。
+		n.Risks = fate.AssessNameRisks(NewHanziDataProvider(), nr.Surname, nr.GivenName)
 		// 粤拼标注与独立粤语分回填（与 /generate/analysis 路径同口径，docs/43 P1-2）：
 		// 粤拼始终透传；粤语分仅在引擎侧开启粤语评分时非 nil。
 		if nr.Jyutping != "" {

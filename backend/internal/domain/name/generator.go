@@ -2,6 +2,7 @@ package name
 
 import (
 	"name/internal/domain/classics"
+	"name/internal/domain/fate"
 	"name/internal/domain/hanzi"
 	"name/internal/domain/yijing"
 )
@@ -77,6 +78,11 @@ type Name struct {
 	// CantoneseScoreDetail 粤语分维度明细（粤语音律/粤语谐音），仅在开启粤语评分时非空。
 	// 与 NameAnalysis.CantoneseScoreDetail 同字段口径（docs/43 P1-2 补齐）。
 	CantoneseScoreDetail []ScoreDetailItem `json:"cantonese_score_detail,omitempty"`
+
+	// Risks 分级风险体检（谐音/生僻字/多音字/门禁字/撞名热度等，docs/43 P2-4）：
+	// 生成链路与测名链路同源同判（fate.AssessNameRisks），结果页与测名页
+	// 结论对称。无命中时为空切片（omitempty 下序列化为缺失）。
+	Risks []fate.RiskItem `json:"risks,omitempty"`
 }
 
 // ScoreDetailItem 单维度评分明细（确定性评分数据载体）
