@@ -1,0 +1,362 @@
+package services
+
+import (
+	"name/internal/domain/fate"
+	"name/internal/domain/hanzi"
+	"name/internal/infrastructure/database"
+	"name/internal/infrastructure/logger"
+)
+
+func NewHanziDataProvider() *HanziDataProvider {
+	return &HanziDataProvider{}
+}
+
+// HanziDataProvider 基于 hanzi.HanziData 的 CharacterProvider 实现
+//
+// FindCharacters 默认走 Go 端全表过滤；如配置了 WithSQLiteFilter，则优先走
+// SQL 查询（docs/19 报告 P3 方案6 落地）。SQLite 不可用时降级回 Go 过滤。
+type HanziDataProvider struct {
+	// sqlFilter 可选：注入后 FindCharacters 走 SQL（与 in-memory 路径并存）
+	sqlFilter SQLHanziFilter
+}
+
+// SQLHanziFilter SQL 下推过滤接口（避免直接依赖 sqlite 包造成循环）
+//
+// 实现方在 application/services 层负责 sqlite.store 与本接口的桥接；
+// 典型实现是 sqliteCharacterProvider（见本文件末尾）。
+//
+// 返回结果为 []database.Hanzi（只承载粗筛维度），FindCharacters 收到候选后
+// 以内存 hanzi.HanziData 回查补全完整属性。
+type SQLHanziFilter interface {
+	// SearchHanziByFilter 按过滤条件返回 SQL 查询结果。
+	//
+	// 必须返回 error（docs/29 B8）：此前签名只有返回值，SQL 查询出错时
+	// store 返回 nil，FindCharacters 判空后当成「SQL 正常但无匹配」，
+	// 于是注释里承诺的「SQL 失败降级 Go 端全表过滤」路径永远不可达 ——
+	// 基础设施故障被伪装成业务空结果（生成不出名字，却看不出是 DB 挂了）。
+	// 返回 nil slice + nil error 表示「查询成功且确实无匹配」，两者必须可区分。
+	SearchHanziByFilter(wuxing string, minStrokes, maxStrokes int,
+		hasPositive, isRegular bool, chars []string, limit int) ([]database.Hanzi, error)
+	// HasData 报告底层字库是否载有数据。
+	//
+	// B8 的孪生陷阱（本次修复，空库回落场景实测）：库未执行
+	// `materials import`（或物料被清空）时，SQL 查询**成功且零行**，
+	// 与「查询成功、确实无匹配」在返回值上完全一致。若一律按无匹配
+	// 处理，回落场景（DB 缺料 → 内存已装 JSON 字库）会拿到空候选池，
+	// 表现为全部生成请求失败，且看不出是库没导入。
+	//
+	// 因此 FindCharacters 在 SQL 返回空结果时调用本方法甄别：
+	// 无数据 → 降级 Go 端全表过滤；有数据 → 如实返回空。
+	HasData() bool
+}
+
+func (p *HanziDataProvider) GetCharacter(char string) (*fate.Character, error) {
+	h, ok := hanzi.GetHanzi(char)
+	if !ok {
+		return nil, nil
+	}
+	return hanziToCharacter(h), nil
+}
+
+func (p *HanziDataProvider) FindCharacters(query fate.CharacterQuery) ([]*fate.Character, error) {
+	pattern := extractFilterPattern(query)
+
+	// SQLite 下沉（P3 方案6 落地）：sqlFilter 注入时优先走 SQL + 索引召回，
+	// 失败/未注入时降级回 Go 端全表过滤（向后兼容）。
+	if p.sqlFilter != nil {
+		hanzis, err := p.queryViaSQL(pattern)
+		if err == nil {
+			// 空库甄别（B8 孪生陷阱修复）：库未导入物料时 SQL「成功且零行」，
+			// 与「有数据但确实无匹配」不可区分。HasData()=false 时内存已由
+			// dataloader 回落装上 JSON 字库，必须降级 Go 端过滤，否则回落
+			// 场景候选池恒空、生成全失败（空库实测：每次请求 400/500）。
+			if len(hanzis) == 0 && !p.sqlFilter.HasData() {
+				logger.Warn("SQLite 字库无数据（未执行 materials import？），降级 Go 端全表过滤")
+			} else {
+				// P2（ADR-003）：queryViaSQL 已完成召回 + 二次过滤，且 hanzi_data 已落齐
+				// 构造 Character 所需的全部列，故直接由 SQL 行构造，不再逐字
+				// `hanzi.GetHanzi` 回查内存（原先此处是第二处回查，且会丢弃 SQL 返回的
+				// level/gender/radical/meaning 等字段，使 SQL 下沉收益归零）。
+				result := make([]*fate.Character, 0, len(hanzis))
+				for i := range hanzis {
+					result = append(result, databaseHanziToCharacter(&hanzis[i]))
+				}
+				return result, nil
+			}
+		}
+		// SQL 失败 → 降级 Go 过滤（不阻断服务）
+	}
+
+	var result []*fate.Character
+	// 如果 query 是 basicCharacterQuery，提取过滤条件
+	for _, h := range hanzi.HanziData {
+		c := hanziToCharacter(h)
+
+		// 应用过滤条件
+		if pattern.regularFilter && !c.IsRegular {
+			continue
+		}
+		if pattern.nameableFilter && !c.IsNameable {
+			continue
+		}
+		if pattern.strokeEQ > 0 && c.ScienceStroke != pattern.strokeEQ {
+			continue
+		}
+		if pattern.strokeGTE > 0 && c.ScienceStroke < pattern.strokeGTE {
+			continue
+		}
+		if pattern.strokeLTE > 0 && c.ScienceStroke > pattern.strokeLTE {
+			continue
+		}
+		if len(pattern.wuxingIn) > 0 && !inSlice(c.WuXing, pattern.wuxingIn) {
+			continue
+		}
+		if len(pattern.wuxingNotIn) > 0 && inSlice(c.WuXing, pattern.wuxingNotIn) {
+			continue
+		}
+		if len(pattern.charIn) > 0 && !inSlice(c.Char, pattern.charIn) {
+			continue
+		}
+		if pattern.genderHint != "" && c.GenderHint != pattern.genderHint && c.GenderHint != "neutral" {
+			continue
+		}
+		if pattern.namingCategory != "" && !inSlice(pattern.namingCategory, c.NamingCategory) {
+			continue
+		}
+		result = append(result, c)
+	}
+	return result, nil
+}
+
+func (p *HanziDataProvider) GetSurnameStrokes(surname string) (int, int, error) {
+	// 优先查康熙笔画表（河图数理与易经卦象解读使用康熙笔画）
+	if l1, l2 := fate.LookupSurnameStrokes(surname); l1 > 0 {
+		return l1, l2, nil
+	}
+	// 未收录的姓氏降级使用简体笔画
+	runes := []rune(surname)
+	if len(runes) == 0 {
+		return 0, 0, nil
+	}
+	l1 := getStroke(string(runes[0]))
+	if len(runes) >= 2 {
+		return l1, getStroke(string(runes[1])), nil
+	}
+	return l1, 0, nil
+}
+
+func (p *HanziDataProvider) CountCharacters(query fate.CharacterQuery) (int, error) {
+	chars, err := p.FindCharacters(query)
+	if err != nil {
+		return 0, err
+	}
+	return len(chars), nil
+}
+
+// deriveCharacterFlags 由「通用规范汉字表等级 + 简体笔画 + 生僻标记」派生
+// IsRegular / IsNameable / CommonLevel。
+//
+// 这是 SQL 路径与内存路径唯一的共有派生逻辑（ADR-003「结果等价」的关键）：
+// 两个路径的差别只在**输入来源**（hanzi_data.level/is_rare vs GetNamerLevel/RareChars），
+// 判定规则本身必须同源，否则同一字在两条路径下 IsRegular 可能不一致。
+func deriveCharacterFlags(level, strokes int, isRare bool) (isRegular, isNameable bool, commonLevel int) {
+	// 一级字(3500)+二级字(3000) 全量纳入，三级字(1605)暂不纳入需逐字审核
+	// 表外字(level=0)按笔画+生僻字表保守判定
+	isRegular = level == 1 || level == 2
+	if level == 0 {
+		isRegular = strokes <= 25 && !isRare
+	}
+	isNameable = strokes <= 30 && isRegular
+	return isRegular, isNameable, level
+}
+
+// hanziToCharacter 将 hanzi.Hanzi 转换为 fate.Character
+func hanziToCharacter(h hanzi.Hanzi) *fate.Character {
+	// 以《通用规范汉字表》等级为准判定常用字（namer.json level：1=一级3500常用字）
+	// level==0 表示不在规范表中（旧版精选字库补充字），保守沿用笔画+生僻字表判定
+	//
+	// 生僻字判定取**并集**：hanzi.Hanzi.IsRare（namer.json 落库的 99 字）与
+	// hanzi.RareChars（编译期静态表，含 CJK 扩展区字）。两者实测有 102 字不一致，
+	// 只取其一会使同一字在内存路径与 SQL 路径下 IsRegular 得到相反结论
+	// （SQL 路径见 databaseHanziToCharacter，同样取并集）。取并集即取保守侧，
+	// 与 docs/31「取名优选范围：避开生僻字」的安全策略一致。
+	isRare := h.IsRare || hanzi.RareChars[h.Char]
+	level := hanzi.GetNamerLevel(h.Char)
+	isRegular, isNameable, commonLevel := deriveCharacterFlags(level, h.Strokes, isRare)
+
+	// 笔画口径统一：
+	//   - SimplifiedStroke / TraditionalStroke: namer 简体笔画（h.Strokes）
+	//   - KangxiStroke: 康熙字典笔画（h.KangxiStrokes，0 时降为简体）
+	//   - ScienceStroke: 简体笔画（科学笔画口径，与 Kangxi 区分）
+	//
+	// 此前四个字段均填 h.Strokes，导致"姓用康熙、名用科学"的口径混乱
+	// （参见 docs/19 报告 B3）。修复要点：
+	//   1. KangxiStroke 走真实康熙字典笔画（namer_loader 已合并 kangxi-strokecount.csv）
+	//   2. KangxiStroke == 0 时降级为简体（未收录兜底）
+	kangxiStroke := h.KangxiStrokes
+	if kangxiStroke == 0 {
+		kangxiStroke = h.Strokes
+	}
+
+	c := &fate.Character{
+		Char:              h.Char,
+		Pinyin:            []string{h.Pinyin},
+		WuXing:            h.Wuxing,
+		SimplifiedStroke:  h.Strokes,
+		TraditionalStroke: h.Strokes,
+		KangxiStroke:      kangxiStroke,
+		ScienceStroke:     h.Strokes,
+		Radical:           h.Radical,
+		Meaning:           h.Meaning,
+		IsRegular:         isRegular,
+		IsNameable:        isNameable,
+		CommonLevel:       commonLevel,
+		GenderHint:        h.Gender,
+		HasPoetry:         false,
+
+		// 数据层策展标注：直接透传 hanzi.json 的策展判断
+		// （isNegative=不宜入名 / namePenalty=起名扣分 / pairBlacklist=搭配黑名单）
+		IsNegative:    h.IsNegative,
+		NamePenalty:   h.NamePenalty,
+		PairBlacklist: h.PairBlacklist,
+
+		// 策展覆盖表标记：人工精选起名好字（17 分类约 446 字）是荒谬字与好字的强区分信号，
+		// WenHuaRater 据此给策展字文化加分，打破单名 Top5 五维同分的僵局。
+		IsCurated: hanzi.IsCuratedNamingChar(h.Char),
+
+		// 寓意评分：namer.json positiveScore（0-100），策展加分收窄为「策展字 ∩ positiveScore>=85」
+		// 的精选好字专属，平庸字（软/际/映/耿 等分类字）虽然也在策展表内但不享受加分。
+		PositiveScore: h.PositiveScore,
+
+		// 人名频率档位（1-5），来自 Chinese-Names-Corpus 语料统计
+		NameFreqTier: h.NameFreqTier,
+	}
+
+	// 标注起名分类（优先使用 HanziData 的全量分类数据，其次 fallback 到 fate 精选库）
+	if cats := hanzi.GetNamingCategories(c.Char); len(cats) > 0 {
+		c.NamingCategory = cats
+	} else if info := fate.GetNamingCharInfo(c.Char); info != nil {
+		c.NamingCategory = info.Category
+	}
+
+	return c
+}
+
+// databaseHanziToCharacter 将 database.Hanzi（SQLite 查询结果）转换为 fate.Character。
+//
+// P2（ADR-003）：与 hanziToCharacter 的区别仅在于**输入优先取自 SQL 返回的列**，
+// 不再逐字 `hanzi.GetHanzi` 回查内存。派生规则共用 deriveCharacterFlags，
+// 保证同一字在 SQL 路径与内存路径下的 IsRegular / IsNameable / CommonLevel 一致。
+func databaseHanziToCharacter(h *database.Hanzi) *fate.Character {
+	// 生僻字判定必须是两路径的**并集**，否则同一字在两条路径下 IsRegular 可能相反。
+	//
+	// 实测（filter_integration_test 守护）：`hanzi_data.is_rare` 来自 namer.json（99 字），
+	// `hanzi.RareChars` 是编译期静态表（含 CJK 扩展区字），两者有 102 字不一致。
+	// 若 SQL 路径只信 is_rare、内存路径只信 RareChars，同一字会得到相反的 IsRegular
+	// ——「SQL 与内存结果等价」当场破功。故此处取并集：
+	// 任一侧判为生僻即按生僻处理（取保守侧，与「取名优选范围」的安全策略一致）。
+	isRare := h.IsRare || hanzi.RareChars[h.Char]
+	isRegular, isNameable, commonLevel := deriveCharacterFlags(h.Level, h.Strokes, isRare)
+
+	// KangxiStroke == 0 时降级为简体（未收录兜底），口径与内存路径一致
+	kangxiStroke := h.KangxiStrokes
+	if kangxiStroke == 0 {
+		kangxiStroke = h.Strokes
+	}
+
+	c := &fate.Character{
+		Char:              h.Char,
+		Pinyin:            []string{h.Pinyin},
+		WuXing:            h.Wuxing,
+		SimplifiedStroke:  h.Strokes,
+		TraditionalStroke: h.Strokes,
+		KangxiStroke:      kangxiStroke,
+		ScienceStroke:     h.Strokes,
+		Radical:           h.Radical,
+		Meaning:           h.Meaning,
+		IsRegular:         isRegular,
+		IsNameable:        isNameable,
+		CommonLevel:       commonLevel,
+		GenderHint:        h.Gender,
+		HasPoetry:         false,
+
+		// 策展标注与评分：全部取自 SQL 行。
+		// 这些字段不是「装饰」——is_negative / name_penalty / name_freq_tier 会实打实
+		// 参与 fate 评分；一旦在 SQL 路径置零，生成链路（走 FindCharacters/SQL）与
+		// 测名链路（走 GetCharacter/内存）就会算出不同总分，
+		// 违反「测名与生成同源同分」契约（e2e_check 第 7 项 / evaluate_e2e_test.go）。
+		IsNegative:  h.IsNegative,
+		NamePenalty: h.NamePenalty,
+		// pair_blacklist 上游无真值（内存侧实测 0 字有值），两路径同为「无禁忌搭配」
+		PairBlacklist: nil,
+
+		// 策展覆盖表：curated_names 属运行时自学习数据，未纳入统一 import，
+		// 仍查内存静态表（无 I/O，不构成回查）。
+		IsCurated: hanzi.IsCuratedNamingChar(h.Char),
+
+		PositiveScore: h.PositiveScore,
+		// 人名频率档位（1-5），由 name_frequency 语料合并而来，已随 import 落库
+		NameFreqTier: h.NameFreqTier,
+	}
+
+	// 起名分类：SQL 已返回 naming_categories，优先使用；为空时 fallback 到 fate 精选库
+	if len(h.NamingCategories) > 0 {
+		c.NamingCategory = h.NamingCategories
+	} else if info := fate.GetNamingCharInfo(c.Char); info != nil {
+		c.NamingCategory = info.Category
+	}
+
+	return c
+}
+
+// extractFilterPattern 从 CharacterQuery 中提取过滤模式
+// 如果 query 是 *basicCharacterQuery，直接读取字段
+// 否则遍历所有过滤条件应用到统一结构
+func extractFilterPattern(query fate.CharacterQuery) filterPattern {
+	p := filterPattern{}
+	if q, ok := query.(*fate.BasicCharacterQuery); ok {
+		p.regularFilter = q.RegularFilter
+		p.nameableFilter = q.NameableFilter
+		p.strokeEQ = q.StrokeEQ
+		p.strokeGTE = q.StrokeGTE
+		p.strokeLTE = q.StrokeLTE
+		p.wuxingIn = q.WuxingIn
+		p.wuxingNotIn = q.WuxingNotIn
+		p.charIn = q.CharIn
+		p.genderHint = q.GenderHint
+		p.namingCategory = q.NamingCategory
+	}
+	return p
+}
+
+// filterPattern 简单过滤模式（与 basicCharacterQuery 字段映射）
+type filterPattern struct {
+	regularFilter  bool
+	nameableFilter bool
+	strokeEQ       int
+	strokeGTE      int
+	strokeLTE      int
+	wuxingIn       []string
+	wuxingNotIn    []string
+	charIn         []string
+	genderHint     string
+	namingCategory string // 精选起名分类
+}
+
+// getStroke 获取单字笔画
+func getStroke(char string) int {
+	if h, ok := hanzi.GetHanzi(char); ok {
+		return h.Strokes
+	}
+	return 0
+}
+
+// inSlice 检查字符串是否在切片中
+func inSlice(s string, slice []string) bool {
+	for _, v := range slice {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
