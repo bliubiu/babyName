@@ -143,29 +143,6 @@ func (s *Store) DeleteHistory(sessionID, id string) error {
 	return nil
 }
 
-func (s *Store) BatchSaveHistory(records []*database.HistoryRecord) []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	ids := make([]string, len(records))
-	for i, record := range records {
-		if record.ID == "" {
-			record.ID = uuid.New().String()
-		}
-		if record.CreatedAt.IsZero() {
-			record.CreatedAt = time.Now()
-		}
-		if existing, ok := s.History[record.ID]; ok && existing.SessionID != record.SessionID {
-			continue
-		}
-
-		s.History[record.ID] = record
-		ids[i] = record.ID
-	}
-
-	return ids
-}
-
 func (s *Store) BatchDeleteHistory(sessionID string, ids []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -269,31 +246,6 @@ func (s *Store) GetFavoriteByName(sessionID, surname, givenName string) *databas
 	}
 	copyR := *r
 	return &copyR
-}
-
-func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	ids := make([]string, len(records))
-	for i, record := range records {
-		if record.ID == "" {
-			record.ID = uuid.New().String()
-		}
-		if record.CreatedAt.IsZero() {
-			record.CreatedAt = time.Now()
-		}
-		if existing, ok := s.Favorites[record.ID]; ok && existing.SessionID != record.SessionID {
-			continue
-		}
-
-		s.Favorites[record.ID] = record
-		// 更新按名称索引
-		s.FavoritesByName[favoriteNameKey(record.SessionID, record.Surname, record.GivenName)] = record
-		ids[i] = record.ID
-	}
-
-	return ids, nil
 }
 
 func (s *Store) BatchDeleteFavorite(sessionID string, ids []string) error {

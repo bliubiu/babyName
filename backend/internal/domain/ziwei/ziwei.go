@@ -773,8 +773,8 @@ func distributeSuiXing(chart *ZiweiChart, lunarMonth, lunarDayNum, yearZhiIndex,
 	if timeIndex >= 12 {
 		dayOffset = lunarDayNum
 	}
-	zuoFu := fixIndex(4 + m - 1, 12)
-	youBi := fixIndex(10 - (m - 1), 12)
+	zuoFu := fixIndex(4+m-1, 12)
+	youBi := fixIndex(10-(m-1), 12)
 	wenChang := fixIndex(10-timeIndex, 12)
 	wenQu := fixIndex(4+timeIndex, 12)
 	place(zuoFu+dayOffset, "三台")

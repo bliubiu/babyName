@@ -49,13 +49,13 @@ func TestJyutpingOf_MultiReading(t *testing.T) {
 // TestStripJyutpingTone 去声调
 func TestStripJyutpingTone(t *testing.T) {
 	cases := map[string]string{
-		"nei5":  "nei",
-		"jyu5":  "jyu",
-		"aa1":   "aa",
-		"zaak6": "zaak",
+		"nei5":   "nei",
+		"jyu5":   "jyu",
+		"aa1":    "aa",
+		"zaak6":  "zaak",
 		"gwong2": "gwong",
-		"ng4":   "ng",
-		"":      "",
+		"ng4":    "ng",
+		"":       "",
 	}
 	for in, want := range cases {
 		if got := StripJyutpingTone(in); got != want {

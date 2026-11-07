@@ -58,28 +58,6 @@ func (s *HistoryService) SaveHistory(ctx context.Context, record *HistoryRecord)
 	return id, nil
 }
 
-// BatchSaveHistory 批量保存历史记录
-func (s *HistoryService) BatchSaveHistory(ctx context.Context, records []*HistoryRecord) ([]string, error) {
-	storeRecords := make([]*database.HistoryRecord, len(records))
-	for i, record := range records {
-		sid, err := NormalizeSessionID(record.SessionID)
-		if err != nil {
-			return nil, err
-		}
-		storeRecords[i] = &database.HistoryRecord{
-			ID:            record.ID,
-			SessionID:     sid,
-			Surname:       record.Surname,
-			Gender:        record.Gender,
-			BirthDate:     record.BirthDate,
-			BirthTime:     record.BirthTime,
-			BirthLocation: record.BirthLocation,
-			Results:       string(record.Results),
-		}
-	}
-	return s.store.BatchSaveHistory(storeRecords), nil
-}
-
 // toHistoryRecord 存储层记录 → 应用层 DTO（GetHistory/GetHistoryPage/
 // GetHistoryRecord 三处共用，避免映射口径分叉）。
 func toHistoryRecord(r *database.HistoryRecord) *HistoryRecord {

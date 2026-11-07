@@ -372,9 +372,9 @@ var CharacterWuxingOverride = map[string]string{
 // 消除此前「覆盖表>部首>校正」（本函数旧版）与 ResolveWuxing「覆盖表>已校正>部首」
 // 的双口径矛盾——旧版会让部首推导值压过 namer.json 人工校正（如「明」部首=火、
 // 校正=水 时旧版返回火）。收敛后两者完全一致，优先级：
-//   1. CharacterWuxingOverride（字义法覆盖表）— 无条件应用
-//   2. HanziData.Wuxing（namer.json 人工校正）— 保留
-//   3. 部首映射表（字形法）— 仅对空值兜底
+//  1. CharacterWuxingOverride（字义法覆盖表）— 无条件应用
+//  2. HanziData.Wuxing（namer.json 人工校正）— 保留
+//  3. 部首映射表（字形法）— 仅对空值兜底
 //
 // 该口径与物料导入路径（sqlite.Store.Import → hanzi.ResolveWuxing）完全一致，
 // 内存路径与 SQL 路径五行判定不再分叉（filter_integration_test 守护）。

@@ -382,63 +382,6 @@ func (s *Store) SaveHistory(record *database.HistoryRecord) string {
 	return record.ID
 }
 
-func (s *Store) BatchSaveHistory(records []*database.HistoryRecord) []string {
-	ids := make([]string, len(records))
-	tx, err := s.writeDB.Begin()
-	if err != nil {
-		logger.Error("sqlite: 批量保存历史：开启事务失败", logger.ErrField(err))
-		return ids
-	}
-
-	stmt, err := tx.Prepare(
-		`INSERT INTO history (id, session_id, surname, gender, birth_date, birth_time, birth_location, results, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(id) DO UPDATE SET surname=excluded.surname, gender=excluded.gender,
-		   birth_date=excluded.birth_date, birth_time=excluded.birth_time,
-		   birth_location=excluded.birth_location, results=excluded.results, created_at=excluded.created_at
-		 WHERE history.session_id = excluded.session_id`,
-	)
-	if err != nil {
-		logger.Error("sqlite: 批量保存历史：预编译失败", logger.ErrField(err))
-		_ = tx.Rollback()
-		return ids
-	}
-
-	var failedIndexes []int
-	for i, record := range records {
-		if record.ID == "" {
-			record.ID = uuid.New().String()
-		}
-		if record.CreatedAt.IsZero() {
-			record.CreatedAt = time.Now()
-		}
-		res, err := stmt.Exec(record.ID, record.SessionID, record.Surname, record.Gender, record.BirthDate,
-			record.BirthTime, record.BirthLocation, record.Results, record.CreatedAt)
-		if err != nil {
-			logger.Error("sqlite: 批量保存历史：执行失败", logger.ErrField(err))
-			failedIndexes = append(failedIndexes, i)
-			continue
-		}
-		if n, err := res.RowsAffected(); err == nil && n == 0 {
-			logger.Warn("sqlite: BatchSaveHistory 拒绝跨会话覆盖", logger.String("id", record.ID))
-			continue
-		}
-		ids[i] = record.ID
-	}
-	_ = stmt.Close()
-
-	if err := tx.Commit(); err != nil {
-		logger.Error("sqlite: 批量保存历史：提交失败", logger.ErrField(err))
-		return ids
-	}
-
-	// 事务提交成功后，对失败记录通过单独连接重试（避免单连接死锁）
-	for _, i := range failedIndexes {
-		ids[i] = s.SaveHistory(records[i])
-	}
-	return ids
-}
-
 func (s *Store) GetHistory(sessionID string) []*database.HistoryRecord {
 	// 默认限制返回100条记录，防止内存溢出
 	return s.GetHistoryPageWithLimit(sessionID, 1, 100)
@@ -585,74 +528,6 @@ func (s *Store) SaveFavorite(record *database.FavoriteRecord) (string, error) {
 		return "", fmt.Errorf("收藏记录不存在或无权修改")
 	}
 	return record.ID, nil
-}
-
-func (s *Store) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string, error) {
-	ids := make([]string, len(records))
-	tx, err := s.writeDB.Begin()
-	if err != nil {
-		logger.Error("sqlite: 批量保存收藏：开启事务失败", logger.ErrField(err))
-		return ids, err
-	}
-
-	stmt, err := tx.Prepare(
-		`INSERT INTO favorites (id, session_id, surname, given_name, pinyin, gender, score, source, notes, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(id) DO UPDATE SET surname=excluded.surname, given_name=excluded.given_name
-		 WHERE favorites.session_id = excluded.session_id`,
-	)
-	if err != nil {
-		logger.Error("sqlite: 批量保存收藏：预编译失败", logger.ErrField(err))
-		_ = tx.Rollback()
-		return ids, err
-	}
-
-	var firstErr error
-	var failedIndexes []int
-	for i, record := range records {
-		if record.ID == "" {
-			record.ID = uuid.New().String()
-		}
-		if record.CreatedAt.IsZero() {
-			record.CreatedAt = time.Now()
-		}
-		res, err := stmt.Exec(record.ID, record.SessionID, record.Surname, record.GivenName, record.Pinyin,
-			record.Gender, record.Score, record.Source, record.Notes, record.CreatedAt)
-		if err != nil {
-			logger.Error("sqlite: 批量保存收藏：执行失败", logger.ErrField(err))
-			if firstErr == nil {
-				firstErr = err
-			}
-			failedIndexes = append(failedIndexes, i)
-			continue
-		}
-		if n, err := res.RowsAffected(); err == nil && n == 0 {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("收藏记录不存在或无权修改")
-			}
-			continue
-		}
-		ids[i] = record.ID
-	}
-	_ = stmt.Close()
-
-	if err := tx.Commit(); err != nil {
-		logger.Error("sqlite: 批量保存收藏：提交失败", logger.ErrField(err))
-		return ids, err
-	}
-
-	// 事务提交成功后，对失败记录通过单独连接重试（避免单连接死锁）
-	for _, i := range failedIndexes {
-		id, err := s.SaveFavorite(records[i])
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			continue
-		}
-		ids[i] = id
-	}
-	return ids, firstErr
 }
 
 func (s *Store) GetFavorites(sessionID string) []*database.FavoriteRecord {

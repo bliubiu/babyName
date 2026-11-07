@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
 )
 
 // compliance_redline_test.go 守护 L5 合规红线（docs/33 门禁层 M2）：

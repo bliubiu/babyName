@@ -22,7 +22,6 @@ type PageResult[T any] struct {
 // 任何跨会话读取或删除都必须被存储层拒绝（不能只靠上层过滤）。
 type HistoryStore interface {
 	SaveHistory(record *HistoryRecord) string
-	BatchSaveHistory(records []*HistoryRecord) []string
 	GetHistory(sessionID string) []*HistoryRecord
 	GetHistoryPage(sessionID string, page, limit int) ([]*HistoryRecord, int, error)
 	GetHistoryByID(sessionID, id string) *HistoryRecord
@@ -35,8 +34,6 @@ type FavoriteStore interface {
 	// SaveFavorite 保存收藏；写入失败返回空 ID 与错误（此前吞错返回假 ID，
 	// 服务层误判为成功，收藏静默丢失——docs/29 A6）
 	SaveFavorite(record *FavoriteRecord) (string, error)
-	// BatchSaveFavorite 批量保存；返回各记录 ID（失败位为空串）与首个错误
-	BatchSaveFavorite(records []*FavoriteRecord) ([]string, error)
 	GetFavorites(sessionID string) []*FavoriteRecord
 	GetFavoritesPage(sessionID string, page, limit int) ([]*FavoriteRecord, int, error)
 	DeleteFavorite(sessionID, id string) error

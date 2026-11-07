@@ -283,34 +283,34 @@ func TestGenerate_EmitsScoreDetail(t *testing.T) {
 		if !hasText {
 			t.Errorf("%s score_detail 全部无依据文字，用户仍看不出「为什么好」", n.FullName)
 		}
-	// 三才分与 score_detail 中的三才条目应一致
-			for _, item := range n.ScoreDetail {
-				if item.Name == "三才" && item.Score != n.SancaiScore {
-					t.Errorf("%s 三才分不一致: score=%v sancai_score=%v",
-						n.FullName, item.Score, n.SancaiScore)
-				}
-			}
-
-			// 加权重现 TotalScore：Σ weight_i × score_i ≈ total_score。
-			// 引擎合成后按 0.1 取整（rater.go:101），容差 0.051；
-			// score_detail 漏维（如历史漏「卦象」10%，差 4~10 分）时守护即红。
-			weights := make(map[string]float64)
-			for _, r := range fate.DefaultRaters() {
-				weights[r.Name()] = r.Weight()
-			}
-			var weighted float64
-			for _, item := range n.ScoreDetail {
-				w, ok := weights[item.Name]
-				if !ok {
-					continue // 未知维度已在上方断言报错
-				}
-				weighted += item.Score * w
-			}
-			if diff := math.Abs(weighted - n.TotalScore); diff > 0.051 {
-				t.Errorf("%s 加权和 %v ≠ TotalScore %v（差 %v），score_detail 存在漏维或分数错位",
-					n.FullName, weighted, n.TotalScore, diff)
+		// 三才分与 score_detail 中的三才条目应一致
+		for _, item := range n.ScoreDetail {
+			if item.Name == "三才" && item.Score != n.SancaiScore {
+				t.Errorf("%s 三才分不一致: score=%v sancai_score=%v",
+					n.FullName, item.Score, n.SancaiScore)
 			}
 		}
+
+		// 加权重现 TotalScore：Σ weight_i × score_i ≈ total_score。
+		// 引擎合成后按 0.1 取整（rater.go:101），容差 0.051；
+		// score_detail 漏维（如历史漏「卦象」10%，差 4~10 分）时守护即红。
+		weights := make(map[string]float64)
+		for _, r := range fate.DefaultRaters() {
+			weights[r.Name()] = r.Weight()
+		}
+		var weighted float64
+		for _, item := range n.ScoreDetail {
+			w, ok := weights[item.Name]
+			if !ok {
+				continue // 未知维度已在上方断言报错
+			}
+			weighted += item.Score * w
+		}
+		if diff := math.Abs(weighted - n.TotalScore); diff > 0.051 {
+			t.Errorf("%s 加权和 %v ≠ TotalScore %v（差 %v），score_detail 存在漏维或分数错位",
+				n.FullName, weighted, n.TotalScore, diff)
+		}
+	}
 
 	if withDetail != len(names) {
 		t.Errorf("带 score_detail 的名字数 = %d/%d，期望全部", withDetail, len(names))

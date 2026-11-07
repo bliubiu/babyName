@@ -118,7 +118,7 @@ func LoadNamerFromJSON(dataDir string) error {
 	namerMu.Lock()
 	defer namerMu.Unlock()
 
-m := make(map[string]NamerChar, len(nd.Chars))
+	m := make(map[string]NamerChar, len(nd.Chars))
 	for _, nc := range nd.Chars {
 		m[nc.Char] = nc
 	}

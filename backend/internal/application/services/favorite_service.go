@@ -208,43 +208,6 @@ func (s *FavoriteService) SaveFavorite(ctx context.Context, record *FavoriteReco
 	return id, nil
 }
 
-// BatchSaveFavorite 批量保存收藏
-func (s *FavoriteService) BatchSaveFavorite(ctx context.Context, records []*FavoriteRecord) ([]string, error) {
-	storeRecords := make([]*database.FavoriteRecord, len(records))
-	for i, record := range records {
-		if err := validateFavoriteEntry(record); err != nil {
-			return nil, err
-		}
-		sid, err := NormalizeSessionID(record.SessionID)
-		if err != nil {
-			return nil, err
-		}
-		record.SessionID = sid
-		// 检查当前会话内是否已存在同名收藏
-		existing := s.store.GetFavoriteByName(sid, record.Surname, record.GivenName)
-		if existing != nil {
-			// 使用现有ID
-			record.ID = existing.ID
-		}
-		storeRecords[i] = &database.FavoriteRecord{
-			ID:        record.ID,
-			SessionID: sid,
-			Surname:   record.Surname,
-			GivenName: record.GivenName,
-			Pinyin:    record.Pinyin,
-			Gender:    record.Gender,
-			Score:     record.Score,
-			Source:    record.Source,
-			Notes:     record.Notes,
-		}
-	}
-	ids, err := s.store.BatchSaveFavorite(storeRecords)
-	if err != nil {
-		return ids, err
-	}
-	return ids, nil
-}
-
 // BatchDeleteFavorite 批量删除当前会话的收藏
 func (s *FavoriteService) BatchDeleteFavorite(ctx context.Context, sessionID string, ids []string) error {
 	sid, err := NormalizeSessionID(sessionID)
@@ -261,13 +224,4 @@ func (s *FavoriteService) DeleteFavorite(ctx context.Context, sessionID, id stri
 		return err
 	}
 	return s.store.DeleteFavorite(sid, id)
-}
-
-// CheckFavorite 检查名字是否已在当前会话收藏
-func (s *FavoriteService) CheckFavorite(ctx context.Context, sessionID, surname, givenName string) bool {
-	sid, err := NormalizeSessionID(sessionID)
-	if err != nil {
-		return false
-	}
-	return s.store.GetFavoriteByName(sid, surname, givenName) != nil
 }

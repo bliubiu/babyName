@@ -148,7 +148,7 @@ func TestBlendScore(t *testing.T) {
 		Pinyin1: "zé", Pinyin2: "yǔ",
 		WuXing1: "水", WuXing2: "土", Stroke1: 8, Stroke2: 6,
 		SurnamePinyin: "li",
-		Jyutping1: "zaak6", Jyutping2: "jyu5", SurnameJyutping: "lei5",
+		Jyutping1:     "zaak6", Jyutping2: "jyu5", SurnameJyutping: "lei5",
 	}
 	main := RateNameScore(cand, fateData, DefaultRaters())
 	canto := RateCantoneseScore(cand, fateData, DefaultCantoneseRaters())

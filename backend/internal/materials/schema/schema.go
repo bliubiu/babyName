@@ -38,31 +38,31 @@ func ValidWuxing(w string) bool { return w == "" || wuxingSet[w] }
 
 // Word 规范汉字基座：由 namer.json 逐字记录 + 跨物料合并派生
 type Word struct {
-	Char          string   `json:"char"`
-	Pinyin        string   `json:"pinyin"`
-	Strokes       int      `json:"strokes"`
-	KangxiStrokes int      `json:"kangxiStrokes"`
-	Radical       string   `json:"radical"`
-	Meaning       string   `json:"meaning"`
-	Wuxing        string   `json:"wuxing"`
-	Level         int      `json:"level"`
-	Gender        Gender   `json:"gender"`
-	Tone          int      `json:"tone"`
-	NameFreqTier  int      `json:"nameFreqTier"`
-	UsageLevel    int      `json:"usageLevel"`
-	PositiveScore int      `json:"positiveScore"`
-	PhoneticScore int      `json:"phoneticScore"`
-	ModernScore   int      `json:"modernScore"`
+	Char           string   `json:"char"`
+	Pinyin         string   `json:"pinyin"`
+	Strokes        int      `json:"strokes"`
+	KangxiStrokes  int      `json:"kangxiStrokes"`
+	Radical        string   `json:"radical"`
+	Meaning        string   `json:"meaning"`
+	Wuxing         string   `json:"wuxing"`
+	Level          int      `json:"level"`
+	Gender         Gender   `json:"gender"`
+	Tone           int      `json:"tone"`
+	NameFreqTier   int      `json:"nameFreqTier"`
+	UsageLevel     int      `json:"usageLevel"`
+	PositiveScore  int      `json:"positiveScore"`
+	PhoneticScore  int      `json:"phoneticScore"`
+	ModernScore    int      `json:"modernScore"`
 	ClassicalScore int      `json:"classicalScore"`
-	CurationLevel int      `json:"curationLevel"`
-	NamePenalty   int      `json:"namePenalty"`
-	IsPolyphonic  bool     `json:"isPolyphonic"`
-	IsRare        bool     `json:"isRare"`
-	IsNegative    bool     `json:"isNegative"`
-	StyleTags     []string `json:"styleTags"`
-	GenderTags    []string `json:"genderTags"`
-	PairBlacklist []string `json:"pairBlacklist"`
-	NamingCats    []string `json:"namingCategories"`
+	CurationLevel  int      `json:"curationLevel"`
+	NamePenalty    int      `json:"namePenalty"`
+	IsPolyphonic   bool     `json:"isPolyphonic"`
+	IsRare         bool     `json:"isRare"`
+	IsNegative     bool     `json:"isNegative"`
+	StyleTags      []string `json:"styleTags"`
+	GenderTags     []string `json:"genderTags"`
+	PairBlacklist  []string `json:"pairBlacklist"`
+	NamingCats     []string `json:"namingCategories"`
 }
 
 // CharGroup 偏旁分组（namer.json 顶层 charGroups，实测 29 组）
@@ -116,8 +116,8 @@ type Hexagram struct {
 	GuaCi          string   `json:"guaCi"`
 	XiangCi        string   `json:"xiangCi"`
 	YaoCi          []string `json:"yaoCi"`
-	TuanCi         string   `json:"tuanCi"`     // 彖传
-	XiaoXiang      []string `json:"xiaoXiang"`  // 小象传（逐爻，与爻辞对齐）
+	TuanCi         string   `json:"tuanCi"`    // 彖传
+	XiaoXiang      []string `json:"xiaoXiang"` // 小象传（逐爻，与爻辞对齐）
 	Interpretation string   `json:"interpretation"`
 }
 

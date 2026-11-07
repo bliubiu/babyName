@@ -198,15 +198,15 @@ type NameScore struct {
 
 // NameResult 名字完整分析结果
 type NameResult struct {
-	Rank       int       `json:"rank"`
-	Surname    string    `json:"surname"`
-	GivenName  string    `json:"given_name"`
-	FullName   string    `json:"full_name"`
-	Pinyin     string    `json:"pinyin"`
+	Rank      int    `json:"rank"`
+	Surname   string `json:"surname"`
+	GivenName string `json:"given_name"`
+	FullName  string `json:"full_name"`
+	Pinyin    string `json:"pinyin"`
 	// Jyutping 粤拼标注（Jyutping1/Jyutping2/SurnameJyutping 以空格组合，未收录为空）。
 	// 与粤语评分开关无关，始终透传供前端展示粤拼与声调。
-	Jyutping string    `json:"jyutping,omitempty"`
-	Strokes  int       `json:"strokes"`
+	Jyutping   string    `json:"jyutping,omitempty"`
+	Strokes    int       `json:"strokes"`
 	WuXing     string    `json:"wu_xing"`
 	Score      NameScore `json:"score"`
 	Meaning    string    `json:"meaning,omitempty"`

@@ -63,7 +63,10 @@ func TestHexagramMatchFromTiYong(t *testing.T) {
 	if hexagramMatchFromTiYong(nil) != nil {
 		t.Error("nil 体用结论应映射 nil")
 	}
-	cases := []struct{ verdict string; wantScore int }{
+	cases := []struct {
+		verdict   string
+		wantScore int
+	}{
 		{"吉", 85}, {"中", 65}, {"凶", 40},
 	}
 	for _, c := range cases {

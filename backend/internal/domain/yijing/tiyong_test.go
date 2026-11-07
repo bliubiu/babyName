@@ -17,14 +17,14 @@ import (
 // 动爻 1-3 → 下卦为用、上卦为体；动爻 4-6 → 上卦为用、下卦为体。
 func TestAnalyzeTiYong_体用判定(t *testing.T) {
 	cases := []struct {
-		name       string
-		upper      int
-		lower      int
-		movingYao  int
-		wantTiGua  string
+		name        string
+		upper       int
+		lower       int
+		movingYao   int
+		wantTiGua   string
 		wantYongGua string
 	}{
-		{"初爻动下卦为用", 4, 3, 1, "震", "离"},  // 丰卦体例：姓4名3初爻动
+		{"初爻动下卦为用", 4, 3, 1, "震", "离"}, // 丰卦体例：姓4名3初爻动
 		{"三爻动下卦为用", 1, 2, 3, "乾", "兑"},
 		{"四爻动上卦为用", 8, 1, 4, "乾", "坤"},
 		{"上爻动上卦为用", 6, 8, 6, "坤", "坎"},
@@ -55,11 +55,11 @@ func TestAnalyzeTiYong_动爻越界返回nil(t *testing.T) {
 // TestAnalyzeTiYong_体用生克映射 locks 五行生克 → 吉凶三档
 func TestAnalyzeTiYong_体用生克映射(t *testing.T) {
 	cases := []struct {
-		name        string
-		upper       int
-		lower       int
-		movingYao   int
-		wantVerdict string
+		name         string
+		upper        int
+		lower        int
+		movingYao    int
+		wantVerdict  string
 		wantRelation string
 	}{
 		{"用生体（坤土生乾金）应吉", 8, 1, 5, "吉", "用生体"},
@@ -88,9 +88,9 @@ func TestAnalyzeTiYong_体用生克映射(t *testing.T) {
 // 标准口径：旺=当令、相=令所生、休=生令者、囚=克令者、死=令所克。
 func TestAnalyzeTiYong_卦气旺衰(t *testing.T) {
 	cases := []struct {
-		wuxing  string // 体卦五行
-		season  string
-		want    string
+		wuxing string // 体卦五行
+		season string
+		want   string
 	}{
 		{"木", "春", "旺"}, // 春木当令
 		{"火", "春", "相"}, // 木生火

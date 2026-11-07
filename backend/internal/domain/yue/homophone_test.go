@@ -35,8 +35,8 @@ func TestCheckNameYueHomophones_Warn(t *testing.T) {
 // 珠不应被判不吉（这是整个谐音库「不误伤同音好字」设计原则的回归防线）。
 func TestCheckNameYueHomophones_Benign(t *testing.T) {
 	benign := []struct{ jp, ch string }{
-		{"zyu1", "珠"}, // 珍珠（与朱同音 zyu1，但不应命中）
-		{"jyu5", "宇"}, // 气宇
+		{"zyu1", "珠"},  // 珍珠（与朱同音 zyu1，但不应命中）
+		{"jyu5", "宇"},  // 气宇
 		{"zaak6", "泽"}, // 恩泽
 		{"lei5", "李"},  // 姓氏常用字
 		{"jan1", "欣"},  // 欣喜

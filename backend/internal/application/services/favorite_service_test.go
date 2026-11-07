@@ -29,18 +29,6 @@ func (m *mockFavoriteStore) SaveFavorite(record *database.FavoriteRecord) (strin
 	return record.ID, nil
 }
 
-func (m *mockFavoriteStore) BatchSaveFavorite(records []*database.FavoriteRecord) ([]string, error) {
-	ids := make([]string, len(records))
-	for i, r := range records {
-		id, err := m.SaveFavorite(r)
-		if err != nil {
-			return ids, err
-		}
-		ids[i] = id
-	}
-	return ids, nil
-}
-
 // testSessionID 服务层测试用会话标识（32 位十六进制，满足格式校验）。
 const testSessionID = "0123456789abcdef0123456789abcdef"
 
@@ -196,24 +184,6 @@ func TestSaveFavorite_Existing(t *testing.T) {
 	}
 	if len(store.favorites) != 1 {
 		t.Errorf("不应重复保存，收藏数应为 1，实际 %d", len(store.favorites))
-	}
-}
-
-// TestCheckFavorite 检查名字是否已收藏
-func TestCheckFavorite(t *testing.T) {
-	store := &mockFavoriteStore{}
-	store.favorites = append(store.favorites, &database.FavoriteRecord{
-		SessionID: testSessionID,
-		Surname:   "赵",
-		GivenName: "宇",
-	})
-	svc := NewFavoriteService(store)
-
-	if !svc.CheckFavorite(context.Background(), testSessionID, "赵", "宇") {
-		t.Error("CheckFavorite(\"赵\",\"宇\") = false, 期望 true（已收藏）")
-	}
-	if svc.CheckFavorite(context.Background(), testSessionID, "赵", "三") {
-		t.Error("CheckFavorite(\"赵\",\"三\") = true, 期望 false（未收藏）")
 	}
 }
 

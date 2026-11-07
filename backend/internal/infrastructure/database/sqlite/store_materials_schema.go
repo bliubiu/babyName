@@ -136,7 +136,7 @@ var materialTableDDL = []string{
 	)`,
 
 	// 经典语料两表（docs/31 ADR-008：经典物料接入统一导入器，
-// 建表语句随物料表一并收敛到本文件，不再散落在 createTables）
+	// 建表语句随物料表一并收敛到本文件，不再散落在 createTables）
 	//
 	//   classics_books      - 书籍级元数据（如《诗经》《论语》）
 	//   classics_sections   - 篇章级（国风·周南 / 学而篇）

@@ -10,7 +10,6 @@ import (
 // NameServiceInterface 名字服务接口
 type NameServiceInterface interface {
 	Generate(ctx context.Context, req *GenerateRequest) (*GenerateResponse, error)
-	GenerateWithAnalysis(ctx context.Context, req *GenerateRequest) (*GenerateWithAnalysisResponse, error)
 	// Evaluate 测名：给定姓名 → 完整评分报告 + 风险体检
 	Evaluate(ctx context.Context, req *EvaluateRequest) (*EvaluateResponse, error)
 	// ExploreNames 探索模式：从指定生成会话的候选表中换一批

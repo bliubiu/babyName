@@ -1271,14 +1271,14 @@ func doubleNameCandidate(
 	a, b charInfo, poetryFound bool, poetryDesc, surnamePinyin, surnameJyutping string, bigramCache *SessionBigramCache,
 ) *NameCandidate {
 	return &NameCandidate{
-		Char1:         a.ch.Char,
-		Char2:         b.ch.Char,
-		Pinyin1:       a.pinyin,
-		Pinyin2:       b.pinyin,
-		WuXing1:       a.ch.WuXing,
-		WuXing2:       b.ch.WuXing,
-		Stroke1:       a.stroke,
-		Stroke2:       b.stroke,
+		Char1:   a.ch.Char,
+		Char2:   b.ch.Char,
+		Pinyin1: a.pinyin,
+		Pinyin2: b.pinyin,
+		WuXing1: a.ch.WuXing,
+		WuXing2: b.ch.WuXing,
+		Stroke1: a.stroke,
+		Stroke2: b.stroke,
 		// 康熙笔画（未收录降级科学笔画）：供卦象评分器按统一口径起卦（docs/42 P3-12）
 		KangxiStroke1: kangxiStrokeOf(a.ch),
 		KangxiStroke2: kangxiStrokeOf(b.ch),
