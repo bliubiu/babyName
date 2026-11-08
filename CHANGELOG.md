@@ -5,6 +5,22 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.08.1]
+
+**API 接口文档按实际路由重写（docs/44 发现的 12 接口偏差治理）**
+
+### 📚 Docs 文档更新
+- 【文档】重写 docs/02-API接口文档.md，与 `setupRouter` 实际注册的 21 条路由逐一对应（18 条 /api/v1 + healthz/readyz/metrics，脚本化比对验证）：
+  - 移除 12 个从未实现的路由章节：GET /names/:id、POST /bazi/analyze、GET /yijing(/hexagram/:id)、GET /zodiac(/:animal)、POST /history/batch、GET /favorites/check、POST/DELETE /favorites/batch、GET /namestat/:name/province、POST /report/html、feedback 三接口、POST /names/generate/analysis（已下线）
+  - 新增 5 个缺失接口文档：异步生成 /names/generate/async、任务查询 /names/task/:id（含 pending/running/success/failed 与取走即弃语义）、探索换一批 /names/generate/explore、测名 /names/evaluate、农历月历 /lunar/month；补 /metrics 门禁指标端点
+  - 修正响应结构偏差：统一响应包装 {code, success, message/data}（错误用 message 非 error）、收藏/历史分页结构 {records, total, page, limit}、黄历 30 字段与农历 26 字段实测结构、namestat 含 rank、generate 响应 11 个顶层字段与 46 字段候选名结构
+  - 新增「会话标识」章节：X-Session-ID 头 / nm_sid Cookie 优先级、16-64 hex 格式、前端 localStorage 注入机制（docs/44 缺陷 3 配套）
+  - 新增第 9 节「前端本地实现的功能域」：八字/卦象/生肖的架构归属澄清与前端文件映射
+- 【文档】目录与接口速查表重排，补引用 docs/44
+
+### ✅ 验证
+- 脚本化比对：文档速查表 21 条路由与 main.go 实际注册一一对应，无残留已删路径（残留匹配均为响应字段名与第 9 节说明文字）
+
 ## [2026.11.08.0]
 
 **CLI/GUI 全业务功能端到端测试验证：修复 2 个 P0 收藏缺陷 + CLI JSON 流污染，新增 GUI 全页面 e2e 用例**
