@@ -137,6 +137,28 @@ async function handleResponse<T = unknown>(response: Response): Promise<T> {
 // externalSignal 用于让调用方（如异步生成的轮询循环）主动取消整个请求链（docs/29 B17）。
 // 取消与超时的区分：外部信号触发 → 抛 AbortError（调用方静默处理，不弹错误提示）；
 // 内部 30s 定时器触发 → 抛 TimeoutError（真实失败，走错误提示）。
+
+// 访客会话标识：localStorage 持久化（key nm_session_id），32 位小写 hex，
+// 与后端 NormalizeSessionID（16-64 位 hex）兼容。SSR/无 window 环境回落空串，
+// 由服务端 Cookie 流程兜底。
+const SESSION_ID_KEY = 'nm_session_id';
+
+function getSessionId(): string {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return '';
+  try {
+    let sid = localStorage.getItem(SESSION_ID_KEY) || '';
+    if (!/^[a-f0-9]{16,64}$/.test(sid)) {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      sid = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+      localStorage.setItem(SESSION_ID_KEY, sid);
+    }
+    return sid;
+  } catch {
+    return '';
+  }
+}
+
 async function fetchWithRetry(
   url: string,
   options: RequestInit = {},
@@ -148,6 +170,15 @@ async function fetchWithRetry(
   if (externalSignal?.aborted) {
     throw createAbortError();
   }
+
+  // 统一注入访客会话标识：并发首访时各请求都不带 Cookie，服务端会为每个
+  // 请求各发一个新 nm_sid Cookie，浏览器只保留最后一个——先完成的写请求
+  // （如收藏）会落到被覆盖的「孤儿会话」，用户自己查不到。localStorage 持久化
+  // 的 sid + X-Session-ID 头保证同一浏览器永远同会话（后端头优先级高于 Cookie）。
+  options.headers = {
+    'X-Session-ID': getSessionId(),
+    ...(options.headers as Record<string, string> | undefined),
+  };
 
   let lastError: unknown;
   const method = (options.method || 'GET').toUpperCase();

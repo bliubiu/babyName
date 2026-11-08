@@ -5,6 +5,28 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.08.0]
+
+**CLI/GUI 全业务功能端到端测试验证：修复 2 个 P0 收藏缺陷 + CLI JSON 流污染，新增 GUI 全页面 e2e 用例**
+
+### 🐛 Bug Fixes  问题修复
+- 【前端·收藏】修复首次收藏永远静默失败（P0，docs/44 缺陷 2）：`result/page.tsx` mutationFn 重读被 onMutate 乐观更新污染的缓存，读到无 id 记录走入静默 no-op——心形变红、toast 报成功但 POST /favorites 永不发出、收藏页为空；改为 mutate 前求值缓存快照以 `{name, existingId}` 传参，onMutate/onError 同步适配
+- 【前端·会话】修复并发首访 Session Cookie 竞态（P0，docs/44 缺陷 3）：结果页并发请求各自无 Cookie 时服务端各发新 nm_sid，浏览器只保留最后一个，收藏落入"孤儿会话"用户自己查不到；`api.ts` 新增 localStorage 持久化 `nm_session_id` 并由 fetchWithRetry 统一注入 `X-Session-ID` 头（后端头优先级高于 Cookie）
+- 【后端·CORS】`middleware.go` AllowHeaders 两处（CORSConfig 与 fallback）放行 `X-Session-ID`，否则自定义头触发 preflight 失败（实测 NetworkError）
+- 【CLI】`-config` + `-format json` 时"已加载配置文件"提示改走 stderr（docs/44 缺陷 1），stdout 保持纯 JSON 可被 jq 等管道消费
+
+### ✨ New Features 新增功能
+- 【测试】新增 GUI 全业务页面 e2e 用例 `frontend/tests/naming-ui-pages.e2e.ts`（7 用例）：导航可达性/测名链路/黄历渲染/重名率查询/收藏跨页闭环/对比跨页/历史与 JSON 查看器可达
+- 【测试】新增 CLI 回归测试 `TestCLIBinaryConfigFileDoesNotPolluteJSONStream`（编译真实二进制断言 stdout 纯 JSON、提示在 stderr）
+
+### ✅ 验证
+- CLI 参数矩阵 14 用例全过（text/json/TOML 优先级/五行/典籍/笔画/避讳/字辈/复姓/错误处理）
+- `e2e_check -strict` 18/18；全业务 API 冒烟 23/23（覆盖全部 24 条注册路由，写操作自动清理）；GUI e2e 12/12
+- 回归：go vet/test（middleware、namer-cli）、vitest 122/122、tsc 0 错
+
+### 📚 Docs 文档更新
+- 新增 docs/44 测试验证报告：含缺陷定位过程、docs/02 API 文档 12 接口偏差清单（八字/卦象/生肖为前端本地实现）、物料库 shijing/chuci 提取缺失经重新 import 补齐的记录
+
 ## [2026.11.07.3]
 
 **《43-质量审查报告》P2 第四批：数据库一致性收官 + t.Skip 治理（P2 全部闭环）**

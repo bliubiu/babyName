@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -101,6 +102,48 @@ func TestCLIBinaryJSONOutputPinyinFilled(t *testing.T) {
 		if n.Pinyin == "" {
 			t.Errorf("候选 %q 的拼音为空，应自 hanzi 字库回填", n.FullName)
 		}
+	}
+}
+
+// TestCLIBinaryConfigFileDoesNotPolluteJSONStream 使用 -config + -format json 时，
+// 「已加载配置文件」提示必须走 stderr，stdout 只能是纯 JSON（可被 jq 等管道消费）。
+func TestCLIBinaryConfigFileDoesNotPolluteJSONStream(t *testing.T) {
+	if testing.Short() {
+		t.Skip("短模式跳过二进制集成测试")
+	}
+
+	backendRoot := locateBackendRoot(t)
+
+	exePath := filepath.Join(t.TempDir(), "namer-cli-test-config.exe")
+	build := exec.Command("go", "build", "-o", exePath, ".")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("编译 CLI 失败: %v\n%s", err, out)
+	}
+	defer func() { _ = os.Remove(exePath) }()
+
+	// example.toml 与测试同目录（cmd/namer-cli/）
+	_, thisFile, _, _ := runtime.Caller(0)
+	configPath := filepath.Join(filepath.Dir(thisFile), "example.toml")
+	cmd := exec.Command(exePath, "-config", configPath, "-format", "json", "-count", "3")
+	cmd.Dir = backendRoot
+	var stdout, stderr = &cliOutputBuffer{}, &cliOutputBuffer{}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("CLI 执行失败: %v\nstderr: %s", err, stderr.String())
+	}
+
+	// stdout 必须是纯 JSON：提示混入会破坏管道消费（曾实测复现）
+	var resp cliJSONResponse
+	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
+		t.Fatalf("-config + -format json 时 stdout 不是纯 JSON（提示信息污染输出流）: %v\n前 200 字节: %.200s", err, stdout.String())
+	}
+	if len(resp.Names) == 0 {
+		t.Fatal("应至少生成一个候选名")
+	}
+	// 提示信息应改走 stderr
+	if !strings.Contains(stderr.String(), "已加载配置文件") {
+		t.Errorf("stderr 应包含配置加载提示，实际: %q", stderr.String())
 	}
 }
 

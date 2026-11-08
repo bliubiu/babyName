@@ -146,17 +146,15 @@ const cachedFavorites = useMemo<FavoriteData[]>(
     },
   });
 
-   const toggleFavoriteMutation = useMutation({
-     mutationFn: async (name: Name) => {
-       const cached = getCachedFavorites(queryClient);
-       const existing = cached.find(
-         f => f.surname === name.surname && f.given_name === name.given_name
-       );
-
-       if (existing) {
-         if (existing.id) {
-           await deleteFavorite(existing.id);
-         }
+  const toggleFavoriteMutation = useMutation({
+     // variables 在 mutate 调用前求值：existingId 取自乐观更新前的缓存快照。
+     // 此前 mutationFn 内部重读缓存判断 existing，但 onMutate 的乐观更新已先写入
+     // 无 id 的乐观记录，导致 existing.id 为空而静默 no-op——首次收藏的
+     // POST /favorites 永远不会发出（心形变红、toast 报成功，收藏页却为空）。
+     mutationFn: async (v: { name: Name; existingId: string | null }) => {
+       const name = v.name;
+       if (v.existingId) {
+         await deleteFavorite(v.existingId);
        } else {
          const newFav = {
           surname: name.surname,
@@ -168,7 +166,8 @@ const cachedFavorites = useMemo<FavoriteData[]>(
          await saveFavorite(newFav);
        }
      },
-     onMutate: async (name: Name) => {
+     onMutate: async (v: { name: Name; existingId: string | null }) => {
+       const name = v.name;
        await queryClient.cancelQueries({ queryKey: ['favorites'] });
        const previousFavorites = getCachedFavorites(queryClient);
        const existingIndex = previousFavorites.findIndex(
@@ -219,9 +218,9 @@ const cachedFavorites = useMemo<FavoriteData[]>(
            };
          });
        }
-       const key = nameKey(name);
+       const key = nameKey(name.name);
        const isFav = context?.previousFavorites.some(
-         f => f.surname === name.surname && f.given_name === name.given_name
+         f => f.surname === name.name.surname && f.given_name === name.name.given_name
        );
        setFavoriteStatus(prev => ({ ...prev, [key]: !!isFav }));
        showToast('操作失败，请重试', 'error');
@@ -236,7 +235,12 @@ const cachedFavorites = useMemo<FavoriteData[]>(
    });
 
   const toggleFavorite = (name: Name) => {
-    toggleFavoriteMutation.mutate(name);
+    // mutate 前求值缓存快照：existingId 是判断收藏态的唯一依据（见 mutationFn 注释）
+    const cached = getCachedFavorites(queryClient);
+    const existing = cached.find(
+      f => f.surname === name.surname && f.given_name === name.given_name
+    );
+    toggleFavoriteMutation.mutate({ name, existingId: existing?.id ?? null });
   };
 
   // 入参仍是 NameCard 给的下标，落库前先换成稳定的 nameKey

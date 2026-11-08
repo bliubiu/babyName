@@ -132,7 +132,9 @@ func DefaultCORSConfig() CORSConfig {
 	return CORSConfig{
 		AllowOrigins:     origins,
 		AllowMethods:     []string{"POST", "OPTIONS", "GET", "PUT", "DELETE", "PATCH"},
-		AllowHeaders:     []string{"Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization", "accept", "origin", "Cache-Control", "X-Requested-With", "X-Request-ID"},
+		// X-Session-ID：前端统一注入的访客会话标识（docs/35 E2E 发现并发首访
+		// Cookie 竞态后新增），必须放行否则触发 CORS preflight 失败
+		AllowHeaders:     []string{"Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization", "accept", "origin", "Cache-Control", "X-Requested-With", "X-Request-ID", "X-Session-ID"},
 		AllowCredentials: true,
 	}
 }
@@ -154,7 +156,7 @@ func CORSMiddlewareWithConfig(config CORSConfig) gin.HandlerFunc {
 		defaultAllowMethods = methods
 	}
 
-	defaultAllowHeaders := "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Request-ID"
+	defaultAllowHeaders := "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Request-ID, X-Session-ID"
 	if len(config.AllowHeaders) > 0 {
 		headers := ""
 		for i, h := range config.AllowHeaders {

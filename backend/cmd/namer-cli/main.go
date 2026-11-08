@@ -98,7 +98,8 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		fmt.Printf("已加载配置文件: %s\n", *configFile)
+		// 提示信息输出到 stderr，避免 -format json 时污染 stdout 的 JSON 流
+		fmt.Fprintf(os.Stderr, "已加载配置文件: %s\n", *configFile)
 		params = loaded
 	}
 
