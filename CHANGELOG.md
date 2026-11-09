@@ -5,6 +5,23 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.10.0]
+
+**docs/44 遗留项收尾：自动保存历史可感知化 + 入场动画 fill-mode 缺陷与减弱动态效果支持**
+
+### 🐛 Bug Fixes  问题修复
+- 【前端·动画】入场动画统一补 `fill-mode both`（tailwind.config.ts：fadeInUp/fadeIn/slideInLeft/slideInRight/slideDown/scaleIn 六项）——这些动画广泛使用且常与 `animationDelay` 配合（NameCard 逐卡 0.3+i*0.05s、黄历区块 0.1s），无 fill 时**延迟期元素以完整样式闪现、动画开始才跳回透明重新渐入**，为用户可见的真实视觉缺陷（docs/44 遗留⑤）
+- 【前端·可感知性】生成成功 toast 明示「名字生成成功！已自动保存到历史」（HomeContent.tsx）——自动保存为用户文档承诺的设计内行为（docs/04 §3.2.8），此前静默无感知（docs/44 遗留②）
+
+### ✨ New Features 新增功能
+- 【前端·无障碍】`globals.css` 新增 `prefers-reduced-motion: reduce` 全局支持：禁用动画/过渡并关闭平滑滚动——标准无障碍实践，同时为浏览器自动化环境提供规范逃生门（docs/44 遗留⑤ IAB actionability 超时的前端侧缓解）
+
+### 📚 Docs 文档更新
+- docs/44 第五节遗留建议状态更新：第 1/2/5 条标记已处理（含版本号与处理方式），第 3/4 条维持登记
+
+### ✅ 验证
+- `tsc --noEmit` 0 错；vitest 122/122；GUI e2e 12/12（扩展 7 + 既有 5，含改动后 toast 文案的首页生成主链路）
+
 ## [2026.11.09.2]
 
 **docs/45 阶段 0：交付链修复（分离 distDir / 重建产物 / 前端接门禁）**

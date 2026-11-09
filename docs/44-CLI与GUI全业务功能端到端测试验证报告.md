@@ -98,11 +98,11 @@
 
 ## 五、文档偏差与遗留建议
 
-1. **docs/02-API接口文档.md 与实际路由严重不符**（12 个文档接口实际不存在）：`GET /names/:id`、`POST /bazi/analyze`、`GET /yijing/hexagram(/:id)`、`GET /zodiac(/:animal)`、`POST /history/batch`、`GET /favorites/check`、`POST|DELETE /favorites/batch`、`GET /namestat/:name/province`、`POST /report/html`、`POST /feedback`、`POST /feedback/request`、`GET /feedback/algorithm-performance`、`POST /names/generate/analysis`（已下线）。八字/卦象/生肖由前端本地 lib（hexagram.ts 等）实现，后端无对应路由。建议按实际路由重写 API 文档（本次未改动文档正文，仅登记）。
-2. 生成成功后前端自动 `POST /history` 保存记录（浏览器实测发现），历史页非空态；API 文档未记载该自动行为。
+1. **✅ 已处理（[2026.11.08.1]）** docs/02-API接口文档.md 与实际路由严重不符（12 个文档接口实际不存在）：`GET /names/:id`、`POST /bazi/analyze`、`GET /yijing/hexagram(/:id)`、`GET /zodiac(/:animal)`、`POST /history/batch`、`GET /favorites/check`、`POST|DELETE /favorites/batch`、`GET /namestat/:name/province`、`POST /report/html`、`POST /feedback`、`POST /feedback/request`、`GET /feedback/algorithm-performance`、`POST /names/generate/analysis`（已下线）。八字/卦象/生肖由前端本地 lib（hexagram.ts 等）实现，后端无对应路由。已按实际路由重写 API 文档（21 条路由脚本化比对一致）。
+2. **✅ 已处理（[2026.11.10.0]）** 生成成功后前端自动 `POST /history` 保存记录。核实该行为为用户文档承诺的设计内功能（docs/04 §3.2.8「系统会保存您的起名历史」），行为保留；API 文档已补记载（[2026.11.08.1]），生成成功 toast 明示「已自动保存到历史」补齐用户可感知性。
 3. 结果页直接刷新显示"没有可展示的起名结果"为设计内行为（页面文案已明示，结果存于内存 store）。
 4. `materials import` 后 shijing/chuci 提取缺失的原因（源文件与 materials.lock 指纹比对）值得单独排查，避免其他环境复现同类问题。
-5. IAB 内嵌浏览器对带 CSS 动画元素的高层 locator click 有 actionability 超时现象（DOM click 可用）；tester-army/e2e（Playwright Chromium）不受影响。
+5. **✅ 已处理（[2026.11.10.0]）** IAB 内嵌浏览器对带 CSS 动画元素的高层 locator click 有 actionability 超时现象（DOM click 可用）；tester-army/e2e（Playwright Chromium）不受影响。前端侧修复：入场动画（fadeInUp/fadeIn/slideInLeft/Right/slideDown/scaleIn）统一补 `fill-mode both`——此前与 `animationDelay` 配合时延迟期元素以完整样式闪现、动画开始才跳回透明重新渐入（真实视觉缺陷）；`globals.css` 新增 `prefers-reduced-motion: reduce` 全局支持（无障碍最佳实践 + 自动化环境标准逃生门）。IAB 工具侧限制本身不影响真实用户与 Playwright 用例。
 
 ## 六、测试产物清单
 

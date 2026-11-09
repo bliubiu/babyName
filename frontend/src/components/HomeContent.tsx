@@ -69,7 +69,10 @@ export default function HomeContent() {
           console.error('Failed to save history:', err);
         });
 
-        showToast('名字生成成功！', 'success');
+        // 自动保存为用户文档承诺的设计内行为（docs/04 §3.2.8「系统会保存您的
+        // 起名历史」），此前静默无感知（docs/44 遗留②）：在成功提示中明示留痕，
+        // 保存失败仅落日志不阻断生成主流程。
+        showToast('名字生成成功！已自动保存到历史', 'success');
         router.push('/result');
       } else {
         const msg = '生成名字失败';

@@ -54,12 +54,15 @@ const config: Config = {
         'serif': ['var(--font-noto-serif-sc)', 'serif'],
       },
       animation: {
-        'fade-in-up': 'fadeInUp 0.5s ease-out',
-        'fade-in': 'fadeIn 0.3s ease-out',
-        'slide-in-left': 'slideInLeft 0.5s ease-out',
-        'slide-in-right': 'slideInRight 0.5s ease-out',
-        'slide-down': 'slideDown 0.4s ease-out',
-        'scale-in': 'scaleIn 0.3s ease-out',
+        // 入场动画统一补 fill-mode both：这些动画常与 animationDelay 配合
+        // （NameCard 逐卡 0.3+i*0.05s、黄历区块 0.1s 等），无 fill 时延迟期
+        // 元素以完整样式闪现、动画开始才跳回透明重新渐入（docs/44 遗留⑤）。
+        'fade-in-up': 'fadeInUp 0.5s ease-out both',
+        'fade-in': 'fadeIn 0.3s ease-out both',
+        'slide-in-left': 'slideInLeft 0.5s ease-out both',
+        'slide-in-right': 'slideInRight 0.5s ease-out both',
+        'slide-down': 'slideDown 0.4s ease-out both',
+        'scale-in': 'scaleIn 0.3s ease-out both',
         'shimmer': 'shimmer 2s infinite',
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'seal-press': 'sealPress 0.6s ease-out forwards',

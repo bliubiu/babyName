@@ -667,3 +667,18 @@
 .react-datepicker__time-container {
   @apply border-l border-paper/40 !important;
 }
+
+/* ---- 减弱动态效果（无障碍）----
+   遵循系统「减弱动态效果」偏好：禁用入场/循环动画与过渡。
+   同时为浏览器自动化环境提供标准逃生门（docs/44 遗留⑤：IAB 对带
+   CSS 动画元素的 actionability 检查易超时，自动化可声明该偏好绕开）。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
