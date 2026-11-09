@@ -1,6 +1,8 @@
 # frontend/Dockerfile
 # ============================================================
-# 起名项目前端 - Next.js 静态导出构建（out/ → nginx 静态服务）
+# 起名项目前端 - Next.js 静态导出构建（.next/ 编译 → out/ 交付 → nginx 静态服务）
+# distDir 已与交付目录分离（docs/45 P1-31）：.next/ 只留在 builder 阶段，
+# 运行阶段仅复制 out/ 的纯静态交付物，构建日志/服务端代码不会进镜像。
 # 产物: 精简运行时镜像 (~120MB)
 # ============================================================
 
@@ -59,12 +61,13 @@ ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 # 构建应用
-# 输出: out/（静态导出：HTML + _next/static 资源）
+# 输出: .next/（编译中间产物，不外泄） + out/（静态导出：HTML + _next/static 资源）
+# .dockerignore 已排除本地 .next/ 与 out/，避免把开发机旧产物带进构建上下文
 RUN pnpm run build
 
 # ===== 运行阶段 =====
-# ★ 项目前端是静态导出（next.config: output:'export', distDir:'out'），
-#   产物为 out/ 下的纯静态文件——不存在 .next/standalone/server.js。
+# ★ 项目前端是静态导出（next.config: output:'export', distDir:'.next'），
+#   交付产物为 out/ 下的纯静态文件——不存在 .next/standalone/server.js。
 #   旧运行时阶段按 standalone 模式复制 /app/.next/standalone，构建必失败
 #   （docs/30 §六）。此处仅用 nginx 提供静态服务（健康检查打 :3000），
 #   API 请求由外层 nginx 反代到后端，前端走同源相对路径。

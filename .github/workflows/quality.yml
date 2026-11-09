@@ -76,3 +76,36 @@ jobs:
         if: steps.manifest.outputs.ready == 'true'
         working-directory: ${{ github.workspace }}
         run: bash scripts/verify-quality.sh
+
+  # ---------------------------------------------------------------------------
+  # 前端三件套（docs/45 阶段 0 / P1-29）：类型检查 + ESLint + 单元测试
+  # 与 Go 门禁解耦：Go job 不需要 Node，本 job 不需要 Go。
+  # hook 可被 SKIP_VERIFY / --no-verify 绕过，故 CI 必须独立存在，不能只靠 hook。
+  # ---------------------------------------------------------------------------
+  quality-frontend:
+    name: 前端门禁（tsc + eslint + vitest）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # pnpm-workspace.yaml 使用 allowBuilds 映射（pnpm 11+ 语法，见该文件注释）
+          version: '11'
+          run_install: false
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: 安装前端依赖（--frozen-lockfile）
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: 运行前端三件套（缺依赖即失败）
+        working-directory: ${{ github.workspace }}
+        run: bash scripts/verify-frontend.sh --require

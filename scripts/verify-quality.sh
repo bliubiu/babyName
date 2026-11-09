@@ -18,6 +18,10 @@
 #   SERVER_URL=http://127.0.0.1:8080 ./scripts/verify-quality.sh   # 复用已起服务，跳过构建/启停
 #   SKIP_SERVER=1 ./scripts/verify-quality.sh   # 只跑不需要服务的阶段（单元+门禁）
 #
+# 前端门禁（tsc / eslint / vitest）由 scripts/verify-frontend.sh 独立承担，
+# CI 中对应 .github/workflows/quality.yml 的 quality-frontend job；
+# 本脚本保持纯 Go，避免在 Go job 里额外安装 Node 依赖（docs/45 阶段 0）。
+#
 # 可选环境变量（覆盖 e2e 巡检参数）：
 #   E2E_REPEAT / E2E_CONCURRENCY / E2E_ROUNDS
 # =============================================================================

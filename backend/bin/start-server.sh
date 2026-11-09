@@ -6,7 +6,8 @@
 #   1. 后端：若 backend/bin/namer-server.exe 不存在，或 backend 下源码/依赖/配置
 #      比二进制更新，则自动重新构建（go build ./cmd/server）。
 #   2. 前端：若 frontend/out 不存在，或 frontend/src、frontend/public 及前端配置
-#      比产物更新，则自动重新构建（next build，产物输出到 frontend/out）。
+#      比产物更新，则自动重新构建（next build）。编译中间产物落在 frontend/.next，
+#      只有纯静态交付物写入 frontend/out（docs/45 P1-31 已分离 distDir）。
 #   3. 前台启动服务，绑定 127.0.0.1:8080（Ctrl+C 停止，已做优雅关闭）。
 #
 # 用法：
@@ -108,8 +109,12 @@ else
                  find "$FRONTEND_DIR" -maxdepth 1 -type f \( -name 'next.config.js' -o -name 'package.json' \
                    -o -name 'tsconfig.json' -o -name 'postcss.config.*' -o -name 'tailwind.config.*' \) -print0 2>/dev/null; \
                } | xargs -0 -r stat -c '%Y' 2>/dev/null | sort -n | tail -1)"
-  # 产物侧：out/ 内最新文件（= 上次构建完成时间）
-  FE_OUT_MT="$(find "$FRONTEND_OUT" -type f -print0 2>/dev/null | xargs -0 -r stat -c '%Y' 2>/dev/null | sort -n | tail -1)"
+  # 产物侧：只看真实交付文件（顶层 *.html 与 _next/static 资源）。
+  # 旧配置 distDir:'out' 会把 .next/dev 中间产物一并写进 out/，全目录扫描时
+  # 中间文件的 mtime 会污染比对结果（docs/45 §11 曾据此误判「产物未过期」）。
+  FE_OUT_MT="$( { find "$FRONTEND_OUT" -maxdepth 1 -type f -name '*.html' -print0 2>/dev/null; \
+                  find "$FRONTEND_OUT/_next/static" -type f -print0 2>/dev/null; \
+                } | xargs -0 -r stat -c '%Y' 2>/dev/null | sort -n | tail -1)"
   if [ "${FE_OUT_MT:-0}" -lt "${FE_SRC_MT:-0}" ]; then
     need_fe_build=1
     echo "[frontend] 检测到前端源码比产物更新（$FE_OUT_MT < $FE_SRC_MT），需要重建"
@@ -135,7 +140,7 @@ if [ "$need_build" -eq 1 ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 4. 构建前端（next build → frontend/out）
+# 4. 构建前端（next build → .next/ 编译中间产物，out/ 静态交付物）
 # -----------------------------------------------------------------------------
 if [ "$need_fe_build" -eq 1 ]; then
   if ! command -v node >/dev/null 2>&1; then

@@ -2,15 +2,18 @@
 # =============================================================================
 # .githooks/pre-push — 推送前质量闸门
 #
-# 作用：在 `git push` 前跑「快路径」质量验证（单元 + 门禁审计 + 专项维度巡检），
+# 作用：在 `git push` 前跑「快路径」质量验证（Go 单元/门禁/维度 + 前端三件套），
 #       任一阶段失败即阻断推送（退出码非 0），把问题挡在本地。
 #
 # 快路径不含端到端 E2E（E2E 需启服务，慢），E2E 交给 CI 全量跑：
-#   - 单元/门禁/专项维度：本 hook（SKIP_SERVER=1）
-#   - 端到端 18 项       ：CI workflow（.github/workflows/quality.yml）
+#   - Go 单元/门禁/专项维度：本 hook（SKIP_SERVER=1）
+#   - 前端 tsc/eslint/vitest：本 hook（scripts/verify-frontend.sh）
+#   - 端到端 18 项          ：CI workflow（.github/workflows/quality.yml）
+# 注：hook 可被跳过，故 CI 里前端三件套另有独立 job，不能只靠本 hook。
 #
 # 跳过方式：
-#   SKIP_VERIFY=1 git push            # 临时跳过本 hook
+#   SKIP_VERIFY=1 git push            # 临时跳过全部验证
+#   SKIP_FRONTEND=1 git push          # 只跳过前端三件套（Go 门禁仍跑）
 #   git push --no-verify              # git 原生跳过所有 hook
 #
 # 安装（二选一）：
@@ -34,6 +37,7 @@ if [ -z "$REPO_ROOT" ]; then
 fi
 
 SCRIPT="$REPO_ROOT/scripts/verify-quality.sh"
+FRONTEND_SCRIPT="$REPO_ROOT/scripts/verify-frontend.sh"
 if [ ! -f "$SCRIPT" ]; then
   echo "[pre-push] 未找到 $SCRIPT，跳过验证" >&2
   exit 0
@@ -45,16 +49,32 @@ while read -r _local_ref _local_sha _remote_ref _remote_sha; do
 done
 
 echo "=================================================================="
-echo "[pre-push] 运行推送前质量验证（快路径：单元 + 门禁 + 专项维度巡检）"
+echo "[pre-push] 运行推送前质量验证（Go 快路径 + 前端 tsc/eslint/vitest）"
 echo "=================================================================="
 
-# 快路径：不启动服务（跳过 E2E）
-if SKIP_SERVER=1 bash "$SCRIPT"; then
+OVERALL=0
+
+# 前端三件套：脚本自带降级，本地未装 node_modules 时只提示并跳过；
+# CI 侧另有独立 job 用 --require 强制，故此处降级不会形成门禁缺口。
+if [ -f "$FRONTEND_SCRIPT" ]; then
+  if ! bash "$FRONTEND_SCRIPT"; then
+    OVERALL=1
+  fi
+else
+  echo "[pre-push] 未找到 $FRONTEND_SCRIPT，跳过前端检查" >&2
+fi
+
+# Go 快路径：不启动服务（跳过 E2E）
+if ! SKIP_SERVER=1 bash "$SCRIPT"; then
+  OVERALL=1
+fi
+
+if [ "$OVERALL" -eq 0 ]; then
   echo "[pre-push] ✅ 质量验证通过，允许推送"
   exit 0
 else
   echo "" >&2
   echo "[pre-push] ❌ 质量验证未通过，已阻断推送。" >&2
-  echo "[pre-push] 请先本地修复上述失败项；如需临时跳过用：SKIP_VERIFY=1 git push" >&2
+  echo "[pre-push] 请先本地修复上述失败项；如需临时跳过用：SKIP_VERIFY=1 git push（只跳前端用 SKIP_FRONTEND=1）" >&2
   exit 1
 fi

@@ -5,6 +5,29 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.09.2]
+
+**docs/45 阶段 0：交付链修复（分离 distDir / 重建产物 / 前端接门禁）**
+
+### 🔧 交付链：编译产物与静态交付目录分离
+- `frontend/next.config.js` 的 `distDir` 由 `'out'` 改回 `'.next'`（P1-31）：编译中间产物（`dev/`、`server/`、`build/`、`logs/`、`trace/`、`*-manifest.json`）不再写入静态交付目录；清除历史遗留 `out/dev/` 833 个文件。
+- 联动修正 `tsconfig.json` include（去掉 `out/types`、`out/dev/types`）、`.gitignore`、`.dockerignore`、`Dockerfile`（运行阶段只复制 `out/`）、`nginx-frontend.conf`、`backend/bin/start-server.sh`（mtime 比对只看 `out/*.html` 与 `out/_next/static/**`，不再被中间产物污染）、`docs/08` 历史示例。`next-env.d.ts` 由 `next build` 自动重写回 `.next/types/routes.d.ts`。
+- `nginx-frontend.conf` 新增静态资源白名单（纵深防御）：6 条 location —— 中间产物目录 / manifest / sourcemap 一律 404，交付物按扩展名放行，`_next/static` 长缓存（`^~` 优先），首页精确匹配，页面深链走 `try_files`。`out/*.txt` 与 `__next.*` 是 RSC flight payload，属正常交付物，明确放行。
+
+### 🚪 前端三件套接门禁
+- 新增 `scripts/verify-frontend.sh`：`tsc --noEmit` + `eslint src --ext .ts,.tsx --max-warnings 34` + `vitest run`；直调 `node_modules` 内的 CLI 入口，不依赖全局 pnpm/npx。阈值 34 是 2026-11-09 实测基线（0 error / 34 warning），只许下调，防 lint 债务回流。
+- 双通道：`--require` 用于 CI（缺 node/依赖即失败），本地默认降级跳过（避免纯后端改动被前端环境误伤）；`SKIP_FRONTEND=1` 可单独跳过。
+- `.github/workflows/quality.yml` 新增独立 job `quality-frontend`（pnpm 11 + Node 22 + `pnpm install --frozen-lockfile`）—— hook 可被 `SKIP_VERIFY` / `--no-verify` 绕过，故 CI 必须独立存在；`.githooks/pre-push` 在 Go 快路径之外串接前端三件套，任一失败即阻断推送。
+- `scripts/verify-quality.sh` 保持纯 Go（Go job 不装 Node），头部注释指向前端脚本；`docs/45` §9 阶段 0 标注「已闭环」，阶段 1～3 仍为建议。
+
+### ✅ 验证
+- `next build`：`BUILD_EXIT=0`，11/11 静态页面生成；`out/dev` 不存在、`.next/` 承载中间产物；12 个 HTML 齐全；构建 CSS 含 `prefers-reduced-motion` / `bg-wuxing-*`；`out/index.html` mtime 晚于 `src`。
+- `bash -n` 四个脚本全过；`quality.yml` 解析出 3 个 job；nginx 白名单正则模拟：6 条敏感路径全部 404、8 类交付物全部放行（本机无 nginx，未跑 `nginx -t`）。
+- `bash scripts/verify-frontend.sh --require`：`FRONTEND_GATE_EXIT=0`，tsc 0 错、eslint 0 error / 34 warning、vitest 13 文件 122 用例全过。
+- 拦截验证：临时注入 TS 类型错误探针 → 报 `TS2322` 且 `exit=1`（`TSC_BLOCKED=True`），探针自动删除无残留；CI 与 pre-push 共用同一脚本，两侧同样拦截。
+- 整合后实跑 `.githooks/pre-push`：`PREPUSH_EXIT=0`，前端三件套 + Go 快路径（go vet、单测、gate_audit、dim_audit 147/0、覆盖率九包 ≥75%）全部通过。
+- **显式降级**：CI job 无法本地实跑（本机无 pnpm、无 GitHub runner），已做 YAML 解析（3 个 job）与脚本实测；`nginx -t` 未跑（本机无 nginx），白名单以正则模拟替代（6 条敏感路径 404 / 8 类交付物放行）。
+
 ## [2026.11.09.1]
 
 **规范冲突裁决（docs/07 + docs/06）——统一设计 token 唯一真源**

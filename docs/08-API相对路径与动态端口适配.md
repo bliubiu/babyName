@@ -551,7 +551,9 @@ const withPWA = require('next-pwa')({
 
 const nextConfig = {
   reactStrictMode: true,
-  distDir: 'out',
+  // 历史示例：旧值 'out' 会把编译中间产物写进静态交付目录（docs/45 P1-31）。
+  // 当前 frontend/next.config.js 已改回 '.next'，此处同步以免被照抄。
+  distDir: '.next',
   async rewrites() {
     return [
       {

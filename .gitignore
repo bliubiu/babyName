@@ -22,7 +22,10 @@ backend/coverage.*
 
 # 前端
 frontend/node_modules/
+# docs/45 P1-31：next.config.js 的 distDir 已从 'out' 分离回默认 '.next'，
+# 编译中间产物（dev/server/build/logs/trace）只落在此目录，绝不入库。
 frontend/.next/
+# 静态导出交付目录（本地产物，由 next build / start-server.sh 重建）
 frontend/out/
 frontend/dist/
 frontend/build/
