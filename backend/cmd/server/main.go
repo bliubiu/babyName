@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"name/internal/application/handlers"
 	"name/internal/application/services"
+	"name/internal/domain/classics"
 	"name/internal/domain/fate"
 	"name/internal/domain/log"
 	"name/internal/domain/name"
@@ -176,6 +177,13 @@ func main() {
 		logger.Fatal("加载传统文化物料失败，服务拒绝启动", logger.ErrField(err))
 	}
 	logger.Info("传统文化物料已装载", logger.String("数据目录", dataDir))
+
+	// 经典字集提取完整性校验（docs/44 遗留④）：classics 物料在库但部分来源
+	// 字集行数为 0 时，出典加分与 source_classic 筛选会静默降级（shijing/chuci
+	// 曾长期处于此状态而无人发现——旧版 classics 指纹只取 shijing.json，其余
+	// 源文件变更不触发重灌，直到 E2E 巡检发现）。classics 为可选物料
+	// （Required=false），不阻断启动，但以 ERROR 级日志暴露并给出修复指引。
+	warnClassicsExtractGaps(store)
 
 	// 3. 检查静态文件目录（仅 all 模式需要：api 模式下静态页由前端容器/nginx
 	// 提供，容器内对不存在的静态路径强制 mkdir 只会 Fatal——docs/30 §六 C10）
@@ -576,6 +584,35 @@ func loadCulturalData(dataDir, dbPath string, db database.Store) error {
 		return loadCulturalDataFromDB(dataDir, dbPath, loader)
 	}
 	return data.Init(dataDir)
+}
+
+// warnClassicsExtractGaps 经典字集提取完整性校验（docs/44 遗留④）。
+//
+// 复用 materials status 的同源统计（Store.ClassicsStats + classics.RegisteredMaterials），
+// 对「已登记字集物料在库中行数为 0」的静默遗漏打 ERROR 日志。不阻断启动：
+// classics 为可选物料，核心生成链路不依赖；CI 侧由 e2e_check 的
+// source_classic=shijing/chuci 场景断言兜底。
+func warnClassicsExtractGaps(store database.Store) {
+	sc, ok := store.(*sqlite.Store)
+	if !ok {
+		return // 内存存储无物料库概念
+	}
+	stats := sc.ClassicsStats()
+	if stats.TotalExtracts == 0 {
+		return // 经典语料未导入：必需物料缺失已由 loadCulturalData fail-fast 覆盖
+	}
+	var missing []string
+	for _, m := range classics.RegisteredMaterials() {
+		if stats.ExtractByMaterial[m] == 0 {
+			missing = append(missing, m)
+		}
+	}
+	if len(missing) > 0 {
+		logger.Error("经典字集提取存在静默遗漏，出典加分与来源筛选将降级",
+			logger.String("缺失来源", strings.Join(missing, ", ")),
+			logger.String("修复指引", "在仓库根执行 go -C backend run ./cmd/materials import 后重启服务"),
+		)
+	}
 }
 
 // loadCulturalDataFromDB 从 SQLite 物料库装载，失败时在错误中附带恢复命令

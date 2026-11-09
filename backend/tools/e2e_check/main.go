@@ -581,6 +581,11 @@ func main() {
 		{"单名", pathGenerate, withOver(map[string]any{"name_length": 1})},
 		{"女宝 李", pathGenerate, withOver(map[string]any{"gender": "female", "surname": "李"})},
 		{"经典来源=论语", pathGenerate, withOver(map[string]any{"source_classic": "论语"})},
+		// docs/44 遗留④：shijing/chuci 字集曾静默缺失（旧版 classics 指纹只取
+		// shijing.json，其余源文件变更不触发重灌），source_classic 筛选静默失效
+		// 而服务 healthz 照常 200——用这两个场景在巡检层兜底暴露。
+		{"经典来源=shijing", pathGenerate, withOver(map[string]any{"source_classic": "shijing"})},
+		{"经典来源=chuci", pathGenerate, withOver(map[string]any{"source_classic": "chuci"})},
 		{"显式五行=水", pathGenerate, withOver(map[string]any{"wuxing_match": []string{"水"}})},
 		{"避讳 张伟/王秀英", pathGenerate, withOver(map[string]any{"avoid_elder_names": []string{"张伟", "王秀英"}})},
 		{"复姓 欧阳", pathGenerate, withOver(map[string]any{"surname": "欧阳"})},

@@ -5,6 +5,23 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.10.1]
+
+**docs/44 遗留④收官：shijing/chuci 字集静默缺失根因排查 + 启动/巡检双防护**
+
+### 🐛 Bug Fixes  问题修复
+- 【后端·启动校验】`warnClassicsExtractGaps`（cmd/server/main.go）：以 `Store.ClassicsStats()` + `classics.RegisteredMaterials()` 复用 materials status 同源统计，已登记来源字集行数为 0 时打 ERROR 日志附修复指引（可选物料不阻断启动，ADR-008 语义保持）——shijing/chuci 曾长期静默降级而服务 healthz 照常 200，此类状态今后启动即暴露
+
+### ✨ New Features 新增功能
+- 【巡检】e2e_check 新增 `经典来源=shijing` / `经典来源=chuci` 两场景（非空 + HTTP 200 断言），CI e2e job 对 extracts 来源覆盖兜底——本机实测两场景 200/50 名，18 项检查全过
+
+### 📚 Docs 文档更新
+- docs/44 遗留④标记已处理，根因结论登记：多层防线缺失组合（旧版 classics 指纹只取 shijing.json 致重灌门控形同虚设 + 提取器结构不兼容静默出 0（千家诗先例）+ 启动/CI 无校验 + data/ 整目录曾被 gitignore）；11-08 补齐系 A1 目录指纹与库记录不匹配触发全量重灌
+- docs/35 §3.3 测试文件清单同步为四份：补登记 `naming-ui-pages.e2e.ts`（7 场景全业务页面巡检）与 `naming-ui-conditions.e2e.ts`，附「UI 级 e2e 是发现 UI 状态与后端数据不一致类缺陷的唯一手段」经验结论
+
+### ✅ 验证
+- `go build` / `go vet`（cmd/server、tools/e2e_check）通过；服务重启后启动校验静默通过（当前库完整无告警噪音）；e2e_check -strict 18 项全过、退出码 0
+
 ## [2026.11.10.0]
 
 **docs/44 遗留项收尾：自动保存历史可感知化 + 入场动画 fill-mode 缺陷与减弱动态效果支持**
