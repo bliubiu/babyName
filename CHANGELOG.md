@@ -5,6 +5,23 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.10.3]
+
+**docs/05 部署使用手册全面更新对齐当前实现（docs/44 验证后的部署面同步）**
+
+### 📚 Docs 文档更新
+- 【手册】命令行参数表对齐 `main.go` 实际 flag：`-db` 修正为 SQLite 库文件路径（旧文档的 `-db 类型` + `-dsn` 参数不存在）、补 `-rate-capacity/-rate-rate`、新增环境变量表（DATA_DIR / NAME_DATABASE_PATH / NAMER_CORS_ORIGINS / NAMER_PDF_FONT）
+- 【手册】新增「物料库初始化（首次部署必做）」小节：ADR-008 fail-fast + materials import/status 命令 + shijing/chuci 静默缺失教训提示（docs/44 遗留④）
+- 【手册】新增「部署后验证」小节：healthz/readyz + 沉淀脚本（api_smoke 23 用例 / cli_matrix 14 用例组）+ e2e_check -strict 18 项 + 浏览器真实链路
+- 【手册】API 接口表对齐实际路由：移除 3 个不存在路由（/bazi/analyze、/yijing、/zodiac），补异步生成/任务/测名/黄历/农历/健康检查；新增访客会话隔离说明（X-Session-ID 机制与孤儿会话竞态提示）；文档引用 docs/06-API.md → docs/02
+- 【手册】方式二补 `backend/bin/start-server.sh` 一键启动（--rebuild/--check/--skip-frontend）；`go run cmd/server/main.go` 全部修正为 `go -C backend run ./cmd/server`（多文件包单文件形式无法编译）
+- 【手册】CORS 白名单部署要点（NAMER_CORS_ORIGINS，systemd 示例内联）；Nginx 方式 B 引用 `nginx-frontend.conf` 安全白名单（docs/45 P1-31）
+- 【手册】勘误：健康路径 `/api/v1/health` → `/healthz`（3 处）、备份库名 namemaster.db → 权威库 backend/namer.db（含 WAL 在线备份）、systemd/nginx 示例命名统一 namer、仓库地址 yourusername/namemaster → bliubiu/babyName、Go 版本对齐 go.mod 单一真源
+- 【手册】部署检查清单补物料导入/CORS/验证脚本/启动日志无 ERROR 项；文档版本表 1.1
+
+### ✅ 验证
+- 全文 grep 复查零残留（namemaster/-dsn/假路由/旧健康路径）；命令均按实际 flag 与多文件包约束核对
+
 ## [2026.11.10.2]
 
 **docs/44 测试脚本沉淀入仓 + docs/35 经验登记**
