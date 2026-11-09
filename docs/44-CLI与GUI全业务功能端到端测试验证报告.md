@@ -110,6 +110,6 @@
 | --- | --- |
 | GUI 全业务扩展用例 | `frontend/tests/naming-ui-pages.e2e.ts`（7 用例） |
 | CLI 回归测试 | `backend/cmd/namer-cli/integration_test.go`（新增 TestCLIBinaryConfigFileDoesNotPolluteJSONStream） |
-| API 冒烟脚本 | 临时目录（`/tmp/api_smoke.py`，23 用例，可复跑） |
-| CLI 矩阵脚本 | 临时目录（`/tmp/cli_e2e/run.sh`，14 用例，可复跑） |
+| API 冒烟脚本（已沉淀，可复跑） | `scripts/smoke/api_smoke.py`（23 用例；`NAMER_API_BASE` 可覆盖目标，写操作自动清理，非 0 退出码供 CI） |
+| CLI 矩阵脚本（已沉淀，可复跑） | `scripts/smoke/cli_matrix.sh`（14 用例组；仓库根相对路径解析，退出码供 CI） |
 | e2e 运行报告 | `frontend/.e2e/report.json` |

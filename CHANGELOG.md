@@ -5,6 +5,21 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.10.2]
+
+**docs/44 测试脚本沉淀入仓 + docs/35 经验登记**
+
+### ✨ New Features 新增功能
+- 【测试】`scripts/smoke/api_smoke.py`：全业务 API 冒烟 23 用例沉淀入仓（原临时脚本）——`NAMER_API_BASE` 可覆盖目标地址，写操作测试数据自动清理，非 0 退出码供 CI 消费；本机实测 23/23
+- 【测试】`scripts/smoke/cli_matrix.sh`：namer-cli 全参数矩阵 14 用例组沉淀入仓（原临时脚本）——仓库根相对路径解析，含 C4 stderr 不污染 JSON 流断言与避讳/字辈/复姓全量结构断言；本机实测 15/15
+
+### 📚 Docs 文档更新
+- docs/44 第六节产物清单路径更新：临时目录脚本 → 仓内可复跑路径
+- docs/35 §3.3 测试文件清单补登记 `naming-ui-pages.e2e.ts`（7 场景）与 `naming-ui-conditions.e2e.ts`，附「UI 级 e2e 是发现 UI 状态与后端数据不一致类缺陷的唯一手段」经验结论（随 [2026.11.10.1] amend，推送前合并）
+
+### ✅ 验证
+- 沉淀脚本双跑通：`bash scripts/smoke/cli_matrix.sh` 15/15、`python -I scripts/smoke/api_smoke.py` 23/23
+
 ## [2026.11.10.1]
 
 **docs/44 遗留④收官：shijing/chuci 字集静默缺失根因排查 + 启动/巡检双防护**
