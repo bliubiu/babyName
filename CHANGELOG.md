@@ -5,6 +5,23 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.10.8]
+
+**结果页 `/result` 命理详批折叠化与展示优化（前端）**
+
+### 前端 / 交互
+- 新增通用 `CollapsibleSection`（`frontend/src/components/CollapsibleSection.tsx`）：统一折叠头、收起态摘要、`aria-expanded`/`aria-controls` 与键盘焦点环，折叠时默认卸载内容；小屏摘要整行显示、大屏同行超长省略。
+- 四块命理分析重组为三个折叠区块：「八字分析」默认展开（与 docs/06 原型一致）；「易经卦象 · 卦象详解」把本卦经文与本/互/变三卦、体用断卦收进同一区块，默认收起；「紫微斗数」默认收起。折叠头外露关键结论：日主/喜用神、卦序卦名/动爻/体用吉凶、五行局/命宫/命主。
+- 页面新增「起名结果」概览条（候选总数）与「全部展开 / 全部收起」；折叠期间不挂载 lazy 子组件，减少首屏长文本与 chunk 下载，推荐名字更快进入视口。
+- `BaziAnalysis` / `HexagramDisplay` / `ZiweiDisplay` 增加可选 `embedded` 模式（去外层卡片与重复标题，默认行为不变）；`HexagramDetailDisplay` 增加 `embeddedTitle`，结果页显示「卦象详解」、名字详解沿用「梅花卦象」。
+- `docs/06` §3.1 补充折叠交互说明，保持页面/交互原型唯一真源与代码一致。
+
+### 验证
+- `scripts/verify-frontend.sh`：tsc `--noEmit` PASS、ESLint 0 error / 34 warning（基线未新增）、Vitest **15 文件 131 用例** PASS（新增 `CollapsibleSection` 5 例、`EmbeddedAnalysis` 4 例）。
+- `next build`：Compiled successfully、11/11 静态页、`/result` 已导出、`BUILD_EXIT=0`。
+- 线上核验 17/17：`http://127.0.0.1:8080/result` 200，构建产物含全部新文案，`_next/static` CSS/JS 资源 200。
+- 附注：`frontend/next-env.d.ts` 由本次 `next build` 自动把路由类型引用从 `.next/dev/types` 改为 `.next/types`，属生成文件，随构建一并提交。
+
 ## [2026.11.10.7]
 
 **工作区文档维护改动统一提交（不含生产代码变更）**

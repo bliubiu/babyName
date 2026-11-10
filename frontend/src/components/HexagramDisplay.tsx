@@ -21,6 +21,8 @@ interface HexagramDisplayProps {
   movingYao?: number | null;
   /** 64 卦差异化四象限解读（docs/42 P1-⑦ 接线），缺省不渲染 */
   interp?: HexagramInterpretation | null;
+  /** 嵌入模式：去除外层卡片与标题，由统一折叠容器提供（结果页展示优化） */
+  embedded?: boolean;
 }
 
 export default function HexagramDisplay({
@@ -28,6 +30,7 @@ export default function HexagramDisplay({
   yaoLines,
   movingYao,
   interp,
+  embedded = false,
 }: HexagramDisplayProps) {
   const [showYaoText, setShowYaoText] = useState(false);
 
@@ -45,10 +48,12 @@ export default function HexagramDisplay({
       : buildHexagramYaoLines(hexagram.upper_trigram, hexagram.lower_trigram);
 
   return (
-    <div className="card mb-4 md:mb-6 animate-fade-in-up">
-      <div className="flex items-center gap-3 mb-4">
-        <h3 className="section-title">易经卦象</h3>
-      </div>
+    <div className={embedded ? 'animate-fade-in-up' : 'card mb-4 md:mb-6 animate-fade-in-up'}>
+      {!embedded && (
+        <div className="flex items-center gap-3 mb-4">
+          <h3 className="section-title">易经卦象</h3>
+        </div>
+      )}
 
       <div className="space-y-4">
         {/* 卦序、卦名与六爻画 */}

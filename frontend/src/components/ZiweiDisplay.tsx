@@ -4,6 +4,8 @@ import type { ZiweiChart } from '@/types';
 
 interface ZiweiDisplayProps {
   ziwei: ZiweiChart | null;
+  /** 嵌入模式：去除外层卡片与标题，由统一折叠容器提供（结果页展示优化） */
+  embedded?: boolean;
 }
 
 // 十二宫固定顺序（与后端 Gongs 一致，自命宫逆行）
@@ -31,7 +33,7 @@ function brightnessTag(b: string | undefined) {
   );
 }
 
-export default function ZiweiDisplay({ ziwei }: ZiweiDisplayProps) {
+export default function ZiweiDisplay({ ziwei, embedded = false }: ZiweiDisplayProps) {
   if (!ziwei) {
     return (
       <div className="text-center py-6 text-ink-light/40 text-sm">
@@ -57,10 +59,12 @@ export default function ZiweiDisplay({ ziwei }: ZiweiDisplayProps) {
   const brightness = ziwei.brightness ?? {};
 
   return (
-    <div className="card mb-4 md:mb-6 animate-fade-in-up">
-      <div className="flex items-center gap-3 mb-4">
-        <h3 className="section-title">紫微斗数</h3>
-      </div>
+    <div className={embedded ? 'animate-fade-in-up' : 'card mb-4 md:mb-6 animate-fade-in-up'}>
+      {!embedded && (
+        <div className="flex items-center gap-3 mb-4">
+          <h3 className="section-title">紫微斗数</h3>
+        </div>
+      )}
 
       <div className="space-y-4">
         {/* 概要 */}

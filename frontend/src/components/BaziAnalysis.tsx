@@ -7,6 +7,8 @@ interface BaziAnalysisProps {
   bazi: BaziAnalysisType;
   nayin: string;
   zodiac: string;
+  /** 嵌入模式：去除外层卡片与自带折叠按钮，由统一折叠容器控制（结果页展示优化） */
+  embedded?: boolean;
 }
 
 const wuxingColors: Record<string, { bg: string; text: string; bar: string }> = {
@@ -17,8 +19,10 @@ const wuxingColors: Record<string, { bg: string; text: string; bar: string }> = 
   tu: { bg: 'bg-amber-50', text: 'text-amber-700', bar: 'bg-amber-500' },
 };
 
-export default function BaziAnalysis({ bazi, nayin, zodiac }: BaziAnalysisProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+export default function BaziAnalysis({ bazi, nayin, zodiac, embedded = false }: BaziAnalysisProps) {
+  const [expanded, setExpanded] = useState(true);
+  // 嵌入模式下展开态由外层折叠容器决定，本组件始终输出完整内容
+  const isExpanded = embedded || expanded;
 
   const getWuxingName = (key: string): string => {
     const map: Record<string, string> = { jin: '金', mu: '木', shui: '水', huo: '火', tu: '土' };
@@ -28,16 +32,18 @@ export default function BaziAnalysis({ bazi, nayin, zodiac }: BaziAnalysisProps)
   const maxWuxing = Math.max(...Object.values(bazi.wuxing), 1);
 
   return (
-    <div className="card mb-4 md:mb-6 animate-fade-in-up">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="section-title">八字分析</h2>
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="text-sm text-jade hover:text-crimson transition-colors px-3 py-1.5 rounded-lg hover:bg-crimson/5"
-        >
-          {isExpanded ? '收起' : '展开'}
-        </button>
-      </div>
+    <div className={embedded ? 'animate-fade-in-up' : 'card mb-4 md:mb-6 animate-fade-in-up'}>
+      {!embedded && (
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="section-title">八字分析</h2>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-sm text-jade hover:text-crimson transition-colors px-3 py-1.5 rounded-lg hover:bg-crimson/5"
+          >
+            {isExpanded ? '收起' : '展开'}
+          </button>
+        </div>
+      )}
 
       {isExpanded && (
         <div className="animate-fade-in space-y-5">

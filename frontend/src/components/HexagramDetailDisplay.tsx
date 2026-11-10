@@ -10,6 +10,8 @@ interface HexagramDetailDisplayProps {
   tiyong?: TiYong | null;
   /** 嵌入模式：去除外层卡片与标题（用于名字详解内嵌，docs/42 P3-11） */
   embedded?: boolean;
+  /** 嵌入模式下的小标题（结果页折叠区用「卦象详解」，名字详解沿用「梅花卦象」） */
+  embeddedTitle?: string;
 }
 
 /** 三卦小卡标题 → 辅助说明 */
@@ -48,6 +50,7 @@ export default function HexagramDetailDisplay({
   detail,
   tiyong,
   embedded = false,
+  embeddedTitle = '梅花卦象',
 }: HexagramDetailDisplayProps) {
   const movingName = getYaoName(
     detail.moving_yao,
@@ -106,7 +109,7 @@ export default function HexagramDetailDisplay({
       )}
       {embedded && (
         <div className="flex items-center gap-2 mb-3">
-          <span className="text-xs text-jade font-medium">梅花卦象</span>
+          <span className="text-xs text-jade font-medium">{embeddedTitle}</span>
           <span className="text-[11px] text-ink-light/50">
             本 · 互 · 变 并参，第{detail.moving_yao}爻动
           </span>

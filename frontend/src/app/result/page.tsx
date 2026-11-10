@@ -11,6 +11,7 @@ import { saveFavorite, deleteFavorite, exploreNames, getFavorites } from '@/lib/
 import type { FavoritesResponse } from '@/types/api/favorites';
 import Navigation from '@/components/Navigation';
 import { NameFilters } from '@/components/NameFilter';
+import CollapsibleSection from '@/components/CollapsibleSection';
 
 const BaziAnalysis = lazy(() => import('@/components/BaziAnalysis'));
 const HexagramDisplay = lazy(() => import('@/components/HexagramDisplay'));
@@ -27,6 +28,16 @@ const FullReport = lazy(() => import('@/components/FullReport'));
 
 // 用 surname:given_name 作为收藏状态键，避免 filter 后 index 错位
 const nameKey = (n: Name) => `${n.surname}:${n.given_name}`;
+
+// 命理详批三个折叠区块的默认展开态。
+// 八字是起名依据，保留默认展开（与 docs/06 原型一致）；卦象与紫微长文本默认收起，
+// 折叠头仍外露关键结论，避免四块长文把推荐名字挤出首屏。
+type AnalysisKey = 'bazi' | 'hexagram' | 'ziwei';
+const DEFAULT_ANALYSIS_OPEN: Record<AnalysisKey, boolean> = {
+  bazi: true,
+  hexagram: false,
+  ziwei: false,
+};
 
 // 收藏列表的共享空数组常量，配合 useMemo 保证引用稳定（见下方 cachedFavorites）
 const EMPTY_FAVORITES: FavoriteData[] = [];
@@ -80,6 +91,13 @@ const cachedFavorites = useMemo<FavoriteData[]>(
   const result = generateResult;
   const [filters, setFilters] = useState<NameFilters>({});
   const [showFullReport, setShowFullReport] = useState(false);
+  // 折叠态提到页面层集中管理，才能提供「全部展开 / 全部收起」
+  const [analysisOpen, setAnalysisOpen] = useState<Record<AnalysisKey, boolean>>(DEFAULT_ANALYSIS_OPEN);
+  const allAnalysisOpen = Object.values(analysisOpen).every(Boolean);
+  const toggleAllAnalysis = () => {
+    const next = !allAnalysisOpen;
+    setAnalysisOpen({ bazi: next, hexagram: next, ziwei: next });
+  };
 
   const filteredNames = useMemo(() => result?.names ? result.names.filter((name: Name) => {
     if (filters.gender && name.gender !== filters.gender) return false;
@@ -299,6 +317,20 @@ const cachedFavorites = useMemo<FavoriteData[]>(
 
   const { bazi, nayin, zodiac, hexagram, hexagram_detail, hexagram_interpretation, tiyong, ziwei, names } = result;
 
+  // 折叠头摘要：把最关键结论外露，收起状态也能一眼扫到
+  const hexagramSummary = [
+    hexagram ? `第${hexagram.number}卦 ${hexagram.name}` : '',
+    hexagram_detail ? `第${hexagram_detail.moving_yao}爻动` : '',
+    tiyong?.verdict ? `体用${tiyong.verdict}` : '',
+  ].filter(Boolean).join(' · ');
+  const ziweiSummary = ziwei
+    ? [
+        ziwei.five_elements,
+        ziwei.ming_gong ? `命宫 ${ziwei.ming_gong}` : '',
+        ziwei.soul ? `命主${ziwei.soul}` : '',
+      ].filter(Boolean).join(' · ')
+    : '';
+
   const handleCompare = () => {
     if (compareNames.length < 2) {
       showToast('请至少选择2个名字进行对比', 'warning');
@@ -328,35 +360,81 @@ const cachedFavorites = useMemo<FavoriteData[]>(
           showExport={false}
         />
 
+        {/* 结果概览 + 命理详批全局开关（结果页展示优化） */}
+        <div className="max-w-lg mx-auto mb-4 flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="font-serif text-xl md:text-2xl text-ink">起名结果</h1>
+            <p className="text-xs text-ink-light/60 mt-1">
+              共 {names.length} 个候选 · 下方命理详批可按需展开
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={toggleAllAnalysis}
+            className="shrink-0 px-3 py-1.5 bg-jade/10 text-jade rounded-xl text-xs hover:bg-jade/20 transition-all duration-200"
+          >
+            {allAnalysisOpen ? '全部收起' : '全部展开'}
+          </button>
+        </div>
+
         {/* 八字分析 */}
-        <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载八字分析...</div>}>
-          <BaziAnalysis bazi={bazi} nayin={nayin} zodiac={zodiac} />
-        </Suspense>
-
-        {/* 卦象（本卦经文） */}
-        {hexagram && (
-          <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载卦象...</div>}>
-            <HexagramDisplay
-              hexagram={hexagram}
-              yaoLines={hexagram_detail?.original_yao_lines}
-              movingYao={hexagram_detail?.moving_yao}
-              interp={hexagram_interpretation}
-            />
+        <CollapsibleSection
+          title="八字分析"
+          summary={`日主 ${bazi.rishou} · 喜用神 ${bazi.xiyongshen.join('、')} · ${zodiac}`}
+          open={analysisOpen.bazi}
+          onOpenChange={(v) => setAnalysisOpen((prev) => ({ ...prev, bazi: v }))}
+        >
+          <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载八字分析...</div>}>
+            <BaziAnalysis bazi={bazi} nayin={nayin} zodiac={zodiac} embedded />
           </Suspense>
-        )}
+        </CollapsibleSection>
 
-        {/* 卦象详解：本/互/变三卦并排 + 体用断卦（docs/42 P2-9/10） */}
-        {hexagram_detail && (
-          <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载卦象详解...</div>}>
-            <HexagramDetailDisplay detail={hexagram_detail} tiyong={tiyong} />
-          </Suspense>
+        {/* 易经卦象 + 卦象详解：本卦经文 / 本互变三卦 / 体用断卦（docs/42 P2-9/10） */}
+        {(hexagram || hexagram_detail) && (
+          <CollapsibleSection
+            title="易经卦象 · 卦象详解"
+            summary={hexagramSummary}
+            open={analysisOpen.hexagram}
+            onOpenChange={(v) => setAnalysisOpen((prev) => ({ ...prev, hexagram: v }))}
+          >
+            {hexagram && (
+              <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载卦象...</div>}>
+                <HexagramDisplay
+                  hexagram={hexagram}
+                  yaoLines={hexagram_detail?.original_yao_lines}
+                  movingYao={hexagram_detail?.moving_yao}
+                  interp={hexagram_interpretation}
+                  embedded
+                />
+              </Suspense>
+            )}
+            {hexagram_detail && (
+              <div className="mt-5 border-t border-paper/40 pt-4">
+                <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载卦象详解...</div>}>
+                  <HexagramDetailDisplay
+                    detail={hexagram_detail}
+                    tiyong={tiyong}
+                    embedded
+                    embeddedTitle="卦象详解"
+                  />
+                </Suspense>
+              </div>
+            )}
+          </CollapsibleSection>
         )}
 
         {/* 紫微斗数 */}
         {ziwei && (
-          <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载紫微斗数...</div>}>
-            <ZiweiDisplay ziwei={ziwei} />
-          </Suspense>
+          <CollapsibleSection
+            title="紫微斗数"
+            summary={ziweiSummary}
+            open={analysisOpen.ziwei}
+            onOpenChange={(v) => setAnalysisOpen((prev) => ({ ...prev, ziwei: v }))}
+          >
+            <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载紫微斗数...</div>}>
+              <ZiweiDisplay ziwei={ziwei} embedded />
+            </Suspense>
+          </CollapsibleSection>
         )}
 
         {/* 竖向名帖 */}
