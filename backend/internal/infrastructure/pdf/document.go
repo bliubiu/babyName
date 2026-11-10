@@ -99,7 +99,29 @@ type Document struct {
 	missing   map[rune]bool
 }
 
+// Font 已解析的 TrueType 字体句柄。
+//
+// 解析开销较大（CJK 字体 10-20MB，需重建 cmap/glyf/loca 目录），同一字体应在
+// 进程内只解析一次后复用。Font 构造后**不可变**（subsetFor / 渲染全程只读取
+// f.cmap / f.glyphRange / f.advanceWidth / f.tables 等字段，从不回写），可安全
+// 跨请求并发复用，无需额外锁。
+type Font struct {
+	f *ttfFont
+}
+
+// ParseFont 解析 TrueType 字体字节，返回可复用的 Font 句柄。
+func ParseFont(data []byte) (*Font, error) {
+	f, err := parseTTF(data)
+	if err != nil {
+		return nil, fmt.Errorf("解析字体失败: %w", err)
+	}
+	return &Font{f: f}, nil
+}
+
 // NewDocument 读取并解析字体，创建文档。
+//
+// 字体仅使用一次的场景（测试、一次性导出）可直接调用；需要复用同一字体多次时，
+// 先用 ParseFont 解析一次，再反复调用 NewDocumentWithFont。
 func NewDocument(opt Options) (*Document, error) {
 	opt = opt.withDefaults()
 
@@ -115,14 +137,24 @@ func NewDocument(opt Options) (*Document, error) {
 		data = b
 	}
 
-	f, err := parseTTF(data)
+	f, err := ParseFont(data)
 	if err != nil {
-		return nil, fmt.Errorf("解析字体失败: %w", err)
+		return nil, err
 	}
+	return NewDocumentWithFont(f, opt)
+}
+
+// NewDocumentWithFont 基于已解析的 Font 创建文档，跳过字体解析（docs/46 P2）。
+func NewDocumentWithFont(font *Font, opt Options) (*Document, error) {
+	if font == nil || font.f == nil {
+		return nil, fmt.Errorf("字体句柄为空，请通过 Options.FontData/FontPath 或 ParseFont 提供字体")
+	}
+
+	opt = opt.withDefaults()
 
 	d := &Document{
 		opt:       opt,
-		font:      f,
+		font:      font.f,
 		color:     rgb{0.12, 0.12, 0.12},
 		usedRunes: make(map[rune]bool, 512),
 		missing:   make(map[rune]bool),

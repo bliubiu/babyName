@@ -70,6 +70,18 @@ func indexExtracted(extracted []PoetryChar) {
 	}
 }
 
+// BuildPoetryIndex 主动构建诗词索引（docs/46 P2 性能）。
+//
+// 必须在文化物料装载完成后调用，把首个 /generate 请求的索引构建尖峰前移到启动期，
+// 避免首请求延迟突增。重复调用安全：内部 sync.Once 保证只构建一次；若此前已通过
+// 查询路径惰性触发过，本调用为无操作。
+//
+// ★ 时序约束：必须在 loadCulturalData（data.Init / InitWithDB）之后调用，否则
+// 各 Extracted 字集尚未装载，索引会以空语料固化（poetryIdxOnce 一次性，无法补救）。
+func BuildPoetryIndex() {
+	poetryIdxOnce.Do(buildPoetryIndex)
+}
+
 // FindPoetryByChar 查找某字的诗词出处
 // 返回该字在所有诗词来源中的条目列表
 func FindPoetryByChar(char string) []PoetryChar {

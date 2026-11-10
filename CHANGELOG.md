@@ -5,6 +5,17 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.10.5]
+
+**docs/46 P2 性能修复：诗词索引启动预热 + PDF 字体解析缓存**
+
+### 📈 Improvements 性能/体验优化
+- 【后端·性能】诗词索引（`classics.buildPoetryIndex`）原本在首个 `/generate` 请求时才惰性构建（18 组经典字集 `copyExtracted` + 建 map），造成首请求延迟尖峰。新增导出 `classics.BuildPoetryIndex()`（内部复用同一 `sync.Once`），在 `cmd/server/main.go` 的 `loadCulturalData` 成功后调用，把构建尖峰前移到启动期（docs/46 P2）。新增 `poetry_index_test.go` 守护幂等性。
+- 【后端·性能】`ReportService` 每次 `/report/pdf` 都经 `pdf.NewDocument` 重解析整份 CJK 字体（10-20MB，重建 cmap/glyf/loca 目录）。`pdf` 包新增不可变 `Font` 句柄 + `ParseFont` + `NewDocumentWithFont`，`ReportService` 经 `fontOnce` 只解析一次并缓存，`GeneratePDF` 复用同一 `*Font` 仅按用到的 rune 子集化（docs/46 P2）。已确认 `*ttfFont` 构造后不可变（subsetFor/渲染全程只读字段、不回写），可安全跨请求并发复用。新增 `TestParseFontReusableAcrossDocuments` 守护复用不污染字形映射。
+
+### 设计决策
+- 热更新（内存热重载 JSON）从 docs/46 P2 待办移除：SQLite 为唯一真源，物料经 `cmd/materials import` 落库，所有读取走 SQLite，内存热重载既无必要也从未落地（详见 docs/46 对应条目）。
+
 ## [2026.11.10.4]
 
 **docs/46 P2 修复：分页钳制 + 字库全量查询惰性快照 + 数据库路径去硬编码**

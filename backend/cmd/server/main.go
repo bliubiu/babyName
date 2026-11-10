@@ -178,6 +178,10 @@ func main() {
 	}
 	logger.Info("传统文化物料已装载", logger.String("数据目录", dataDir))
 
+	// 诗词索引预热（docs/46 P2 性能）：把首个 /generate 请求的索引构建尖峰前移到
+	// 启动期。必须在 loadCulturalData 之后（物料已装载），否则索引会以空语料固化为空。
+	classics.BuildPoetryIndex()
+
 	// 经典字集提取完整性校验（docs/44 遗留④）：classics 物料在库但部分来源
 	// 字集行数为 0 时，出典加分与 source_classic 筛选会静默降级（shijing/chuci
 	// 曾长期处于此状态而无人发现——旧版 classics 指纹只取 shijing.json，其余

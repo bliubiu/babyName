@@ -21,8 +21,8 @@ import (
 // 两种格式共用同一份模型，避免历史上 PDF 与 HTML 各解析一遍、字段口径不一致的问题。
 type ReportService struct {
 	fontOnce sync.Once
-	fontData []byte
-	fontErr  error
+	font    *pdf.Font // 已解析字体（进程内只解析一次，docs/46 P2）
+	fontErr error
 	fontPath string
 }
 
@@ -115,11 +115,13 @@ func parseReportModel(data interface{}) reportModel {
 
 // ---------- PDF ----------
 
-// loadFont 载入中文字体（进程内只解析一次）。
+// loadFont 载入并解析中文字体（进程内只解析一次，docs/46 P2）。
 //
+// 字体解析开销较大（CJK 字体 10-20MB，需重建 cmap/glyf/loca 目录），故只解析一次
+// 并缓存不可变的 *pdf.Font，后续每次 /report/pdf 仅按用到的 rune 子集化，不再重解析。
 // 找不到字体时直接报错：宁可让接口返回「报告生成失败」，也不能输出一份正文全是
 // 空白/方框的"报告"——后者用户无从判断是数据问题还是渲染问题。
-func (s *ReportService) loadFont() ([]byte, error) {
+func (s *ReportService) loadFont() (*pdf.Font, error) {
 	s.fontOnce.Do(func() {
 		path, err := pdf.FindSystemCJKFont()
 		if err != nil {
@@ -131,11 +133,16 @@ func (s *ReportService) loadFont() ([]byte, error) {
 			s.fontErr = fmt.Errorf("读取中文字体 %s 失败: %w", path, err)
 			return
 		}
+		font, err := pdf.ParseFont(data)
+		if err != nil {
+			s.fontErr = err
+			return
+		}
+		s.font = font
 		s.fontPath = path
-		s.fontData = data
 		logger.Info("报告中文字体已就绪", zap.String("font", path), zap.Int("bytes", len(data)))
 	})
-	return s.fontData, s.fontErr
+	return s.font, s.fontErr
 }
 
 // GeneratePDF 生成 PDF 报告
@@ -145,13 +152,12 @@ func (s *ReportService) GeneratePDF(ctx context.Context, data interface{}) ([]by
 	}
 	model := parseReportModel(data)
 
-	fontData, err := s.loadFont()
+	font, err := s.loadFont()
 	if err != nil {
 		return nil, fmt.Errorf("PDF 报告不可用：%w", err)
 	}
 
-	doc, err := pdf.NewDocument(pdf.Options{
-		FontData: fontData,
+	doc, err := pdf.NewDocumentWithFont(font, pdf.Options{
 		PageSize: pdf.A4,
 		Title:    model.Title(),
 	})

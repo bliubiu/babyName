@@ -366,3 +366,38 @@ func TestToUnicodeMapsEveryCID(t *testing.T) {
 		}
 	}
 }
+
+// TestParseFontReusableAcrossDocuments 解析一次、复用同一 *Font 生成多份文档不应
+// 互相污染（docs/46 P2 字体缓存回归）。
+//
+// 字体句柄构造后不可变，subsetFor / 渲染全程只读 f.cmap / f.glyphRange /
+// f.advanceWidth / f.tables 等字段、从不回写；若实现误引入共享写，复用会破坏
+// 后续文档的字形映射。本用例用同一 Font 连出两份文档并各自渲染不同中文，
+// 两份都应无缺字且产出有效字节。
+func TestParseFontReusableAcrossDocuments(t *testing.T) {
+	fontData := loadTestFont(t)
+	font, err := ParseFont(fontData)
+	if err != nil {
+		t.Fatalf("ParseFont 失败: %v", err)
+	}
+
+	const text1 = "张氏宝宝起名报告"
+	const text2 = "李姓男宝五行喜水建议"
+	for i, text := range []string{text1, text2} {
+		doc, err := NewDocumentWithFont(font, Options{})
+		if err != nil {
+			t.Fatalf("第 %d 份文档 NewDocumentWithFont 失败: %v", i, err)
+		}
+		doc.Paragraph(text, 14, 20)
+		var buf bytes.Buffer
+		if _, err := doc.WriteTo(&buf); err != nil {
+			t.Fatalf("第 %d 份文档 WriteTo 失败: %v", i, err)
+		}
+		if buf.Len() == 0 {
+			t.Fatalf("第 %d 份文档输出为空", i)
+		}
+		if missing := doc.MissingRunes(); len(missing) > 0 {
+			t.Errorf("第 %d 份文档存在字体缺字 %q（复用 Font 后字形映射被破坏？）", i, string(missing))
+		}
+	}
+}
