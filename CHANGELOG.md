@@ -37,6 +37,23 @@
 ### ✅ 验证
 - 沉淀脚本双跑通：`bash scripts/smoke/cli_matrix.sh` 15/15、`python -I scripts/smoke/api_smoke.py` 23/23
 
+## [2026.11.10.2]
+
+**docs/46 P1 修复：异步任务越权读取（GET /names/task/:id 会话归属校验）**
+
+### 🐛 Bug Fixes  问题修复
+- 【后端·安全】`GET /names/task/:id` 此前仅按 id 取结果、无会话归属校验，且 `task_id` 形如 `t<UnixNano>-<seq>` 可枚举、`Submit` 不接收会话标识 —— 攻击者枚举相邻 task_id 即可越权读取他人完整生成结果（姓氏/生辰/八字/候选名），且「取走即弃」会进一步使原用户取不到（docs/46 P1）。
+  - `internal/application/services/task_service.go`：`Submit(req, sid)` 绑定会话标识并持久化到 `GenerateTask.sessionID`；`Get(id, sid)` 校验会话归属，不匹配返回「不存在」；`task_id` 改用 `crypto/rand` 16 字节熵（前缀 `t` + 32 位十六进制），彻底不可枚举。
+  - `internal/application/handlers/name_async_handler.go`：`GenerateAsync`/`GetTask` 接入 `middleware.EnsureSessionID`，提交与轮询须为同一会话。
+  - `tools/e2e_check/main.go`：巡检客户端启用 `cookiejar`，异步提交下发的 `nm_sid` 在轮询时自动带回，保持端到端一致。
+- 【测试】`task_service_test.go` 新增 `TestGet_RejectsMismatchedSession`（越权回归）与 `TestNewTaskID_Unpredictable`（task_id 不可枚举），同步既有 `Submit`/`Get` 调用签名。
+
+### 📚 Docs 文档更新
+- 登记 `docs/46-性能与缺陷专项审查报告.md` 的 P1 修复结论；docs/43 / docs/46 既有的「粤语开关」「评分明细九维」等条目经实测已修复，本次未误报。
+
+### ✅ 验证
+- `go build ./...` / `go vet ./...` 全绿；`go test ./internal/application/services/... -run Task` 与 `./internal/application/handlers/...` 全过，新增 P1 回归用例 PASS。
+
 ## [2026.11.10.1]
 
 **docs/44 遗留④收官：shijing/chuci 字集静默缺失根因排查 + 启动/巡检双防护**

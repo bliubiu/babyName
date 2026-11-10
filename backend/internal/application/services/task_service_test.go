@@ -9,6 +9,7 @@ package services
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"strconv"
 	"testing"
@@ -24,7 +25,7 @@ func TestSubmit_RejectsWhenRunningFull(t *testing.T) {
 		ts.running <- struct{}{}
 	}
 
-	id, err := ts.Submit(&GenerateRequest{Surname: "王"})
+	id, err := ts.Submit(&GenerateRequest{Surname: "王"}, "sid-reject")
 	if !errors.Is(err, ErrTooManyTasks) {
 		t.Fatalf("槽位满时应返回 ErrTooManyTasks，实际 err=%v", err)
 	}
@@ -163,14 +164,14 @@ func TestRun_ReleasesSlot(t *testing.T) {
 		BirthDay:   15,
 		BirthHour:  12,
 		NameLength: 2,
-	})
+	}, "sid-ok")
 	if err != nil {
 		t.Fatalf("提交失败: %v", err)
 	}
 
 	deadline := time.Now().Add(2 * time.Minute)
 	for {
-		task, ok := ts.Get(id)
+		task, ok := ts.Get(id, "sid-ok")
 		if !ok {
 			t.Fatal("任务丢失")
 		}
@@ -226,5 +227,49 @@ func TestTaskStatusConstants(t *testing.T) {
 		if string(got) != want {
 			t.Errorf("状态常量漂移: got %q want %q", got, want)
 		}
+	}
+}
+
+// TestGet_RejectsMismatchedSession 越权修复回归（docs/46 P1）：
+// 查询必须与提交同会话，否则即便猜中 task_id 也只能拿到「不存在」，杜绝枚举泄露他人生成结果。
+func TestGet_RejectsMismatchedSession(t *testing.T) {
+	ts := NewTaskService(nil)
+	id, err := ts.Submit(&GenerateRequest{Surname: "王"}, "owner-sid")
+	if err != nil {
+		t.Fatalf("提交失败: %v", err)
+	}
+
+	if _, ok := ts.Get(id, "owner-sid"); !ok {
+		t.Fatal("同会话应可取回任务")
+	}
+	// 越权枚举者：不同会话取不到
+	if _, ok := ts.Get(id, "attacker-sid"); ok {
+		t.Fatal("不同会话不应取到任务（越权修复失效）")
+	}
+	// 空会话也不应取到
+	if _, ok := ts.Get(id, ""); ok {
+		t.Fatal("空会话不应取到任务")
+	}
+}
+
+// TestNewTaskID_Unpredictable 验证新 task_id 不可枚举：格式为 t+32 位十六进制，且多次生成不重复。
+func TestNewTaskID_Unpredictable(t *testing.T) {
+	const prefix = "t"
+	seen := make(map[string]struct{}, 200)
+	for i := 0; i < 200; i++ {
+		id := newTaskID()
+		if len(id) != 1+32 {
+			t.Fatalf("task_id 长度异常: %q（应为 t + 32 位十六进制）", id)
+		}
+		if id[:1] != prefix {
+			t.Fatalf("task_id 前缀异常: %q", id)
+		}
+		if _, err := hex.DecodeString(id[1:]); err != nil {
+			t.Fatalf("task_id 含非十六进制字符: %q", id)
+		}
+		if _, dup := seen[id]; dup {
+			t.Fatalf("task_id 重复，可被推断: %q", id)
+		}
+		seen[id] = struct{}{}
 	}
 }

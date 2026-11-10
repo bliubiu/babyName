@@ -227,7 +227,7 @@ func TestTaskService_E2E_SubmitAndPoll(t *testing.T) {
 		BirthDay:   15,
 		BirthHour:  12,
 		NameLength: 2,
-	})
+	}, "e2e-sid")
 	if err != nil {
 		t.Fatalf("提交任务失败: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestTaskService_E2E_SubmitAndPoll(t *testing.T) {
 	// 误报（表现为 flaky），与业务正确性无关。
 	var maxRegress float64
 	for {
-		task, ok := ts.Get(taskID)
+		task, ok := ts.Get(taskID, "e2e-sid")
 		if !ok {
 			t.Fatal("任务丢失")
 		}

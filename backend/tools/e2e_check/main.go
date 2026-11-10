@@ -32,6 +32,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/http/cookiejar"
 	"os"
 	"path/filepath"
 	"sort"
@@ -273,7 +274,10 @@ type client struct {
 }
 
 func newClient(base string, timeout time.Duration) *client {
-	return &client{base: base, hc: &http.Client{Timeout: timeout}}
+	// 启用 cookie jar：异步提交时服务端下发 nm_sid，轮询 /names/task/:id 须带回同一会话，
+	// 才能通过任务归属校验（docs/46 P1 越权修复）。模拟浏览器同源 cookie 行为。
+	jar, _ := cookiejar.New(nil)
+	return &client{base: base, hc: &http.Client{Timeout: timeout, Jar: jar}}
 }
 
 func (c *client) call(path string, body map[string]any) result {

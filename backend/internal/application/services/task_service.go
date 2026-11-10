@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -62,6 +64,10 @@ type GenerateTask struct {
 	result    *GenerateResponse
 	createdAt time.Time
 
+	// sessionID 任务归属的会话标识：提交时由调用方传入，查询时据此校验，
+	// 防止 task_id 被枚举后越权读取他人完整生成结果（docs/46 P1）。
+	sessionID string
+
 	// cancel 终止本任务后台 goroutine 用的取消函数。
 	// 淘汰（TTL/超容）时必须调用，否则 map 里虽然删了任务，
 	// goroutine 仍会跑满 5 分钟全量枚举 —— 这正是 B7 的 OOM 来源。
@@ -95,7 +101,6 @@ type TaskService struct {
 	mu    sync.Mutex
 	tasks map[string]*GenerateTask
 	order []string // 创建顺序，用于 TTL/容量淘汰
-	seq   int
 	// running 后台生成任务的并发信号量（容量 taskMaxRunning）
 	running chan struct{}
 }
@@ -114,7 +119,7 @@ func NewTaskService(svc *NameService) *TaskService {
 // 并发已满时返回 ErrTooManyTasks（此时 task_id 为空），由 handler 转 503。
 // 选择「拒绝」而非「排队」：排队只是把内存耗尽推迟到某一刻，且被排队的
 // 用户拿到的 task_id 要等很久才有响应，交互上更差。
-func (ts *TaskService) Submit(req *GenerateRequest) (string, error) {
+func (ts *TaskService) Submit(req *GenerateRequest, sid string) (string, error) {
 	// 先抢并发名额。放在 map 写入之前，失败时不留任何状态。
 	select {
 	case ts.running <- struct{}{}:
@@ -126,7 +131,7 @@ func (ts *TaskService) Submit(req *GenerateRequest) (string, error) {
 		return "", ErrTooManyTasks
 	}
 
-	id := fmt.Sprintf("t%d-%d", time.Now().UnixNano(), ts.nextSeq())
+	id := newTaskID()
 
 	// 每个任务独立可取消：超时 + 淘汰取消都通过它生效。
 	// 不能用 context.Background() 直接跑，淘汰时就无从终止。
@@ -138,6 +143,7 @@ func (ts *TaskService) Submit(req *GenerateRequest) (string, error) {
 		percent:   0,
 		createdAt: time.Now(),
 		cancel:    cancel,
+		sessionID: sid,
 	}
 
 	ts.mu.Lock()
@@ -150,20 +156,31 @@ func (ts *TaskService) Submit(req *GenerateRequest) (string, error) {
 	return id, nil
 }
 
-// Get 查询任务；status=success 时 result 非nil（若尚未被取走）
-func (ts *TaskService) Get(id string) (*GenerateTask, bool) {
+// Get 查询任务；仅当 id 存在且归属当前会话（sid 匹配）时才返回，
+// 否则返回 (nil, false)。这防止 task_id 被枚举后越权读取他人完整生成结果
+// （姓氏/生辰/八字/候选名），攻击者即便猜中 id，缺少正确会话标识也只能拿到 404（docs/46 P1）。
+func (ts *TaskService) Get(id, sid string) (*GenerateTask, bool) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	t, ok := ts.tasks[id]
-	return t, ok
+	if !ok {
+		return nil, false
+	}
+	if t.sessionID != sid {
+		return nil, false
+	}
+	return t, true
 }
 
-// nextSeq 生成递增序号
-func (ts *TaskService) nextSeq() int {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
-	ts.seq++
-	return ts.seq
+// newTaskID 生成不可枚举的任务标识：16 字节 crypto/rand 熵编码为 32 位十六进制，前缀 t。
+// 彻底替代旧实现 t<UnixNano>-<seq>（时间戳 + 递增序号可推算），消除 task_id 被枚举的越权面（docs/46 P1）。
+// crypto/rand 几乎不会失败；极端降级仅保证唯一性，不再暴露可预测序列。
+func newTaskID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("t%x", time.Now().UnixNano())
+	}
+	return "t" + hex.EncodeToString(b[:])
 }
 
 // evictLocked 淘汰过期与超容任务（调用方须持 ts.mu）

@@ -7,6 +7,7 @@ import (
 	"name/internal/application/response"
 	"name/internal/application/services"
 	"name/internal/infrastructure/logger"
+	"name/internal/infrastructure/middleware"
 )
 
 // NameAsyncHandler 异步生成任务 + 探索模式（换一批）处理器
@@ -31,7 +32,15 @@ func (h *NameAsyncHandler) GenerateAsync(c *gin.Context) {
 		return
 	}
 
-	taskID, err := h.tasks.Submit(req)
+	// 会话归属：与收藏/历史一致，由服务端会话决定，杜绝 task_id 被枚举后越权读取他人结果（docs/46 P1）。
+	sid, err := middleware.EnsureSessionID(c)
+	if err != nil {
+		logger.Error("异步生成：初始化会话失败", zap.Error(err))
+		response.ErrorJSON(c, 500, "会话初始化失败，请稍后重试")
+		return
+	}
+
+	taskID, err := h.tasks.Submit(req, sid)
 	if err != nil {
 		// 并发任务已满：这是「稍后重试」而非服务端故障，用 503 而非 500
 		logger.Warn("异步生成：提交被拒",
@@ -51,7 +60,16 @@ func (h *NameAsyncHandler) GenerateAsync(c *gin.Context) {
 // GetTask 查询异步任务状态；成功时附带完整生成结果（取走即弃）
 func (h *NameAsyncHandler) GetTask(c *gin.Context) {
 	id := c.Param("id")
-	task, ok := h.tasks.Get(id)
+
+	// 会话归属校验：与提交时同一会话才能取走结果，越权枚举 id 者只能拿到 404（docs/46 P1）。
+	sid, err := middleware.EnsureSessionID(c)
+	if err != nil {
+		logger.Error("异步任务查询：初始化会话失败", zap.Error(err))
+		response.ErrorJSON(c, 500, "会话初始化失败，请稍后重试")
+		return
+	}
+
+	task, ok := h.tasks.Get(id, sid)
 	if !ok {
 		response.ErrorJSON(c, 404, "任务不存在或已过期，请重新提交")
 		return
