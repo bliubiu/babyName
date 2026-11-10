@@ -1,16 +1,16 @@
 'use client';
 
-import { useEffect, useState, useMemo, lazy, Suspense } from 'react';
+import { useEffect, useState, useMemo, lazy, Suspense, type SetStateAction } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNameStore } from '@/lib/store';
 import { Name, FavoriteData } from '@/types';
-import { ResultPageSkeleton } from '@/components/Skeleton';
+import { ResultPageSkeleton, NameCardSkeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/Toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { saveFavorite, deleteFavorite, exploreNames, getFavorites } from '@/lib/api';
 import type { FavoritesResponse } from '@/types/api/favorites';
 import Navigation from '@/components/Navigation';
-import { NameFilters } from '@/components/NameFilter';
+import type { NameFilters } from '@/components/NameFilter';
 import CollapsibleSection from '@/components/CollapsibleSection';
 
 const BaziAnalysis = lazy(() => import('@/components/BaziAnalysis'));
@@ -20,7 +20,6 @@ const ZiweiDisplay = lazy(() => import('@/components/ZiweiDisplay'));
 const NameCard = lazy(() => import('@/components/NameCard').then(module => ({
   default: module.default
 })));
-const NameDetail = lazy(() => import('@/components/NameDetail'));
 const NameFilter = lazy(() => import('@/components/NameFilter').then(module => ({
   default: module.default
 })));
@@ -30,14 +29,18 @@ const FullReport = lazy(() => import('@/components/FullReport'));
 const nameKey = (n: Name) => `${n.surname}:${n.given_name}`;
 
 // 命理详批三个折叠区块的默认展开态。
-// 八字是起名依据，保留默认展开（与 docs/06 原型一致）；卦象与紫微长文本默认收起，
-// 折叠头仍外露关键结论，避免四块长文把推荐名字挤出首屏。
+// 结果优先：三块一律收起，折叠头仍外露关键结论；用户要看依据再按需展开。
 type AnalysisKey = 'bazi' | 'hexagram' | 'ziwei';
 const DEFAULT_ANALYSIS_OPEN: Record<AnalysisKey, boolean> = {
-  bazi: true,
+  bazi: false,
   hexagram: false,
   ziwei: false,
 };
+
+type SortKey = 'score' | 'strokes' | 'wuxing';
+const WUXING_ORDER = ['金', '木', '水', '火', '土'];
+const PAGE_SIZE = 20;
+const scoreOf = (n: Name) => n.total_score ?? n.score ?? 0;
 
 // 收藏列表的共享空数组常量，配合 useMemo 保证引用稳定（见下方 cachedFavorites）
 const EMPTY_FAVORITES: FavoriteData[] = [];
@@ -58,8 +61,8 @@ const getCachedFavorites = (queryClient: ReturnType<typeof useQueryClient>): Fav
 
 export default function ResultPage() {
   const router = useRouter();
-  const { generateResult, setGenerateResult, setCompareResult, _hasHydrated } = useNameStore();
-  // 存 nameKey（surname:given_name）而不是列表下标
+  const { generateResult, setCompareResult, _hasHydrated } = useNameStore();
+  // 存 nameKey（surname:given_name）而不是列表下标；同时是卡片就地展开详情的唯一开关
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [favoriteStatus, setFavoriteStatus] = useState<Record<string, boolean>>({});
   const [compareNames, setCompareNames] = useState<string[]>([]);
@@ -73,14 +76,10 @@ export default function ResultPage() {
   // 而缓存只有访问过收藏页才会被填充，导致没访问过的人心形图标一律显示未收藏。
   const favoritesQuery = useQuery({ queryKey: ['favorites'], queryFn: getFavorites });
   // 收藏列表必须固定引用。原先写成 `? data ?? []` 会在每次渲染新建空数组，
-  // 作为下方 effect 的依赖会让 effect 每渲染都重跑（docs/29 A7）：
-  // 收藏查询失败（isError、data 为 undefined）且页面已有结果时形成
-  // 「重渲染 → 新 [] → effect 重跑 → setState → 再重渲染」死循环，
-  // 最终 "Maximum update depth exceeded" 让 ErrorBoundary 整页白屏。
-  // 防御：收藏接口理论上恒返回数组（getFavorites 已归一化），但旧构建产物曾
-// 原样返回分页信封 {data,records,total,...} 对象，导致此处 I.some 崩溃
-// （I.some is not a function）。加 Array.isArray 兜底，杜绝该静默崩溃。
-const cachedFavorites = useMemo<FavoriteData[]>(
+  // 作为下方 effect 的依赖会让 effect 每渲染都重跑（docs/29 A7），最终
+  // "Maximum update depth exceeded" 让 ErrorBoundary 整页白屏。
+  // 防御：旧构建产物曾原样返回分页信封对象，导致 I.some 崩溃，加 Array.isArray 兜底。
+  const cachedFavorites = useMemo<FavoriteData[]>(
     () =>
       favoritesQuery.data?.success && Array.isArray(favoritesQuery.data.data)
         ? favoritesQuery.data.data
@@ -90,6 +89,8 @@ const cachedFavorites = useMemo<FavoriteData[]>(
 
   const result = generateResult;
   const [filters, setFilters] = useState<NameFilters>({});
+  const [sortKey, setSortKey] = useState<SortKey>('score');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [showFullReport, setShowFullReport] = useState(false);
   // 折叠态提到页面层集中管理，才能提供「全部展开 / 全部收起」
   const [analysisOpen, setAnalysisOpen] = useState<Record<AnalysisKey, boolean>>(DEFAULT_ANALYSIS_OPEN);
@@ -107,7 +108,6 @@ const cachedFavorites = useMemo<FavoriteData[]>(
     // 人名频率过滤（基于 frequency_score 评分，0-100 分制）
     if (filters.minFrequencyTier && name.frequency_score !== undefined) {
       // 将 frequency_score 映射回 tier（简化逻辑：分数越高 = tier 越高）
-      // frequency_score 的 tier 映射：5→100, 4→80, 3→60, 2→40, 1→20, 未收录→50
       const estimatedTier = name.frequency_score >= 90 ? 5
         : name.frequency_score >= 70 ? 4
         : name.frequency_score >= 55 ? 3
@@ -119,9 +119,34 @@ const cachedFavorites = useMemo<FavoriteData[]>(
     return true;
   }) : [], [result, filters]);
 
-  // 探索模式下展示换上的一批；否则展示筛选后的推荐榜
-  const displayList = exploreBatch ?? filteredNames;
-  const topNames = displayList.slice(0, 20);
+  // 排序 + 分页：原实现硬截 slice(0,20)，顶部却写「共 N 个候选」，
+  // 第 21 个之后的名字永远无法到达。这里按排序键重排并按需加载更多。
+  const displayList = useMemo(() => {
+    const list = [...(exploreBatch ?? filteredNames)];
+    if (sortKey === 'strokes') {
+      return list.sort((a, b) => (a.strokes ?? 0) - (b.strokes ?? 0) || scoreOf(b) - scoreOf(a));
+    }
+    if (sortKey === 'wuxing') {
+      return list.sort((a, b) => {
+        const ai = WUXING_ORDER.indexOf(a.wuxing ?? '');
+        const bi = WUXING_ORDER.indexOf(b.wuxing ?? '');
+        return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || scoreOf(b) - scoreOf(a);
+      });
+    }
+    return list.sort((a, b) => scoreOf(b) - scoreOf(a));
+  }, [filteredNames, exploreBatch, sortKey]);
+
+  const topNames = displayList.slice(0, visibleCount);
+
+  // 筛选条件变化即回到第一页（事件驱动，不在 effect 里同步 setState）
+  const updateFilters = (next: SetStateAction<NameFilters>) => {
+    setFilters(next);
+    setVisibleCount(PAGE_SIZE);
+  };
+  const changeSort = (next: SortKey) => {
+    setSortKey(next);
+    setVisibleCount(PAGE_SIZE);
+  };
 
   // 选中/对比一律按 nameKey 记录身份，不用数组下标：
   // 筛选或换一批后列表会变短，下标会错位甚至越界成 undefined。
@@ -156,8 +181,12 @@ const cachedFavorites = useMemo<FavoriteData[]>(
       setExploreBatch(data.names as Name[]);
       setSelectedName(null);
       setCompareNames([]);
+      setVisibleCount(PAGE_SIZE);
       showToast(`已换一批新名字（${data.names.length} 个）`, 'success');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // 滚回页面顶部会把用户送回命理区；新名字就在列表锚点处
+      window.setTimeout(() => {
+        document.getElementById('name-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 0);
     },
     onError: () => {
       showToast('换一批失败，请稍后重试', 'error');
@@ -243,23 +272,29 @@ const cachedFavorites = useMemo<FavoriteData[]>(
        setFavoriteStatus(prev => ({ ...prev, [key]: !!isFav }));
        showToast('操作失败，请重试', 'error');
      },
-     onSuccess: () => {
+     onSuccess: (_data, v) => {
        queryClient.invalidateQueries({ queryKey: ['favorites'] });
-       showToast('操作成功', 'success');
+       const fullName = v.name.full_name || `${v.name.surname}${v.name.given_name}`;
+       // 收藏/取消收藏都给可撤销的反馈，避免误点心形后只能重找名字
+       showToast(v.existingId ? `已取消收藏 ${fullName}` : `已收藏 ${fullName}`, 'success', {
+         label: '撤销',
+         onClick: () => toggleFavorite(v.name),
+       });
      },
      onSettled: () => {
        queryClient.invalidateQueries({ queryKey: ['favorites'] });
      }
    });
 
-  const toggleFavorite = (name: Name) => {
+  // 函数声明而非 const：上面的 onSuccess 在闭包里引用它，提升后无 TDZ 风险
+  function toggleFavorite(name: Name) {
     // mutate 前求值缓存快照：existingId 是判断收藏态的唯一依据（见 mutationFn 注释）
     const cached = getCachedFavorites(queryClient);
     const existing = cached.find(
       f => f.surname === name.surname && f.given_name === name.given_name
     );
     toggleFavoriteMutation.mutate({ name, existingId: existing?.id ?? null });
-  };
+  }
 
   // 入参仍是 NameCard 给的下标，落库前先换成稳定的 nameKey
   const toggleCompare = (index: number) => {
@@ -300,12 +335,12 @@ const cachedFavorites = useMemo<FavoriteData[]>(
           <Navigation showBackButton={true} showHistory={true} showFavorites={true} />
           <div className="text-center py-16">
             <p className="text-ink font-medium mb-2">没有可展示的起名结果</p>
-            <p className="text-jade/60 text-sm mb-6">
+            <p className="text-jade/80 text-sm mb-6">
               生成结果不会被保存，刷新页面后需要重新生成一次
             </p>
             <button
               onClick={() => router.push('/')}
-              className="px-5 py-2 bg-crimson text-white rounded-xl text-sm hover:bg-crimson-light transition-all duration-200"
+              className="min-h-[44px] px-5 py-2 bg-crimson text-white rounded-xl text-sm hover:bg-crimson-light transition-all duration-200"
             >
               回到首页重新起名
             </button>
@@ -349,9 +384,10 @@ const cachedFavorites = useMemo<FavoriteData[]>(
 
   // 列表变化后按 key 回查；查不到（已被筛掉）时不渲染详情而不是崩溃
   const selectedEntry = selectedName ? nameByKey(selectedName) : undefined;
+  const hasQuickFilters = !!(filters.gender || filters.wuxing || filters.minStrokes || filters.maxStrokes || filters.minFrequencyTier || filters.maxFrequencyTier);
 
   return (
-    <main className="min-h-screen py-4 md:py-8 px-4 md:px-6">
+    <main className="min-h-screen py-4 md:py-8 px-4 md:px-6 pb-28">
       <div className="max-w-4xl mx-auto">
         <Navigation
           showBackButton={true}
@@ -360,146 +396,53 @@ const cachedFavorites = useMemo<FavoriteData[]>(
           showExport={false}
         />
 
-        {/* 结果概览 + 命理详批全局开关（结果页展示优化） */}
-        <div className="max-w-lg mx-auto mb-4 flex items-end justify-between gap-3">
+        {/* 结果概览：关键结论常显，命理长文按需下钻 */}
+        <div className="max-w-lg mx-auto mb-4 flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
             <h1 className="font-serif text-xl md:text-2xl text-ink">起名结果</h1>
-            <p className="text-xs text-ink-light/60 mt-1">
-              共 {names.length} 个候选 · 下方命理详批可按需展开
+            <p className="text-xs text-ink-light/80 mt-1">
+              共 {names.length} 个候选 · 当前列表 {displayList.length} 个
             </p>
           </div>
           <button
             type="button"
-            onClick={toggleAllAnalysis}
-            className="shrink-0 px-3 py-1.5 bg-jade/10 text-jade rounded-xl text-xs hover:bg-jade/20 transition-all duration-200"
+            onClick={() => document.getElementById('analysis-sections')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="shrink-0 min-h-[44px] px-3 py-1.5 bg-jade/10 text-jade rounded-xl text-xs hover:bg-jade/20 transition-all duration-200"
           >
-            {allAnalysisOpen ? '全部收起' : '全部展开'}
+            查看命理依据 ↓
           </button>
         </div>
+        <div className="max-w-4xl mx-auto mb-4 flex flex-wrap gap-2">
+          <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">日主 {bazi.rishou}</span>
+          <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">喜用神 {bazi.xiyongshen.join('、')}</span>
+          <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">{zodiac}</span>
+          {hexagram && (
+            <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">第{hexagram.number}卦 {hexagram.name}</span>
+          )}
+          {ziwei?.five_elements && (
+            <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">{ziwei.five_elements}</span>
+          )}
+        </div>
 
-        {/* 八字分析 */}
-        <CollapsibleSection
-          title="八字分析"
-          summary={`日主 ${bazi.rishou} · 喜用神 ${bazi.xiyongshen.join('、')} · ${zodiac}`}
-          open={analysisOpen.bazi}
-          onOpenChange={(v) => setAnalysisOpen((prev) => ({ ...prev, bazi: v }))}
-        >
-          <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载八字分析...</div>}>
-            <BaziAnalysis bazi={bazi} nayin={nayin} zodiac={zodiac} embedded />
-          </Suspense>
-        </CollapsibleSection>
-
-        {/* 易经卦象 + 卦象详解：本卦经文 / 本互变三卦 / 体用断卦（docs/42 P2-9/10） */}
-        {(hexagram || hexagram_detail) && (
-          <CollapsibleSection
-            title="易经卦象 · 卦象详解"
-            summary={hexagramSummary}
-            open={analysisOpen.hexagram}
-            onOpenChange={(v) => setAnalysisOpen((prev) => ({ ...prev, hexagram: v }))}
-          >
-            {hexagram && (
-              <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载卦象...</div>}>
-                <HexagramDisplay
-                  hexagram={hexagram}
-                  yaoLines={hexagram_detail?.original_yao_lines}
-                  movingYao={hexagram_detail?.moving_yao}
-                  interp={hexagram_interpretation}
-                  embedded
-                />
-              </Suspense>
-            )}
-            {hexagram_detail && (
-              <div className="mt-5 border-t border-paper/40 pt-4">
-                <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载卦象详解...</div>}>
-                  <HexagramDetailDisplay
-                    detail={hexagram_detail}
-                    tiyong={tiyong}
-                    embedded
-                    embeddedTitle="卦象详解"
-                  />
-                </Suspense>
-              </div>
-            )}
-          </CollapsibleSection>
-        )}
-
-        {/* 紫微斗数 */}
-        {ziwei && (
-          <CollapsibleSection
-            title="紫微斗数"
-            summary={ziweiSummary}
-            open={analysisOpen.ziwei}
-            onOpenChange={(v) => setAnalysisOpen((prev) => ({ ...prev, ziwei: v }))}
-          >
-            <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载紫微斗数...</div>}>
-              <ZiweiDisplay ziwei={ziwei} embedded />
-            </Suspense>
-          </CollapsibleSection>
-        )}
-
-        {/* 竖向名帖 */}
-        {topNames.length > 0 && (
-          <div className="hidden sm:block mb-6 animate-fade-in-up">
-            <div className="consultation-sheet py-6 px-8 corner-decor">
-              <div className="flex items-center gap-3 mb-4">
-                <span className="seal-badge seal-stamp-sm">名</span>
-                <div className="brush-divider flex-1" />
-                <span className="text-paper-edge/40 text-xs tracking-[0.5em] font-serif">帖</span>
-                <div className="brush-divider flex-1" />
-                <span className="seal-badge seal-stamp-sm">帖</span>
-              </div>
-              <div className="flex justify-center gap-8 md:gap-12 overflow-x-auto py-4" style={{ direction: 'rtl' }}>
-                {topNames.slice(0, 6).map((name: Name, idx: number) => (
-                  <div
-                    key={nameKey(name)}
-                    className="name-scroll-wrapper flex-shrink-0"
-                    style={{ animationDelay: `${idx * 0.12}s` }}
-                  >
-                    <div className="flex flex-col items-center">
-                      <div
-                        className="name-scroll text-3xl md:text-4xl text-ink px-4 py-2 name-scroll-border"
-                      >
-                        <span className="text-crimson">{name.surname}</span>
-                        <span>{name.given_name}</span>
-                      </div>
-                      <div className="mt-3 text-center">
-                        <div className="text-xs text-jade/70">{name.pinyin}</div>
-                        <div className="text-xs text-gold mt-0.5 font-medium">{(name.total_score ?? name.score).toFixed(1)}分</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 筛选器 */}
-        <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载筛选器...</div>}>
-          <NameFilter
-            onFilterChange={setFilters}
-            totalNames={names.length}
-            filteredCount={filteredNames.length}
-          />
-        </Suspense>
-
-        {/* 名字列表 */}
-        <div className="mb-6 md:mb-8">
+        {/* 名字列表：结果优先，紧跟概览进入首屏 */}
+        <section id="name-list" className="scroll-mt-4 mb-6 md:mb-8">
           <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
             <h2 className="section-title">{exploreBatch ? '换一批' : '推荐名字'}</h2>
-            <div className="flex items-center gap-2">
-              {compareNames.length > 0 && (
-                <button
-                  onClick={handleCompare}
-                  className="px-3.5 py-1.5 bg-crimson text-white rounded-xl text-sm hover:bg-crimson-light transition-all duration-200"
-                >
-                  对比 {compareNames.length} 个
-                </button>
-              )}
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                aria-label="排序方式"
+                value={sortKey}
+                onChange={(e) => changeSort(e.target.value as SortKey)}
+                className="min-h-[44px] px-3 py-1.5 bg-white text-ink border border-paper/60 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-crimson/30"
+              >
+                <option value="score">综合分从高到低</option>
+                <option value="strokes">笔画从少到多</option>
+                <option value="wuxing">按五行分组</option>
+              </select>
               {exploreBatch && (
                 <button
-                  onClick={() => { setExploreBatch(null); setSelectedName(null); setCompareNames([]); }}
-                  className="px-3.5 py-1.5 bg-ink/5 text-ink rounded-xl text-sm hover:bg-ink/10 transition-all duration-200"
+                  onClick={() => { setExploreBatch(null); setSelectedName(null); setCompareNames([]); setVisibleCount(PAGE_SIZE); }}
+                  className="min-h-[44px] px-3.5 py-1.5 bg-ink/5 text-ink rounded-xl text-sm hover:bg-ink/10 transition-all duration-200"
                 >
                   返回推荐榜
                 </button>
@@ -508,44 +451,280 @@ const cachedFavorites = useMemo<FavoriteData[]>(
                 <button
                   onClick={() => exploreMutation.mutate()}
                   disabled={exploreMutation.isPending}
-                  className="px-3.5 py-1.5 bg-jade/10 text-jade rounded-xl text-sm hover:bg-jade/20 transition-all duration-200 disabled:opacity-50"
+                  className="min-h-[44px] px-3.5 py-1.5 bg-jade/10 text-jade rounded-xl text-sm hover:bg-jade/20 transition-all duration-200 disabled:opacity-50"
                 >
                   {exploreMutation.isPending ? '换一批中…' : '换一批'}
                 </button>
               )}
               <button
                 onClick={() => setShowFullReport(true)}
-                className="px-3.5 py-1.5 bg-ink/5 text-ink rounded-xl text-sm hover:bg-ink/10 transition-all duration-200"
+                className="min-h-[44px] px-3.5 py-1.5 bg-ink/5 text-ink rounded-xl text-sm hover:bg-ink/10 transition-all duration-200"
               >
                 完整报告
               </button>
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
-            {topNames.map((name: Name, index: number) => (
-              <Suspense key={nameKey(name)} fallback={<div className="p-4 text-jade/60 text-sm">加载名字卡片...</div>}>
-                <NameCard
-                  name={name}
-                  index={index}
-                  isSelected={selectedName === nameKey(name)}
-                  isComparing={compareNames.includes(nameKey(name))}
-                  isFavorite={favoriteStatus[nameKey(name)] || false}
-                  onSelect={handleSelect}
-                  onToggleFavorite={toggleFavorite}
-                  onToggleCompare={toggleCompare}
-                />
-              </Suspense>
-            ))}
-          </div>
-        </div>
 
-        {selectedEntry && <NameDetail name={selectedEntry} />}
+          {/* 快捷筛选：常显可点，避免所有条件藏在默认收起的面板里 */}
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <span className="text-xs text-jade/80 mr-1">快捷筛选</span>
+            {(['male', 'female'] as const).map(g => (
+              <button
+                key={g}
+                type="button"
+                aria-pressed={filters.gender === g}
+                onClick={() => updateFilters(prev => ({ ...prev, gender: prev.gender === g ? undefined : g }))}
+                className={`min-h-[44px] px-3 py-1.5 rounded-xl text-xs transition-colors ${
+                  filters.gender === g ? 'bg-crimson text-white' : 'bg-warm-white text-ink hover:bg-warm-white/80'
+                }`}
+              >
+                {g === 'male' ? '男孩' : '女孩'}
+              </button>
+            ))}
+            <span className="w-px h-5 bg-paper/60 mx-1" aria-hidden="true" />
+            {WUXING_ORDER.map(w => (
+              <button
+                key={w}
+                type="button"
+                aria-pressed={filters.wuxing === w}
+                onClick={() => updateFilters(prev => ({ ...prev, wuxing: prev.wuxing === w ? undefined : w }))}
+                className={`min-h-[44px] px-3 py-1.5 rounded-xl text-xs transition-colors ${
+                  filters.wuxing === w ? 'bg-crimson text-white' : 'bg-warm-white text-ink hover:bg-warm-white/80'
+                }`}
+              >
+                {w}
+              </button>
+            ))}
+            {hasQuickFilters && (
+              <button
+                type="button"
+                onClick={() => updateFilters({})}
+                className="min-h-[44px] px-3 py-1.5 text-xs text-jade hover:text-crimson transition-colors"
+              >
+                清除全部
+              </button>
+            )}
+          </div>
+
+          <Suspense fallback={<div className="p-4 text-jade/80 text-sm">加载筛选器...</div>}>
+            <NameFilter
+              filters={filters}
+              onFilterChange={updateFilters}
+              totalNames={names.length}
+              filteredCount={filteredNames.length}
+            />
+          </Suspense>
+
+          {topNames.length === 0 ? (
+            <div className="card text-center py-10">
+              <p className="text-ink font-medium mb-1">没有符合条件的名字</p>
+              <p className="text-sm text-jade/80 mb-4">试试放宽筛选条件，或换一批新名字</p>
+              <button
+                type="button"
+                onClick={() => updateFilters({})}
+                className="min-h-[44px] px-4 py-2 bg-crimson text-white rounded-xl text-sm hover:bg-crimson-light transition-all duration-200"
+              >
+                清除筛选
+              </button>
+            </div>
+          ) : (
+            // 列表级单一边界 + 骨架网格：原先 20 张卡各自 Suspense 且带
+            // 0.3+index*0.05s 延迟，最晚 1.3s 才出现、逐张弹出造成跳动
+            <Suspense fallback={
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+                {[1, 2, 3, 4, 5, 6].map(i => <NameCardSkeleton key={i} />)}
+              </div>
+            }>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+                {topNames.map((name: Name, index: number) => (
+                  <NameCard
+                    key={nameKey(name)}
+                    name={name}
+                    index={index}
+                    isSelected={selectedName === nameKey(name)}
+                    isComparing={compareNames.includes(nameKey(name))}
+                    isFavorite={favoriteStatus[nameKey(name)] || false}
+                    onSelect={handleSelect}
+                    onToggleFavorite={toggleFavorite}
+                    onToggleCompare={toggleCompare}
+                  />
+                ))}
+              </div>
+            </Suspense>
+          )}
+
+          {visibleCount < displayList.length && (
+            <div className="text-center mt-5">
+              <button
+                type="button"
+                onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+                className="min-h-[44px] px-5 py-2 bg-jade/10 text-jade rounded-xl text-sm hover:bg-jade/20 transition-all duration-200"
+              >
+                加载更多（已展示 {topNames.length} / {displayList.length}）
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* 命理依据：三块默认收起，结论已在概览条常显 */}
+        <section id="analysis-sections" className="scroll-mt-4">
+          <div className="max-w-lg mx-auto mb-4 flex items-end justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="font-serif text-xl md:text-2xl text-ink">命理依据</h2>
+              <p className="text-xs text-ink-light/80 mt-1">按需展开，收起时也保留关键结论</p>
+            </div>
+            <button
+              type="button"
+              onClick={toggleAllAnalysis}
+              className="shrink-0 min-h-[44px] px-3 py-1.5 bg-jade/10 text-jade rounded-xl text-xs hover:bg-jade/20 transition-all duration-200"
+            >
+              {allAnalysisOpen ? '全部收起' : '全部展开'}
+            </button>
+          </div>
+
+          <CollapsibleSection
+            title="八字分析"
+            summary={`日主 ${bazi.rishou} · 喜用神 ${bazi.xiyongshen.join('、')} · ${zodiac}`}
+            open={analysisOpen.bazi}
+            onOpenChange={(v) => setAnalysisOpen((prev) => ({ ...prev, bazi: v }))}
+            unmountOnCollapse={false}
+          >
+            <Suspense fallback={<div className="p-4 text-jade/80 text-sm">加载八字分析...</div>}>
+              <BaziAnalysis bazi={bazi} nayin={nayin} zodiac={zodiac} embedded />
+            </Suspense>
+          </CollapsibleSection>
+
+          {/* 易经卦象 + 卦象详解：本卦经文 / 本互变三卦 / 体用断卦（docs/42 P2-9/10） */}
+          {(hexagram || hexagram_detail) && (
+            <CollapsibleSection
+              title="易经卦象 · 卦象详解"
+              summary={hexagramSummary}
+              open={analysisOpen.hexagram}
+              onOpenChange={(v) => setAnalysisOpen((prev) => ({ ...prev, hexagram: v }))}
+              unmountOnCollapse={false}
+            >
+              {hexagram && (
+                <Suspense fallback={<div className="p-4 text-jade/80 text-sm">加载卦象...</div>}>
+                  <HexagramDisplay
+                    hexagram={hexagram}
+                    yaoLines={hexagram_detail?.original_yao_lines}
+                    movingYao={hexagram_detail?.moving_yao}
+                    interp={hexagram_interpretation}
+                    embedded
+                  />
+                </Suspense>
+              )}
+              {hexagram_detail && (
+                <div className="mt-5 border-t border-paper/40 pt-4">
+                  <Suspense fallback={<div className="p-4 text-jade/80 text-sm">加载卦象详解...</div>}>
+                    <HexagramDetailDisplay
+                      detail={hexagram_detail}
+                      tiyong={tiyong}
+                      embedded
+                      embeddedTitle="卦象详解"
+                    />
+                  </Suspense>
+                </div>
+              )}
+            </CollapsibleSection>
+          )}
+
+          {ziwei && (
+            <CollapsibleSection
+              title="紫微斗数"
+              summary={ziweiSummary}
+              open={analysisOpen.ziwei}
+              onOpenChange={(v) => setAnalysisOpen((prev) => ({ ...prev, ziwei: v }))}
+              unmountOnCollapse={false}
+            >
+              <Suspense fallback={<div className="p-4 text-jade/80 text-sm">加载紫微斗数...</div>}>
+                <ZiweiDisplay ziwei={ziwei} embedded />
+              </Suspense>
+            </CollapsibleSection>
+          )}
+        </section>
+
+        {/* 名帖预览：从首屏平铺降为可折叠的次级欣赏入口 */}
+        {topNames.length > 0 && (
+          <CollapsibleSection
+            title="名帖预览"
+            summary={`前 ${Math.min(topNames.length, 6)} 名竖排名帖`}
+            unmountOnCollapse={false}
+          >
+            <div className="hidden sm:block">
+              <div className="consultation-sheet py-6 px-8 corner-decor">
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="seal-badge seal-stamp-sm">名</span>
+                  <div className="brush-divider flex-1" />
+                  <span className="text-paper-edge/70 text-xs tracking-[0.5em] font-serif">帖</span>
+                  <div className="brush-divider flex-1" />
+                  <span className="seal-badge seal-stamp-sm">帖</span>
+                </div>
+                <div className="flex justify-center gap-8 md:gap-12 overflow-x-auto py-4" style={{ direction: 'rtl' }}>
+                  {topNames.slice(0, 6).map((name: Name) => (
+                    <div key={nameKey(name)} className="name-scroll-wrapper flex-shrink-0">
+                      <div className="flex flex-col items-center">
+                        <div className="name-scroll text-3xl md:text-4xl text-ink px-4 py-2 name-scroll-border">
+                          <span className="text-crimson">{name.surname}</span>
+                          <span>{name.given_name}</span>
+                        </div>
+                        <div className="mt-3 text-center">
+                          <div className="text-xs text-jade/80">{name.pinyin}</div>
+                          <div className="text-xs text-gold mt-0.5 font-medium">{scoreOf(name).toFixed(1)}分</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </CollapsibleSection>
+        )}
+
+        {/* 吸底对比托盘：选中即常显，避免用户勾选后找不到入口 */}
+        {compareNames.length > 0 && (
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-paper/60 bg-warm-white-light/95 backdrop-blur-sm">
+            <div className="max-w-4xl mx-auto px-4 py-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-jade/80 mr-1">已选 {compareNames.length}/4</span>
+              {compareNames.map(key => (
+                <span
+                  key={key}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-warm-white text-ink border border-paper/60 rounded-xl text-xs"
+                >
+                  {key.split(':').join('')}
+                  <button
+                    type="button"
+                    onClick={() => setCompareNames(prev => prev.filter(k => k !== key))}
+                    aria-label={`移出对比 ${key.split(':').join('')}`}
+                    className="min-w-[32px] min-h-[32px] -my-1 -mr-1 text-jade hover:text-crimson transition-colors"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <button
+                type="button"
+                onClick={() => setCompareNames([])}
+                className="min-h-[44px] px-2 text-xs text-jade/80 hover:text-crimson transition-colors"
+              >
+                清空
+              </button>
+              <button
+                type="button"
+                onClick={handleCompare}
+                className="ml-auto min-h-[44px] px-4 py-1.5 bg-crimson text-white rounded-xl text-sm hover:bg-crimson-light transition-all duration-200"
+              >
+                对比 {compareNames.length} 个
+              </button>
+            </div>
+          </div>
+        )}
 
         {showFullReport && result && (
           <FullReport
             data={result}
             onClose={() => setShowFullReport(false)}
-            selectedNameIndex={selectedEntry ? names.findIndex((n: Name) => n.surname === selectedEntry.surname && n.given_name === selectedEntry.given_name) : undefined}
+            selectedNameIndex={selectedEntry ? names.findIndex((n: Name) => nameKey(n) === nameKey(selectedEntry)) : undefined}
           />
         )}
       </div>

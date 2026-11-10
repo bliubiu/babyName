@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useToast } from './Toast';
 import { IconClose } from './Icons';
 import type { GenerateResponse } from '@/types';
@@ -23,6 +23,50 @@ const wuxingNameMap: Record<string, string> = {
 export default function FullReport({ data, onClose, selectedNameIndex }: FullReportProps) {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'bazi' | 'names' | 'detail'>('bazi');
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  // onClose 由父组件以行内箭头传入，每次渲染都是新引用；用 ref 固定，
+  // 避免副作用反复锁/放 body 滚动、反复抢焦点。
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
+  // 模态语义：ESC 关闭、Tab 焦点循环、背景滚动锁定、关闭后焦点归还触发元素
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeRef.current?.focus();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== 'Tab' || !dialogRef.current) return;
+      const focusables = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = prevOverflow;
+      previouslyFocused?.focus?.();
+    };
+  }, []);
 
   const copyReport = () => {
     const reportText = generateReportText();
@@ -140,10 +184,24 @@ export default function FullReport({ data, onClose, selectedNameIndex }: FullRep
   };
 
   return (
-    <div className="fixed inset-0 bg-ink/30 flex items-center justify-center z-50 overflow-y-auto">
-      <div className="relative bg-warm-white-light w-full max-w-2xl mx-4 my-8 rounded-xl shadow-xl border border-paper overflow-hidden">
+    <div className="fixed inset-0 flex items-center justify-center z-50 overflow-y-auto">
+      {/* 独立遮罩按钮：点击空白关闭，且不给非交互 div 挂 click 事件 */}
+      <button
+        type="button"
+        aria-label="关闭完整报告"
+        onClick={onClose}
+        className="absolute inset-0 w-full h-full bg-ink/30 cursor-default"
+      />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="full-report-title"
+        tabIndex={-1}
+        className="relative z-10 bg-warm-white-light w-full max-w-2xl mx-4 my-8 rounded-xl shadow-xl border border-paper overflow-hidden"
+      >
         <div className="sticky top-0 bg-warm-white border-b border-paper px-6 py-4 flex justify-between items-center z-10">
-          <h2 className="text-xl font-serif text-ink">完整起名报告</h2>
+          <h2 id="full-report-title" className="text-xl font-serif text-ink">完整起名报告</h2>
           <div className="flex items-center gap-2">
             <button
               onClick={copyReport}
@@ -152,8 +210,10 @@ export default function FullReport({ data, onClose, selectedNameIndex }: FullRep
               复制报告
             </button>
             <button
+              ref={closeRef}
               onClick={onClose}
-              className="p-2 text-ink-light/40 hover:text-seal-red transition-colors"
+              aria-label="关闭完整报告"
+              className="p-2 text-ink-light/70 hover:text-seal-red transition-colors"
               title="关闭"
             >
               <IconClose size={20} />

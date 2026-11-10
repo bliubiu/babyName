@@ -3,6 +3,8 @@
 import { useState } from 'react';
 
 interface NameFilterProps {
+  /** 受控：筛选条件由结果页统一持有，快捷 chips、空状态清除与高级面板共享一份真源 */
+  filters: NameFilters;
   onFilterChange: (filters: NameFilters) => void;
   totalNames: number;
   filteredCount: number;
@@ -25,20 +27,15 @@ const wuxingOptions = [
   { value: '土', label: '土', color: 'text-amber-600' },
 ];
 
-export default function NameFilter({ onFilterChange, totalNames, filteredCount }: NameFilterProps) {
-  const [filters, setFilters] = useState<NameFilters>({});
+export default function NameFilter({ filters, onFilterChange, totalNames, filteredCount }: NameFilterProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const handleGenderChange = (gender: 'male' | 'female' | undefined) => {
-    const newFilters = { ...filters, gender };
-    setFilters(newFilters);
-    onFilterChange(newFilters);
+    onFilterChange({ ...filters, gender });
   };
 
   const handleWuxingChange = (wuxing: string | undefined) => {
-    const newFilters = { ...filters, wuxing };
-    setFilters(newFilters);
-    onFilterChange(newFilters);
+    onFilterChange({ ...filters, wuxing });
   };
 
   const handleStrokeChange = (min?: number, max?: number) => {
@@ -53,21 +50,15 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
         safeMin = safeMax; // 改动的是 max → 压低 min
       }
     }
-    const newFilters = { ...filters, minStrokes: safeMin, maxStrokes: safeMax };
-    setFilters(newFilters);
-    onFilterChange(newFilters);
+    onFilterChange({ ...filters, minStrokes: safeMin, maxStrokes: safeMax });
   };
 
   const handleFrequencyTierChange = (min?: number, max?: number) => {
-    const newFilters = { ...filters, minFrequencyTier: min, maxFrequencyTier: max };
-    setFilters(newFilters);
-    onFilterChange(newFilters);
+    onFilterChange({ ...filters, minFrequencyTier: min, maxFrequencyTier: max });
   };
 
   const resetFilters = () => {
-    const newFilters: NameFilters = {};
-    setFilters(newFilters);
-    onFilterChange(newFilters);
+    onFilterChange({});
   };
 
   const hasActiveFilters = filters.gender || filters.wuxing || filters.minStrokes || filters.maxStrokes || filters.minFrequencyTier || filters.maxFrequencyTier;
@@ -76,7 +67,7 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
     <div className="card mb-4 md:mb-6">
       <div className="flex items-center justify-between">
         <h3 className="font-serif text-lg md:text-xl text-ink">
-          名字筛选
+          更多筛选
           {hasActiveFilters && (
             <span className="ml-2 text-sm text-jade">
               ({filteredCount}/{totalNames})
@@ -85,7 +76,7 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
         </h3>
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="text-jade hover:text-crimson transition-colors text-sm"
+          className="min-h-[44px] px-2 text-jade hover:text-crimson transition-colors text-sm"
           aria-label={isExpanded ? '收起筛选面板' : '展开筛选面板'}
           aria-expanded={isExpanded}
         >
@@ -96,11 +87,11 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
       {isExpanded && (
         <div className="mt-4 space-y-4">
           <div>
-            <label className="block text-sm text-jade mb-2">性别</label>
+            <p className="block text-sm text-jade mb-2">性别</p>
             <div className="flex gap-3">
               <button
                 onClick={() => handleGenderChange(filters.gender === 'male' ? undefined : 'male')}
-                className={`px-4 py-2 rounded-lg transition-colors ${
+                className={`min-h-[44px] px-4 py-2 rounded-lg transition-colors ${
                   filters.gender === 'male'
                     ? 'bg-blue-500 text-white'
                     : 'bg-warm-white text-ink hover:bg-warm-white/80'
@@ -112,7 +103,7 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
               </button>
               <button
                 onClick={() => handleGenderChange(filters.gender === 'female' ? undefined : 'female')}
-                className={`px-4 py-2 rounded-lg transition-colors ${
+                className={`min-h-[44px] px-4 py-2 rounded-lg transition-colors ${
                   filters.gender === 'female'
                     ? 'bg-pink-500 text-white'
                     : 'bg-warm-white text-ink hover:bg-warm-white/80'
@@ -126,13 +117,13 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
           </div>
 
           <div>
-            <label className="block text-sm text-jade mb-2">五行</label>
+            <p className="block text-sm text-jade mb-2">五行</p>
             <div className="flex flex-wrap gap-2">
               {wuxingOptions.map((option) => (
                 <button
                   key={option.value}
                   onClick={() => handleWuxingChange(filters.wuxing === option.value ? undefined : option.value)}
-                  className={`px-3 py-1.5 rounded-lg transition-colors ${
+                  className={`min-h-[44px] px-3 py-1.5 rounded-lg transition-colors ${
                     filters.wuxing === option.value
                       ? 'bg-crimson text-white'
                       : 'bg-warm-white text-ink hover:bg-warm-white/80'
@@ -147,7 +138,7 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
           </div>
 
           <div>
-            <label className="block text-sm text-jade mb-2">笔画数</label>
+            <p className="block text-sm text-jade mb-2">笔画数</p>
             <div className="flex items-center gap-3">
               <input
                 type="number"
@@ -160,7 +151,7 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
                 }}
                 placeholder="最小"
                 aria-label="最小笔画数"
-                className="w-20 px-3 py-2 border border-warm-white rounded-lg focus:outline-none focus:ring-2 focus:ring-crimson text-ink bg-white"
+                className="w-20 min-h-[44px] px-3 py-2 border border-warm-white rounded-lg focus:outline-none focus:ring-2 focus:ring-crimson text-ink bg-white"
               />
               <span className="text-jade" aria-hidden="true">-</span>
               <input
@@ -174,14 +165,14 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
                 }}
                 placeholder="最大"
                 aria-label="最大笔画数"
-                className="w-20 px-3 py-2 border border-warm-white rounded-lg focus:outline-none focus:ring-2 focus:ring-crimson text-ink bg-white"
+                className="w-20 min-h-[44px] px-3 py-2 border border-warm-white rounded-lg focus:outline-none focus:ring-2 focus:ring-crimson text-ink bg-white"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm text-jade mb-2">人名频率</label>
-            <p className="text-xs text-jade/60 mb-2">基于120万人名语料统计，筛选常用/罕见人名用字</p>
+            <p className="block text-sm text-jade mb-2">人名频率</p>
+            <p className="text-xs text-jade/80 mb-2">基于120万人名语料统计，筛选常用/罕见人名用字</p>
             <div className="flex flex-wrap gap-2">
               {[
                 { value: 5, label: '极高频(Top1%)' },
@@ -201,7 +192,7 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
                       handleFrequencyTierChange(option.value, undefined);
                     }
                   }}
-                  className={`px-3 py-1.5 rounded-lg transition-colors ${
+                  className={`min-h-[44px] px-3 py-1.5 rounded-lg transition-colors ${
                     filters.minFrequencyTier === option.value
                       ? 'bg-indigo-500 text-white'
                       : 'bg-warm-white text-ink hover:bg-warm-white/80'
@@ -224,7 +215,7 @@ export default function NameFilter({ onFilterChange, totalNames, filteredCount }
             <div className="pt-2 border-t border-warm-white">
               <button
                 onClick={resetFilters}
-                className="text-sm text-jade hover:text-crimson transition-colors"
+                className="min-h-[44px] text-sm text-jade hover:text-crimson transition-colors"
                 aria-label="清除所有筛选条件"
               >
                 清除所有筛选

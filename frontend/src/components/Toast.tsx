@@ -4,14 +4,20 @@ import { createContext, useContext, useState, useCallback, useEffect, useRef, Re
 
 type ToastType = 'success' | 'error' | 'warning' | 'info';
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface Toast {
   id: string;
   message: string;
   type: ToastType;
+  action?: ToastAction;
 }
 
 interface ToastContextType {
-  showToast: (message: string, type?: ToastType) => void;
+  showToast: (message: string, type?: ToastType, action?: ToastAction) => void;
 }
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
@@ -25,21 +31,23 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   // 组件卸载时清理所有未完成的定时器
   useEffect(() => {
+    const timers = timersRef.current;
     return () => {
-      timersRef.current.forEach((timer) => clearTimeout(timer));
-      timersRef.current.clear();
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
     };
   }, []);
 
-  const showToast = useCallback((message: string, type: ToastType = 'info') => {
+  const showToast = useCallback((message: string, type: ToastType = 'info', action?: ToastAction) => {
     seqRef.current += 1;
     const id = `toast-${seqRef.current}`;
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => [...prev, { id, message, type, action }]);
 
+    // 带操作按钮的提示留更长时间，给用户看清并点击「撤销」
     const timer = setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
       timersRef.current.delete(id);
-    }, 3000);
+    }, action ? 5000 : 3000);
     timersRef.current.set(id, timer);
   }, []);
 
@@ -71,7 +79,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               )}
               {toast.type === 'error' && (
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M18 6L6 18M6 6l12 12" />
                 </svg>
               )}
               {toast.type === 'warning' && (
@@ -87,6 +95,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               )}
             </span>
             <span className="toast-message">{toast.message}</span>
+            {toast.action && (
+              <button
+                type="button"
+                className="shrink-0 ml-2 px-2 py-1 text-xs font-medium text-crimson hover:bg-crimson/10 rounded transition-colors"
+                onClick={(e) => {
+                  // 阻止冒泡：整条 toast 的 onClick 会直接关闭，操作按钮要先执行动作
+                  e.stopPropagation();
+                  toast.action?.onClick();
+                  removeToast(toast.id);
+                }}
+              >
+                {toast.action.label}
+              </button>
+            )}
           </div>
         ))}
       </div>

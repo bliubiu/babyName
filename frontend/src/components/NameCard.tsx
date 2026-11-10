@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils';
 import { Name } from '@/types';
 import { IconHeart, IconHeartFilled, IconChevronDown, IconChevronUp } from './Icons';
-import { useState, memo } from 'react';
+import { memo } from 'react';
 import NameDetail from './NameDetail';
 
 interface NameCardProps {
@@ -35,12 +35,20 @@ function NameCard({
   onToggleFavorite,
   onToggleCompare,
 }: NameCardProps) {
-  const [showDetail, setShowDetail] = useState(false);
+  // 详情改为单一通道：展开态完全由页面层 selectedName 决定。
+  // 原先卡片内部另有一份 showDetail，与页面底部 <NameDetail> 并存，
+  // 点名字的反馈发生在视口外，还可能同时渲染两份详解。
+  const showDetail = isSelected;
 
-  const handleCardClick = () => {
-    if (onSelect && index !== undefined) {
-      onSelect(index);
-    }
+  const select = () => {
+    if (onSelect && index !== undefined) onSelect(index);
+  };
+
+  const handleNameClick = (e: React.MouseEvent) => {
+    // 名字按钮在卡片容器内，不阻止冒泡会让容器 onClick 再触发一次，
+    // 而页面层是 toggle 语义，两次调用相互抵消（点名字看似无反应）。
+    e.stopPropagation();
+    select();
   };
 
   const handleFavoriteClick = (e: React.MouseEvent) => {
@@ -52,7 +60,7 @@ function NameCard({
 
   const handleToggleDetail = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setShowDetail(!showDetail);
+    select();
   };
 
   const fullName = name.full_name || `${name.surname}${name.given_name}`;
@@ -98,44 +106,47 @@ function NameCard({
         isSelected && 'ring-2 ring-crimson/40 shadow-md',
         isComparing && 'ring-2 ring-gold/50 shadow-md',
       )}
-      style={{ animationDelay: index !== undefined ? `${0.3 + index * 0.05}s` : undefined }}
-      onClick={handleCardClick}
+      onClick={select}
     >
       {/* 头部：名字与操作 */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             {onToggleCompare && index !== undefined && (
-              <input
-                type="checkbox"
-                checked={isComparing}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  e.stopPropagation();
-                  if (onToggleCompare && index !== undefined) {
-                    onToggleCompare(index);
-                  }
-                }}
-                aria-label={isComparing ? `将 ${fullName} 移出对比` : `将 ${fullName} 加入对比`}
-                className="w-4 h-4 accent-crimson cursor-pointer flex-shrink-0"
-              />
+              <label className="relative -m-3.5 p-3.5 inline-flex items-center justify-center cursor-pointer flex-shrink-0">
+                <input
+                  type="checkbox"
+                  checked={isComparing}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    e.stopPropagation();
+                    if (onToggleCompare && index !== undefined) {
+                      onToggleCompare(index);
+                    }
+                  }}
+                  aria-label={isComparing ? `将 ${fullName} 移出对比` : `将 ${fullName} 加入对比`}
+                  className="w-4 h-4 accent-crimson cursor-pointer"
+                />
+              </label>
             )}
             {/* 语义化选择控件：容器不再是 role=button（其内嵌 checkbox/按钮
                 违反 WAI-ARIA 嵌套交互规则，且容器的 onKeyDown 会 preventDefault
                 掉 Space，导致键盘用户无法勾选对比框——docs/30 §五） */}
             <button
               type="button"
-              onClick={handleCardClick}
+              onClick={handleNameClick}
               aria-pressed={isSelected}
+              aria-expanded={isSelected}
               aria-label={`${fullName}，评分 ${score.toFixed(1)} 分`}
               className="font-serif text-xl md:text-2xl text-ink truncate hover:text-crimson transition-colors text-left rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-crimson/40"
             >
               {fullName}
             </button>
           </div>
-          <p className="text-xs text-jade/70 mt-0.5 ml-6">{name.pinyin}</p>
+          <p className="text-xs text-jade/80 mt-0.5 ml-6">{name.pinyin}</p>
           {/* 粤拼标注：后端始终透传（与粤语评分开关无关），无声拼数据时不渲染 */}
           {name.jyutping && (
-            <p className="text-[10px] text-jade/50 mt-0.5 ml-6 font-mono tracking-wide" title={`粤拼：${name.jyutping}`}>
+            <p className="text-xs text-jade/70 mt-0.5 ml-6 font-mono tracking-wide" title={`粤拼：${name.jyutping}`}>
               粤 {name.jyutping}
             </p>
           )}
@@ -147,7 +158,7 @@ function NameCard({
               onClick={handleFavoriteClick}
               aria-label={isFavorite ? `取消收藏 ${fullName}` : `收藏 ${fullName}`}
               className={`transition-all duration-200 p-1.5 rounded-full hover:scale-110 ${
-                isFavorite ? 'text-seal-red' : 'text-ink-light/30 hover:text-seal-red'
+                isFavorite ? 'text-seal-red' : 'text-ink-light/60 hover:text-seal-red'
               }`}
               title={isFavorite ? '取消收藏' : '收藏'}
             >
@@ -158,7 +169,7 @@ function NameCard({
             onClick={handleToggleDetail}
             aria-label={showDetail ? `收起 ${fullName} 详情` : `查看 ${fullName} 详情`}
             aria-expanded={showDetail}
-            className="transition-all duration-200 p-1.5 rounded-full text-ink-light/30 hover:text-crimson hover:scale-110"
+            className="transition-all duration-200 p-1.5 rounded-full text-ink-light/60 hover:text-crimson hover:scale-110"
             title={showDetail ? '收起详情' : '查看详情'}
           >
             {showDetail ? <IconChevronUp size={18} /> : <IconChevronDown size={18} />}
@@ -196,7 +207,7 @@ function NameCard({
           {name.reasons.map((reason, idx) => (
             <span
               key={idx}
-              className="text-xs px-2 py-0.5 bg-warm-white/60 text-jade/70 rounded-full"
+              className="text-xs px-2 py-0.5 bg-warm-white/60 text-jade/80 rounded-full"
             >
               {reason}
             </span>
@@ -209,20 +220,20 @@ function NameCard({
         <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 ml-6">
           {dims.map(d => (
             <div key={d.key} className="flex items-center gap-1.5">
-              <span className="text-[10px] text-jade/60 leading-none">{d.label}</span>
+              <span className="text-xs text-jade/80 leading-none">{d.label}</span>
               <div className="w-12 h-1.5 bg-paper/40 rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full ${d.color} transition-all duration-500`}
                   style={{ width: `${Math.min(100, d.value)}%` }}
                 />
               </div>
-              <span className="text-[10px] text-ink-light/50 leading-none font-medium">{d.value.toFixed(0)}</span>
+              <span className="text-xs text-ink-light/70 leading-none font-medium">{d.value.toFixed(0)}</span>
             </div>
           ))}
         </div>
       )}
 
-      {/* 展开详情 */}
+      {/* 就地展开详情（结果页唯一详情通道） */}
       {showDetail && (
         <div className="mt-4 pt-4 border-t border-paper/30 animate-fade-in">
           <NameDetail name={name} />

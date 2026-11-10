@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useState, useEffect, type ReactNode } from 'react';
 import { IconChevronDown } from './Icons';
 
 export interface CollapsibleSectionProps {
@@ -15,18 +15,20 @@ export interface CollapsibleSectionProps {
   onOpenChange?: (open: boolean) => void;
   /**
    * 折叠时卸载内容（默认 true）。
-   * 结果页的分析组件都是 lazy 加载，卸载可避免下载 chunk 与渲染长文本。
+   * 结果页传 false：首次收起仍不挂载（省 lazy chunk），但展开过一次后
+   * 保留 DOM，既让收起有高度过渡，也保住子组件内部的展开状态。
    */
   unmountOnCollapse?: boolean;
   children: ReactNode;
 }
 
 /**
- * 结果页统一折叠区块（交互原型见 docs/06 §3.1 折叠交互补充）。
+ * 结果页统一折叠区块（交互原型见 docs/06 §3.1）。
  *
- * 原四块命理分析各自全量平铺，且 BaziAnalysis / HexagramDisplay 各写了一套
- * 折叠按钮，样式与语义不一致。此组件统一提供标题、摘要、展开态与无障碍属性，
- * 子组件只需以 embedded 模式输出内容。
+ * 展开/收起用 grid-template-rows 0fr↔1fr 做高度过渡，替代原先 hidden 硬切；
+ * 收起态用 visibility:hidden + aria-hidden 让内容退出 Tab 顺序与无障碍树，
+ * 且延迟到过渡结束才隐藏，避免动画被瞬间裁掉。
+ * 系统开启「减弱动态效果」时，globals.css 的 reduced-motion 规则会接管过渡时长。
  */
 export default function CollapsibleSection({
   title,
@@ -41,6 +43,12 @@ export default function CollapsibleSection({
   const isControlled = open !== undefined;
   const isOpen = isControlled ? open : internalOpen;
   const contentId = useId();
+  // 懒挂载：首屏收起的区块不下载 lazy chunk；展开过一次后才允许常驻。
+  // effect 只在上翻为展开时写一次，且写入值恒为 true，不会形成级联渲染循环。
+  const [hasOpened, setHasOpened] = useState(isOpen);
+  useEffect(() => {
+    if (isOpen) setHasOpened(true);
+  }, [isOpen]);
 
   const toggle = () => {
     const next = !isOpen;
@@ -50,8 +58,7 @@ export default function CollapsibleSection({
     onOpenChange?.(next);
   };
 
-  // 折叠时默认不挂载 children；内容容器保留，保证 aria-controls 始终有目标。
-  const shouldRenderContent = isOpen || !unmountOnCollapse;
+  const shouldRenderContent = isOpen || (!unmountOnCollapse && hasOpened);
 
   return (
     <section className="card mb-4 md:mb-6 animate-fade-in-up">
@@ -61,16 +68,16 @@ export default function CollapsibleSection({
           onClick={toggle}
           aria-expanded={isOpen}
           aria-controls={contentId}
-          className="group w-full flex flex-wrap items-center gap-x-3 gap-y-1 text-left rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-crimson/30"
+          className="group w-full min-h-[44px] flex flex-wrap items-center gap-x-3 gap-y-1 text-left rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-crimson/30"
         >
           <span className="section-title shrink-0">{title}</span>
           {!isOpen && summary && (
             // 小屏整行显示摘要（避免窄卡片里被截没），大屏与标题同行且超长省略
-            <span className="order-3 w-full sm:order-none sm:w-auto sm:flex-1 sm:min-w-0 truncate text-xs text-ink-light/60">
+            <span className="order-3 w-full sm:order-none sm:w-auto sm:flex-1 sm:min-w-0 truncate text-xs text-ink-light/80">
               {summary}
             </span>
           )}
-          <span className="ml-auto shrink-0 inline-flex items-center gap-1 text-xs text-jade/70 group-hover:text-jade transition-colors">
+          <span className="ml-auto shrink-0 inline-flex items-center gap-1 text-xs text-jade/80 group-hover:text-jade transition-colors">
             <span className="hidden sm:inline">{isOpen ? '收起' : '展开'}</span>
             <IconChevronDown
               size={16}
@@ -81,10 +88,22 @@ export default function CollapsibleSection({
       </h2>
       <div
         id={contentId}
-        hidden={!isOpen}
-        className={isOpen ? 'mt-4 animate-fade-in' : undefined}
+        data-open={isOpen ? 'true' : 'false'}
+        aria-hidden={!isOpen}
+        className="grid"
+        style={{
+          gridTemplateRows: isOpen ? '1fr' : '0fr',
+          visibility: isOpen ? 'visible' : 'hidden',
+          transition: isOpen
+            ? 'grid-template-rows 280ms ease-out, visibility 0s'
+            : 'grid-template-rows 280ms ease-out, visibility 0s 280ms',
+        }}
       >
-        {shouldRenderContent && children}
+        <div className="overflow-hidden">
+          <div className={isOpen ? 'mt-4 animate-fade-in' : 'mt-4'}>
+            {shouldRenderContent && children}
+          </div>
+        </div>
       </div>
     </section>
   );
