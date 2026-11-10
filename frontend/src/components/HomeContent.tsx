@@ -7,6 +7,7 @@ import { generateNamesWithProgress, saveHistory } from '@/lib/api';
 import { useMutation } from '@tanstack/react-query';
 import { useToast } from '@/components/Toast';
 import { validateBirthTime, validateSurname } from '@/lib/validation';
+import { buildGenerateRequest } from '@/lib/generateRequest';
 
 // 懒加载取组件本体；提交载荷类型单独以 type-only 方式引入，
 // 避免为拿一个类型就把整个组件打进首屏包。
@@ -117,35 +118,12 @@ export default function HomeContent() {
 
     setErrorMessage(null);
 
-    const formDataForApi = {
-      surname: formData.surname,
-      gender: formData.gender,
-      birth_year: formData.birthYear,
-      birth_month: formData.birthMonth,
-      birth_day: formData.birthDay,
-      birth_hour: formData.birthHour,
-      birth_minute: formData.birthMinute,
-      birth_location: formData.birthLocation,
-      generation: formData.generation,
-      generation_position: formData.generationPosition,
-      name_type: formData.nameType,
-      name_length: formData.nameType === 'double' ? 2 : 1,
-      // 寓意关键词来自 NameForm 提交载荷（用户在「个性补充」输入）。
-      // 注意：偏旁选字不再混进 keywords，而是走 selected_chars 结构化通道
-      // （docs/29 A9）——拼成 "包含字：木木" 的文本后端匹配不到任何字。
-      meaning_keywords: submission.keywords.split(/[,，\s]+/).filter(Boolean),
-      selected_chars: submission.selectedChars,
-      source_classic: sourceClassic || undefined,
-      avoid_elder_names: formData.avoidElderNames
-        ? formData.avoidElderNames.split(/[,，\s]+/).filter(Boolean)
-        : undefined,
-      // 人名频率过滤（来自 Chinese-Names-Corpus 语料统计）
-      min_frequency_tier: formData.minFrequencyTier || undefined,
-      max_frequency_tier: formData.maxFrequencyTier || undefined,
-      // 粤语评分开关：开启时后端追加粤语音律 + 粤语谐音两个维度，
-      // 独立「粤语分」透出展示，并以固定权重并入综合分影响排序
-      enable_cantonese: formData.enableCantonese || undefined,
-    };
+    // 与结果页「重新起名」共用同一装配函数，避免两条提交链字段漂移。
+    const formDataForApi = buildGenerateRequest(formData, {
+      keywords: submission.keywords,
+      selectedChars: submission.selectedChars,
+      sourceClassic,
+    });
 
     generateNamesMutate(formDataForApi);
   };

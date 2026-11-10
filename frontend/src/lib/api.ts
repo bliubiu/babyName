@@ -590,3 +590,101 @@ export async function getTopNames(limit: number = 20): Promise<NameStat[]> {
   const result = await handleResponse<APIResponse<NameStat[]>>(response);
   return result.data || [];
 }
+
+// --- 结果页动作区：导出 PDF / 分享快照 ---
+
+/** /report/pdf 请求体：字段名与后端 reportModel.parseReportModel 对齐 */
+export interface ReportPayload {
+  surname?: string;
+  gender?: string;
+  birth_date?: string;
+  birth_time?: string;
+  bazi?: string;
+  wuxing?: string;
+  xiyongshen?: string;
+  names?: Array<{
+    full_name?: string;
+    pinyin?: string;
+    wuxing?: string;
+    score?: number | string;
+    meaning?: string;
+  }>;
+}
+
+/** 导出 PDF：返回二进制 Blob，由调用方触发浏览器下载。 */
+export async function exportReportPDF(data: ReportPayload): Promise<Blob> {
+  const response = await fetchWithRetry(`${API_BASE_URL}/v1/report/pdf`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({ data }),
+  });
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}) as Record<string, string>);
+    throw new ApiError(errData.message || '导出 PDF 失败，请稍后重试', response.status);
+  }
+  const blob = await response.blob();
+  if (!blob.size) {
+    throw new ServerError('PDF 内容为空，请稍后重试');
+  }
+  return blob;
+}
+
+/** 分享快照：只含展示结论，不含出生地/长辈姓名等输入信息（后端仍有字段白名单）。 */
+export interface ShareSnapshot {
+  title?: string;
+  surname?: string;
+  gender?: string;
+  rishou?: string;
+  xiyongshen?: string[];
+  zodiac?: string;
+  hexagram_name?: string;
+  five_elements?: string;
+  total?: number;
+  generated_at?: string;
+  names: Array<{
+    full_name: string;
+    pinyin?: string;
+    wuxing?: string;
+    score?: number;
+    meaning?: string;
+  }>;
+}
+
+interface ShareEnvelope<T> {
+  success: boolean;
+  data: T;
+  message?: string;
+}
+
+export interface ShareCreateResult {
+  id: string;
+  url: string;
+}
+
+export async function createShareSnapshot(snapshot: ShareSnapshot): Promise<ShareCreateResult> {
+  if (!Array.isArray(snapshot.names) || snapshot.names.length === 0) {
+    throw new ValidationError('没有可分享的名字');
+  }
+  const response = await fetchWithRetry(`${API_BASE_URL}/v1/share`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({ data: snapshot }),
+  });
+  const result = await handleResponse<ShareEnvelope<ShareCreateResult>>(response);
+  if (!result.data?.id) {
+    throw new ServerError('创建分享失败，请稍后重试');
+  }
+  return result.data;
+}
+
+export async function getShareSnapshot(id: string): Promise<ShareSnapshot> {
+  if (!/^[a-f0-9]{32}$/.test(id)) {
+    throw new NotFoundError('分享不存在或已失效');
+  }
+  const response = await fetchWithRetry(`${API_BASE_URL}/v1/share/${id}`);
+  const result = await handleResponse<ShareEnvelope<ShareSnapshot>>(response);
+  if (!result.data || !Array.isArray(result.data.names)) {
+    throw new ServerError('分享内容格式错误');
+  }
+  return result.data;
+}

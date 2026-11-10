@@ -19,6 +19,8 @@ export interface CollapsibleSectionProps {
    * 保留 DOM，既让收起有高度过渡，也保住子组件内部的展开状态。
    */
   unmountOnCollapse?: boolean;
+  /** 外层 section 附加类；宽屏网格布局里传 '' 可去掉默认的纵向外边距 */
+  className?: string;
   children: ReactNode;
 }
 
@@ -37,6 +39,7 @@ export default function CollapsibleSection({
   open,
   onOpenChange,
   unmountOnCollapse = true,
+  className = 'mb-4 md:mb-6',
   children,
 }: CollapsibleSectionProps) {
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
@@ -61,7 +64,7 @@ export default function CollapsibleSection({
   const shouldRenderContent = isOpen || (!unmountOnCollapse && hasOpened);
 
   return (
-    <section className="card mb-4 md:mb-6 animate-fade-in-up">
+    <section className={`card animate-fade-in-up ${className}`}>
       <h2 className="m-0">
         <button
           type="button"

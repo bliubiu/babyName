@@ -20,6 +20,7 @@ type Store struct {
 	History           map[string]*database.HistoryRecord
 	Favorites         map[string]*database.FavoriteRecord
 	FavoritesByName   map[string]*database.FavoriteRecord // 以"surname:givenName"为键的索引
+	Shares            map[string]*database.ShareRecord    // 分享快照（与 SQLite 同语义）
 	Curated           map[string]*database.CuratedNameEntry
 	Hexagrams         []yijing.Hexagram
 	HexagramsByNumber map[int]*yijing.Hexagram // 以编号为键的索引
@@ -50,6 +51,7 @@ func NewStore() *Store {
 		History:           make(map[string]*database.HistoryRecord),
 		Favorites:         make(map[string]*database.FavoriteRecord),
 		FavoritesByName:   make(map[string]*database.FavoriteRecord),
+		Shares:            make(map[string]*database.ShareRecord),
 		Curated:           make(map[string]*database.CuratedNameEntry),
 		Hexagrams:         hexagrams,
 		HexagramsByNumber: hexagramsByNumber,

@@ -280,6 +280,7 @@ type appServices struct {
 	history  *services.HistoryService
 	favorite *services.FavoriteService
 	report   *services.ReportService
+	share    *services.ShareService
 }
 
 func newServices(store database.Store, dataDir string) *appServices {
@@ -363,6 +364,7 @@ func newServices(store database.Store, dataDir string) *appServices {
 		report:   services.NewReportService(),
 		history:  services.NewHistoryService(store),
 		favorite: favSvc,
+		share:    services.NewShareService(store),
 	}
 }
 
@@ -374,6 +376,7 @@ type appHandlers struct {
 	history   *handlers.HistoryHandler
 	favorite  *handlers.FavoriteHandler
 	report    *handlers.ReportHandler
+	share     *handlers.ShareHandler
 	stat      *handlers.NameStatHandler
 	huangli   *handlers.HuangliHandler
 	character *handlers.CharacterHandler
@@ -386,6 +389,7 @@ func newHandlers(svc *appServices, dataDir string) *appHandlers {
 		history:   handlers.NewHistoryHandler(svc.history),
 		favorite:  handlers.NewFavoriteHandler(svc.favorite),
 		report:    handlers.NewReportHandler(svc.report),
+		share:     handlers.NewShareHandler(svc.share),
 		stat:      handlers.NewNameStatHandler(),
 		huangli:   handlers.NewHuangliHandler(),
 		character: handlers.NewCharacterHandler(svc.name.GetNameDB()),
@@ -475,6 +479,10 @@ func setupRouter(h *appHandlers, runMode, staticDir string, store database.Store
 		api.DELETE("/favorites/:id", h.favorite.DeleteFavorite)
 
 		api.POST("/report/pdf", h.report.GeneratePDF)
+
+		// 分享快照：结果页「分享」动作落库（SQLite 唯一真源），落地页 /share?id=<id> 读取
+		api.POST("/share", h.share.CreateShare)
+		api.GET("/share/:id", h.share.GetShare)
 
 		api.GET("/namestat/:name", h.stat.GetNameStats)
 		api.GET("/namestat", h.stat.GetTopNames)

@@ -251,6 +251,15 @@ func createTables(db *sql.DB) error {
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_gate_review_key
 			ON gate_review(name, layer, category, hit_value)`,
 		`CREATE INDEX IF NOT EXISTS idx_gate_review_status ON gate_review(status)`,
+
+		// 分享快照（结果页「分享」动作）：随机 id + 展示摘要 JSON。
+		// 不建 session_id 列——分享链接本就要跨会话可读，隐私边界由应用层
+		// 的字段白名单保证（只写入裁剪后的展示字段）。
+		`CREATE TABLE IF NOT EXISTS shares (
+			id          TEXT PRIMARY KEY,
+			payload     TEXT NOT NULL,
+			created_at  TIMESTAMP NOT NULL
+		)`,
 	}
 
 	for _, q := range queries {

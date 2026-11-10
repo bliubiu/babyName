@@ -5,6 +5,33 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.10.10]
+
+**结果页宽屏布局 + 动作区前后端接线 / 分享能力 / PII 悬空声明撤销**
+
+### 布局（宽屏留白治理）
+- 结果页内容容器 `max-w-4xl` → `max-w-5xl / xl:max-w-6xl / 2xl:max-w-7xl`，骨架与空状态容器同步；概览条、命理依据标题取消 `max-w-lg` 限制；名帖 `consultation-sheet` 由 `max-w-lg` 放宽到 `max-w-3xl`；吸底托盘宽度同步。
+- 名字卡片 `2xl` 下四列；命理依据三块 `xl` 下双列（紫微斗数跨两列避免半屏空白）；`CollapsibleSection` 新增 `className` 以便网格内去掉默认纵向外边距。
+- 1440 / 1920 无头截图对比：导航与内容区宽度由约 47% 提升到 71% / 67%，两侧留白显著收窄。
+
+### 动作区（原型三项接线前后端）
+- 新增常显 `ResultActions`（导出 PDF / 分享 / 重新起名）置于概览下方；导航栏 `showExport` + `onExportPDF` 同步启用「导出PDF」入口。
+- **导出 PDF**：前端新增 `exportReportPDF`，`POST /api/v1/report/pdf` 取 Blob 触发下载；载荷字段对齐后端 `reportModel`（评分键为 `score` 而非 `total_score`，`docs/02` 示例同步修正）。
+- **分享**：后端新增 SQLite `shares` 表 + `ShareStore` / `ShareService` / `ShareHandler` 与 `POST /api/v1/share`、`GET /api/v1/share/:id`；`crypto/rand` 32 位 hex id、载荷 64KB 上限、**字段白名单**（只保留展示摘要，剔除出生地/长辈姓名等输入信息），快照不绑定会话以便跨设备打开。前端新增 `createShareSnapshot` / `getShareSnapshot` 与静态落地页 `/share?id=`（Go 静态服务页面清单与 no-cache 规则同步登记）。
+- **重新起名**：抽出 `buildGenerateRequest` 单一装配链，首页提交与结果页重新生成共用，避免双口径漏字段；结果页重新调用异步生成接口、替换结果并写历史；空状态新增「用上次输入重新生成」（依赖本机表单持久化）。
+
+### 文档决策
+- **撤销 `docs/46`「前端 PII 明文持久化 localStorage」P2 悬空登记**：项目为匿名工具、无账号体系，本机留存表单与访客会话标识是「刷新免重填 / 首访并发会话一致」的预期设计，不列为缺陷；总体结论、进度表、问题清单、缺陷汇总表、整改路线五处同步清理，改留一条设计决策说明。分享快照这类跨设备可见的新链路另按字段白名单裁剪。
+- `docs/07 §0.3` 的暗色主题 / 全站对比度仍保持「仅登记、未实施」状态，不在本批范围。
+- `docs/06 §3.1`、`docs/02` 路由表与报告/分享章节同步更新。
+
+### 验证
+- Go：`go build ./...`、`go vet ./...` 全绿；`go test ./internal/application/services ./internal/application/handlers ./internal/infrastructure/database/... -count=1` 全绿（新增分享服务 4 组用例 + handler 2 组）。
+- 前端：`verify-frontend.sh` 三件套 tsc PASS、ESLint **0 error / 29 warning**（阈值 34）、Vitest **20 文件 143 用例** PASS（新增 `generateRequest` 3 例、`ResultActions` 2 例）。
+- `next build`：Compiled successfully，**12/12** 静态页（新增 `/share`）。
+- 上线核验 **42/42 PASS**：`/result`、`/share` 与最新构建产物 md5 一致；分享创建/读取/敏感字段裁剪/400/404；PDF 200 且 `%PDF-1.7`、23900 bytes；12 个静态资源 200。
+- 推送：`2158349..2b52261 master -> master`（前两批折叠与结果优先提交），pre-push Go 快路径 + 前端门禁全绿。
+
 ## [2026.11.10.9]
 
 **结果页 `/result` 结果优先重构与交互反馈优化（前端）**

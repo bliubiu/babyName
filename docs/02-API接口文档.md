@@ -85,7 +85,9 @@ const getApiBaseUrl = (): string => {
 | GET | /api/v1/favorites | 查询收藏列表（分页） |
 | POST | /api/v1/favorites | 添加收藏 |
 | DELETE | /api/v1/favorites/:id | 删除收藏 |
-| POST | /api/v1/report/pdf | 生成PDF报告 |
+| POST | /api/v1/report/pdf | 生成PDF报告（结果页「导出 PDF」已接线） |
+| POST | /api/v1/share | 创建分享快照，返回随机 id 与 `url` |
+| GET | /api/v1/share/:id | 读取分享快照（结果页分享落地页 `/share?id=` 调用） |
 | GET | /api/v1/namestat/:name | 名字重名率 |
 | GET | /api/v1/namestat | 常用名字排行 |
 | GET | /api/v1/huangli | 黄历信息 |
@@ -514,12 +516,25 @@ const getApiBaseUrl = (): string => {
   "data": {
     "surname": "王",
     "gender": "male",
-    "names": [ { "full_name": "王珀晨", "total_score": 85.2 } ]
+    "names": [ { "full_name": "王珀晨", "score": 85.2, "pinyin": "wáng pò chén", "wuxing": "金", "meaning": "光明磊落" } ]
   }
 }
 ```
 
+> 后端 `reportModel.parseReportModel` 读取的评分键是 `score`（不是 `total_score`），
+> 支持 number 与 string；结果页构造报表载荷时已按此契约映射。
+
 **响应：** `application/pdf` 二进制文件流（HTTP 200）；生成失败返回 500 JSON。
+
+### 分享快照
+
+**POST** `/api/v1/share`：请求体 `{"data": {展示摘要}}`，返回 `data: {"id": "<32位hex>", "url": "/share?id=<id>"}`。
+项目为匿名工具、无账号体系，服务端按白名单只保留 `title / surname / gender / rishou /
+xiyongshen / zodiac / hexagram_name / five_elements / names / total / generated_at`，
+其余字段（出生地、长辈姓名、完整八字等）一律丢弃；载荷上限 64KB，非法内容返回 400。
+
+**GET** `/api/v1/share/:id`：返回同一份摘要；id 格式不合法或不存在返回 404。
+快照落在 SQLite `shares` 表（唯一真源），不绑定会话，因此分享链接可跨设备打开。
 
 ---
 

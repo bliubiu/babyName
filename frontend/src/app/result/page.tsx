@@ -7,9 +7,14 @@ import { Name, FavoriteData } from '@/types';
 import { ResultPageSkeleton, NameCardSkeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/Toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { saveFavorite, deleteFavorite, exploreNames, getFavorites } from '@/lib/api';
+import {
+  saveFavorite, deleteFavorite, exploreNames, getFavorites, saveHistory,
+  generateNamesWithProgress, exportReportPDF, createShareSnapshot,
+} from '@/lib/api';
+import { buildGenerateRequest } from '@/lib/generateRequest';
 import type { FavoritesResponse } from '@/types/api/favorites';
 import Navigation from '@/components/Navigation';
+import ResultActions from '@/components/ResultActions';
 import type { NameFilters } from '@/components/NameFilter';
 import CollapsibleSection from '@/components/CollapsibleSection';
 
@@ -61,7 +66,7 @@ const getCachedFavorites = (queryClient: ReturnType<typeof useQueryClient>): Fav
 
 export default function ResultPage() {
   const router = useRouter();
-  const { generateResult, setCompareResult, _hasHydrated } = useNameStore();
+  const { formData, generateResult, setGenerateResult, setCompareResult, _hasHydrated } = useNameStore();
   // 存 nameKey（surname:given_name）而不是列表下标；同时是卡片就地展开详情的唯一开关
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [favoriteStatus, setFavoriteStatus] = useState<Record<string, boolean>>({});
@@ -193,6 +198,136 @@ export default function ResultPage() {
     },
   });
 
+  // --- 动作区：导出 PDF / 分享 / 重新起名（docs/06 §3.1 接线）---
+  // 报表与分享快照都只从当前结果派生；分享快照刻意不含出生地、长辈姓名等输入信息，
+  // 后端 /share 还有一层字段白名单，双保险避免匿名工具的分享链接泄露表单内容。
+  const buildReportPayload = () => {
+    const baziInfo = result?.bazi;
+    const pillars = baziInfo?.bazi
+      ? [baziInfo.bazi.year_ganzhi, baziInfo.bazi.month_ganzhi,
+         baziInfo.bazi.day_ganzhi, baziInfo.bazi.hour_ganzhi].filter(Boolean).join(' ')
+      : '';
+    const wx = baziInfo?.wuxing;
+    return {
+      surname: formData.surname,
+      gender: formData.gender,
+      birth_date: `${formData.birthYear}-${formData.birthMonth}-${formData.birthDay}`,
+      birth_time: `${formData.birthHour}:${formData.birthMinute.toString().padStart(2, '0')}`,
+      bazi: pillars,
+      wuxing: wx ? `金${wx.jin} 木${wx.mu} 水${wx.shui} 火${wx.huo} 土${wx.tu}` : '',
+      xiyongshen: baziInfo?.xiyongshen?.join('、') ?? '',
+      names: (result?.names ?? []).slice(0, 30).map((n: Name) => ({
+        full_name: n.full_name || `${n.surname}${n.given_name}`,
+        pinyin: n.pinyin,
+        wuxing: n.wuxing,
+        score: scoreOf(n),
+        meaning: n.meaning,
+      })),
+    };
+  };
+
+  const buildShareSnapshot = () => ({
+    title: `${formData.surname || ''}氏宝宝起名结果`,
+    surname: formData.surname,
+    gender: formData.gender,
+    rishou: result?.bazi?.rishou,
+    xiyongshen: result?.bazi?.xiyongshen,
+    zodiac: result?.zodiac,
+    hexagram_name: result?.hexagram
+      ? `第${result.hexagram.number}卦 ${result.hexagram.name}` : undefined,
+    five_elements: result?.ziwei?.five_elements,
+    total: result?.names?.length ?? 0,
+    generated_at: new Date().toISOString(),
+    names: (result?.names ?? []).slice(0, 20).map((n: Name) => ({
+      full_name: n.full_name || `${n.surname}${n.given_name}`,
+      pinyin: n.pinyin,
+      wuxing: n.wuxing,
+      score: scoreOf(n),
+      meaning: n.meaning,
+    })),
+  });
+
+  const pdfMutation = useMutation({
+    mutationFn: (payload: ReturnType<typeof buildReportPayload>) => exportReportPDF(payload),
+    onSuccess: (blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `起名报告-${formData.surname || '宝宝'}-${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      showToast('PDF 报告已下载', 'success');
+    },
+    onError: (err) => {
+      showToast(err instanceof Error ? err.message : '导出 PDF 失败，请稍后重试', 'error');
+    },
+  });
+
+  const shareMutation = useMutation({
+    mutationFn: (snapshot: ReturnType<typeof buildShareSnapshot>) => createShareSnapshot(snapshot),
+    onSuccess: ({ url }) => {
+      const absolute = `${window.location.origin}${url}`;
+      const task = navigator.clipboard?.writeText(absolute);
+      if (!task) {
+        showToast(`请手动复制分享链接：${absolute}`, 'warning');
+        return;
+      }
+      task.then(() => {
+        showToast('分享链接已复制，发给家人朋友即可查看', 'success', {
+          label: '打开',
+          onClick: () => window.open(absolute, '_blank', 'noopener'),
+        });
+      }).catch(() => {
+        showToast(`复制失败，请手动复制：${absolute}`, 'warning');
+      });
+    },
+    onError: (err) => {
+      showToast(err instanceof Error ? err.message : '创建分享失败，请稍后重试', 'error');
+    },
+  });
+
+  const regenerateMutation = useMutation({
+    mutationFn: () => {
+      if (!formData.surname.trim()) throw new Error('缺少姓氏');
+      // 与首页提交共用同一装配链，避免重新生成时漏传粤语开关/避讳等字段
+      return generateNamesWithProgress(buildGenerateRequest(formData));
+    },
+    onSuccess: (data) => {
+      if (!data?.names?.length) {
+        showToast('重新生成结果为空，请稍后重试', 'error');
+        return;
+      }
+      setGenerateResult(data);
+      saveHistory({
+        surname: formData.surname,
+        gender: formData.gender,
+        birth_date: `${formData.birthYear}-${formData.birthMonth}-${formData.birthDay}`,
+        birth_time: `${formData.birthHour}:${formData.birthMinute.toString().padStart(2, '0')}`,
+        birth_location: formData.birthLocation,
+        results: data,
+      }).catch(() => { /* 历史留痕失败不阻断生成 */ });
+      setSelectedName(null);
+      setCompareNames([]);
+      setExploreBatch(null);
+      setVisibleCount(PAGE_SIZE);
+      setFilters({});
+      setSortKey('score');
+      showToast(`已按上次条件重新生成（${data.names.length} 个候选）`, 'success');
+      window.setTimeout(() => {
+        document.getElementById('name-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 0);
+    },
+    onError: (err) => {
+      if (err instanceof Error && err.message === '缺少姓氏') {
+        router.push('/');
+        return;
+      }
+      showToast(err instanceof Error ? err.message : '重新生成失败，请稍后重试', 'error');
+    },
+  });
+
   const toggleFavoriteMutation = useMutation({
      // variables 在 mutate 调用前求值：existingId 取自乐观更新前的缓存快照。
      // 此前 mutationFn 内部重读缓存判断 existing，但 onMutate 的乐观更新已先写入
@@ -319,7 +454,7 @@ export default function ResultPage() {
   if (!_hasHydrated) {
     return (
       <main className="min-h-screen py-6 md:py-8 px-4 md:px-6">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto">
           <ResultPageSkeleton />
         </div>
       </main>
@@ -331,19 +466,28 @@ export default function ResultPage() {
   if (!result) {
     return (
       <main className="min-h-screen py-6 md:py-8 px-4 md:px-6">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto">
           <Navigation showBackButton={true} showHistory={true} showFavorites={true} />
           <div className="text-center py-16">
             <p className="text-ink font-medium mb-2">没有可展示的起名结果</p>
             <p className="text-jade/80 text-sm mb-6">
-              生成结果不会被保存，刷新页面后需要重新生成一次
+              生成结果不落盘，刷新后需重新生成；表单信息仍保存在本机，可一键重来
             </p>
-            <button
-              onClick={() => router.push('/')}
-              className="min-h-[44px] px-5 py-2 bg-crimson text-white rounded-xl text-sm hover:bg-crimson-light transition-all duration-200"
-            >
-              回到首页重新起名
-            </button>
+            <div className="flex flex-wrap justify-center gap-2">
+              <button
+                onClick={() => router.push('/')}
+                className="min-h-[44px] px-5 py-2 bg-warm-white border border-paper/70 text-ink rounded-xl text-sm hover:bg-warm-white/70 transition-all duration-200"
+              >
+                回到首页修改条件
+              </button>
+              <button
+                onClick={() => regenerateMutation.mutate()}
+                disabled={!formData.surname || regenerateMutation.isPending}
+                className="min-h-[44px] px-5 py-2 bg-crimson text-white rounded-xl text-sm hover:bg-crimson-light transition-all duration-200 disabled:opacity-50"
+              >
+                {regenerateMutation.isPending ? '重新生成中…' : '用上次输入重新生成'}
+              </button>
+            </div>
           </div>
         </div>
       </main>
@@ -388,16 +532,17 @@ export default function ResultPage() {
 
   return (
     <main className="min-h-screen py-4 md:py-8 px-4 md:px-6 pb-28">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto">
         <Navigation
           showBackButton={true}
           showHistory={true}
           showFavorites={true}
-          showExport={false}
+          showExport={true}
+          onExportPDF={() => pdfMutation.mutate(buildReportPayload())}
         />
 
         {/* 结果概览：关键结论常显，命理长文按需下钻 */}
-        <div className="max-w-lg mx-auto mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
             <h1 className="font-serif text-xl md:text-2xl text-ink">起名结果</h1>
             <p className="text-xs text-ink-light/80 mt-1">
@@ -412,7 +557,20 @@ export default function ResultPage() {
             查看命理依据 ↓
           </button>
         </div>
-        <div className="max-w-4xl mx-auto mb-4 flex flex-wrap gap-2">
+
+        {/* 统一动作区：原型里的导出 PDF / 分享 / 重新起名，全部接前后端 */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-paper/60 bg-warm-white/70 px-3 py-2.5">
+          <p className="text-xs text-jade/80">保存、发给家人，或按原条件再生成一批</p>
+          <ResultActions
+            onExportPDF={() => pdfMutation.mutate(buildReportPayload())}
+            onShare={() => shareMutation.mutate(buildShareSnapshot())}
+            onRegenerate={() => regenerateMutation.mutate()}
+            exporting={pdfMutation.isPending}
+            sharing={shareMutation.isPending}
+            regenerating={regenerateMutation.isPending}
+          />
+        </div>
+        <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto mb-4 flex flex-wrap gap-2">
           <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">日主 {bazi.rishou}</span>
           <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">喜用神 {bazi.xiyongshen.join('、')}</span>
           <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">{zodiac}</span>
@@ -531,11 +689,11 @@ export default function ResultPage() {
             // 列表级单一边界 + 骨架网格：原先 20 张卡各自 Suspense 且带
             // 0.3+index*0.05s 延迟，最晚 1.3s 才出现、逐张弹出造成跳动
             <Suspense fallback={
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 md:gap-4">
                 {[1, 2, 3, 4, 5, 6].map(i => <NameCardSkeleton key={i} />)}
               </div>
             }>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 md:gap-4">
                 {topNames.map((name: Name, index: number) => (
                   <NameCard
                     key={nameKey(name)}
@@ -568,7 +726,7 @@ export default function ResultPage() {
 
         {/* 命理依据：三块默认收起，结论已在概览条常显 */}
         <section id="analysis-sections" className="scroll-mt-4">
-          <div className="max-w-lg mx-auto mb-4 flex items-end justify-between gap-3">
+          <div className="mb-4 flex items-end justify-between gap-3">
             <div className="min-w-0">
               <h2 className="font-serif text-xl md:text-2xl text-ink">命理依据</h2>
               <p className="text-xs text-ink-light/80 mt-1">按需展开，收起时也保留关键结论</p>
@@ -582,7 +740,10 @@ export default function ResultPage() {
             </button>
           </div>
 
+          {/* 宽屏双列铺开：收起时也把横向空间用起来，第三块跨两列避免半屏空白 */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
           <CollapsibleSection
+            className=""
             title="八字分析"
             summary={`日主 ${bazi.rishou} · 喜用神 ${bazi.xiyongshen.join('、')} · ${zodiac}`}
             open={analysisOpen.bazi}
@@ -597,6 +758,7 @@ export default function ResultPage() {
           {/* 易经卦象 + 卦象详解：本卦经文 / 本互变三卦 / 体用断卦（docs/42 P2-9/10） */}
           {(hexagram || hexagram_detail) && (
             <CollapsibleSection
+              className=""
               title="易经卦象 · 卦象详解"
               summary={hexagramSummary}
               open={analysisOpen.hexagram}
@@ -631,6 +793,7 @@ export default function ResultPage() {
 
           {ziwei && (
             <CollapsibleSection
+              className="xl:col-span-2"
               title="紫微斗数"
               summary={ziweiSummary}
               open={analysisOpen.ziwei}
@@ -642,6 +805,7 @@ export default function ResultPage() {
               </Suspense>
             </CollapsibleSection>
           )}
+          </div>
         </section>
 
         {/* 名帖预览：从首屏平铺降为可折叠的次级欣赏入口 */}
@@ -684,7 +848,7 @@ export default function ResultPage() {
         {/* 吸底对比托盘：选中即常显，避免用户勾选后找不到入口 */}
         {compareNames.length > 0 && (
           <div className="fixed inset-x-0 bottom-0 z-40 border-t border-paper/60 bg-warm-white-light/95 backdrop-blur-sm">
-            <div className="max-w-4xl mx-auto px-4 py-3 flex flex-wrap items-center gap-2">
+            <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center gap-2">
               <span className="text-xs text-jade/80 mr-1">已选 {compareNames.length}/4</span>
               {compareNames.map(key => (
                 <span

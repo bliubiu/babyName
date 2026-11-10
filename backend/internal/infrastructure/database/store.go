@@ -29,6 +29,22 @@ type HistoryStore interface {
 	BatchDeleteHistory(sessionID string, ids []string) error
 }
 
+// ShareStore 分享快照存储接口（2026-11-10 结果页动作区接线）
+//
+// 与 history/favorites 不同：分享快照不含会话归属，任何拿到随机 id 的人都能读，
+// 因此只允许存放前端裁剪过的**展示摘要**（不含出生地、长辈姓名等输入信息）。
+type ShareStore interface {
+	SaveShare(record *ShareRecord) error
+	GetShare(id string) (*ShareRecord, error)
+}
+
+// ShareRecord 分享快照记录。Payload 为 JSON 字符串，由应用层做结构与大小校验。
+type ShareRecord struct {
+	ID        string    `json:"id"`
+	Payload   string    `json:"-"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // FavoriteStore 收藏存储接口
 type FavoriteStore interface {
 	// SaveFavorite 保存收藏；写入失败返回空 ID 与错误（此前吞错返回假 ID，
@@ -157,6 +173,7 @@ type NameGenderStat struct {
 type Store interface {
 	HistoryStore
 	FavoriteStore
+	ShareStore
 	HanziStore
 	FeedbackStore
 	YijingStore
