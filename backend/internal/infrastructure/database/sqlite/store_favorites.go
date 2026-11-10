@@ -70,6 +70,9 @@ func (s *Store) GetFavorites(sessionID string) []*database.FavoriteRecord {
 }
 
 func (s *Store) GetFavoritesPage(sessionID string, page, limit int) ([]*database.FavoriteRecord, int, error) {
+	// 归一化分页参数，阻断 limit=-1 在 SQLite 下等价于「不限制」导致拉全表（docs/46 P2）
+	page, limit = normalizePageLimit(page, limit)
+
 	var total int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM favorites WHERE session_id = ?`, sessionID).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count favorites: %w", err)

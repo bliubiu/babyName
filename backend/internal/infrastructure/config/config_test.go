@@ -265,6 +265,44 @@ func TestLoad_ConfigDirEnv(t *testing.T) {
 	}
 }
 
+// TestLoad_RelativeDatabasePathAnchoredToConfigDir 回归（docs/46 P2 工程化）：
+// 相对 database.path 必须锚定到「实际加载的配置文件目录」，而非启动 cwd，
+// 既去除开发者机器绝对路径硬编码，又避免不同 cwd 启动造成双库分叉。
+func TestLoad_RelativeDatabasePathAnchoredToConfigDir(t *testing.T) {
+	base := t.TempDir()
+	cfgDir := filepath.Join(base, "conf")
+	if err := os.MkdirAll(cfgDir, 0755); err != nil {
+		t.Fatalf("建目录失败: %v", err)
+	}
+	content := "database:\n  path: namer.db\n"
+	if err := os.WriteFile(filepath.Join(cfgDir, "application.yml"), []byte(content), 0644); err != nil {
+		t.Fatalf("写配置失败: %v", err)
+	}
+
+	// 从与配置目录不同的 cwd 启动，验证锚定到配置目录而非 cwd。
+	otherDir := filepath.Join(base, "other")
+	if err := os.MkdirAll(otherDir, 0755); err != nil {
+		t.Fatalf("建目录失败: %v", err)
+	}
+	oldWd, _ := os.Getwd()
+	if err := os.Chdir(otherDir); err != nil {
+		t.Fatalf("切换工作目录失败: %v", err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
+
+	t.Setenv("CONFIG_DIR", cfgDir)
+	t.Setenv("NAME_DATABASE_PATH", "")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	want := filepath.Join(cfgDir, "namer.db")
+	if cfg.Database.Path != want {
+		t.Errorf("相对 database.path 应锚定到配置目录 %q，实得 %q", want, cfg.Database.Path)
+	}
+}
+
 // TestEnvOverrideReachesStructFields 环境变量必须穿透到结构体字段
 // （docs/30 §六 C10 回归）：viper 的 Unmarshal 不解析 AutomaticEnv——
 // compose 传入的 NAME_MODE/NAME_SERVER_HOST 等此前对 cfg.Mode 等字段

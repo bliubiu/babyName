@@ -24,11 +24,11 @@ log:
 # 数据库配置
 database:
   driver: "sqlite"      # 数据库驱动: sqlite, memory
-  # ★ 单一权威库（docs/36 双库分叉治理）：必须使用绝对路径，避免 server 从不同
-  # cwd 启动（backend/ 或仓库根）时各自生成 ./namer.db 造成双库分叉。
-  # 本机权威库为 backend/namer.db（已清理 words/data_meta 孤儿表）。
-  # 容器部署由 NAME_DATABASE_PATH 环境变量覆盖为 /app/data/namer.db（挂卷），无需改动此处。
-  path: "D:/19-Training/learngo/name/backend/namer.db" # SQLite 数据库绝对路径
+  # ★ 单一权威库（docs/36 双库分叉治理）：相对路径锚定到「本 application.yml 所在
+  # 目录」（由 config.Load 解析，见 internal/infrastructure/config），无论从哪个
+  # cwd 启动都落到同一绝对路径，避免双库分叉；同时去除开发者机器绝对路径，提升
+  # 可移植性。容器部署经 NAME_DATABASE_PATH 传入绝对路径时优先生效（挂卷）。
+  path: "namer.db" # SQLite 数据库相对路径（锚定到配置文件目录）
 
 # 限流配置
 rate_limit:

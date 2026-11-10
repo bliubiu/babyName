@@ -3,6 +3,7 @@ package sqlite
 import (
 	"database/sql"
 	"fmt"
+	"sync"
 
 	_ "modernc.org/sqlite"
 	"name/internal/domain/yijing"
@@ -16,6 +17,15 @@ type Store struct {
 	writeDB   *sql.DB // 写连接（单连接，串行写）
 	Hexagrams []yijing.Hexagram
 	Zodiacs   []zodiac.Zodiac
+
+	// hanziSnap / hanziSnapReady：hanzi_data 全表只读快照（docs/46 P2 性能项）。
+	// 静态字库启动期灌入后不再变化，惰性构建一次，消除「全量候选池」查询
+	// 每请求全表扫描 + 逐行 JSON 解析 naming_categories。
+	// 快照只读共享：下游 databaseHanziToCharacter 仅读取字段、适配器按值拷贝，
+	// 不存在请求期改写，故返回缓存指针安全。
+	hanziSnapMu    sync.RWMutex
+	hanziSnap      []*database.Hanzi
+	hanziSnapReady bool
 }
 
 var _ database.Store = (*Store)(nil)

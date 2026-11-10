@@ -156,6 +156,18 @@ func (s *Store) SearchHanziByFilter(
 		conditions = append(conditions, "char IN ("+strings.Join(placeholders, ",")+")")
 	}
 
+	// P2（docs/46）：无过滤条件且取全量（limit<=0）的「全量候选池」查询是每请求
+	// 热路径，走惰性只读快照，避免重复全表扫描与逐行 JSON 解析 naming_categories。
+	if len(conditions) == 0 && limit <= 0 {
+		snap, err := s.loadHanziSnapshot()
+		if err == nil {
+			return snap, nil
+		}
+		// 快照加载失败（库损坏等）：直接上抛，与常规路径错误语义一致，
+		// 上层 FindCharacters 据此走 Go 端内存过滤（docs/29 B8）。
+		return nil, err
+	}
+
 	if limit <= 0 {
 		limit = 10000
 	}
@@ -223,6 +235,86 @@ func (s *Store) SearchHanziByFilter(
 		return nil, fmt.Errorf("SearchHanziByFilter 迭代失败: %w", err)
 	}
 	return result, nil
+}
+
+// loadHanziSnapshot 惰性构建 hanzi_data 全表只读快照（docs/46 P2 性能项）。
+//
+// 触发条件：仅当 SearchHanziByFilter 命中「无过滤条件且取全量」的每请求热路径时调用。
+// 静态字库启动期由物料导入一次性灌入，运行期不再变化，故快照只需构建一次。
+//
+// 并发安全：首个并发请求可能各构建一份（数据只读且内容一致，重复构建无害），
+// 最终写回同一只读快照；后续请求直接读缓存，无锁竞争热点。
+//
+// 空库保护：库未执行 materials import 时全表查询零行 —— 此时**不**置 ready 标志，
+// 下次请求仍会重建，避免「缓存恒空」导致回落场景（DB 缺料 → 内存 JSON 字库）
+// 失效（docs/29 B8 孪生陷阱）。
+//
+// 返回值为 []*database.Hanzi 指针切片，调用方只读不写；适配器与
+// databaseHanziToCharacter 均按值/按字段读取，故共享同一份只读快照安全。
+func (s *Store) loadHanziSnapshot() ([]*database.Hanzi, error) {
+	s.hanziSnapMu.RLock()
+	if s.hanziSnapReady {
+		snap := s.hanziSnap
+		s.hanziSnapMu.RUnlock()
+		return snap, nil
+	}
+	s.hanziSnapMu.RUnlock()
+
+	// 与 SearchHanziByFilter 的 selectColumns 保持完全一致（列顺序严格对应 Scan）。
+	const cols = `char, pinyin, wuxing, strokes, usage_level, positive_score,
+		COALESCE(level, 0), COALESCE(kangxi_strokes, 0), COALESCE(gender, ''),
+		COALESCE(radical, ''), COALESCE(naming_categories, '[]'), COALESCE(meaning, ''),
+		COALESCE(is_rare, 0), COALESCE(is_negative, 0), COALESCE(name_penalty, 0),
+		COALESCE(name_freq_tier, 0)`
+
+	rows, err := s.db.Query("SELECT " + cols + " FROM hanzi_data ORDER BY char")
+	if err != nil {
+		logger.Error("加载汉字快照查询失败", logger.ErrField(err))
+		return nil, fmt.Errorf("加载汉字快照失败: %w", err)
+	}
+	defer rows.Close()
+
+	snap := make([]*database.Hanzi, 0, 6000)
+	for rows.Next() {
+		var h database.Hanzi
+		var namingCategories string
+		var isRare, isNegative int
+		if err := rows.Scan(&h.Char, &h.Pinyin, &h.Wuxing, &h.Strokes,
+			&h.UsageLevel, &h.PositiveScore,
+			&h.Level, &h.KangxiStrokes, &h.Gender, &h.Radical,
+			&namingCategories, &h.Meaning, &isRare,
+			&isNegative, &h.NamePenalty, &h.NameFreqTier); err != nil {
+			logger.Error("加载汉字快照 scan 失败", logger.ErrField(err))
+			continue
+		}
+		h.IsRare = isRare != 0
+		h.IsNegative = isNegative != 0
+		if namingCategories != "" && namingCategories != "[]" {
+			var categories []string
+			if err := json.Unmarshal([]byte(namingCategories), &categories); err != nil {
+				logger.Error("加载汉字快照 naming_categories 解析失败",
+					logger.ErrField(err), logger.String("char", h.Char))
+			} else {
+				h.NamingCategories = categories
+			}
+		}
+		snap = append(snap, &h)
+	}
+	if err := rows.Err(); err != nil {
+		logger.Error("加载汉字快照 迭代失败", logger.ErrField(err))
+		return nil, fmt.Errorf("加载汉字快照 迭代失败: %w", err)
+	}
+
+	// 空库（未执行 materials import）不缓存，下次请求重建，保证回落场景不失效。
+	if len(snap) == 0 {
+		return snap, nil
+	}
+
+	s.hanziSnapMu.Lock()
+	s.hanziSnap = snap
+	s.hanziSnapReady = true
+	s.hanziSnapMu.Unlock()
+	return snap, nil
 }
 
 // --- NameStatStore 占位实现 ---

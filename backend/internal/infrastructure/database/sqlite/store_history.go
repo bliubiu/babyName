@@ -48,14 +48,22 @@ func (s *Store) GetHistory(sessionID string) []*database.HistoryRecord {
 	return s.GetHistoryPageWithLimit(sessionID, 1, 100)
 }
 
-// GetHistoryPageWithLimit 获取分页历史记录（内部方法）
-func (s *Store) GetHistoryPageWithLimit(sessionID string, page, limit int) []*database.HistoryRecord {
+// normalizePageLimit 将分页参数归一化，防止恶意或异常分页引发资源耗尽
+// （docs/46 P2）：SQLite 下 LIMIT 为负（如 -1）等价于「不限制」，可拉取全表。
+// 约定：limit 落在 (0,1000] 之外回退为 100；page < 1 回退为 1。
+func normalizePageLimit(page, limit int) (int, int) {
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
 	if page < 1 {
 		page = 1
 	}
+	return page, limit
+}
+
+// GetHistoryPageWithLimit 获取分页历史记录（内部方法）
+func (s *Store) GetHistoryPageWithLimit(sessionID string, page, limit int) []*database.HistoryRecord {
+	page, limit = normalizePageLimit(page, limit)
 	offset := (page - 1) * limit
 	rows, err := s.db.Query(`SELECT id, surname, gender, birth_date, birth_time, birth_location, results, created_at FROM history WHERE session_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, sessionID, limit, offset)
 	if err != nil {
@@ -83,6 +91,9 @@ func (s *Store) GetHistoryPageWithLimit(sessionID string, page, limit int) []*da
 }
 
 func (s *Store) GetHistoryPage(sessionID string, page, limit int) ([]*database.HistoryRecord, int, error) {
+	// 归一化分页参数，阻断 limit=-1 在 SQLite 下等价于「不限制」导致拉全表（docs/46 P2）
+	page, limit = normalizePageLimit(page, limit)
+
 	var total int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM history WHERE session_id = ?`, sessionID).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count history: %w", err)

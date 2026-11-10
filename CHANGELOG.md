@@ -5,6 +5,22 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.10.4]
+
+**docs/46 P2 修复：分页钳制 + 字库全量查询惰性快照 + 数据库路径去硬编码**
+
+### 🐛 Bug Fixes  问题修复
+- 【后端·防御】收藏/历史分页接口 `GetFavoritesPage` / `GetHistoryPage` 此前不钳制分页参数；SQLite 下 `LIMIT -1` 等价于「不限制」，访客传 `limit=-1` 可拉取自身全量收藏/历史（资源耗尽/信息暴露，docs/46 P2）。新增 `normalizePageLimit` 统一归一化：`limit∈(0,1000]`、`page≥1` 之外的取值回落为 `limit=100`/`page=1`，两个分页方法复用同一守卫。新增 `store_pagination_test.go` 回归测试（保存 150 条验证 `limit=-1` 与超限被钳到 100、`page<1` 回落为 1）。
+
+### 📈 Improvements 性能/体验优化
+- 【后端·性能】`Store.SearchHanziByFilter` 在「无过滤条件且取全量」的每请求热路径上原本每次全表扫描 + 逐行 JSON 解析 `naming_categories`（docs/46 P2 头条性能项）。新增 `loadHanziSnapshot` 惰性构建一次只读快照（带空库保护，库未导入物料时不缓存以保证回落场景不失效），命中该路径直接返回缓存指针（下游仅按值/按字段读取，无请求期改写，安全共享）。既有 `filter_integration_test`「空条件返回全表」用例已守护快照等价性。
+
+### 🔧 Dependencies 依赖更新
+-（无）
+
+### 🗑 Deprecated 废弃功能
+-（无）
+
 ## [2026.11.10.3]
 
 **docs/05 部署使用手册全面更新对齐当前实现（docs/44 验证后的部署面同步）**

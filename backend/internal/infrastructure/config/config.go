@@ -82,6 +82,18 @@ var (
 
 // Load 加载配置文件
 // configPath: 配置文件路径，如果为空则使用默认路径
+// isAbsolutePath 判断路径是否为绝对路径（跨平台）。
+//
+// filepath.IsAbs 在 Windows 下对 Unix 风格根路径（如 /app/data/namer.db）返回
+// false，但容器部署（Linux）与配置示例均使用此类根路径，应视为绝对路径原样保留，
+// 不重新锚定到配置文件目录。故此处额外把「以 / 开头」也判定为绝对路径。
+func isAbsolutePath(p string) bool {
+	if filepath.IsAbs(p) {
+		return true
+	}
+	return len(p) > 0 && p[0] == '/'
+}
+
 func Load(configPath string) (*AppConfig, error) {
 	v := viper.New()
 
@@ -182,6 +194,17 @@ func Load(configPath string) (*AppConfig, error) {
 	cfg.Log.OutputPath = v.GetString("log.output_path")
 	cfg.Database.Driver = v.GetString("database.driver")
 	cfg.Database.Path = v.GetString("database.path")
+	// 稳定锚点解析（docs/46 P2 工程化）：相对 database.path 锚定到「实际加载的
+	// 配置文件所在目录」，去除 yml 中的开发者机器绝对路径，同时保留单一权威库
+	// 语义（避免从不同 cwd 启动造成双库分叉，docs/36）。容器部署经
+	// NAME_DATABASE_PATH 传入绝对路径时视为绝对路径原样保留，此处不改动。
+	if cfg.Database.Path != "" && !isAbsolutePath(cfg.Database.Path) {
+		if cf := v.ConfigFileUsed(); cf != "" {
+			cfg.Database.Path = filepath.Join(filepath.Dir(cf), cfg.Database.Path)
+		} else if abs, err := filepath.Abs(cfg.Database.Path); err == nil {
+			cfg.Database.Path = abs
+		}
+	}
 	cfg.RateLimit.Capacity = v.GetFloat64("rate_limit.capacity")
 	cfg.RateLimit.Rate = v.GetFloat64("rate_limit.rate")
 	cfg.Redis.Enabled = v.GetBool("redis.enabled")
