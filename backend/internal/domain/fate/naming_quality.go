@@ -30,10 +30,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 )
 
-// nonNamingChars 名字用字质量门禁表（候选池阶段剔除）
+// 名字用字质量门禁表（候选池阶段剔除）
 //
 // 数据外置：表主体在 data/naming_quality.json（当前 2990 字），
 // 由 LoadNamingQualityFromJSON 启动时加载，本文件不再内嵌 325KB 字表。
@@ -41,10 +40,9 @@ import (
 // 表内容来自两条来源（见 backend/tools/gate_expand）：
 //   - 人工策展：历经 40+ 轮 verify_fate 迭代累积（git aa024f4 内嵌 1094 字版可追溯）
 //   - 规则扩容：四个「证据维度」全部落空的字（真实人名语料 / 寓意评分 / 策展 / 诗词出处）
-var (
-	nonNamingCharsMu sync.RWMutex
-	nonNamingChars   = map[string]bool{}
-)
+//
+// 集合统一存放于 gateSnapshot.nonNaming（见 gate_snapshot.go）：候选池
+// 阶段每字调用一次 IsNonNamingChar，读路径走无锁原子快照，不再加读锁。
 
 // LoadNamingQualityFromJSON 从 data 目录加载命名质量门禁字表
 //
@@ -55,9 +53,10 @@ func LoadNamingQualityFromJSON(dataDir string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			nonNamingCharsMu.Lock()
-			nonNamingChars = make(map[string]bool)
-			nonNamingCharsMu.Unlock()
+			// 空集合也要发布：覆盖此前已注入的数据，保证「重复调用幂等」。
+			updateGateSnapshot(func(s *gateSnapshot) {
+				s.nonNaming = map[string]bool{}
+			})
 			fmt.Fprintf(os.Stderr, "警告: 命名门禁字表 %s 不存在，已降级为空门禁表（不剔除门禁字）\n", path)
 			return nil
 		}
@@ -68,12 +67,11 @@ func LoadNamingQualityFromJSON(dataDir string) error {
 		return fmt.Errorf("解析命名门禁字表失败: %w", err)
 	}
 
-	nonNamingCharsMu.Lock()
-	defer nonNamingCharsMu.Unlock()
-	nonNamingChars = make(map[string]bool, len(chars))
+	m := make(map[string]bool, len(chars))
 	for _, c := range chars {
-		nonNamingChars[c] = true
+		m[c] = true
 	}
+	updateGateSnapshot(func(s *gateSnapshot) { s.nonNaming = m })
 	return nil
 }
 
@@ -81,8 +79,6 @@ func LoadNamingQualityFromJSON(dataDir string) error {
 //
 // 空字符串与重复项会被忽略，避免污染集合
 func SetNonNamingChars(chars []string) {
-	nonNamingCharsMu.Lock()
-	defer nonNamingCharsMu.Unlock()
 	m := make(map[string]bool, len(chars))
 	for _, c := range chars {
 		if c == "" {
@@ -90,14 +86,13 @@ func SetNonNamingChars(chars []string) {
 		}
 		m[c] = true
 	}
-	nonNamingChars = m
+	// 整体替换（COW 发布新快照），禁止原地修改旧 map
+	updateGateSnapshot(func(s *gateSnapshot) { s.nonNaming = m })
 }
 
 // NonNamingCharCount 返回门禁字数（诊断/测试用）
 func NonNamingCharCount() int {
-	nonNamingCharsMu.RLock()
-	defer nonNamingCharsMu.RUnlock()
-	return len(nonNamingChars)
+	return len(currentGateSnapshot().nonNaming)
 }
 
 // IsNonNamingChar 判断单字是否为「不适合入名」的质量门禁字
@@ -110,7 +105,5 @@ func IsNonNamingChar(char string) bool {
 	if IsAllowlistedChar(char) {
 		return false
 	}
-	nonNamingCharsMu.RLock()
-	defer nonNamingCharsMu.RUnlock()
-	return nonNamingChars[char]
+	return currentGateSnapshot().nonNaming[char]
 }

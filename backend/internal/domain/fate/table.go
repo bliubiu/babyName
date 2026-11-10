@@ -307,6 +307,27 @@ func (t *ExcellentTable) earlyStopCutoff() float64 {
 	return t.h[0].Score * 0.6
 }
 
+// canEnter 保守判断某分数是否「仍有机会进入局部 Top-N」（docs/46 P2）。
+//
+// 与 earlyStopCutoff 一样，仅供「单 goroutine 独占」的 worker 局部表在
+// N² 内层循环调用，因此无锁直读堆顶。语义必须与 TryPush 的 betterEntry
+// 严格一致，否则会改变榜单：
+//   - 表未满 → 一定入堆，返回 true；
+//   - 已满且分数严格小于堆顶 → betterEntry 必为 false，可安全跳过；
+//   - 分数等于堆顶 → 同分还要比 Char1+Char2 字典序（betterEntry），
+//     因此必须放行（用 >= 而不是 >）；
+//   - 分数大于堆顶 → 一定替换。
+//
+// 与 earlyStopCutoff 的分工：后者用「堆顶×0.6」作潜力分上界，是**评分前**
+// 的粗筛；本函数是**评分后**的精确剪枝，用于跳过大对象构造与 TryPush，
+// 两者互不替代。
+func (t *ExcellentTable) canEnter(score float64) bool {
+	if len(t.h) < t.cap || len(t.h) == 0 {
+		return true
+	}
+	return score >= t.h[0].Score
+}
+
 // Explore 随机采样 N 个名字，支持过滤和去重
 // filter 为 nil 表示不过滤
 func (t *ExcellentTable) Explore(count int, filter func(ExcellentEntry) bool) []ExcellentEntry {

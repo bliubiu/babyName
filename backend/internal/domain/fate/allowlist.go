@@ -18,16 +18,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 )
 
-var (
-	allowlistMu   sync.RWMutex
-	allowChars    = map[string]bool{}
-	allowCombos   = map[string]bool{}
-	blessingExtra = map[string]bool{} // 动态祈福组合（与内置 blessingCombos 取并集）
-	allowEntries  = map[string]bool{} // 全部条目原串（任意 kind，供整体文本豁免查询）
-)
+// 白名单动态集合统一存放于 gateSnapshot（见 gate_snapshot.go）：
+// 读路径走 atomic.Pointer 无锁快照，写路径由 updateGateSnapshot 覆盖式发布。
+// 本文件不再持有独立 map 与 RWMutex，避免 N² 内层循环反复加读锁。
 
 // AllowEntry 一条白名单记录（entry + kind），供物料装载路径注入
 type AllowEntry struct {
@@ -60,12 +55,14 @@ func SetAllowlist(entries []AllowEntry) {
 		}
 		all[entry] = true
 	}
-	allowlistMu.Lock()
-	allowChars = chars
-	allowCombos = combos
-	blessingExtra = blessings
-	allowEntries = all
-	allowlistMu.Unlock()
+	// 整体替换（COW 发布新快照）：禁止原地修改旧 map，否则读方会命中
+	// concurrent map read and map write（见 gate_snapshot.go 不可变约定）。
+	updateGateSnapshot(func(s *gateSnapshot) {
+		s.allowChars = chars
+		s.allowCombos = combos
+		s.blessingExtra = blessings
+		s.allowEntries = all
+	})
 }
 
 // LoadAllowlistFromJSON 从 data/allowlist.json 加载白名单（JSON 回落路径）
@@ -112,9 +109,7 @@ func IsAllowlistedChar(char string) bool {
 	if char == "" {
 		return false
 	}
-	allowlistMu.RLock()
-	defer allowlistMu.RUnlock()
-	return allowChars[char]
+	return currentGateSnapshot().allowChars[char]
 }
 
 // IsAllowlistedCombo 判断双字组合是否被白名单豁免（正反序均查）
@@ -122,9 +117,8 @@ func IsAllowlistedCombo(c1, c2 string) bool {
 	if c1 == "" || c2 == "" {
 		return false
 	}
-	allowlistMu.RLock()
-	defer allowlistMu.RUnlock()
-	return allowCombos[c1+c2] || allowCombos[c2+c1]
+	s := currentGateSnapshot()
+	return s.allowCombos[c1+c2] || s.allowCombos[c2+c1]
 }
 
 // isBlessingExtra 动态祈福组合判定（包内使用，正反序均查）
@@ -132,16 +126,14 @@ func isBlessingExtra(c1, c2 string) bool {
 	if c1 == "" || c2 == "" {
 		return false
 	}
-	allowlistMu.RLock()
-	defer allowlistMu.RUnlock()
-	return blessingExtra[c1+c2] || blessingExtra[c2+c1]
+	s := currentGateSnapshot()
+	return s.blessingExtra[c1+c2] || s.blessingExtra[c2+c1]
 }
 
 // AllowlistCounts 返回白名单规模（诊断/测试用）：单字 / 组合 / 祈福
 func AllowlistCounts() (chars, combos, blessings int) {
-	allowlistMu.RLock()
-	defer allowlistMu.RUnlock()
-	return len(allowChars), len(allowCombos), len(blessingExtra)
+	s := currentGateSnapshot()
+	return len(s.allowChars), len(s.allowCombos), len(s.blessingExtra)
 }
 
 // IsAllowlistedText 判断整体文本是否被白名单收录（任意 kind，原串精确匹配）
@@ -151,7 +143,5 @@ func IsAllowlistedText(text string) bool {
 	if text == "" {
 		return false
 	}
-	allowlistMu.RLock()
-	defer allowlistMu.RUnlock()
-	return allowEntries[text]
+	return currentGateSnapshot().allowEntries[text]
 }

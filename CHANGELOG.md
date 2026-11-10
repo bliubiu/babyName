@@ -5,6 +5,17 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.10.6]
+
+**docs/46 P2 性能修复：门禁层免锁 + 双名枚举减少短命分配**
+
+### 📈 Improvements 性能/体验优化
+- 【后端·性能】N² 内层门禁改造为不可变快照免锁（docs/46 P2）：`IsBadCombo` / `IsHistoricalFigureCombo` / `IsNonNamingChar` 位于双名笛卡尔积最内层，改造前每个组合约 7 次 `RWMutex.RLock/RUnlock`（项目已在 `sessionImpl.exclusionSnap` 实测读锁拖慢串行吞吐约 20%）。新增 `gate_snapshot.go`：把三组动态集合（白名单 / 动态禁忌组合 / 命名质量门禁字）归并进不可变 `gateSnapshot`，用单个 `atomic.Pointer` 发布；读路径降为 1 次原子加载 + map 查找，写路径（启动期物料装载，个位数调用）经 `gateWriteMu` 串行化 COW 重建，保留幂等重载契约。`allowlist.go` / `semantic_filter.go` / `naming_quality.go` 同步改造，删除三把 RWMutex。新增 `gate_snapshot_test.go` 守护 COW 跨 setter 字段不丢失、幂等重载与空集合回落、并发读 + 覆盖式重载无数据竞争；既有 `allowlist_test.go` / `compliance_redline_test.go` 语义等价性用例全绿。
+- 【后端·性能】双名枚举保守剪枝，减少每组合短命分配（docs/46 P2）：`table.go` 新增 `canEnter(score)`，表已满且分数严格低于堆顶时跳过 `ExcellentEntry` 大对象构造与 `TryPush`（省去锁与堆操作）；同分必须放行（`score >= 堆顶`），因 `betterEntry` 同分还要按 Char1+Char2 字典序决胜。`engine_candidate.go` 双名循环把 `totalCount.Add(1)` 提到剪枝之前，保持「已评分组合数」语义不变。`table_determinism_test.go` 新增 2 例守护「不得剪掉任何本应入榜的条目」（覆盖同分字典序边界）与表未满不剪枝。
+
+### 📚 Docs 文档更新
+- `docs/46` 新增「整改进度」索引，区分「审查时发现」与「后续批次已闭环」；热更新条目按用户设计决策标注为「SQLite 为唯一真源，非缺陷」。
+
 ## [2026.11.10.5]
 
 **docs/46 P2 性能修复：诗词索引启动预热 + PDF 字体解析缓存**

@@ -576,6 +576,18 @@ func (s *sessionImpl) generateDoubleName(
 					// （评分与解释分离，入榜后再按 idx1/idx2 回算完整明细）。
 					cand := doubleNameCandidate(a, b, poetryFound, poetryDesc, surnamePinyin, s.surnameJyutping, s.bigramCache)
 					final, canto := s.blendScore(cand, fateData)
+					// totalCount 语义为「完成评分的组合数」，与是否入榜无关：
+					// 必须在剪枝 continue 之前累加，否则统计值会随剪枝率变小。
+					totalCount.Add(1)
+
+					// 保守剪枝（docs/46 P2）：表满且分数严格低于堆顶时
+					// betterEntry 必为 false，该组合不会进局部 Top-N。同分
+					// 仍需比较 Char1+Char2 字典序，故等于堆顶不能剪
+					//（canEnter 用 >= 放行）。收益：跳过 ExcellentEntry
+					// 大对象构造 + TryPush 的锁与堆操作，降低 GC 压力。
+					if !local.canEnter(final) {
+						continue
+					}
 					entry := ExcellentEntry{
 						Char1:          a.ch.Char,
 						Char2:          b.ch.Char,
@@ -600,7 +612,6 @@ func (s *sessionImpl) generateDoubleName(
 						idx2:           j,
 					}
 					local.TryPush(entry)
-					totalCount.Add(1)
 				}
 				// 外层 i 完成一步：共享计数器推进评分阶段进度（30%–85%）
 				done := outerDone.Add(1)

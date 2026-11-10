@@ -178,3 +178,54 @@ func entryKeys(entries []ExcellentEntry) []string {
 	}
 	return out
 }
+
+// TestExcellentTable_CanEnterNeverDropsBetterEntries 保守剪枝的等价性守护
+//（docs/46 P2）：canEnter 可以少剪，但绝不能剪掉任何 betterEntry 判定为
+// 「更优、应替换堆顶」的条目，否则榜单会随剪枝悄悄变化。
+//
+// 最易写错的是同分边界：betterEntry 同分按 Char1+Char2 字典序决胜，
+// 因此判据必须是 score >= 堆顶.Score；若误写成 >，字典序更小的同分
+// 条目会被错误丢弃，重现 docs/32 §6.2 的榜单不确定性。
+func TestExcellentTable_CanEnterNeverDropsBetterEntries(t *testing.T) {
+	table := NewExcellentTableWithCap(2)
+	table.TryPush(ExcellentEntry{Char1: "王", Char2: "木", Score: 70})
+	table.TryPush(ExcellentEntry{Char1: "王", Char2: "秋", Score: 80})
+
+	if got := table.h[0].Score; got != 70 {
+		t.Fatalf("堆顶应为最小分 70，实得 %v", got)
+	}
+
+	// 覆盖严格小于 / 等于（字典序更小与更大）/ 略高于 / 远高于。
+	scores := []float64{60, 69.9, 70, 70.000001, 75, 80, 90}
+	keys := [][2]string{{"王", "春"}, {"王", "金"}, {"李", "安"}}
+	for _, sc := range scores {
+		for _, k := range keys {
+			cand := ExcellentEntry{Char1: k[0], Char2: k[1], Score: sc}
+			if betterEntry(cand, table.h[0]) && !table.canEnter(sc) {
+				t.Errorf("canEnter 错误剪掉本应入榜的条目：score=%v key=%s%s",
+					sc, k[0], k[1])
+			}
+		}
+	}
+
+	if table.canEnter(69.9) {
+		t.Error("分数严格小于堆顶应被剪枝")
+	}
+	if !table.canEnter(70) {
+		t.Error("同分不能剪：还要比较 Char1+Char2 字典序")
+	}
+	if !table.canEnter(80) {
+		t.Error("高于堆顶必须放行")
+	}
+}
+
+// TestExcellentTable_CanEnterWhenNotFull 表未满时不剪枝（任何分数都能入堆）。
+func TestExcellentTable_CanEnterWhenNotFull(t *testing.T) {
+	table := NewExcellentTableWithCap(3)
+	table.TryPush(ExcellentEntry{Char1: "王", Char2: "木", Score: 70})
+	for _, sc := range []float64{-1, 0, 50, 70, 100} {
+		if !table.canEnter(sc) {
+			t.Errorf("表未满时分数 %v 应放行", sc)
+		}
+	}
+}

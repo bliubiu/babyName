@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 )
 
 // semantic_filter.go 负面语义过滤（分层策略）
@@ -137,7 +136,7 @@ func IsBlessingCombo(c1, c2 string) bool {
 
 // IsBadCombo 判断两个字组合是否为禁忌组合（正反序均检测）
 //
-// 优先级：动态加载的清洗组合（forbiddenCombosExtra）→ 硬编码常量（forbiddenCombos）
+// 优先级：动态加载的清洗组合（gateSnapshot.forbiddenExtra）→ 硬编码常量（forbiddenCombos）
 // 动态集为空时仅查硬编码（向后兼容，避免未加载数据时所有组合都通过）
 // 用于双名候选生成时剔除「父母」「蜂蜜」等荒谬组合
 func IsBadCombo(c1, c2 string) bool {
@@ -151,16 +150,11 @@ func IsBadCombo(c1, c2 string) bool {
 	forward := c1 + c2
 	reverse := c2 + c1
 	// 1. 优先查动态加载的 962 条清洗组合（data/forbidden_combos.json）
-	forbiddenCombosExtraMu.RLock()
-	if _, hit := forbiddenCombosExtra[forward]; hit {
-		forbiddenCombosExtraMu.RUnlock()
+	// 读不可变快照，无锁（gate_snapshot.go）；动态集为空时由下方硬编码兜底。
+	extra := currentGateSnapshot().forbiddenExtra
+	if extra[forward] || extra[reverse] {
 		return true
 	}
-	if _, hit := forbiddenCombosExtra[reverse]; hit {
-		forbiddenCombosExtraMu.RUnlock()
-		return true
-	}
-	forbiddenCombosExtraMu.RUnlock()
 	// 2. 未命中再查硬编码常量（向后兼容 + 兜底）
 	if forbiddenCombos[forward] {
 		return true
@@ -168,12 +162,9 @@ func IsBadCombo(c1, c2 string) bool {
 	return forbiddenCombos[reverse]
 }
 
-// forbiddenCombosExtra 动态加载的禁忌组合（来自 data/forbidden_combos.json）
-// 启动时由 LoadForbiddenCombosFromJSON 注入；为 nil/空时仅使用硬编码 forbiddenCombos
-var (
-	forbiddenCombosExtraMu sync.RWMutex
-	forbiddenCombosExtra   = map[string]bool{}
-)
+// 动态禁忌组合（来自 data/forbidden_combos.json）存放于 gateSnapshot.forbiddenExtra
+// （见 gate_snapshot.go）：启动时由 LoadForbiddenCombosFromJSON / SetForbiddenCombos
+// 覆盖式注入；为空时仅使用硬编码 forbiddenCombos。读路径走无锁原子快照。
 
 // LoadForbiddenCombosFromJSON 从 data/forbidden_combos.json 加载禁忌组合
 //
@@ -186,9 +177,10 @@ func LoadForbiddenCombosFromJSON(dataDir string) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			forbiddenCombosExtraMu.Lock()
-			forbiddenCombosExtra = make(map[string]bool)
-			forbiddenCombosExtraMu.Unlock()
+			// 空集合也要发布：覆盖此前已注入的数据，保证「重复调用幂等」。
+			updateGateSnapshot(func(s *gateSnapshot) {
+				s.forbiddenExtra = map[string]bool{}
+			})
 			fmt.Fprintf(os.Stderr, "警告: 禁忌组合表 %s 不存在，已降级为硬编码常量集合（不加载动态数据）\n", path)
 			return nil
 		}
@@ -199,23 +191,20 @@ func LoadForbiddenCombosFromJSON(dataDir string) error {
 		return fmt.Errorf("解析禁忌组合表失败: %w", err)
 	}
 
-	forbiddenCombosExtraMu.Lock()
-	defer forbiddenCombosExtraMu.Unlock()
-	forbiddenCombosExtra = make(map[string]bool, len(combos))
+	m := make(map[string]bool, len(combos))
 	for _, c := range combos {
 		if c == "" {
 			continue
 		}
-		// 兼容正反序：双向都加（与 IsBadCombo 一致）
-		forbiddenCombosExtra[c] = true
+		// 兼容正反序：IsBadCombo 会同时查 forward/reverse，此处单向存即可
+		m[c] = true
 	}
+	updateGateSnapshot(func(s *gateSnapshot) { s.forbiddenExtra = m })
 	return nil
 }
 
 // SetForbiddenCombos 直接以组合表设置动态禁忌集合（SQLite 物料装载路径，ADR-008）
 func SetForbiddenCombos(combos []string) {
-	forbiddenCombosExtraMu.Lock()
-	defer forbiddenCombosExtraMu.Unlock()
 	m := make(map[string]bool, len(combos))
 	for _, c := range combos {
 		if c == "" {
@@ -223,12 +212,11 @@ func SetForbiddenCombos(combos []string) {
 		}
 		m[c] = true
 	}
-	forbiddenCombosExtra = m
+	// 整体替换（COW 发布新快照），禁止原地修改旧 map
+	updateGateSnapshot(func(s *gateSnapshot) { s.forbiddenExtra = m })
 }
 
 // ForbiddenComboCount 返回动态禁忌组合数量（诊断/测试用）
 func ForbiddenComboCount() int {
-	forbiddenCombosExtraMu.RLock()
-	defer forbiddenCombosExtraMu.RUnlock()
-	return len(forbiddenCombosExtra)
+	return len(currentGateSnapshot().forbiddenExtra)
 }
