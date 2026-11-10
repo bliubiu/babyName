@@ -108,7 +108,7 @@
 ### 数据持久化
 
 - data目录存储相关智慧经典字库json文件
-- 支持从json文件更新到sqlite（wal模式）数据库表持久化存储
+- 支持从json文件物料人工导入到sqlite（wal模式）数据库表持久化存储
 - 支持热更新
 
 - `modernc.org/sqlite` ：纯 Go 实现，无 CGO
