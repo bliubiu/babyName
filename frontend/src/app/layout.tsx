@@ -25,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" data-scroll-behavior="smooth">
       <head>
         <meta name="theme-color" content="#8B2323" />
         <meta name="description" content="基于中国传统玄学（八字五行、易经64卦、生肖属相）的智能起名服务" />

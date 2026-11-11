@@ -98,8 +98,8 @@ test('对比链路：生成 → 选 2 个加入对比 → 对比页综合分析�
   await screen.getByLabel(/^将 李\S+ 加入对比$/).first().click();
   await screen.getByLabel(/^将 李\S+ 加入对比$/).nth(1).click();
 
-  // 点击「对比 2 个」跳转对比页
-  await screen.getByRole('button', { name: '对比 2 个' }).click();
+  // 点击「开始对比 2 个」（常驻托盘按钮，选中后文本带数量，db464d6 起形态）
+  await screen.getByRole('button', { name: '开始对比 2 个' }).click();
   await expect(screen.getByRole('heading', { name: '名字对比' })).toBeVisible({ timeout: 30000 });
   await expect(screen.getByText('综合分析')).toBeVisible({ timeout: 30000 });
 });

@@ -9,6 +9,8 @@ import NameDetail from './NameDetail';
 interface NameCardProps {
   name: Name;
   index?: number;
+  /** 排名（0 = 榜首）：用于「荐」印章角标与分数的层级强调 */
+  rank?: number;
   isSelected?: boolean;
   isComparing?: boolean;
   isFavorite?: boolean;
@@ -28,6 +30,7 @@ const wuxingTagClass: Record<string, string> = {
 function NameCard({
   name,
   index,
+  rank,
   isSelected = false,
   isComparing = false,
   isFavorite = false,
@@ -77,49 +80,31 @@ function NameCard({
   const fullName = name.full_name || `${name.surname}${name.given_name}`;
   const score = Math.min(100, name.total_score ?? name.score);
 
-  // 多维度评分颜色映射（须在 dimsFromDetail 之前声明，避免 TDZ）
-  const colorMap: Record<string, string> = {
-    '五行匹配': 'bg-amber-500',
-    '音韵律动': 'bg-sky-500',
-    '字义内涵': 'bg-emerald-500',
-    '天地人三才': 'bg-violet-400',
-    '生肖适配': 'bg-rose-400',
-    '新颖度': 'bg-pink-400',
-    '诗词共现': 'bg-cyan-400',
-    '人名频率': 'bg-indigo-400',
-  };
-
-  // 多维度评分配置：优先使用 score_detail，回退到旧字段
-  const dimsFromDetail = name.score_detail?.map(d => ({
-    key: d.name,
-    label: d.name,
-    value: d.score,
-    color: colorMap[d.name] || 'bg-jade',
-  })) || [];
-
-  const dims = dimsFromDetail.length > 0 ? dimsFromDetail : [
-    { key: 'wuxing', label: '五行匹配', value: name.wuxing_score ?? 0, color: 'bg-amber-500' },
-    { key: 'yinyun', label: '音韵律动', value: name.yinyun_score ?? 0, color: 'bg-sky-500' },
-    { key: 'meaning', label: '字义内涵', value: name.meaning_score ?? 0, color: 'bg-emerald-500' },
-    { key: 'sancai', label: '天地人三才', value: name.sancai_score ?? 0, color: 'bg-violet-400' },
-    { key: 'zodiac', label: '生肖适配', value: name.zodiac_score ?? 0, color: 'bg-rose-400' },
-    { key: 'frequency', label: '人名频率', value: name.frequency_score ?? 0, color: 'bg-indigo-400' },
-  ];
-  const hasDimScores = dims.some(d => d.value > 0);
-
   return (
     // 容器仅保留鼠标点击的便捷路径；键盘/读屏用户走名字按钮（语义化选择控件），
     // 故此处有意不补键盘监听——不是遗漏（docs/30 §五 NameCard 重构）
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       className={cn(
-        'card cursor-pointer transition-all duration-300 animate-fade-in-up',
+        'card cursor-pointer transition-all duration-300 animate-fade-in-up relative overflow-hidden',
         isSelected && 'ring-2 ring-crimson/40 shadow-md',
         isComparing && 'ring-2 ring-gold/50 shadow-md',
+        rank === 0 && 'border-crimson/30',
       )}
       onClick={select}
     >
-      {/* 头部：名字与操作 */}
+      {/* 榜首「荐」印章角标：结果导向——最优解一眼可辨（docs/07 §印章元素） */}
+      {rank === 0 && (
+        <span
+          aria-label="榜首推荐"
+          className="absolute top-0 right-0 z-10 w-9 h-9 bg-crimson text-white font-serif text-base leading-none flex items-center justify-center rounded-bl-xl shadow-sm select-none"
+          style={{ borderTopRightRadius: '0.75rem' }}
+        >
+          荐
+        </span>
+      )}
+
+      {/* 头部：名字与操作。分数升为大号金棕数字——扫视列表时的第一信号 */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -154,16 +139,22 @@ function NameCard({
               {fullName}
             </button>
           </div>
-          <p className="text-xs text-jade/80 mt-0.5 ml-6">{name.pinyin}</p>
-          {/* 粤拼标注：后端始终透传（与粤语评分开关无关），无声拼数据时不渲染 */}
-          {name.jyutping && (
-            <p className="text-xs text-jade/70 mt-0.5 ml-6 font-mono tracking-wide" title={`粤拼：${name.jyutping}`}>
-              粤 {name.jyutping}
-            </p>
-          )}
+          <p className="text-xs text-jade/80 mt-0.5 ml-6">
+            {name.pinyin}
+            {name.jyutping && (
+              <span className="ml-2 text-jade/60 font-mono tracking-wide" title={`粤拼：${name.jyutping}`}>
+                粤 {name.jyutping}
+              </span>
+            )}
+          </p>
         </div>
 
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex items-center gap-1.5 flex-shrink-0 pr-1">
+          {/* 大号分数：列表页第一扫视信号（原为小 chip，权重不足） */}
+          <span className="flex items-baseline gap-0.5" aria-label={`综合评分 ${score.toFixed(1)} 分`}>
+            <span className="font-serif text-2xl leading-none text-gold-dark font-bold">{score.toFixed(1)}</span>
+            <span className="text-[10px] text-gold-dark/70">分</span>
+          </span>
           {onToggleFavorite && (
             <button
               onClick={handleFavoriteClick}
@@ -193,8 +184,8 @@ function NameCard({
         </div>
       </div>
 
-      {/* 标签与评分 */}
-      <div className="flex items-center gap-2 mt-3 ml-6">
+      {/* 标签行：性别 + 五行 + 推荐理由（最多 3 个，轻量扫视） */}
+      <div className="flex items-center flex-wrap gap-1.5 mt-2.5 ml-6">
         <span className="text-xs px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">
           {name.gender === 'male' ? '男' : '女'}
         </span>
@@ -203,10 +194,6 @@ function NameCard({
             {name.wuxing}
           </span>
         )}
-        <span className="text-xs px-2 py-0.5 bg-gold/10 text-gold-dark rounded-full font-medium">
-          {score.toFixed(1)}分
-        </span>
-        {/* 粤语分徽标：仅在开启粤语评分（后端返回非零粤语分）时展示 */}
         {name.cantonese_score !== undefined && name.cantonese_score > 0 && (
           <span
             className="text-xs px-2 py-0.5 bg-sky-500/10 text-sky-700 rounded-full font-medium"
@@ -215,46 +202,27 @@ function NameCard({
             粤语 {name.cantonese_score.toFixed(0)}
           </span>
         )}
+        {name.reasons?.slice(0, 3).map((reason, idx) => (
+          <span
+            key={idx}
+            className="text-xs px-2 py-0.5 bg-warm-white/60 text-jade/80 rounded-full truncate max-w-[7.5rem]"
+            title={reason}
+          >
+            {reason}
+          </span>
+        ))}
       </div>
 
-      {/* 寓意：设计稿里卡片的核心信息，原先只在展开详情里出现 */}
+      {/* 寓意摘要：两行截断——考据长文属于点击展开后的详情（NameDetail），
+          列表页保持扫视密度（docs/44 结果导向优化） */}
       {name.meaning && (
-        <p className="text-xs text-ink-light/80 mt-3 ml-6">
+        <p className="text-xs text-ink-light/80 mt-2.5 ml-6 leading-relaxed line-clamp-2">
           寓意：{name.meaning}
         </p>
       )}
 
-      {/* 理由标签 */}
-      {name.reasons && name.reasons.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-3 ml-6">
-          {name.reasons.map((reason, idx) => (
-            <span
-              key={idx}
-              className="text-xs px-2 py-0.5 bg-warm-white/60 text-jade/80 rounded-full"
-            >
-              {reason}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* 多维度评分条（仅当后端返回了新评分字段时展示） */}
-      {hasDimScores && (
-        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 ml-6">
-          {dims.map(d => (
-            <div key={d.key} className="flex items-center gap-1.5">
-              <span className="text-xs text-jade/80 leading-none">{d.label}</span>
-              <div className="w-12 h-1.5 bg-paper/40 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${d.color} transition-all duration-500`}
-                  style={{ width: `${Math.min(100, d.value)}%` }}
-                />
-              </div>
-              <span className="text-xs text-ink-light/70 leading-none font-medium">{d.value.toFixed(0)}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* 八维评分条已从卡片常态移除：NameDetail 展开态含完整评分分解（含依据文字），
+          列表页重复渲染 8 条进度条使卡片高度近 3 倍、网格参差（docs/44 结果导向优化） */}
 
       {/* 就地展开详情（结果页唯一详情通道） */}
       {showDetail && (

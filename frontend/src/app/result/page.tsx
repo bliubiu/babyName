@@ -544,55 +544,53 @@ export default function ResultPage() {
           onExportPDF={() => pdfMutation.mutate(buildReportPayload())}
         />
 
-        {/* 结果概览：关键结论常显，命理长文按需下钻 */}
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        {/* 结果导向首屏：标题 + 候选统计 + 命理要点一行带，动作收进列表标题行。
+            原实现标题区/动作条/chips 三层横带把候选名挤出首屏（docs/44 UI 优化） */}
+        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
           <div className="min-w-0">
             <h1 className="font-serif text-xl md:text-2xl text-ink">起名结果</h1>
-            <p className="text-xs text-ink-light/80 mt-1">
+            <p className="text-xs text-ink-light/80 mt-0.5">
               共 {names.length} 个候选 · 已展示 {topNames.length} 个
             </p>
           </div>
           <button
             type="button"
             onClick={() => document.getElementById('analysis-sections')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            className="shrink-0 min-h-[44px] px-3 py-1.5 bg-jade/10 text-jade rounded-xl text-xs hover:bg-jade/20 transition-all duration-200"
+            className="shrink-0 min-h-[40px] px-3 py-1.5 bg-jade/10 text-jade rounded-xl text-xs hover:bg-jade/20 transition-all duration-200"
           >
             查看命理依据 ↓
           </button>
         </div>
 
-        {/* 统一动作区：原型里的导出 PDF / 分享 / 重新起名，全部接前后端 */}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-paper/60 bg-warm-white/70 px-3 py-2.5">
-          <p className="text-xs text-jade/80">保存、发给家人，或按原条件再生成一批</p>
-          <ResultActions
-            onExportPDF={() => pdfMutation.mutate(buildReportPayload())}
-            onShare={() => shareMutation.mutate(buildShareSnapshot())}
-            onRegenerate={() => regenerateMutation.mutate()}
-            exporting={pdfMutation.isPending}
-            sharing={shareMutation.isPending}
-            regenerating={regenerateMutation.isPending}
-          />
-        </div>
-        <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto mb-4 flex flex-wrap gap-2">
-          <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">日主 {bazi.rishou}</span>
-          <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">喜用神 {bazi.xiyongshen.join('、')}</span>
-          <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">{zodiac}</span>
+        {/* 命理要点：紧凑单行徽章（结论常显，长文按需下钻） */}
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">日主 {bazi.rishou}</span>
+          <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">喜用神 {bazi.xiyongshen.join('、')}</span>
+          <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">{zodiac}</span>
           {hexagram && (
-            <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">第{hexagram.number}卦 {hexagram.name}</span>
+            <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">第{hexagram.number}卦 {hexagram.name}</span>
           )}
           {tiyong?.verdict && (
-            <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">体用{tiyong.verdict}</span>
+            <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">体用{tiyong.verdict}</span>
           )}
           {ziwei?.five_elements && (
-            <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">{ziwei.five_elements}</span>
+            <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">{ziwei.five_elements}</span>
           )}
         </div>
 
-        {/* 名字列表：结果优先，紧跟概览进入首屏 */}
+        {/* 名字列表：结果优先，紧跟概览进入首屏。导出/分享/重新起名收进标题行 */}
         <section id="name-list" className="scroll-mt-4 mb-6 md:mb-8">
-          <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+          <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
             <h2 className="section-title">{exploreBatch ? '换一批' : '推荐名字'}</h2>
             <div className="flex flex-wrap items-center gap-2">
+              <ResultActions
+                onExportPDF={() => pdfMutation.mutate(buildReportPayload())}
+                onShare={() => shareMutation.mutate(buildShareSnapshot())}
+                onRegenerate={() => regenerateMutation.mutate()}
+                exporting={pdfMutation.isPending}
+                sharing={shareMutation.isPending}
+                regenerating={regenerateMutation.isPending}
+              />
               {exploreBatch && (
                 <button
                   onClick={() => { setExploreBatch(null); setSelectedName(null); setCompareNames([]); setVisibleCount(PAGE_SIZE); }}
@@ -710,6 +708,7 @@ export default function ResultPage() {
                     key={nameKey(name)}
                     name={name}
                     index={index}
+                    rank={index}
                     isSelected={selectedName === nameKey(name)}
                     isComparing={compareNames.includes(nameKey(name))}
                     isFavorite={favoriteStatus[nameKey(name)] || false}
