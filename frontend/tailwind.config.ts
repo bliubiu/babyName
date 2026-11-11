@@ -70,6 +70,8 @@ const config: Config = {
         'ink-spread': 'inkSpread 1.2s ease-out forwards',
         'ink-bleed': 'inkBleed 1.5s ease-out forwards',
         'pattern-fade': 'patternFade 2s ease-out forwards',
+        // 收藏心形填充反馈：切换为实心时短促放大回弹
+        'heart-pop': 'heartPop 0.32s ease-out both',
       },
       keyframes: {
         fadeInUp: {
@@ -122,6 +124,11 @@ const config: Config = {
         patternFade: {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' },
+        },
+        heartPop: {
+          '0%': { transform: 'scale(0.6)', opacity: '0.4' },
+          '60%': { transform: 'scale(1.2)', opacity: '1' },
+          '100%': { transform: 'scale(1)', opacity: '1' },
         },
       },
     },

@@ -234,7 +234,7 @@ export default function FullReport({ data, onClose, selectedNameIndex }: FullRep
               className={`flex-1 py-3 text-sm font-medium transition-colors ${
                 activeTab === tab.id
                   ? 'text-crimson border-b-2 border-crimson'
-                  : 'text-ink-light/60 hover:text-ink'
+                  : 'text-ink-light/70 hover:text-ink'
               }`}
             >
               {tab.label}
@@ -303,7 +303,7 @@ export default function FullReport({ data, onClose, selectedNameIndex }: FullRep
               </h3>
               {data.names.length === 0 ? (
                 <div className="text-center py-12 border-2 border-dashed border-paper rounded-lg bg-warm-white">
-                  <p className="text-ink-light/60">暂无推荐名字</p>
+                  <p className="text-ink-light/70">暂无推荐名字</p>
                 </div>
               ) : (
                 data.names.map((name, index) => (
@@ -319,7 +319,7 @@ export default function FullReport({ data, onClose, selectedNameIndex }: FullRep
                       </div>
                     </div>
                     {name.jyutping && (
-                      <p className="text-[10px] text-jade/50 font-mono tracking-wide mb-2">粤 {name.jyutping}</p>
+                      <p className="text-xs text-jade/70 font-mono tracking-wide mb-2">粤 {name.jyutping}</p>
                     )}
                     {(name.wuxing_score ?? 0) > 0 && (
                       <div className="flex flex-wrap gap-2 mt-2">
@@ -331,11 +331,11 @@ export default function FullReport({ data, onClose, selectedNameIndex }: FullRep
                           { label: '生肖', val: name.zodiac_score, color: 'bg-rose-400' },
                         ].map(dim => (dim.val ?? 0) > 0 ? (
                           <div key={dim.label} className="flex items-center gap-1.5">
-                            <span className="text-[10px] text-jade/60">{dim.label}</span>
+                            <span className="text-xs text-jade/70">{dim.label}</span>
                             <div className="w-10 h-1.5 bg-paper/40 rounded-full overflow-hidden">
                               <div className={`h-full rounded-full ${dim.color}`} style={{ width: `${Math.min(100, dim.val ?? 0)}%` }} />
                             </div>
-                            <span className="text-[10px] text-ink-light/50">{(dim.val ?? 0).toFixed(0)}</span>
+                            <span className="text-xs text-ink-light/70">{(dim.val ?? 0).toFixed(0)}</span>
                           </div>
                         ) : null)}
                       </div>

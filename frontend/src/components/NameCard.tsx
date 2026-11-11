@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils';
 import { Name } from '@/types';
 import { IconHeart, IconHeartFilled, IconChevronDown, IconChevronUp } from './Icons';
-import { memo } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import NameDetail from './NameDetail';
 
 interface NameCardProps {
@@ -39,6 +39,17 @@ function NameCard({
   // 原先卡片内部另有一份 showDetail，与页面底部 <NameDetail> 并存，
   // 点名字的反馈发生在视口外，还可能同时渲染两份详解。
   const showDetail = isSelected;
+  const detailRef = useRef<HTMLDivElement>(null);
+
+  // 就地展开后把详情滚进视口：卡片在长列表中时，反馈不能发生在屏幕外。
+  // 收起不滚动；测试环境（happy-dom）可能没有 scrollIntoView，做能力检测。
+  useEffect(() => {
+    if (!isSelected) return;
+    const node = detailRef.current;
+    if (node && typeof node.scrollIntoView === 'function') {
+      node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [isSelected]);
 
   const select = () => {
     if (onSelect && index !== undefined) onSelect(index);
@@ -158,18 +169,23 @@ function NameCard({
               onClick={handleFavoriteClick}
               aria-label={isFavorite ? `取消收藏 ${fullName}` : `收藏 ${fullName}`}
               className={`transition-all duration-200 p-1.5 rounded-full hover:scale-110 ${
-                isFavorite ? 'text-seal-red' : 'text-ink-light/60 hover:text-seal-red'
+                isFavorite ? 'text-seal-red' : 'text-ink-light/70 hover:text-seal-red'
               }`}
               title={isFavorite ? '取消收藏' : '收藏'}
             >
-              {isFavorite ? <IconHeartFilled size={18} /> : <IconHeart size={18} />}
+              <span
+                key={isFavorite ? 'filled' : 'outline'}
+                className={isFavorite ? 'inline-flex animate-heart-pop' : 'inline-flex'}
+              >
+                {isFavorite ? <IconHeartFilled size={18} /> : <IconHeart size={18} />}
+              </span>
             </button>
           )}
           <button
             onClick={handleToggleDetail}
             aria-label={showDetail ? `收起 ${fullName} 详情` : `查看 ${fullName} 详情`}
             aria-expanded={showDetail}
-            className="transition-all duration-200 p-1.5 rounded-full text-ink-light/60 hover:text-crimson hover:scale-110"
+            className="transition-all duration-200 p-1.5 rounded-full text-ink-light/70 hover:text-crimson hover:scale-110"
             title={showDetail ? '收起详情' : '查看详情'}
           >
             {showDetail ? <IconChevronUp size={18} /> : <IconChevronDown size={18} />}
@@ -200,6 +216,13 @@ function NameCard({
           </span>
         )}
       </div>
+
+      {/* 寓意：设计稿里卡片的核心信息，原先只在展开详情里出现 */}
+      {name.meaning && (
+        <p className="text-xs text-ink-light/80 mt-3 ml-6">
+          寓意：{name.meaning}
+        </p>
+      )}
 
       {/* 理由标签 */}
       {name.reasons && name.reasons.length > 0 && (
@@ -235,7 +258,7 @@ function NameCard({
 
       {/* 就地展开详情（结果页唯一详情通道） */}
       {showDetail && (
-        <div className="mt-4 pt-4 border-t border-paper/30 animate-fade-in">
+        <div ref={detailRef} className="mt-4 pt-4 border-t border-paper/30 animate-fade-in">
           <NameDetail name={name} />
         </div>
       )}

@@ -24,13 +24,13 @@ function SyllableChip({ char, jp }: { char?: string; jp: JyutpingSyllable }) {
       {char && <span className="text-sm text-ink font-serif">{char}</span>}
       <span className="text-xs text-jade font-mono tracking-wide">{jp.raw}</span>
       {jp.tone > 0 ? (
-        <span className={`text-[10px] px-1.5 py-0.5 rounded-full leading-none ${
+        <span className={`text-xs px-1.5 py-0.5 rounded-full leading-none ${
           cls === '平' ? 'bg-jade/10 text-jade' : 'bg-amber-500/10 text-amber-600'
         }`}>
           {toneLabel(jp.tone)}
         </span>
       ) : (
-        <span className="text-[10px] text-ink-light/40">无声调</span>
+        <span className="text-xs text-ink-light/70">无声调</span>
       )}
     </div>
   );
@@ -130,7 +130,7 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
 
       {/* 本机未安装粤语语音包时给出明确提示，避免用户误以为功能损坏 */}
       {ttsStatus?.state === 'no-voice' && ttsStatus.message && (
-        <p className="text-[10px] text-amber-600/80 leading-relaxed">{ttsStatus.message}</p>
+        <p className="text-xs text-amber-600/80 leading-relaxed">{ttsStatus.message}</p>
       )}
 
       {/* 粤拼标注（逐字音节 + 声调） */}
@@ -141,7 +141,7 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
               <SyllableChip key={i} char={aligned ? chars[i] : undefined} jp={jp} />
             ))}
           </div>
-          <p className="text-[10px] text-jade/60 leading-relaxed">
+          <p className="text-xs text-jade/70 leading-relaxed">
             粤拼标注（Jyutping）以数字标注声调：1 阴平（高平）、2 阴上（高升）、3 阴去（中平）、
             4 阳平（低降）、5 阳上（低升）、6 阳去（中平）；平声（1/2）与仄声（3-6）交替
             是粤语音律评分的基础。以 -p/-t/-k 收尾的为入声，发音短促急收。
@@ -152,7 +152,7 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
       {/* 粤语分明细（粤语音律 + 粤语谐音） */}
       {hasCantoneseScore && (
         <div className="space-y-2.5 pt-3 border-t border-paper/30">
-          <p className="text-[11px] text-jade/60 tracking-wider">粤语分分解</p>
+          <p className="text-xs text-jade/70 tracking-wider">粤语分分解</p>
           <div className="score-bar mb-2">
             <div className="score-bar-fill" style={{ width: `${Math.min(100, cantoneseScore)}%` }} />
           </div>
@@ -167,15 +167,15 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
                       style={{ width: `${Math.min(100, d.score)}%` }}
                     />
                   </div>
-                  <span className="text-xs text-ink-light/50 w-8 text-right font-medium">{d.score.toFixed(0)}</span>
+                  <span className="text-xs text-ink-light/70 w-8 text-right font-medium">{d.score.toFixed(0)}</span>
                 </div>
                 {d.detail && (
-                  <p className="text-[10px] text-jade/60 ml-16 leading-relaxed">{d.detail}</p>
+                  <p className="text-xs text-jade/70 ml-16 leading-relaxed">{d.detail}</p>
                 )}
               </div>
             ))
           ) : (
-            <p className="text-[10px] text-jade/60 ml-16">粤语音律 + 粤语谐音加权聚合（粤语分已并入综合分）</p>
+            <p className="text-xs text-jade/70 ml-16">粤语音律 + 粤语谐音加权聚合（粤语分已并入综合分）</p>
           )}
         </div>
       )}

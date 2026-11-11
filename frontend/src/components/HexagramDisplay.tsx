@@ -36,7 +36,7 @@ export default function HexagramDisplay({
 
   if (!hexagram) {
     return (
-      <div className="text-center py-6 text-ink-light/40 text-sm">
+      <div className="text-center py-6 text-ink-light/70 text-sm">
         暂无卦象数据
       </div>
     );

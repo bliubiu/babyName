@@ -48,6 +48,32 @@ describe('NameCard 单一详情通道', () => {
     expect(onSelect).toHaveBeenCalledTimes(2);
   });
 
+  it('展开详情后把详情滚进视口（反馈不落在屏幕外）', () => {
+    const scrollSpy = vi.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollSpy,
+    });
+
+    const { rerender } = render(<NameCard name={name} index={0} onSelect={vi.fn()} isSelected={false} />);
+    expect(scrollSpy).not.toHaveBeenCalled();
+
+    rerender(<NameCard name={name} index={0} onSelect={vi.fn()} isSelected />);
+    expect(scrollSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
+  });
+
+  it('收藏态心形带填充回弹动效', () => {
+    // 心形按钮只在传入 onToggleFavorite 时渲染，夹具必须带上
+    const onToggleFavorite = vi.fn();
+    const { container, rerender } = render(
+      <NameCard name={name} index={0} isFavorite={false} onToggleFavorite={onToggleFavorite} />
+    );
+    expect(container.querySelector('.animate-heart-pop')).toBeNull();
+
+    rerender(<NameCard name={name} index={0} isFavorite onToggleFavorite={onToggleFavorite} />);
+    expect(container.querySelector('.animate-heart-pop')).not.toBeNull();
+  });
+
   it('收藏与对比操作不会连带切换详情', () => {
     const onSelect = vi.fn();
     const onToggleFavorite = vi.fn();
@@ -67,5 +93,10 @@ describe('NameCard 单一详情通道', () => {
     fireEvent.click(screen.getByRole('checkbox'));
     expect(onToggleCompare).toHaveBeenCalledWith(0);
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('卡片常显寓意文字（设计稿核心信息）', () => {
+    render(<NameCard name={{ ...name, meaning: '沐泽承辰' }} index={0} />);
+    expect(screen.getByText('寓意：沐泽承辰')).toBeInTheDocument();
   });
 });

@@ -5,6 +5,32 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.11.0]
+
+**结果页首屏示意稿对齐与交互残留补齐（前端）**
+
+### 信息架构 / 文案
+- 顶部计数改为「共 N 个候选 · 已展示 X 个」（X 为真实可见条数），「加载更多」改「加载更多 X / N」，同一行补「八字分析 · 卦象详解 · 紫微斗数（默认收起）」下钻入口；全部展示完时给出「已展示全部 N 个候选」。
+- 快捷筛选 chips 与「排序」（综合分 / 笔画 / 五行）合并为同一条横向工具带；标题行只保留换一批 / 完整报告等操作；概览 chips 补「体用吉」。`docs/06 §3.1` 同步。
+
+### 交互反馈
+- 新增 `CompareTray` 吸底**常驻**托盘：0 选中也保留「开始对比」入口并提示至少选 2 个，已选名字以 chip 展示、可单个移除，移除按钮触控目标 44px，上限 4 个。
+- 卡片详情就地展开后自动 `scrollIntoView`，让点击反馈落在视口内（上一批只做了 toggle，反馈仍在视口外）。
+- 收藏切换为实心心形时带填充回弹微动效（`tailwind.config.ts` 注册 `heart-pop` 关键帧），`prefers-reduced-motion` 沿用 `globals.css` 全局降级。
+- 视觉复核补两处示意稿差异：`NameCard` 卡片常显「寓意」文字（原先只在展开详情里）；`NameFilter`「更多筛选」去掉 `.card` 居中窄容器改为全宽横带，消除两侧留白。
+
+### 可读性 / 代码质量
+- 结果页链路子组件（NameDetail / FullReport / HexagramDisplay / HexagramDetailDisplay / HexagramLines / ZiweiDisplay / CantoneseScore / RiskList）10~11px 小字统一提到 12px，文字色 `/40~60` 提到 `/70~80`；只改文字类，不动背景与边框透明度，未扩散到黄历 / 收藏等无关页面。
+- 清掉上一批引入的两条 `react-hooks/set-state-in-effect` 警告（改为渲染期 `useRef` 记录 / 派生状态），ESLint 由 29 降到 **27 warning**。
+- `docs/07 §0.3` 的全站暗色主题与对比度仍保持「仅登记、未实施」，本批只覆盖结果页链路。
+
+### 验证
+- 前端 `verify-frontend.sh`：tsc PASS、ESLint **0 error / 27 warning**（阈值 34）、Vitest **21 文件 151 用例** PASS（新增 `CompareTray` 4 例、卡片寓意 / 心形动效 2 例、NameFilter 全宽 1 例、折叠保留 DOM 1 例）。
+- `next build`：Compiled successfully，**12/12** 静态页；`/result` 19055B、`/share` 12341B 与线上字节完全一致（排除旧服务假 pass）。
+- 上线核验 **21/21 PASS**：新文案 / `heart-pop` 关键帧 / `scrollIntoView` 均在客户端 chunk 与 CSS 中，分享创建与读取正常。
+- 注入演示数据的 1440×1000 无头截图复核：计数、概览 chips、筛选排序同行、全宽更多筛选、卡片寓意、加载更多行提示、常驻托盘「开始对比」全部对齐，无错位或重叠。
+- Go 侧回归 `SKIP_SERVER=1 verify-quality.sh`：**全部质量防线通过**（vet / 单测 / gate_audit / dim_audit 147/147 / 核心九包覆盖率 76.7%~94.9%）。本批未改 Go 代码。
+
 ## [2026.11.10.10]
 
 **结果页宽屏布局 + 动作区前后端接线 / 分享能力 / PII 悬空声明撤销**

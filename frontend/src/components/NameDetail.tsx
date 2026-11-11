@@ -116,7 +116,7 @@ export default function NameDetail({ name }: NameDetailProps) {
                 </span>
               </p>
               {showPoetryDetail && name.poetry_full_text && (
-                <div className="ml-4 mt-2 p-3 bg-paper/30 rounded-lg border border-paper/40 text-[11px] leading-relaxed">
+                <div className="ml-4 mt-2 p-3 bg-paper/30 rounded-lg border border-paper/40 text-xs leading-relaxed">
                   <p className="font-medium text-jade mb-1">
                     {name.poetry_author && name.poetry_author !== '佚名' ? (
                       <>{name.poetry_author}｜</>
@@ -168,7 +168,7 @@ export default function NameDetail({ name }: NameDetailProps) {
         {/* 各维度评分分解（含依据文字） */}
         {scoreDetails.length > 0 && (
           <div className="space-y-2.5">
-            <p className="text-[11px] text-jade/60 tracking-wider">评分分解</p>
+            <p className="text-xs text-jade/70 tracking-wider">评分分解</p>
             {scoreDetails.map(d => {
               const color = colorMap[d.name] || 'bg-gray-400';
               return (
@@ -181,10 +181,10 @@ export default function NameDetail({ name }: NameDetailProps) {
                         style={{ width: `${Math.min(100, d.score)}%` }}
                       />
                     </div>
-                    <span className="text-xs text-ink-light/50 w-8 text-right font-medium">{d.score.toFixed(0)}</span>
+                    <span className="text-xs text-ink-light/70 w-8 text-right font-medium">{d.score.toFixed(0)}</span>
                   </div>
                   {d.detail && (
-                    <p className="text-[10px] text-jade/60 ml-16 leading-relaxed">
+                    <p className="text-xs text-jade/70 ml-16 leading-relaxed">
                       {d.detail}
                     </p>
                   )}

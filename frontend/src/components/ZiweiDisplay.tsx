@@ -29,14 +29,14 @@ function brightnessTag(b: string | undefined) {
   if (!b) return null;
   const cls = BRIGHTNESS_STYLE[b] ?? 'bg-slate-400/15 text-slate-500';
   return (
-    <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] leading-none ${cls}`}>{b}</span>
+    <span className={`ml-1 px-1.5 py-0.5 rounded text-xs leading-none ${cls}`}>{b}</span>
   );
 }
 
 export default function ZiweiDisplay({ ziwei, embedded = false }: ZiweiDisplayProps) {
   if (!ziwei) {
     return (
-      <div className="text-center py-6 text-ink-light/40 text-sm">
+      <div className="text-center py-6 text-ink-light/70 text-sm">
         暂无紫微斗数排盘数据
       </div>
     );

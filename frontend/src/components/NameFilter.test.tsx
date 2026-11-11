@@ -23,6 +23,15 @@ describe('NameFilter 受控筛选', () => {
     expect(screen.getByText('(30/60)')).toBeInTheDocument();
   });
 
+  it('高级筛选为全宽紧凑工具条，不再使用居中窄卡片', () => {
+    const { container } = render(
+      <NameFilter filters={{}} onFilterChange={vi.fn()} totalNames={60} filteredCount={60} />
+    );
+    const root = container.firstElementChild as HTMLElement;
+    expect(root).not.toHaveClass('card');
+    expect(root.className).toContain('rounded-xl');
+  });
+
   it('清除所有筛选上报空对象，快捷 chips 与高级面板共享一份条件', () => {
     const onFilterChange = vi.fn();
     render(

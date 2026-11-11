@@ -38,7 +38,7 @@ export default function RiskList({ risks, title = '风险体检', embedded = fal
   const list = (
     <ul className="space-y-2.5">
       {items.length === 0 ? (
-        <li className="text-sm text-ink-light/60">未发现需要留意的风险项</li>
+        <li className="text-sm text-ink-light/70">未发现需要留意的风险项</li>
       ) : (
         items.map((item, idx) => (
           <li key={idx} className="flex items-start gap-3">
@@ -55,7 +55,7 @@ export default function RiskList({ risks, title = '风险体检', embedded = fal
   if (embedded) {
     return (
       <div className="space-y-2">
-        <p className={`text-[11px] tracking-wider ${riskLevelSummary[level].cls}`}>
+        <p className={`text-xs tracking-wider ${riskLevelSummary[level].cls}`}>
           {riskLevelSummary[level].label}
         </p>
         {list}

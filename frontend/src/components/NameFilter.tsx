@@ -63,10 +63,12 @@ export default function NameFilter({ filters, onFilterChange, totalNames, filter
 
   const hasActiveFilters = filters.gender || filters.wuxing || filters.minStrokes || filters.maxStrokes || filters.minFrequencyTier || filters.maxFrequencyTier;
 
+  // 高级筛选不再是居中窄卡片：与上方筛选工具带同宽，收起时只占一行，
+  // 避免结果页中部出现「一条窄卡 + 两侧大片空白」（设计稿对齐）。
   return (
-    <div className="card mb-4 md:mb-6">
+    <div className="mb-2 rounded-xl border border-paper/60 bg-warm-white/60 px-3 py-1.5">
       <div className="flex items-center justify-between">
-        <h3 className="font-serif text-lg md:text-xl text-ink">
+        <h3 className="text-sm font-medium text-ink">
           更多筛选
           {hasActiveFilters && (
             <span className="ml-2 text-sm text-jade">
@@ -85,7 +87,7 @@ export default function NameFilter({ filters, onFilterChange, totalNames, filter
       </div>
 
       {isExpanded && (
-        <div className="mt-4 space-y-4">
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <p className="block text-sm text-jade mb-2">性别</p>
             <div className="flex gap-3">

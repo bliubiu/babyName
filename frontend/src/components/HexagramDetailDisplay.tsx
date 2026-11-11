@@ -102,7 +102,7 @@ export default function HexagramDetailDisplay({
       {!embedded && (
         <div className="flex items-center gap-3 mb-4">
           <h3 className="section-title">卦象详解</h3>
-          <span className="text-xs text-ink-light/60">
+          <span className="text-xs text-ink-light/70">
             本 · 互 · 变 三卦并参，第{detail.moving_yao}爻动
           </span>
         </div>
@@ -110,7 +110,7 @@ export default function HexagramDetailDisplay({
       {embedded && (
         <div className="flex items-center gap-2 mb-3">
           <span className="text-xs text-jade font-medium">{embeddedTitle}</span>
-          <span className="text-[11px] text-ink-light/50">
+          <span className="text-xs text-ink-light/70">
             本 · 互 · 变 并参，第{detail.moving_yao}爻动
           </span>
         </div>
@@ -133,7 +133,7 @@ export default function HexagramDetailDisplay({
               >
                 {slot.label}
               </span>
-              <span className="text-[10px] text-ink-light/50 hidden md:inline">
+              <span className="text-xs text-ink-light/70 hidden md:inline">
                 {SLOT_LABELS[slot.key]}
               </span>
             </div>
@@ -149,7 +149,7 @@ export default function HexagramDetailDisplay({
               )}
             </div>
             {slot.symbol && (
-              <div className="text-xs text-ink-light/50 mt-0.5" aria-hidden>
+              <div className="text-xs text-ink-light/70 mt-0.5" aria-hidden>
                 {slot.symbol}
               </div>
             )}

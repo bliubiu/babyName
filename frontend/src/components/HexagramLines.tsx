@@ -73,7 +73,7 @@ export default function HexagramLines({
               <text
                 x={BAR_W + 6}
                 y={y + BAR_H - 2}
-                className="fill-crimson text-[11px] font-bold"
+                className="fill-crimson text-xs font-bold"
               >
                 {isYangYao(value) ? '〇' : '×'}
               </text>

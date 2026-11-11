@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState, useEffect, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { IconChevronDown } from './Icons';
 
 export interface CollapsibleSectionProps {
@@ -47,11 +47,15 @@ export default function CollapsibleSection({
   const isOpen = isControlled ? open : internalOpen;
   const contentId = useId();
   // 懒挂载：首屏收起的区块不下载 lazy chunk；展开过一次后才允许常驻。
-  // effect 只在上翻为展开时写一次，且写入值恒为 true，不会形成级联渲染循环。
+  // 用 React 官方「props 变化时调整 state」模式在渲染期同步，替代 effect 里
+  // 同步 setState（react-hooks/set-state-in-effect）：prevOpen 守卫保证只在
+  // open 真正翻转时触发一次重渲染。
+  const [prevOpen, setPrevOpen] = useState(isOpen);
   const [hasOpened, setHasOpened] = useState(isOpen);
-  useEffect(() => {
+  if (isOpen !== prevOpen) {
+    setPrevOpen(isOpen);
     if (isOpen) setHasOpened(true);
-  }, [isOpen]);
+  }
 
   const toggle = () => {
     const next = !isOpen;

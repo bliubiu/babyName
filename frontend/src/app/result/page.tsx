@@ -15,6 +15,7 @@ import { buildGenerateRequest } from '@/lib/generateRequest';
 import type { FavoritesResponse } from '@/types/api/favorites';
 import Navigation from '@/components/Navigation';
 import ResultActions from '@/components/ResultActions';
+import CompareTray from '@/components/CompareTray';
 import type { NameFilters } from '@/components/NameFilter';
 import CollapsibleSection from '@/components/CollapsibleSection';
 
@@ -171,6 +172,8 @@ export default function ResultPage() {
         f => f.surname === name.surname && f.given_name === name.given_name
       );
     }
+    // 有 sameFavoriteStatus 守卫：内容不变时返回原引用，不会产生级联渲染。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFavoriteStatus(prev => (sameFavoriteStatus(prev, status) ? prev : status));
   }, [displayList, cachedFavorites]);
 
@@ -546,7 +549,7 @@ export default function ResultPage() {
           <div className="min-w-0">
             <h1 className="font-serif text-xl md:text-2xl text-ink">起名结果</h1>
             <p className="text-xs text-ink-light/80 mt-1">
-              共 {names.length} 个候选 · 当前列表 {displayList.length} 个
+              共 {names.length} 个候选 · 已展示 {topNames.length} 个
             </p>
           </div>
           <button
@@ -577,6 +580,9 @@ export default function ResultPage() {
           {hexagram && (
             <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">第{hexagram.number}卦 {hexagram.name}</span>
           )}
+          {tiyong?.verdict && (
+            <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">体用{tiyong.verdict}</span>
+          )}
           {ziwei?.five_elements && (
             <span className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">{ziwei.five_elements}</span>
           )}
@@ -587,16 +593,6 @@ export default function ResultPage() {
           <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
             <h2 className="section-title">{exploreBatch ? '换一批' : '推荐名字'}</h2>
             <div className="flex flex-wrap items-center gap-2">
-              <select
-                aria-label="排序方式"
-                value={sortKey}
-                onChange={(e) => changeSort(e.target.value as SortKey)}
-                className="min-h-[44px] px-3 py-1.5 bg-white text-ink border border-paper/60 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-crimson/30"
-              >
-                <option value="score">综合分从高到低</option>
-                <option value="strokes">笔画从少到多</option>
-                <option value="wuxing">按五行分组</option>
-              </select>
               {exploreBatch && (
                 <button
                   onClick={() => { setExploreBatch(null); setSelectedName(null); setCompareNames([]); setVisibleCount(PAGE_SIZE); }}
@@ -623,9 +619,10 @@ export default function ResultPage() {
             </div>
           </div>
 
-          {/* 快捷筛选：常显可点，避免所有条件藏在默认收起的面板里 */}
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <span className="text-xs text-jade/80 mr-1">快捷筛选</span>
+          {/* 筛选 + 排序同一条工具带：首屏少占一行，右侧排序对齐设计稿 */}
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-jade/80 mr-1">筛选</span>
             {(['male', 'female'] as const).map(g => (
               <button
                 key={g}
@@ -662,6 +659,20 @@ export default function ResultPage() {
                 清除全部
               </button>
             )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-jade/80">排序</span>
+              <select
+                aria-label="排序方式"
+                value={sortKey}
+                onChange={(e) => changeSort(e.target.value as SortKey)}
+                className="min-h-[44px] px-3 py-1.5 bg-white text-ink border border-paper/60 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-crimson/30"
+              >
+                <option value="score">综合分 ↓</option>
+                <option value="strokes">笔画 ↑</option>
+                <option value="wuxing">五行分组</option>
+              </select>
+            </div>
           </div>
 
           <Suspense fallback={<div className="p-4 text-jade/80 text-sm">加载筛选器...</div>}>
@@ -711,17 +722,26 @@ export default function ResultPage() {
             </Suspense>
           )}
 
-          {visibleCount < displayList.length && (
-            <div className="text-center mt-5">
+          <div className="flex flex-wrap items-center justify-between gap-2 mt-5">
+            {visibleCount < displayList.length ? (
               <button
                 type="button"
                 onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
-                className="min-h-[44px] px-5 py-2 bg-jade/10 text-jade rounded-xl text-sm hover:bg-jade/20 transition-all duration-200"
+                className="min-h-[44px] px-4 py-2 bg-jade/10 text-jade rounded-xl text-sm hover:bg-jade/20 transition-all duration-200"
               >
-                加载更多（已展示 {topNames.length} / {displayList.length}）
+                加载更多 {topNames.length} / {displayList.length}
               </button>
-            </div>
-          )}
+            ) : (
+              <span className="text-xs text-jade/80">已展示全部 {displayList.length} 个候选</span>
+            )}
+            <button
+              type="button"
+              onClick={() => document.getElementById('analysis-sections')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="min-h-[44px] px-2 text-xs text-jade/80 hover:text-crimson transition-colors"
+            >
+              八字分析 · 卦象详解 · 紫微斗数（默认收起）↓
+            </button>
+          </div>
         </section>
 
         {/* 命理依据：三块默认收起，结论已在概览条常显 */}
@@ -845,44 +865,13 @@ export default function ResultPage() {
           </CollapsibleSection>
         )}
 
-        {/* 吸底对比托盘：选中即常显，避免用户勾选后找不到入口 */}
-        {compareNames.length > 0 && (
-          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-paper/60 bg-warm-white-light/95 backdrop-blur-sm">
-            <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-jade/80 mr-1">已选 {compareNames.length}/4</span>
-              {compareNames.map(key => (
-                <span
-                  key={key}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-warm-white text-ink border border-paper/60 rounded-xl text-xs"
-                >
-                  {key.split(':').join('')}
-                  <button
-                    type="button"
-                    onClick={() => setCompareNames(prev => prev.filter(k => k !== key))}
-                    aria-label={`移出对比 ${key.split(':').join('')}`}
-                    className="min-w-[32px] min-h-[32px] -my-1 -mr-1 text-jade hover:text-crimson transition-colors"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-              <button
-                type="button"
-                onClick={() => setCompareNames([])}
-                className="min-h-[44px] px-2 text-xs text-jade/80 hover:text-crimson transition-colors"
-              >
-                清空
-              </button>
-              <button
-                type="button"
-                onClick={handleCompare}
-                className="ml-auto min-h-[44px] px-4 py-1.5 bg-crimson text-white rounded-xl text-sm hover:bg-crimson-light transition-all duration-200"
-              >
-                对比 {compareNames.length} 个
-              </button>
-            </div>
-          </div>
-        )}
+        {/* 常驻吸底对比托盘：未选中也保留「开始对比」入口（设计稿） */}
+        <CompareTray
+          selectedKeys={compareNames}
+          onRemove={(key) => setCompareNames(prev => prev.filter(k => k !== key))}
+          onClear={() => setCompareNames([])}
+          onCompare={handleCompare}
+        />
 
         {showFullReport && result && (
           <FullReport

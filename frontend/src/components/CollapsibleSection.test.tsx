@@ -83,6 +83,31 @@ describe('CollapsibleSection 折叠语义与过渡', () => {
     expect(screen.getByRole('button', { name: /八字分析/ })).toHaveAttribute('aria-expanded', 'true');
   });
 
+  it('受控模式「全部展开 → 全部收起」后仍保留已挂载内容', () => {
+    const props = { title: '八字分析', unmountOnCollapse: false } as const;
+    const { rerender } = render(
+      <CollapsibleSection {...props} open={false}>
+        <div>五行分布</div>
+      </CollapsibleSection>
+    );
+    expect(screen.queryByText('五行分布')).not.toBeInTheDocument();
+
+    rerender(
+      <CollapsibleSection {...props} open>
+        <div>五行分布</div>
+      </CollapsibleSection>
+    );
+    expect(screen.getByText('五行分布')).toBeInTheDocument();
+
+    rerender(
+      <CollapsibleSection {...props} open={false}>
+        <div>五行分布</div>
+      </CollapsibleSection>
+    );
+    expect(screen.getByText('五行分布')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /八字分析/ })).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('unmountOnCollapse=false：首次收起仍懒挂载，展开过一次后收起保留内容', () => {
     render(
       <CollapsibleSection title="八字分析" unmountOnCollapse={false}>
