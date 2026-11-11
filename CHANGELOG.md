@@ -5,6 +5,33 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.11.1]
+
+**全站暗色主题实施（docs/07 §0.3 由「仅登记」落地为「已实施」）**
+
+### 主题基础设施补齐（P0）
+- `app/layout.tsx` 注入防闪烁（FOUC）内联脚本：渲染前按 `localStorage('theme')` / `prefers-color-scheme` 给 `<html>` 挂 `.dark`，避免深色用户刷新闪回浅色。
+- 修复 `ThemeToggle`：原实现把 `.dark` 挂在 `document.body` 且挂载 effect 会无条件改写 class，导致误删 FOUC 脚本已加好的 dark 而闪回。改为挂 `documentElement`、挂载只读同步图标、切换时显式 `toggle('dark', willDark)` + 写 `localStorage`。
+- `globals.css` 给 `html` 增加 `@apply bg-warm-white`，避免暗色下 overscroll / 不足一屏露白边。
+
+### 组件层暗色适配（P1）
+- 替换 5 处硬编码 `bg-white` 露白（`result/page.tsx` 排序 select、`NameFilter.tsx` 容器、`NameForm.tsx` 输入框 `bg-white/50` → `bg-warm-white/60`、`RadicalSelector.tsx` 禁用态、`BaziAnalysis` 五行条/卡片等），统一改用语义色 `bg-warm-white` / `bg-paper/40` / `bg-warm-white-light`。
+- 替换灰阶硬编码：`compare/page.tsx`、`NameFilter.tsx`、`NameDetail.tsx`、`NameCard.tsx`、`CantoneseScore.tsx` 的 `text-gray-500/600`、`bg-gray-400`（兜底）改为 `text-ink-light` / `bg-jade`；`ZiweiDisplay.tsx` 的 `slate-*` 网格底纹改为 `bg-ink-light/* ` 语义透明度。
+- `react-datepicker` 弹窗：`globals.css` 加 `bg-warm-white-light text-ink` 及 `.dark` 变体（时间列表、hover、文字色 `text-ink-light`），消除日历暗色露白。
+- `BirthdayPicker.tsx`：遮罩 `bg-black/40` → `bg-black/40 dark:bg-black/60`；警告框补 `dark:bg-amber-900/30 dark:border-amber-700/40 dark:text-amber-300`。
+
+### 关键 Bug 修复
+- 修复暗色整页被装饰层遮罩、卡片标题不可读：根因是 `layout.tsx` 的 `fixed inset-0 bg-texture bg-xiangyun animate-pattern-fade`——`patternFade` 关键帧 100% 为 `opacity:1` 且 `forwards`，使固定全屏装饰层变不透明盖住内容。改为去掉该动画，并将内容层包进 `relative z-10 min-h-screen`，把正文抬到纹理层之上（亮色下因装饰层浅/透明侥幸未暴露）。
+
+### 文档
+- `docs/07 §0.3` 全站暗色主题状态由「仅登记、未实施」更新为「已实施（基础设施 + 组件层适配 + 装饰层遮罩修复）」。
+
+### 验证
+- 前端 `verify-frontend.sh`：tsc PASS、ESLint **0 error / 27 warning**（阈值 34，未新增）、Vitest **21 文件 151 用例** PASS（本批未改测试）。
+- `next build`：Compiled successfully，**12/12** 静态页；字节与上一稳定版一致（排除旧服务假 pass）。
+- 亮/暗双主题视觉复核：1440×1000 无头 Chrome 对 `result` 页分别注入 `theme=dark`（首帧挂 `.dark`）与浅色各截图，确认暗色下卡片标题/正文清晰可读、无装饰层遮罩；浅色无回归；导航 `ThemeToggle` 切换功能正常（视觉模型对浅色弱对比与暗色图标的两次误判已读源码 `Navigation.tsx` 排除）。
+- Go 侧未改动，本批质量防线维持既有结论。
+
 ## [2026.11.11.0]
 
 **结果页首屏示意稿对齐与交互残留补齐（前端）**

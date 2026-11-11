@@ -61,6 +61,8 @@
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* 暗色模式下让 <html> 也随主题变色，避免滚动回弹（overscroll）区域与不足一屏时露白边 */
+    @apply bg-warm-white;
   }
 
   body {
@@ -646,14 +648,24 @@
   100% { opacity: 1; }
 }
 
-/* ---- 日期选择器覆盖样式 ---- */
+/* ---- 日期选择器覆盖样式（含暗色适配） ---- */
 .react-datepicker {
-  @apply border border-paper/40 rounded-xl font-sans !important;
+  @apply border border-paper/40 rounded-xl font-sans bg-warm-white-light text-ink !important;
   box-shadow: 0 4px 16px rgba(0,0,0,0.08) !important;
 }
 
 .react-datepicker__header {
   @apply bg-warm-white-light border-b border-paper/40 rounded-t-xl !important;
+}
+
+.react-datepicker__current-month,
+.react-datepicker__day-name,
+.react-datepicker__day {
+  @apply text-ink !important;
+}
+
+.react-datepicker__time-list {
+  @apply bg-warm-white-light !important;
 }
 
 .react-datepicker__day--selected {
@@ -664,8 +676,25 @@
   @apply bg-crimson/10 rounded-lg !important;
 }
 
+.react-datepicker__time-list-item:hover {
+  @apply bg-crimson/10 !important;
+}
+
 .react-datepicker__time-container {
   @apply border-l border-paper/40 !important;
+}
+
+/* 暗色：日历与时间列表文字转浅色，避免黑字浮在暗底上 */
+.dark .react-datepicker__current-month,
+.dark .react-datepicker__day-name,
+.dark .react-datepicker__day:not(.react-datepicker__day--selected),
+.dark .react-datepicker__time-list-item {
+  @apply text-ink-light !important;
+}
+
+.dark .react-datepicker__day:hover:not(.react-datepicker__day--selected),
+.dark .react-datepicker__time-list-item:hover {
+  @apply bg-crimson/20 text-ink-light !important;
 }
 
 /* ---- 减弱动态效果（无障碍）----

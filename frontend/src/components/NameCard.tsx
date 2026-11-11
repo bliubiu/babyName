@@ -94,7 +94,7 @@ function NameCard({
     key: d.name,
     label: d.name,
     value: d.score,
-    color: colorMap[d.name] || 'bg-gray-400',
+    color: colorMap[d.name] || 'bg-jade',
   })) || [];
 
   const dims = dimsFromDetail.length > 0 ? dimsFromDetail : [

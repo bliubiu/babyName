@@ -666,7 +666,7 @@ export default function ResultPage() {
                 aria-label="排序方式"
                 value={sortKey}
                 onChange={(e) => changeSort(e.target.value as SortKey)}
-                className="min-h-[44px] px-3 py-1.5 bg-white text-ink border border-paper/60 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-crimson/30"
+                className="min-h-[44px] px-3 py-1.5 bg-warm-white-light text-ink border border-paper/60 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-crimson/30"
               >
                 <option value="score">综合分 ↓</option>
                 <option value="strokes">笔画 ↑</option>

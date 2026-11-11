@@ -61,7 +61,7 @@ export function BirthdayPicker({ onConfirm, initialDisplay = '请选择出生时
       </button>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/40 dark:bg-black/60 flex items-center justify-center z-50">
           <div className="bg-warm-white-light rounded-xl w-full max-w-md mx-4 overflow-hidden shadow-xl border border-paper">
             <div className="text-center py-4 border-b border-paper">
               <span className="text-lg font-serif text-ink">选择出生时间</span>
@@ -80,7 +80,7 @@ export function BirthdayPicker({ onConfirm, initialDisplay = '请选择出生时
               {(() => {
                 const warning = getShichenBoundaryWarning(selectedDate.getHours(), selectedDate.getMinutes());
                 return warning ? (
-                  <div className="mb-4 p-2.5 bg-amber-50/80 border border-amber-300/40 rounded-lg text-amber-800 text-xs leading-relaxed">
+                  <div className="mb-4 p-2.5 bg-amber-50/80 border border-amber-300/40 rounded-lg text-amber-800 text-xs leading-relaxed dark:bg-amber-900/30 dark:border-amber-700/40 dark:text-amber-300">
                     {warning}
                   </div>
                 ) : null;

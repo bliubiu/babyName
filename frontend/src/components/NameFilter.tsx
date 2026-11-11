@@ -20,7 +20,7 @@ export interface NameFilters {
 }
 
 const wuxingOptions = [
-  { value: '金', label: '金', color: 'text-gray-500' },
+  { value: '金', label: '金', color: 'text-ink-light' },
   { value: '木', label: '木', color: 'text-green-600' },
   { value: '水', label: '水', color: 'text-blue-500' },
   { value: '火', label: '火', color: 'text-red-500' },
@@ -153,7 +153,7 @@ export default function NameFilter({ filters, onFilterChange, totalNames, filter
                 }}
                 placeholder="最小"
                 aria-label="最小笔画数"
-                className="w-20 min-h-[44px] px-3 py-2 border border-warm-white rounded-lg focus:outline-none focus:ring-2 focus:ring-crimson text-ink bg-white"
+                className="w-20 min-h-[44px] px-3 py-2 border border-warm-white rounded-lg focus:outline-none focus:ring-2 focus:ring-crimson text-ink bg-warm-white"
               />
               <span className="text-jade" aria-hidden="true">-</span>
               <input
@@ -167,7 +167,7 @@ export default function NameFilter({ filters, onFilterChange, totalNames, filter
                 }}
                 placeholder="最大"
                 aria-label="最大笔画数"
-                className="w-20 min-h-[44px] px-3 py-2 border border-warm-white rounded-lg focus:outline-none focus:ring-2 focus:ring-crimson text-ink bg-white"
+                className="w-20 min-h-[44px] px-3 py-2 border border-warm-white rounded-lg focus:outline-none focus:ring-2 focus:ring-crimson text-ink bg-warm-white"
               />
             </div>
           </div>

@@ -10,7 +10,7 @@ const wuxingColors: Record<string, string> = {
   '木': 'text-green-600',
   '火': 'text-red-500',
   '土': 'text-amber-600',
-  '金': 'text-gray-500',
+  '金': 'text-ink-light',
   '水': 'text-blue-500',
 };
 

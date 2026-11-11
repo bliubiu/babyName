@@ -170,7 +170,7 @@ export default function NameDetail({ name }: NameDetailProps) {
           <div className="space-y-2.5">
             <p className="text-xs text-jade/70 tracking-wider">评分分解</p>
             {scoreDetails.map(d => {
-              const color = colorMap[d.name] || 'bg-gray-400';
+              const color = colorMap[d.name] || 'bg-jade';
               return (
                 <div key={d.name} className="space-y-1">
                   <div className="flex items-center gap-2">

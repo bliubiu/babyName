@@ -98,7 +98,7 @@ export function NameForm({ isGenerating, onSubmit, sourceClassic, onSourceClassi
                 className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border cursor-pointer transition-all duration-200 ${
                   formData.gender === g
                     ? 'border-crimson/40 bg-crimson/5 text-crimson'
-                    : 'border-paper/60 bg-white/50 text-ink-light hover:border-crimson/20'
+                    : 'border-paper/60 bg-warm-white/60 text-ink-light hover:border-crimson/20'
                 }`}
               >
                 <input
@@ -137,7 +137,7 @@ export function NameForm({ isGenerating, onSubmit, sourceClassic, onSourceClassi
               className={`flex flex-col items-center py-3 px-4 rounded-xl border cursor-pointer transition-all duration-200 ${
                 formData.nameType === opt.value
                   ? 'border-crimson/40 bg-crimson/5'
-                  : 'border-paper/60 bg-white/50 hover:border-crimson/20'
+                  : 'border-paper/60 bg-warm-white/60 hover:border-crimson/20'
               }`}
             >
               <input
@@ -210,7 +210,7 @@ export function NameForm({ isGenerating, onSubmit, sourceClassic, onSourceClassi
       {/* 粤语评分开关 */}
       <div className="space-y-1.5">
         <label className="form-label" htmlFor="cantonese-toggle">粤语评分</label>
-        <div className="flex items-start gap-3 py-2.5 px-3.5 rounded-xl border border-paper/60 bg-white/50">
+        <div className="flex items-start gap-3 py-2.5 px-3.5 rounded-xl border border-paper/60 bg-warm-white/60">
           <input
             id="cantonese-toggle"
             type="checkbox"

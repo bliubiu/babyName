@@ -52,9 +52,9 @@ export function RadicalSelector({ onSelectChars, selectedChars, disabled }: Radi
     return (
       <div className="card p-4">
         <div className="animate-pulse space-y-3">
-          <div className="h-4 bg-gray-200 rounded w-1/3" />
-          <div className="h-8 bg-gray-200 rounded" />
-          <div className="h-8 bg-gray-200 rounded w-2/3" />
+          <div className="h-4 bg-paper/40 rounded w-1/3" />
+          <div className="h-8 bg-paper/40 rounded" />
+          <div className="h-8 bg-paper/40 rounded w-2/3" />
         </div>
       </div>
     );
@@ -123,7 +123,7 @@ export function RadicalSelector({ onSelectChars, selectedChars, disabled }: Radi
                     isSelected
                       ? 'bg-jade text-white shadow-sm scale-105'
                       : disabled
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        ? 'bg-paper/40 text-ink-light/60 cursor-not-allowed'
                         : 'bg-warm-white text-ink hover:bg-warm-white/80 hover:shadow-sm active:scale-95'
                   }`}
                   title={char}

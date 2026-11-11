@@ -163,7 +163,7 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
                   <span className="text-xs text-ink-light/70 w-16 flex-shrink-0">{d.name}</span>
                   <div className="flex-1 h-2 bg-paper/40 rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full ${cantoneseColorMap[d.name] || 'bg-gray-400'} transition-all duration-700`}
+                      className={`h-full rounded-full ${cantoneseColorMap[d.name] || 'bg-jade'} transition-all duration-700`}
                       style={{ width: `${Math.min(100, d.score)}%` }}
                     />
                   </div>

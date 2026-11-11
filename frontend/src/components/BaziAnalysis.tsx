@@ -12,11 +12,12 @@ interface BaziAnalysisProps {
 }
 
 const wuxingColors: Record<string, { bg: string; text: string; bar: string }> = {
-  jin: { bg: 'bg-gray-100', text: 'text-gray-600', bar: 'bg-gray-400' },
-  mu: { bg: 'bg-green-50', text: 'text-green-700', bar: 'bg-green-500' },
-  shui: { bg: 'bg-blue-50', text: 'text-blue-700', bar: 'bg-blue-500' },
-  huo: { bg: 'bg-red-50', text: 'text-red-700', bar: 'bg-red-500' },
-  tu: { bg: 'bg-amber-50', text: 'text-amber-700', bar: 'bg-amber-500' },
+  // 背景/文字改用随主题自适应的中性 token，五行条用语义色（bg-wuxing-*），暗色下不露白
+  jin: { bg: 'bg-paper/40', text: 'text-ink-light', bar: 'bg-wuxing-jin' },
+  mu: { bg: 'bg-paper/40', text: 'text-ink-light', bar: 'bg-wuxing-mu' },
+  shui: { bg: 'bg-paper/40', text: 'text-ink-light', bar: 'bg-wuxing-shui' },
+  huo: { bg: 'bg-paper/40', text: 'text-ink-light', bar: 'bg-wuxing-huo' },
+  tu: { bg: 'bg-paper/40', text: 'text-ink-light', bar: 'bg-wuxing-tu' },
 };
 
 export default function BaziAnalysis({ bazi, nayin, zodiac, embedded = false }: BaziAnalysisProps) {

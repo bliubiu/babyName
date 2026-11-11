@@ -21,13 +21,14 @@ const BRIGHTNESS_STYLE: Record<string, string> = {
   得: 'bg-emerald-500/15 text-emerald-600',
   利: 'bg-teal-500/15 text-teal-600',
   平: 'bg-sky-500/15 text-sky-600',
-  不: 'bg-slate-400/15 text-slate-500',
-  陷: 'bg-slate-500/15 text-slate-600',
+  // 凶格（不/陷）改用中性自适应色，暗色下不露白
+  不: 'bg-ink-light/10 text-ink-light/70',
+  陷: 'bg-ink-light/15 text-ink-light/80',
 };
 
 function brightnessTag(b: string | undefined) {
   if (!b) return null;
-  const cls = BRIGHTNESS_STYLE[b] ?? 'bg-slate-400/15 text-slate-500';
+  const cls = BRIGHTNESS_STYLE[b] ?? 'bg-ink-light/10 text-ink-light/70';
   return (
     <span className={`ml-1 px-1.5 py-0.5 rounded text-xs leading-none ${cls}`}>{b}</span>
   );
