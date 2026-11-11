@@ -3,7 +3,9 @@ package services
 import (
 	"context"
 	crand "crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -16,6 +18,7 @@ import (
 	"name/internal/domain/yijing"
 	"name/internal/domain/ziwei"
 	"name/internal/domain/zodiac"
+	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/logger"
 
 	"go.uber.org/zap"
@@ -192,6 +195,30 @@ func (s *NameService) Generate(ctx context.Context, req *GenerateRequest) (*Gene
 func (s *NameService) GenerateWithProgress(ctx context.Context, req *GenerateRequest, onProgress func(stage string, percent float64)) (*GenerateResponse, error) {
 	start := time.Now()
 
+	// 跨请求结果缓存（docs/46 P2 吞吐）：相同八字+姓氏+选项的请求输出确定性相同，
+	// 缓存命中即秒回，直接削减 CPU 密集的评分链路负载。
+	//
+	// 关键约束：探索会话（generationID）必须**每次全新**。命中缓存时只复用昂贵的
+	// 引擎评分结果（fate.Output），仍然调用 registerExploreContext 为本请求注册
+	// 独立的探索会话（并为其克隆一张独立的 shown 副本），避免「换一批」标记跨会话
+	// 泄漏——这正是一开始缓存整响应（连 generationID 一起冻结）导致 FIFO 淘汰失效
+	// 回归的根因（E2E 探索淘汰断言从 400 退化成 200）。
+	if key, ok := generateCacheKey(req); ok {
+		if v, hit := cache.GetCache().Get(key); hit {
+			if cg, ok := v.(*cachedGeneration); ok && cg.response != nil && cg.output != nil {
+				// 为本请求克隆独立探索表（隔离 shown），再注册全新 generationID。
+				outClone := *cg.output
+				outClone.ExcellentTable = cg.output.ExcellentTable.CloneForExplore()
+				genID := s.registerExploreContext(&outClone, req)
+				// 浅拷贝响应并覆写本次全新 generationID（不污染缓存中的原响应）。
+				respCopy := *cg.response
+				respCopy.GenerationID = genID
+				s.logCacheHit(&respCopy, req, start)
+				return &respCopy, nil
+			}
+		}
+	}
+
 	// 1. 八字分析
 	baziAnalysis, baziDuration, baziErr := s.performBaziAnalysis(req)
 	analysisFailed := baziAnalysis == nil || len(baziAnalysis.Xiyongshen) == 0
@@ -203,7 +230,7 @@ func (s *NameService) GenerateWithProgress(ctx context.Context, req *GenerateReq
 	}
 
 	// 2. 生成名字
-	names, generationID, generateDuration, err := s.generateNames(ctx, req, baziAnalysis, onProgress)
+	names, generationID, output, generateDuration, err := s.generateNames(ctx, req, baziAnalysis, onProgress)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +249,50 @@ func (s *NameService) GenerateWithProgress(ctx context.Context, req *GenerateReq
 	// 5. 记录日志
 	s.logGeneration(start, response, req, baziDuration, generateDuration, parallelDuration)
 
+	// 写结果缓存（仅成功结果；错误路径不缓存）。
+	// 同时缓存引擎输出（含候选表），用于命中时为本次请求注册全新探索会话。
+	if key, ok := generateCacheKey(req); ok {
+		cache.GetCache().Set(key, &cachedGeneration{output: output, response: response}, generateCacheTTL)
+	}
+
 	return response, nil
+}
+
+// cachedGeneration 生成结果缓存项：
+//   - output   引擎输出（含候选表 ExcellentTable），仅在命中时为本请求注册**全新**探索会话；
+//   - response 预计算的完整响应（排除了不稳定的 generationID，命中时重新生成）。
+//
+// 之所以拆成两项而非直接缓存整响应，是因为 generationID 必须每次刷新（见上方
+// 缓存命中分支的注释）；output 与 response 一一对应、同键同生命周期。
+type cachedGeneration struct {
+	output   *fate.Output
+	response *GenerateResponse
+}
+
+// generateCacheTTL 生成结果缓存时长：同名同八字请求输出确定性相同，30 分钟足够覆盖
+// 真实重复负载（重新生成 / 同八字多用户），又能随进程重启/数据重建自然失效。
+const generateCacheTTL = 30 * time.Minute
+
+// generateCacheKey 生成请求级缓存键：规范 JSON + SHA256。
+// GenerateRequest 字段顺序由 Go json 序列化固定，故同一请求永远得到同一键。
+func generateCacheKey(req *GenerateRequest) (string, bool) {
+	if req == nil {
+		return "", false
+	}
+	b, err := json.Marshal(req)
+	if err != nil {
+		return "", false
+	}
+	sum := sha256.Sum256(b)
+	return "gen:" + hex.EncodeToString(sum[:]), true
+}
+
+func (s *NameService) logCacheHit(resp *GenerateResponse, req *GenerateRequest, start time.Time) {
+	logger.Info("Generate: 命中结果缓存（跳过评分）",
+		zap.String("surname", req.Surname),
+		zap.Int("count", len(resp.Names)),
+		zap.Duration("elapsed", time.Since(start)),
+	)
 }
 
 // GenerateWithAnalysis 生成带详细分析的名字
@@ -267,12 +337,14 @@ func (s *NameService) performBaziAnalysis(req *GenerateRequest) (*bazi.BaziAnaly
 	return baziAnalysis, baziDuration, nil
 }
 
-// generateNames 生成名字列表；同时登记探索上下文并返回 generationID（失败返回空）。
-func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, baziAnalysis *bazi.BaziAnalysis, onProgress func(stage string, percent float64)) ([]name.Name, string, time.Duration, error) {
+// generateNames 生成名字列表；同时登记探索上下文并返回 generationID 与引擎输出
+// （失败返回空）。引擎输出用于结果缓存命中时为本次请求注册全新探索会话。
+func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, baziAnalysis *bazi.BaziAnalysis, onProgress func(stage string, percent float64)) ([]name.Name, string, *fate.Output, time.Duration, error) {
 	generateStart := time.Now()
 
 	var names []name.Name
 	var generationID string
+	var output *fate.Output
 	var err error
 
 	// fate 引擎（唯一生成引擎；FateNameService 未配置时无法生成）
@@ -280,7 +352,7 @@ func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, b
 	if s.fateService == nil {
 		err = errors.NewError(errors.ErrCodeInternalError, "名字生成引擎未初始化")
 	} else {
-		names, generationID, err = s.generateNamesViaFate(ctx, req, baziAnalysis, onProgress)
+		names, generationID, output, err = s.generateNamesViaFate(ctx, req, baziAnalysis, onProgress)
 	}
 
 	generateDuration := time.Since(generateStart)
@@ -290,7 +362,7 @@ func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, b
 			zap.String("surname", req.Surname),
 			zap.Error(err),
 		)
-		return nil, "", generateDuration, errors.NewError(errors.ErrCodeBadRequest, "无法生成符合条件的名字，请调整筛选条件")
+		return nil, "", nil, generateDuration, errors.NewError(errors.ErrCodeBadRequest, "无法生成符合条件的名字，请调整筛选条件")
 	}
 
 	if len(names) == 0 {
@@ -298,7 +370,7 @@ func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, b
 			zap.String("surname", req.Surname),
 			zap.String("gender", req.Gender),
 		)
-		return nil, "", generateDuration, errors.NewError(errors.ErrCodeBadRequest, "无法生成符合条件的名字，请调整筛选条件")
+		return nil, "", nil, generateDuration, errors.NewError(errors.ErrCodeBadRequest, "无法生成符合条件的名字，请调整筛选条件")
 	}
 
 	logger.Info("名字生成完成",
@@ -307,12 +379,12 @@ func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, b
 		zap.Duration("duration", generateDuration),
 	)
 
-	return names, generationID, generateDuration, nil
+	return names, generationID, output, generateDuration, nil
 }
 
 // generateNamesViaFate 通过 fate 引擎生成名字。
 // 返回值中的 generationID 为本轮候选表的探索会话标识（探索模式「换一批」凭它取另一批）。
-func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateRequest, baziAnalysis *bazi.BaziAnalysis, onProgress func(stage string, percent float64)) ([]name.Name, string, error) {
+func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateRequest, baziAnalysis *bazi.BaziAnalysis, onProgress func(stage string, percent float64)) ([]name.Name, string, *fate.Output, error) {
 	// 真太阳时校正：与 /generate/analysis 路径对齐（P2-6 收尾）。
 	// 此前该路径直接用钟表时间构造 born，而 analysis 路径先做 ApplyTrueSolar，
 	// 两条链路喂给引擎的出生时刻可能不同 → FateData 可能不同。
@@ -373,7 +445,7 @@ func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateReq
 	}
 
 	if err := session.Start(ctx, input); err != nil {
-		return nil, "", fmt.Errorf("会话启动失败: %w", err)
+		return nil, "", nil, fmt.Errorf("会话启动失败: %w", err)
 	}
 
 	// 进度上报：引擎是异步会话，起一个轮询 goroutine 把 ProgressReporter 的
@@ -402,24 +474,24 @@ func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateReq
 	}
 
 	if err := session.Wait(); err != nil {
-		return nil, "", fmt.Errorf("名字生成失败: %w", err)
+		return nil, "", nil, fmt.Errorf("名字生成失败: %w", err)
 	}
 	// 同 FateNameService：ctx 到期/取消后引擎返回的是被截断的榜单，
 	// 必须转成错误交给 handler 映射为 503，而不是当作正常结果返回。
 	if err := ctx.Err(); err != nil {
-		return nil, "", fmt.Errorf("名字生成被中止: %w", err)
+		return nil, "", nil, fmt.Errorf("名字生成被中止: %w", err)
 	}
 
 	output := session.Result()
 	if output == nil || len(output.TopNames) == 0 {
-		return nil, "", errors.NewError(errors.ErrCodeBadRequest, "无法生成符合条件的名字，请调整筛选条件")
+		return nil, "", nil, errors.NewError(errors.ErrCodeBadRequest, "无法生成符合条件的名字，请调整筛选条件")
 	}
 
 	// 登记探索上下文并把 Top-N 标记为已展示：后续「换一批」只会采样
 	// 未上过榜的候选，与本次结果零交集。
 	generationID := s.registerExploreContext(output, req)
 
-	return convertFateToNameNames(output.TopNames, req.Gender, req.SourceClassic), generationID, nil
+	return convertFateToNameNames(output.TopNames, req.Gender, req.SourceClassic), generationID, output, nil
 }
 
 // registerExploreContext 把本轮生成的候选表登记进探索缓存，返回 generationID。

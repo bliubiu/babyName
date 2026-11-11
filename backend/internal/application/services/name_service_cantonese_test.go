@@ -36,7 +36,7 @@ func TestGenerate_CantoneseSwitch(t *testing.T) {
 	// ——— 开启粤语评分 ———
 	on := base
 	on.EnableCantonese = true
-	namesOn, _, err := svc.generateNamesViaFate(context.Background(), &on, nil, nil)
+	namesOn, _, _, err := svc.generateNamesViaFate(context.Background(), &on, nil, nil)
 	if err != nil {
 		t.Fatalf("生成失败（粤语开）: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestGenerate_CantoneseSwitch(t *testing.T) {
 	}
 
 	// ——— 关闭粤语评分（对照：零影响，粤拼仍透传）———
-	namesOff, _, err := svc.generateNamesViaFate(context.Background(), &base, nil, nil)
+	namesOff, _, _, err := svc.generateNamesViaFate(context.Background(), &base, nil, nil)
 	if err != nil {
 		t.Fatalf("生成失败（粤语关）: %v", err)
 	}

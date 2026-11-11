@@ -72,6 +72,27 @@ func (r *WenHuaRater) Rate(candidate *NameCandidate, fateData *FateData) NameRat
 		}
 	}
 
+	// ——— 人口共识好字加分（补信号，docs/46 P2） ———
+	// positiveScore 人工寓意评分仅覆盖约 7% 汉字（namer.json 563/8105），其余 93%
+	// 在评分体系里与优质字不可区分（docs/33 信号盲区）。人名频率档 NameFreqTier
+	// （1-5，5=最高频，源自 95.7 万条真实人名语料）是可靠的「人口共识好字」信号：
+	// 高频出现在人名中的字，大概率是被大众反复验证过的起名好字。
+	// 仅对最高频两档（4-5）给弱加分，避免把中低频（1-3）或未收录（0）字误抬；
+	// 分值远小于策展好字（+8），不足以让平庸字反超，只用于打破高频好字之间的同分僵局。
+	for _, t := range []int{candidate.NameFreqTier1, candidate.NameFreqTier2} {
+		if t >= 5 {
+			score += 2
+			if !ds.skip {
+				ds.addf("高频人名用字（档位%d，+2分）", t)
+			}
+		} else if t == 4 {
+			score += 1
+			if !ds.skip {
+				ds.addf("较高频人名用字（档位%d，+1分）", t)
+			}
+		}
+	}
+
 	// ——— 策展字加分（人工精选起名好字，破单名同分僵局的治本方案） ———
 	// 策展覆盖表（17 个起名分类，约 446 字，characterCategoryList 人工精选）是
 	// 荒谬字与好字的强区分信号：verify_fate 复测验证好字（毅/辉/涛/英/琳/雅/梅/强/凯）

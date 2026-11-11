@@ -464,7 +464,7 @@ func section(title string) {
 }
 
 // scanQuality 统计 Top-N 用字的等级分布 / 门禁命中 / 无正分信号字。
-func scanQuality(names *view, limit int, cd *charData) (lv map[int]int, gateHits, noPos []string) {
+func scanQuality(names *view, limit int, cd *charData) (lv map[int]int, gateHits, noPos, noEvidence []string) {
 	lv = map[int]int{1: 0, 2: 0, 3: 0}
 	for i, n := range names.names {
 		if i >= limit {
@@ -479,11 +479,19 @@ func scanQuality(names *view, limit int, cd *charData) (lv map[int]int, gateHits
 			if cd.posOf(string(ch)) == 0 {
 				noPos = append(noPos, string(ch))
 			}
+			// 三无字：既无人工寓意评分、非策展、也未出现在 95.7 万条人名语料中。
+			// 这才是真正该警惕的「评分无法区分优劣」字（docs/33 信号盲区）；
+			// 仅 positiveScore=0 但有人名语料/策展依据的字（如 珀/赟/茗/诗）完全可用。
+			if !cd.hasEvidence(string(ch)) {
+				noEvidence = append(noEvidence, string(ch))
+			}
 		}
 	}
 	sort.Strings(noPos)
 	noPos = dedup(noPos)
-	return lv, gateHits, noPos
+	sort.Strings(noEvidence)
+	noEvidence = dedup(noEvidence)
+	return lv, gateHits, noPos, noEvidence
 }
 
 func dedup(in []string) []string {
@@ -640,7 +648,7 @@ func main() {
 		if v == nil || len(v.names) == 0 {
 			continue
 		}
-		lv, gateHits, noPos := scanQuality(v, 50, cd)
+		lv, gateHits, noPos, noEvidence := scanQuality(v, 50, cd)
 		tot := lv[1] + lv[2] + lv[3]
 		fmt.Printf("%-24s 用字 %d：一级=%d(%.0f%%) 二级=%d(%.0f%%) 三级/表外=%d(%.0f%%)\n",
 			label, tot,
@@ -649,7 +657,12 @@ func main() {
 			lv[3], 100*float64(lv[3])/float64(max(tot, 1)))
 		fmt.Printf("    Top10: %s\n", strings.Join(v.fullNames(10), " "))
 		if len(noPos) > 0 {
-			fmt.Printf("    ⚠ 无正分信号(positiveScore=0)的用字 %d 个: %s\n", len(noPos), strings.Join(noPos, ""))
+			fmt.Printf("    仅缺人工寓意评分(positiveScore=0，但有人名语料/策展依据)的用字 %d 个: %s\n", len(noPos), strings.Join(noPos, ""))
+		}
+		if len(noEvidence) > 0 {
+			fmt.Printf("    ⚠ 三无字(无正分/非策展/不在人名语料，真信号盲区) %d 个: %s\n", len(noEvidence), strings.Join(noEvidence, ""))
+		} else {
+			fmt.Printf("    ✓ 推荐榜无三无字（命名依据全覆盖）\n")
 		}
 		if len(gateHits) > 0 {
 			ck.bad("%s 推荐榜命中质量门禁字 %d 处: %s", label, len(gateHits), strings.Join(gateHits[:min(len(gateHits), 8)], "、"))
@@ -788,6 +801,22 @@ func main() {
 			bodies = append(bodies, withOver(map[string]any{"surname": s}))
 		}
 	}
+
+	// 串行冷路径参考：用「唯一八字+姓氏」强制缓存未命中，测得真实单请求引擎耗时，
+	// 作为并发判据的串行基准。
+	// 不能用上面的「双名 基线」(durs["双名 基线"]) 作基准——它若被前序/历史请求暖热
+	// 即退化成 ~0.004s，会让「并发吞吐 ≥ 串行吞吐」判据产生假阳性（并发全冷 vs 串行全热）。
+	// birth_minute 取当前秒，保证每次运行键唯一（避免跨运行命中旧缓存），且仍落在合法区间。
+	coldBody := withOver(map[string]any{
+		"surname":      "张",
+		"birth_year":   1979,
+		"birth_month":  11,
+		"birth_day":    12,
+		"birth_hour":   7,
+		"birth_minute": time.Now().Second(),
+	})
+	serialCold := c.call(pathGenerate, coldBody).dur.Seconds()
+	fmt.Printf("  串行冷路径单请求(唯一参数,强制未命中): %.3fs 吞吐=%.2f req/s\n", serialCold, 1.0/serialCold)
 	var allOK []float64
 	var allTotal int
 	var totalWall float64
@@ -834,25 +863,25 @@ func main() {
 		//      本机三轮实测 8-9×（docs/28 §6 中位 6.9s / 串行 0.87s 同构），12× 为包络上限；
 		//      OOM/无界排队类爆炸通常是 30×+，仍会被抓住。
 		// 加速比仅作信息展示，不再作为判定依据。
-		if serial := durs["双名 基线"]; serial > 0 && totalWall > 0 {
+		if serial := serialCold; serial > 0 && totalWall > 0 {
 			concThroughput := float64(allTotal) / totalWall
 			serialThroughput := 1.0 / serial
 			speedup := concThroughput * serial
 			concP95 := percentile(allOK, 0.95)
-			fmt.Printf("  并发加速比: %.2f×（并发吞吐 %.2f req/s / 串行吞吐 %.2f req/s）\n",
+			fmt.Printf("  并发加速比: %.2f×（并发吞吐 %.2f req/s / 串行(冷)吞吐 %.2f req/s）\n",
 				speedup, concThroughput, serialThroughput)
 
 			if concThroughput < serialThroughput {
-				ck.bad("并发吞吐 %.2f req/s 低于串行 %.2f req/s——并发反而更慢，调度串行化或资源争用",
+				ck.bad("并发吞吐 %.2f req/s 低于串行(冷) %.2f req/s——并发反而更慢，调度串行化或资源争用",
 					concThroughput, serialThroughput)
 			} else {
-				ck.ok("并发吞吐 %.2f req/s ≥ 串行 %.2f req/s", concThroughput, serialThroughput)
+				ck.ok("并发吞吐 %.2f req/s ≥ 串行(冷) %.2f req/s", concThroughput, serialThroughput)
 			}
 			if concP95 > serial*12 {
-				ck.bad("并发 p95 %.3fs 超过串行时长 %.3fs 的 12 倍——排队延迟爆炸，存在超订或资源耗尽",
+				ck.bad("并发 p95 %.3fs 超过串行(冷)时长 %.3fs 的 12 倍——排队延迟爆炸，存在超订或资源耗尽",
 					concP95, serial)
 			} else {
-				ck.ok("并发 p95 %.3fs ≤ 串行 %.3fs × 12（排队延迟受控）", concP95, serial)
+				ck.ok("并发 p95 %.3fs ≤ 串行(冷) %.3fs × 12（排队延迟受控）", concP95, serial)
 			}
 		}
 	}

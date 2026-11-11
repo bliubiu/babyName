@@ -384,6 +384,33 @@ func (t *ExcellentTable) MarkShown(char1, char2 string) {
 	t.shown[char1+char2] = true
 }
 
+// CloneForExplore 返回一张共享 entries/index（只读）、但拥有独立 shown 集合的副本。
+//
+// 仅用于结果缓存复用场景（docs/46 P2 吞吐修复）：同一八字+姓氏的请求命中缓存时，
+// 仍需为本次请求注册一个**全新**的探索会话（fresh generationID），而探索表
+// （ExcellentTable）是跨请求共享的同一份候选池。若直接共享同一张表，多个会话的
+// 「换一批」shown 标记会互相污染——一个会话换过的名字会泄漏到另一个会话的剩余
+// 候选里（这正是整响应缓存回归的根因）。
+//
+// 因此这里只复制 shown（写路径）；entries/index 在 Finalize 后只读、安全共享，
+// 既隔离了会话状态，又避免了整表深拷贝的内存开销。h/seen 在 Finalize 后已置空，
+// 故克隆体无需保留（探索只读，不去重）。
+func (t *ExcellentTable) CloneForExplore() *ExcellentTable {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	clone := &ExcellentTable{
+		entries: t.entries, // 只读共享（Finalize 后不再变更）
+		index:   t.index,   // 只读共享
+		shown:   make(map[string]bool, len(t.shown)),
+		cap:     t.cap,
+		dedup:   false, // 探索只读，无需去重
+	}
+	for k := range t.shown {
+		clone.shown[k] = true
+	}
+	return clone
+}
+
 // FindEntry 按字查找条目
 func (t *ExcellentTable) FindEntry(char1, char2 string) *ExcellentEntry {
 	t.mu.RLock()

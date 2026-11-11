@@ -5,6 +5,26 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.12.1]
+
+**评分正分信号覆盖补强 + 并发吞吐优化（结果缓存回归修复）**
+
+### 📈 Improvements 性能/体验优化
+- 【后端·缓存】结果缓存由「整响应」下沉为「引擎输出（fate.Output）+ 预计算响应」两级：命中时复用昂贵的评分计算，仍为本请求注册**全新**探索会话（独立 generationID + 独立 shown 副本），既保住 30 分钟结果缓存的吞吐收益，又修复整响应缓存冻结 generationID 导致 FIFO 淘汰失效的回归。
+- 【后端·评分】WenHuaRater 引入人口共识弱信号：NameFreqTier≥5 加 2 分、=4 加 1 分，补强 positiveScore 仅覆盖 7% 字（563/8105）造成的正分信号盲区（docs/33）。
+- 【后端·缓存】bigram 二字共现评分新增 64 分片全局共享缓存（软上限 4096/片），纯函数结果（classics.GetBigramScore）跨请求复用，削减双名 N² hot path 的重复计算。
+- 【后端·缓存】新增 `ExcellentTable.CloneForExplore`：探索表跨请求共享候选池但隔离各会话的「已展示」状态，避免「换一批」标记跨会话泄漏。
+
+### 🐛 Bug Fixes 问题修复
+- 【后端·回归】修复整响应缓存使探索会话 FIFO 淘汰失效（E2E 探索淘汰断言从应返 400 退化成 200 的根因）：缓存命中不再复用旧 generationID，每次请求仍走 registerExploreContext 注册独立会话。
+- 【测试】e2e_check 并发判据改用「冷路径串行基线」作参考（唯一参数强制缓存未命中），避免复用被前序/历史请求暖热的基线产生假阳性（并发吞吐 vs 串行吞吐）。
+
+### ✅ 验证
+- E2E `-strict` **18/18 通过**：探索会话淘汰正确返回 400；冷单请求 1.80s，缓存命中轮 **624 req/s**，并发加速比 9.59×，p95 ≤ 串行×12。
+- `verify-quality.sh`（SKIP_SERVER=1）：go vet PASS；fate 单测 PASS；golden 防漂移 PASS；gate_audit PASS；dim_audit **147/147**；覆盖率九包 76.3%~94.9% 全部 ≥75%。
+- `verify-frontend.sh`：tsc 0 错；ESLint 0 error / ≤34 warning；Vitest **151/151**。
+- 关联：bigram_cache.go 全局缓存、rater_culture.go 人口共识加分、golden_names.json 快照随评分信号补强重建。
+
 ## [2026.11.12.0]
 
 **结果页"结果导向"UI 重构：候选名进首屏、卡片瘦身、分数视觉强化**

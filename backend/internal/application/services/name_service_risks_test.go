@@ -28,7 +28,7 @@ func TestGenerate_EmitsRisks(t *testing.T) {
 		BirthHour:  10,
 		NameLength: 2,
 	}
-	names, _, err := svc.generateNamesViaFate(context.Background(), req, nil, nil)
+	names, _, _, err := svc.generateNamesViaFate(context.Background(), req, nil, nil)
 	if err != nil {
 		t.Fatalf("生成失败: %v", err)
 	}
