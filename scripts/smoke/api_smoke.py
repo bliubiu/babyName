@@ -12,6 +12,7 @@
 注意：Git Bash 终端下 curl -d 中文会以 GBK 传输导致 400，请统一用本脚本
 （urllib UTF-8）或等价客户端，勿用 curl 直传中文 body。
 """
+import http.cookiejar
 import json
 import os
 import urllib.error
@@ -21,6 +22,12 @@ import urllib.request
 BASE = os.environ.get('NAMER_API_BASE', 'http://127.0.0.1:8080')
 results = []
 
+# 会话保持：历史/收藏/异步任务均按服务端会话隔离（docs/46 P1 任务归属校验），
+# 无 cookie 时每次请求各拿一个新 session——提交任务与查询任务会被判为不同
+# 会话而 404。此处用 cookiejar 模拟真实浏览器行为。
+_jar = http.cookiejar.CookieJar()
+_opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(_jar))
+
 
 def call(method, path, body=None):
     data = json.dumps(body).encode('utf-8') if body is not None else None
@@ -28,7 +35,7 @@ def call(method, path, body=None):
                                  data=data, method=method,
                                  headers={'Content-Type': 'application/json'})
     try:
-        r = urllib.request.urlopen(req, timeout=60)
+        r = _opener.open(req, timeout=60)
         raw = r.read()
         try:
             return r.status, json.loads(raw.decode('utf-8'))
