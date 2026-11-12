@@ -5,6 +5,23 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.12.3]
+
+**一键构建 + 启动 + 验证脚本（零 python 依赖）**
+
+### ✨ New Features 新增功能
+- 【脚本】重写 `scripts/start.ps1`（旧版硬编码 g:\ 盘路径且用 `go run cmd/server/main.go` 多文件包单文件形式无法编译）：环境检查 → 后端构建（源码 mtime 比对按需编译）→ 物料导入（幂等，指纹短路 ADR-014）→ 前端构建（out 缺失/源码更新触发）→ 启动服务 → 健康验证（healthz/readyz + Invoke-RestMethod 生成冒烟，规避 curl 中文 GBK 陷阱）→ 打开浏览器；参数 -Rebuild/-SkipFrontend/-Port/-NoBrowser
+- 【脚本】`scripts/start.bat` 薄壳双击入口（透传参数到 start.ps1）
+- 【手册】docs/05 方式一补登记方式A「一键构建 + 启动 + 验证」
+
+### 🐛 Bug Fixes  问题修复
+- 启动参数显式传 `-config`/`-db`：服务以仓库根为 cwd 时 config 默认回落 `./namer.db` 空库 → 物料缺失 fail-fast（实测复现并修复，已清理误生成空库）
+- materials import 显式绝对路径 `--data/--db`：默认 `./data` 相对进程 cwd（backend/）解析，仓库根数据目录必须显式指定
+- PS 5.1 兼容：脚本 UTF-8 BOM 保障中文解析；`[Console]::OutputEncoding=UTF8` 修复 go 子进程中文输出乱码；`$ErrorActionPreference` 在 go/pnpm 原生调用处临时降级 Continue（Stop 模式下 stderr 进度输出被包装成 NativeCommandError 直接终止脚本）
+
+### ✅ 验证
+- 增量路径与 `-Rebuild` 强制重建路径各实测一轮，6 步全过 exit=0（含生成冒烟 50 候选）；旧实例端口冲突自动终止
+
 ## [2026.11.12.2]
 
 **E2E 全链路复测通过 + 冒烟脚本会话保持修复**
