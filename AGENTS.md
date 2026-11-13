@@ -2,7 +2,7 @@
 
 起名是一个免费的起名工具，旨在帮助新手父母为宝宝起一个寓意美好、符合中国传统玄学的名字。
 
-基于DDD架构（领域驱动设计）和**TDD（测试驱动开发）**设计思想，使用go语言+Next.js + React + Tailwind CSS + TypeScript 开发一个桌面端和移动端多端适配Web应用。
+基于DDD架构（领域驱动设计）和**TDD（测试驱动开发）**设计思想，使用go+Wails 开发一个桌面端应用。
 
 
 
@@ -93,15 +93,37 @@
 
 ==4层**DDD 架构（领域驱动设计）**和**TDD（测试驱动开发）**设计思想==
 
-| 层级       | 技术                                                         |
-| ---------- | ------------------------------------------------------------ |
-| 前端       | Next.js 16.2+，React 19.2+， TypeScript 7.0+                 |
-| 样式       | Tailwind CSS                                                 |
-| 状态管理   | Zustand                                                      |
-| 图表库     | ECharts                                                      |
-| 包管理器   | pnpm，禁用npm管理                                            |
-| 后端       | go 1.25.10+  ， Gin 1.12.0+,  纯 Go 实现，无 CGO 依赖        |
-| 数据持久化 | modernc.org/sqlite， SQLite（默认）/ 内存环形缓存   冷热数据 |
+| 层级       | 技术                                                       |
+| ---------- | ---------------------------------------------------------- |
+| 桌面框架   | Wails v2.17.0（适配 go 1.25.x；v2.17.1 起强制 go 1.26）      |
+| 前端       | Vite 7+，React 19.2+，TypeScript 7.0+                       |
+| 样式       | Tailwind CSS                                               |
+| 状态管理   | Zustand                                                    |
+| 图表库     | ECharts                                                    |
+| 包管理器   | pnpm，禁用npm管理                                          |
+| 后端       | go 1.25.10+，纯 Go 实现，无 CGO 依赖（已移除 Gin HTTP 层）    |
+| 数据持久化 | modernc.org/sqlite， SQLite（默认）                         |
+
+
+
+### 桌面端架构（Wails）
+
+```
+backend/
+  ├ main.go                  Wails 入口（目录解析 → 装配 → 窗口）
+  ├ wails.json               Wails 配置（frontend:dir 指向 ../frontend）
+  └ internal/
+      ├ desktop/             绑定层：替代原 /api/v1 HTTP handler，
+      │                      前端经 frontend/wailsjs 生成的 TS 绑定直接调用
+      ├ bootstrap/           装配层：存储 + 物料播种 + 服务装配
+      ├ domain/…             领域层（不变）
+      └ infrastructure/…     基础设施（不变，已移除 server/middleware HTTP 部分）
+```
+
+- 错误约定：绑定方法返回的 error 以文案字符串传给前端，统一中文、可行动
+- 会话：桌面为单用户，收藏/历史/异步任务统一固定会话 `desktop`
+- 数据目录：物料 `DATA_DIR` 环境变量 > 仓库根 data/（dev）> cwd/data（打包）；库 `NAMER_DB_PATH` > 物料目录上一级 namer.db
+- 构建：`wails build` 出单 exe（构建时自动把 ../frontend/dist 同步进 embed 目录）
 
 
 
@@ -109,9 +131,8 @@
 
 - data目录存储相关智慧经典字库json文件
 - 支持从json文件物料人工导入到sqlite（wal模式）数据库表持久化存储
-- 支持热更新
-
 - `modernc.org/sqlite` ：纯 Go 实现，无 CGO
+
 
 
 
