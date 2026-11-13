@@ -105,8 +105,8 @@ ResolveDataDir（显式 > DATA_DIR > 探测仓库根 data/ > cwd/data）
 | 切片 | 内容 | 状态 |
 |---|---|---|
 | S1 | Wails 骨架 + 绑定层 + 装配层（TDD） | ✅ commit 1c4abc2 / 1164241 |
-| S2 | 前端 Vite 迁移（Next.js → Vite + React 19 + react-router） | ⏳ |
-| S3 | 移除 Gin / cmd/server / middleware HTTP / docker / nginx / certbot | ⏳ |
+| S2 | 前端 Vite 迁移（Next.js → Vite + React 19 + react-router） | ✅ commit 9ef6d47 |
+| S3 | 移除 Gin / cmd/server / middleware HTTP / docker / nginx / certbot | ✅ |
 | S4 | 用户数据目录（UserConfigDir）+ 安装器（NSIS）+ 图标 | ⏳ |
 | S5 | e2e 迁移（wails dev :34115 + Playwright）+ 文档收尾 | ⏳ |
 
@@ -121,12 +121,33 @@ ResolveDataDir（显式 > DATA_DIR > 探测仓库根 data/ > cwd/data）
 7. wails.json 填回 `frontend:install: pnpm install` / `frontend:build: pnpm build`
 8. e2e（webui_e2e_test.py / @e2e-dev/web）随 Next 一起退役，S5 重写
 
-### S3 移除清单（Next 完成后执行）
+### S3 移除清单（已完成）
 
-- go.mod：gin、middleware（CORS/限流/会话 cookie）、server（静态服务）
-- cmd/server 整目录（装配逻辑已收编进 internal/bootstrap）
-- Dockerfile×2、docker-compose×4、nginx/、certbot/、deploy.sh、.env.production
-- frontend 内 Next 残留（.next、out、next-env.d.ts）
+Go 侧：
+
+- `backend/cmd/server/`：HTTP 入口与装配测试（装配逻辑已收编 internal/bootstrap）
+- `backend/internal/application/handlers/`：Gin handler 层（desktop 绑定层替代，
+  错误映射同口径；整合测试由 desktop/bootstrap 测试承担）
+- `backend/internal/application/response/`：HTTP 信封层
+- `backend/internal/infrastructure/server/`：前端静态托管 + embed placeholder
+- `backend/internal/infrastructure/middleware/`：CORS/限流/会话 Cookie/请求体上限
+- `backend/webui_e2e_test.py`：web e2e（S5 重写为桌面版）
+- go.mod 依赖收缩：gin、labstack/echo（间接）、相关 golang.org/x 依赖随 tidy 移除
+
+部署链：
+
+- `backend/Dockerfile`、`docker-entrypoint.sh`、`.dockerignore`
+- 根目录 `docker-compose*.yml` ×4、`deploy.sh`、`nginx/`（3 份 conf）
+- `scripts/start.bat`、`start.ps1`、`start_services.ps1`（web 启动脚本）
+- `scripts/build.ps1` 重写为 Wails 桌面版（pnpm build → wails build → build/bin）
+- `scripts/verify-quality.sh` 加注：非 SKIP_SERVER 模式随 HTTP 层退役，
+  CI 保留 SKIP_SERVER=1 快路径
+
+保留说明：
+
+- `backend/application.yml` 与 `internal/infrastructure/config`：cmd/materials
+  物料工具仍在使用，仅 server/rate_limit/redis 段随 HTTP 层失效
+- `cmd/namer-cli` 等物料/导出 CLI：与传输层无关，全部保留
 
 ## 5. 验证记录
 
@@ -135,6 +156,8 @@ ResolveDataDir（显式 > DATA_DIR > 探测仓库根 data/ > cwd/data）
 - [x] golangci-lint（v2.15）新包 0 issues；仓库级 .golangci.yml 为 v1 格式，
       与 golangci-lint v2 不兼容，需后续单独迁移配置
 - [x] Wails 降级 v2.17.0 后重建通过（go 1.25.0）
+- [x] S2：tsc 无错、vitest 151 例全绿、vite build 7.5s（gzip 主包 112KB）
+- [x] S3：HTTP 层移除后 `go build ./...`、全量 `go test ./...`、wails build 均通过
 
 ## 6. 遗留与风险
 

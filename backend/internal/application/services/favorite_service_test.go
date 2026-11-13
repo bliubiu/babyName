@@ -59,7 +59,8 @@ func (m *mockFavoriteStore) DeleteFavorite(sessionID, id string) error {
 
 func (m *mockFavoriteStore) BatchDeleteFavorite(sessionID string, ids []string) error {
 	for _, id := range ids {
-		m.DeleteFavorite(sessionID, id)
+		// mock 内部自清点，错误由外层断言覆盖，忽略返回值
+		_ = m.DeleteFavorite(sessionID, id)
 	}
 	return nil
 }

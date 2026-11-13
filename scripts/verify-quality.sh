@@ -18,6 +18,9 @@
 #   SERVER_URL=http://127.0.0.1:8080 ./scripts/verify-quality.sh   # 复用已起服务，跳过构建/启停
 #   SKIP_SERVER=1 ./scripts/verify-quality.sh   # 只跑不需要服务的阶段（单元+门禁）
 #
+# ※ 桌面端迁移（docs/47）后 HTTP 服务已退役，非 SKIP_SERVER 模式仅对
+#   保留 Gin HTTP 层的历史版本有效；CI 一律使用 SKIP_SERVER=1。
+#
 # 前端门禁（tsc / eslint / vitest）由 scripts/verify-frontend.sh 独立承担，
 # CI 中对应 .github/workflows/quality.yml 的 quality-frontend job；
 # 本脚本保持纯 Go，避免在 Go job 里额外安装 Node 依赖（docs/45 阶段 0）。
