@@ -132,6 +132,7 @@ backend/
 - data目录存储相关智慧经典字库json文件
 - 支持从json文件物料人工导入到sqlite（wal模式）数据库表持久化存储
 - `modernc.org/sqlite` ：纯 Go 实现，无 CGO
+- 开源字体资源： `name\backend\assets`
 
 
 
@@ -143,7 +144,7 @@ backend/
 - 统一错误处理，所有错误信息都必须使用中文，禁止打印明文密码等敏感信息
 - 数据默认保存`data`目录下，使用sqlite(wal模式)持久化数据
 - 及时更新文档
-- git@github.com:bliubiu/babyName.git 
+- 远端仓库： git@github.com:bliubiu/babyName.git 
 
 
 
