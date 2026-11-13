@@ -1,0 +1,19 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "namer",
+  "outputfilename": "namer-desktop",
+  "frontend:dir": "../frontend",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watcher": "",
+  "frontend:dev:serverUrl": "",
+  "author": {
+    "name": "bliubiu"
+  },
+  "info": {
+    "productName": "起名 NameMaster",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright © 2026",
+    "comments": "免费起名工具：八字五行、生肖属相、易经卦象、智能评分"
+  }
+}
