@@ -1,27 +1,26 @@
-import type { GenerateResponse, APIResponse, FavoriteData, GenerateRequest, StandardCharGroup, NameStat, AsyncSubmitResponse, TaskStatusResponse, ExploreResponse, EvaluateRequest, EvaluateResponse } from '@/types';
+// 桌面端 API 层：全部经 Wails TS 绑定直连 Go 后端（internal/desktop）。
+//
+// 迁移说明（docs/47 §4-S2）：
+// - 原实现走 HTTP fetch（/api/v1 信封），现改为绑定调用；
+// - 绑定方法返回的 error 是 Go 端整理好的中文文案（可行动），统一包成 ApiError；
+// - 为最小化页面改动，本层继续返回与 HTTP 时代相同的信封形状（{success, message?, data}），
+//   页面代码零改动；
+// - AbortSignal 语义保留：取消在轮询边界/循环入口生效（绑定调用本身不可中断）。
+import type {
+  GenerateResponse, APIResponse, FavoriteData, GenerateRequest, StandardCharGroup,
+  NameStat, TaskStatusResponse, ExploreResponse,
+  EvaluateRequest, EvaluateResponse,
+} from '@/types';
 import type { HistoryResponse } from '@/types/api/history';
 import type { FavoritesResponse } from '@/types/api/favorites';
+import {
+  EvaluateName, ExploreNames, SubmitGenerateTask, GetGenerateTask,
+  GetHistory, SaveHistory, DeleteHistory, GetFavorites, SaveFavorite, DeleteFavorite,
+  GenerateReportPDF, CreateShare, GetShare, GetHuangli, GetLunarCalendar,
+  GetLunarMonthCalendar, GetCharGroups, GetNameStats, GetTopNames,
+} from '../../wailsjs/go/desktop/App';
 
-// 动态获取API基础URL
-// 策略优先级：
-// 1. 环境变量：NEXT_PUBLIC_API_URL（跨域后端/独立部署时显式指定）
-// 2. 页面同源推导：window.location.origin + /api
-//    —— all 模式前端页面由后端托管，同源请求天然无 CORS 限制；
-//      亦可规避 127.0.0.1 与 localhost 互为异源的经典踩坑
-// 3. SSR/构建期兜底：http://localhost:8080/api
-const getApiBaseUrl = (): string => {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin}/api`;
-  }
-  return 'http://localhost:8080/api';
-};
-
-const API_BASE_URL = getApiBaseUrl();
-
-// 错误类型定义
+// 错误类型定义（保持原有导出，供调用方 instanceof 判断）
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -82,179 +81,11 @@ export class NotFoundError extends ApiError {
   }
 }
 
-// 通用错误处理函数
-async function handleResponse<T = unknown>(response: Response): Promise<T> {
-  if (!response.ok) {
-    let errorMessage = `HTTP error! status: ${response.status}`;
-    
-    try {
-      const errorData = await response.json().catch(() => ({}));
-      errorMessage = errorData.message || errorData.error || errorMessage;
-      
-      // 开发环境下打印详细错误信息
-      if (process.env.NODE_ENV === 'development') {
-        console.error('[API Error]', {
-          status: response.status,
-          url: response.url,
-          error: errorData,
-        });
-      }
-    } catch (e) {
-      // 如果 JSON 解析失败，使用默认错误消息
-    }
-    
-    // 根据状态码创建特定类型的错误
-    if (response.status === 400) {
-      throw new ValidationError(errorMessage);
-    } else if (response.status === 401) {
-      throw new AuthenticationError(errorMessage);
-    } else if (response.status === 403) {
-      throw new ForbiddenError(errorMessage);
-    } else if (response.status === 404) {
-      throw new NotFoundError(errorMessage);
-    } else if (response.status === 408 || response.status === 504) {
-      throw new TimeoutError(errorMessage);
-    } else if (response.status >= 500) {
-      throw new ServerError(errorMessage);
-    } else if (response.status === 0) {
-      throw new NetworkError(errorMessage);
-    } else {
-      throw new ApiError(errorMessage, response.status);
-    }
-  }
-  
-  try {
-    return await response.json();
-  } catch (error) {
-    console.error('Failed to parse response JSON:', error);
-    throw new ApiError('响应数据格式错误');
-  }
-}
-
-// 带重试机制的fetch包装器
-// 注意：maxRetries 和 retryDelay 仅对幂等请求（GET/HEAD）生效；
-// 非幂等请求（POST/PUT/DELETE）不会重试，避免重复提交。
-// externalSignal 用于让调用方（如异步生成的轮询循环）主动取消整个请求链（docs/29 B17）。
-// 取消与超时的区分：外部信号触发 → 抛 AbortError（调用方静默处理，不弹错误提示）；
-// 内部 30s 定时器触发 → 抛 TimeoutError（真实失败，走错误提示）。
-
-// 访客会话标识：localStorage 持久化（key nm_session_id），32 位小写 hex，
-// 与后端 NormalizeSessionID（16-64 位 hex）兼容。SSR/无 window 环境回落空串，
-// 由服务端 Cookie 流程兜底。
-const SESSION_ID_KEY = 'nm_session_id';
-
-function getSessionId(): string {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return '';
-  try {
-    let sid = localStorage.getItem(SESSION_ID_KEY) || '';
-    if (!/^[a-f0-9]{16,64}$/.test(sid)) {
-      const bytes = new Uint8Array(16);
-      crypto.getRandomValues(bytes);
-      sid = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
-      localStorage.setItem(SESSION_ID_KEY, sid);
-    }
-    return sid;
-  } catch {
-    return '';
-  }
-}
-
-async function fetchWithRetry(
-  url: string,
-  options: RequestInit = {},
-  maxRetries: number = 3,
-  retryDelay: number = 1000,
-  externalSignal?: AbortSignal
-): Promise<Response> {
-  // 调用方已取消：不再发起请求，也不重试
-  if (externalSignal?.aborted) {
-    throw createAbortError();
-  }
-
-  // 统一注入访客会话标识：并发首访时各请求都不带 Cookie，服务端会为每个
-  // 请求各发一个新 nm_sid Cookie，浏览器只保留最后一个——先完成的写请求
-  // （如收藏）会落到被覆盖的「孤儿会话」，用户自己查不到。localStorage 持久化
-  // 的 sid + X-Session-ID 头保证同一浏览器永远同会话（后端头优先级高于 Cookie）。
-  options.headers = {
-    'X-Session-ID': getSessionId(),
-    ...(options.headers as Record<string, string> | undefined),
-  };
-
-  let lastError: unknown;
-  const method = (options.method || 'GET').toUpperCase();
-  const isIdempotent = method === 'GET' || method === 'HEAD';
-  const retries = isIdempotent ? maxRetries : 0;
-
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
-      // 外部取消也要能中断在途请求，否则超时前请求仍挂着
-      const onExternalAbort = () => controller.abort();
-      externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
-
-      try {
-        const response = await fetch(url, {
-          ...options,
-          signal: controller.signal
-        });
-
-        return response;
-      } finally {
-        clearTimeout(timeoutId);
-        externalSignal?.removeEventListener('abort', onExternalAbort);
-      }
-    } catch (error: unknown) {
-      lastError = error;
-
-      if (error instanceof Error && error.name === 'AbortError') {
-        // 外部取消优先：属于用户主动离开，不算超时失败
-        if (externalSignal?.aborted) {
-          throw createAbortError();
-        }
-        throw new TimeoutError();
-      }
-
-      if (attempt === retries) {
-        throw new NetworkError();
-      }
-
-      // 指数退避 + 随机抖动，避免惊群效应
-      const delay = Math.min(retryDelay * Math.pow(2, attempt) + Math.random() * 1000, 10000);
-      await sleep(delay, externalSignal);
-    }
-  }
-
-  throw lastError;
-}
-
-// 构造可识别的取消错误，供调用方与真实失败区分
-function createAbortError(): Error {
-  if (typeof DOMException !== 'undefined') {
-    return new DOMException('请求已取消', 'AbortError');
-  }
-  const err = new Error('请求已取消');
-  err.name = 'AbortError';
-  return err;
-}
-
-/** 可被外部信号打断的 sleep；取消时抛出 AbortError */
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(createAbortError());
-      return;
-    }
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(createAbortError());
-    };
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
+/** 绑定层抛出的 Error（中文文案）统一包成 ApiError，保留原 message */
+function wrapBindingError(err: unknown, fallback: string): ApiError {
+  if (err instanceof ApiError) return err;
+  const message = err instanceof Error && err.message ? err.message : fallback;
+  return new ApiError(message);
 }
 
 // 安全的数据转换函数
@@ -289,34 +120,36 @@ export async function generateNamesAsync(data: GenerateRequest, signal?: AbortSi
     throw new ValidationError('出生年份必须在1900-2100之间');
   }
 
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/names/generate/async`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-    },
-    body: JSON.stringify(processedData),
-  }, 3, 1000, signal);
-  const result = await handleResponse<AsyncSubmitResponse>(response);
-  if (!result.data?.task_id) {
+  // 调用方已取消：不再发起提交
+  if (signal?.aborted) throw createAbortError();
+
+  const result = await SubmitGenerateTask(processedData as never)
+    .catch((err: unknown) => { throw wrapBindingError(err, '任务提交失败，请稍后重试'); });
+  if (!result?.task_id) {
     throw new ServerError('任务提交失败，请稍后重试');
   }
-  return result.data.task_id;
+  return result.task_id;
 }
 
-/** 查询异步任务状态；成功时 data.result 为完整生成结果（取走即弃） */
+/** 查询异步任务状态；成功时 result 为完整生成结果（取走即弃） */
 export async function getTaskStatus(taskId: string, signal?: AbortSignal): Promise<TaskStatusResponse['data']> {
   if (!taskId || taskId.trim() === '') {
     throw new ValidationError('任务ID不能为空');
   }
-  const response = await fetchWithRetry(
-    `${API_BASE_URL}/v1/names/task/${encodeURIComponent(taskId)}`,
-    {},
-    3,
-    1000,
-    signal
-  );
-  const result = await handleResponse<TaskStatusResponse>(response);
-  return result.data;
+  if (signal?.aborted) throw createAbortError();
+  const status = await GetGenerateTask(taskId)
+    .catch((err: unknown) => { throw wrapBindingError(err, '任务查询失败，请稍后重试'); });
+  if (!status) {
+    throw new ServerError('任务不存在或已过期');
+  }
+  return {
+    task_id: status.task_id,
+    status: status.status as 'pending' | 'running' | 'success' | 'failed',
+    stage: status.stage,
+    percent: status.percent,
+    error: status.error,
+    result: status.result as unknown as TaskStatusResponse['data'] extends infer T ? T : never,
+  } as TaskStatusResponse['data'];
 }
 
 /**
@@ -324,8 +157,8 @@ export async function getTaskStatus(taskId: string, signal?: AbortSignal): Promi
  * onProgress 每 500ms 回调一次（stage 阶段名 / percent 百分比）。
  *
  * 传入 signal 可主动取消整条链（提交 + 轮询 + 退避等待），docs/29 B17：
- * 原实现不接收取消信号，用户离开页面后最长空转 5 分钟。
  * 取消时抛出 name === 'AbortError' 的错误，调用方应静默处理、不弹错误提示。
+ * 注意：绑定调用本身不可中断，取消在轮询边界生效（最多延迟一个 pollIntervalMs）。
  */
 export async function generateNamesWithProgress(
   data: GenerateRequest,
@@ -366,15 +199,12 @@ export async function exploreNames(generationId: string, count: number = 10): Pr
   if (!generationId || generationId.trim() === '') {
     throw new ValidationError('生成会话ID不能为空');
   }
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/names/generate/explore`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-    },
-    body: JSON.stringify({ generation_id: generationId, count }),
-  });
-  const result = await handleResponse<ExploreResponse>(response);
-  return result.data;
+  const result = await ExploreNames({ generation_id: generationId, count })
+    .catch((err: unknown) => { throw wrapBindingError(err, '换一批失败，请稍后重试'); });
+  if (!result) {
+    throw new ServerError('换一批失败，请稍后重试');
+  }
+  return result as unknown as ExploreResponse['data'];
 }
 
 // --- 测名 + 风险体检 ---
@@ -391,65 +221,48 @@ export async function evaluateName(data: EvaluateRequest): Promise<EvaluateRespo
     throw new ValidationError('出生年份必须在1900-2100之间');
   }
 
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/names/evaluate`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-    },
-    body: JSON.stringify({
-      ...data,
-      birth_year: safeParseInt(data.birth_year),
-      birth_month: safeParseInt(data.birth_month),
-      birth_day: safeParseInt(data.birth_day),
-      birth_hour: safeParseInt(data.birth_hour),
-      birth_minute: safeParseInt(data.birth_minute ?? 0),
-    }),
-  });
-  const result = await handleResponse<EvaluateResponse>(response);
-  if (!result.data) {
+  const result = await EvaluateName({
+    ...data,
+    birth_year: safeParseInt(data.birth_year),
+    birth_month: safeParseInt(data.birth_month),
+    birth_day: safeParseInt(data.birth_day),
+    birth_hour: safeParseInt(data.birth_hour),
+    birth_minute: safeParseInt(data.birth_minute ?? 0),
+  } as never)
+    .catch((err: unknown) => { throw wrapBindingError(err, '测名失败，请稍后重试'); });
+  if (!result) {
     throw new ServerError('测名失败，请稍后重试');
   }
-  return result.data;
+  return result as unknown as EvaluateResponse['data'];
 }
 
-export async function getHistory(): Promise<HistoryResponse> {
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/history`);
-  return await handleResponse(response);
+export async function getHistory(page: number = 1, limit: number = 100): Promise<HistoryResponse> {
+  const result = await GetHistory(page, limit)
+    .catch((err: unknown) => { throw wrapBindingError(err, '历史记录读取失败，请稍后重试'); });
+  // 桌面绑定直接返回分页结构 {records, total, page, limit}，归一化为旧信封数组
+  return { success: true, data: (result?.records ?? []) as unknown as HistoryResponse['data'] };
 }
 
 export async function saveHistory(data: Record<string, unknown>): Promise<HistoryResponse> {
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/history`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-    },
-    body: JSON.stringify(data),
-  });
-  return await handleResponse(response);
+  await SaveHistory(data as never)
+    .catch((err: unknown) => { throw wrapBindingError(err, '历史记录保存失败，请稍后重试'); });
+  return { success: true, data: [] };
 }
 
 export async function deleteHistory(id: string): Promise<HistoryResponse> {
   if (!id || id.trim() === '') {
     throw new ValidationError('历史记录ID不能为空');
   }
-
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/history/${id}`, {
-    method: 'DELETE',
-  });
-  return await handleResponse(response);
+  await DeleteHistory(id)
+    .catch((err: unknown) => { throw wrapBindingError(err, '历史记录删除失败，请稍后重试'); });
+  return { success: true, data: [] };
 }
 
 export async function getFavorites(): Promise<FavoritesResponse> {
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/favorites`);
-  const resp = await handleResponse<{
-    success: boolean;
-    message?: string;
-    data?: { data?: FavoriteData[]; records?: FavoriteData[] };
-  }>(response);
-  // 后端 GET /api/v1/favorites 返回分页信封 data: {data/records, total, page, limit}，
-  // 归一化为 data: FavoriteData[]，供前端统一按数组消费
-  const list = resp?.data?.data ?? resp?.data?.records ?? [];
-  return { success: resp?.success ?? false, message: resp?.message, data: Array.isArray(list) ? list : [] };
+  // 桌面单用户固定会话，一次拉满（上限 100）后归一化为数组
+  const result = await GetFavorites(1, 100)
+    .catch((err: unknown) => { throw wrapBindingError(err, '收藏读取失败，请稍后重试'); });
+  return { success: true, data: (result?.records ?? []) as unknown as FavoriteData[] };
 }
 
 export async function saveFavorite(data: FavoriteData): Promise<FavoritesResponse> {
@@ -464,25 +277,18 @@ export async function saveFavorite(data: FavoriteData): Promise<FavoritesRespons
     throw new ValidationError('评分不能为空');
   }
 
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/favorites`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-    },
-    body: JSON.stringify(data),
-  });
-  return await handleResponse(response);
+  await SaveFavorite(data as never)
+    .catch((err: unknown) => { throw wrapBindingError(err, '收藏保存失败，请稍后重试'); });
+  return { success: true, data: [] };
 }
 
 export async function deleteFavorite(id: string): Promise<APIResponse> {
   if (!id || id.trim() === '') {
     throw new ValidationError('收藏ID不能为空');
   }
-
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/favorites/${id}`, {
-    method: 'DELETE',
-  });
-  return await handleResponse(response);
+  await DeleteFavorite(id)
+    .catch((err: unknown) => { throw wrapBindingError(err, '收藏删除失败，请稍后重试'); });
+  return { success: true };
 }
 
 export async function getHuangli(year: number, month: number, day: number): Promise<APIResponse> {
@@ -500,8 +306,9 @@ export async function getHuangli(year: number, month: number, day: number): Prom
     throw new ValidationError('日期必须在1-31之间');
   }
 
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/huangli?year=${safeYear}&month=${safeMonth}&day=${safeDay}`);
-  return await handleResponse(response);
+  const huangli = await GetHuangli(safeYear, safeMonth, safeDay)
+    .catch((err: unknown) => { throw wrapBindingError(err, '黄历查询失败，请稍后重试'); });
+  return { success: true, data: huangli };
 }
 
 export interface LunarMonthDay {
@@ -531,8 +338,9 @@ export async function getLunarMonthCalendar(year: number, month: number): Promis
     throw new ValidationError('月份必须在1-12之间');
   }
 
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/lunar/month?year=${safeYear}&month=${safeMonth}`);
-  return await handleResponse(response);
+  const calendar = await GetLunarMonthCalendar(safeYear, safeMonth)
+    .catch((err: unknown) => { throw wrapBindingError(err, '农历月历查询失败，请稍后重试'); });
+  return { success: true, data: calendar as unknown as LunarMonthCalendar };
 }
 
 export async function getLunarCalendar(year: number, month: number, day: number, hour: number = 0, minute: number = 0): Promise<APIResponse> {
@@ -558,16 +366,17 @@ export async function getLunarCalendar(year: number, month: number, day: number,
     throw new ValidationError('分钟必须在0-59之间');
   }
 
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/lunar?year=${safeYear}&month=${safeMonth}&day=${safeDay}&hour=${safeHour}&minute=${safeMinute}`);
-  return await handleResponse(response);
+  const lunar = await GetLunarCalendar(safeYear, safeMonth, safeDay, safeHour, safeMinute)
+    .catch((err: unknown) => { throw wrapBindingError(err, '农历查询失败，请稍后重试'); });
+  return { success: true, data: lunar };
 }
 
 // --- 偏旁选字 API ---
 
 export async function getCharGroups(): Promise<StandardCharGroup[]> {
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/characters/groups`);
-  const result = await handleResponse<APIResponse<StandardCharGroup[]>>(response);
-  return result.data || [];
+  const groups = await GetCharGroups()
+    .catch((err: unknown) => { throw wrapBindingError(err, '偏旁分组读取失败，请稍后重试'); });
+  return (groups ?? []) as unknown as StandardCharGroup[];
 }
 
 // --- 名字统计 API ---
@@ -576,9 +385,9 @@ export async function getNameStats(name: string): Promise<NameStat | null> {
   if (!name || name.trim() === '') {
     throw new ValidationError('名字不能为空');
   }
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/namestat/${encodeURIComponent(name)}`);
-  const result = await handleResponse<APIResponse<NameStat>>(response);
-  return result.data || null;
+  const stat = await GetNameStats(name)
+    .catch((err: unknown) => { throw wrapBindingError(err, '名字统计读取失败，请稍后重试'); });
+  return (stat ?? null) as unknown as NameStat | null;
 }
 
 export async function getTopNames(limit: number = 20): Promise<NameStat[]> {
@@ -586,9 +395,10 @@ export async function getTopNames(limit: number = 20): Promise<NameStat[]> {
   if (safeLimit < 1 || safeLimit > 100) {
     throw new ValidationError('查询数量必须在1-100之间');
   }
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/namestat?limit=${safeLimit}`);
-  const result = await handleResponse<APIResponse<NameStat[]>>(response);
-  return result.data || [];
+  // kind 传 all（与旧 HTTP 全量榜单口径一致）
+  const list = await GetTopNames(safeLimit, 'all')
+    .catch((err: unknown) => { throw wrapBindingError(err, '名字榜读取失败，请稍后重试'); });
+  return (list ?? []) as unknown as NameStat[];
 }
 
 // --- 结果页动作区：导出 PDF / 分享快照 ---
@@ -613,16 +423,9 @@ export interface ReportPayload {
 
 /** 导出 PDF：返回二进制 Blob，由调用方触发浏览器下载。 */
 export async function exportReportPDF(data: ReportPayload): Promise<Blob> {
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/report/pdf`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
-    body: JSON.stringify({ data }),
-  });
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}) as Record<string, string>);
-    throw new ApiError(errData.message || '导出 PDF 失败，请稍后重试', response.status);
-  }
-  const blob = await response.blob();
+  const bytes = await GenerateReportPDF({ data })
+    .catch((err: unknown) => { throw wrapBindingError(err, '导出 PDF 失败，请稍后重试'); });
+  const blob = new Blob([new Uint8Array(bytes ?? [])], { type: 'application/pdf' });
   if (!blob.size) {
     throw new ServerError('PDF 内容为空，请稍后重试');
   }
@@ -650,12 +453,6 @@ export interface ShareSnapshot {
   }>;
 }
 
-interface ShareEnvelope<T> {
-  success: boolean;
-  data: T;
-  message?: string;
-}
-
 export interface ShareCreateResult {
   id: string;
   url: string;
@@ -665,26 +462,63 @@ export async function createShareSnapshot(snapshot: ShareSnapshot): Promise<Shar
   if (!Array.isArray(snapshot.names) || snapshot.names.length === 0) {
     throw new ValidationError('没有可分享的名字');
   }
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/share`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
-    body: JSON.stringify({ data: snapshot }),
-  });
-  const result = await handleResponse<ShareEnvelope<ShareCreateResult>>(response);
-  if (!result.data?.id) {
+  const result = await CreateShare({ data: snapshot })
+    .catch((err: unknown) => { throw wrapBindingError(err, '创建分享失败，请稍后重试'); });
+  if (!result?.id) {
     throw new ServerError('创建分享失败，请稍后重试');
   }
-  return result.data;
+  return { id: result.id, url: result.url };
 }
 
 export async function getShareSnapshot(id: string): Promise<ShareSnapshot> {
   if (!/^[a-f0-9]{32}$/.test(id)) {
     throw new NotFoundError('分享不存在或已失效');
   }
-  const response = await fetchWithRetry(`${API_BASE_URL}/v1/share/${id}`);
-  const result = await handleResponse<ShareEnvelope<ShareSnapshot>>(response);
-  if (!result.data || !Array.isArray(result.data.names)) {
+  const raw = await GetShare(id)
+    .catch((err: unknown) => { throw wrapBindingError(err, '分享不存在或已失效'); });
+  if (!raw) {
     throw new ServerError('分享内容格式错误');
   }
-  return result.data;
+  // GetShare 返回 json.RawMessage（字符串），需反序列化为快照对象
+  let data: ShareSnapshot;
+  try {
+    data = typeof raw === 'string' ? JSON.parse(raw) : (raw as unknown as ShareSnapshot);
+  } catch {
+    throw new ServerError('分享内容格式错误');
+  }
+  if (!data || !Array.isArray(data.names)) {
+    throw new ServerError('分享内容格式错误');
+  }
+  return data;
+}
+
+// --- 取消语义（原 fetch 版保留） ---
+
+/** 构造可识别的取消错误，供调用方与真实失败区分 */
+function createAbortError(): Error {
+  if (typeof DOMException !== 'undefined') {
+    return new DOMException('请求已取消', 'AbortError');
+  }
+  const err = new Error('请求已取消');
+  err.name = 'AbortError';
+  return err;
+}
+
+/** 可被外部信号打断的 sleep；取消时抛出 AbortError */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createAbortError());
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(createAbortError());
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }

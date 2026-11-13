@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, lazy, Suspense, type SetStateAction } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/lib/navigation';
 import { useNameStore } from '@/lib/store';
 import { Name, FavoriteData } from '@/types';
 import { ResultPageSkeleton, NameCardSkeleton } from '@/components/Skeleton';

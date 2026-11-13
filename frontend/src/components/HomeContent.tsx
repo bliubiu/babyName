@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, lazy, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/lib/navigation';
 import { useNameStore } from '@/lib/store';
 import { generateNamesWithProgress, saveHistory } from '@/lib/api';
 import { useMutation } from '@tanstack/react-query';

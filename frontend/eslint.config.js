@@ -3,9 +3,11 @@ import tseslint from 'typescript-eslint';
 import reactPlugin from 'eslint-plugin-react';
 import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import jsxA11yPlugin from 'eslint-plugin-jsx-a11y';
+import globalsPkg from 'globals';
+const { browser, node, es2024 } = globalsPkg;
 
 export default tseslint.config(
-  { ignores: ['node_modules/', '.next/', 'out/', 'public/', '*.config.js', '*.config.mjs', 'coverage/', 'dist/', 'build/'] },
+  { ignores: ['node_modules/', '.next/', 'out/', 'public/', '*.config.js', '*.config.mjs', 'coverage/', 'dist/', 'build/', 'wailsjs/'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -22,9 +24,9 @@ export default tseslint.config(
         tsconfigRootDir: import.meta.dirname,
       },
       globals: {
-        browser: true,
-        es2024: true,
-        node: true,
+        ...browser,
+        ...node,
+        ...es2024,
         React: 'writable',
         JSX: 'writable',
       },

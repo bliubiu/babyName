@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/lib/navigation';
 import ThemeToggle from './ThemeToggle';
 import { IconArrowLeft, IconHistory, IconHeart, IconCalendar, IconCamera, IconFileText, IconClipboardCheck, IconJson } from './Icons';
 

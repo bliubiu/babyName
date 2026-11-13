@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/lib/navigation';
 import { useNameStore } from '@/lib/store';
 import { useToast } from '@/components/Toast';
 import { Name } from '@/types';

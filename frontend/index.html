@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#8B2323" />
+    <meta name="description" content="基于中国传统玄学（八字五行、易经64卦、生肖属相）的智能起名服务" />
+    <title>起名 - 为宝宝选个好名字</title>
+    <!-- 防闪烁（FOUC）：在 <body> 渲染前同步按 localStorage('theme') 或系统
+        prefers-color-scheme 给 <html> 加 .dark。与 ThemeToggle 共用同一
+        key 与 class 约定（docs/07 §0.3）。 -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('theme');
+          var d = t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (d) document.documentElement.classList.add('dark');
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body class="min-h-screen bg-warm-white font-sans">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

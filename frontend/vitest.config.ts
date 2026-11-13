@@ -11,8 +11,8 @@ export default defineConfig({
       reporter: ['text', 'json', 'html'],
       exclude: [
         'node_modules/',
-        '.next/',
-        'out/',
+        'dist/',
+        'wailsjs/',
         'public/',
         '**/*.test.{ts,tsx}',
         '**/*.spec.{ts,tsx}',

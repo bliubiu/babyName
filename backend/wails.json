@@ -3,10 +3,10 @@
   "name": "namer",
   "outputfilename": "namer-desktop",
   "frontend:dir": "../frontend",
-  "frontend:install": "",
-  "frontend:build": "",
+  "frontend:install": "pnpm install",
+  "frontend:build": "pnpm build",
   "frontend:dev:watcher": "",
-  "frontend:dev:serverUrl": "",
+  "frontend:dev:serverUrl": "http://localhost:34115",
   "author": {
     "name": "bliubiu"
   },

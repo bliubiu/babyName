@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/lib/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { getFavorites, deleteFavorite } from '@/lib/api';
 import type { FavoriteData } from '@/types';

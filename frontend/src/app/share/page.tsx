@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/lib/navigation';
 import Navigation from '@/components/Navigation';
 import { getShareSnapshot, type ShareSnapshot } from '@/lib/api';
 
@@ -12,8 +12,8 @@ type LoadState =
 
 /**
  * 分享落地页：/share?id=<随机 id>。
- * 用 window.location.search 读取 id（静态导出下不引入 useSearchParams 的
- * Suspense 约束），快照由后端 /api/v1/share/:id 提供，页面本身无登录态。
+ * 桌面端为 HashRouter，id 可能在 path query 也可能在 hash query（#/share?id=xx），
+ * 两处都兜底读取，快照由本地分享库（desktop.GetShare）提供。
  */
 export default function SharePage() {
   const router = useRouter();
@@ -21,7 +21,9 @@ export default function SharePage() {
 
   useEffect(() => {
     let cancelled = false;
-    const id = new URLSearchParams(window.location.search).get('id') ?? '';
+    const hashQuery = window.location.hash.split('?')[1] ?? '';
+    const id = new URLSearchParams(window.location.search).get('id')
+      ?? new URLSearchParams(hashQuery).get('id') ?? '';
     // 缺 id 与读取失败都走同一条 Promise 链：状态只在异步回调里更新，
     // 避免在 effect 主体里同步 setState 触发级联渲染。
     const task = id

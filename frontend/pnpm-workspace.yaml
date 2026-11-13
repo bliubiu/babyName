@@ -10,3 +10,4 @@
 #   core-js 的 postinstall 仅打印捐赠提示，显式拒绝（不列或 false）。
 allowBuilds:
   sharp: true
+  esbuild: true

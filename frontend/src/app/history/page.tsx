@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/lib/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { GenerateResponse } from '@/types';
 import { getHistory, deleteHistory } from '@/lib/api';
@@ -22,7 +22,7 @@ export default function HistoryPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const { data: historyResponse, error, isLoading } = useQuery({
     queryKey: ['history'],
-    queryFn: getHistory,
+    queryFn: () => getHistory(),
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
