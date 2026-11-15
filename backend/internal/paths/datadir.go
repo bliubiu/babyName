@@ -49,3 +49,19 @@ func FindDataDir(callerFile string) string {
 	}
 	return ""
 }
+
+// FindDataDirFromExe 基于可执行文件位置探测「exe 同级 data/」打包布局
+//
+// 打包分发后不存在仓库源码结构（FindDataDir 无从上溯），物料随安装器
+// 落在 exe 同级 data/ 内。以 namer.json 为标记判定，避免把恰好同名的
+// 空目录误当物料目录。exePath 为空或探测不命中返回空串。
+func FindDataDirFromExe(exePath string) string {
+	if exePath == "" {
+		return ""
+	}
+	candidate := filepath.Join(filepath.Dir(exePath), "data")
+	if _, err := os.Stat(filepath.Join(candidate, "namer.json")); err == nil {
+		return candidate
+	}
+	return ""
+}

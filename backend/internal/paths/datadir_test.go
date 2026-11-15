@@ -86,3 +86,42 @@ func TestFindDataDir_无标记的data子目录不误判(t *testing.T) {
 		t.Fatalf("FindDataDir = %q, 期望空串（data/ 下无 namer.json）", got)
 	}
 }
+
+// TestFindDataDirFromExe_exe同级data含标记 打包布局：exe 同级 data/ 内有 namer.json 即命中
+func TestFindDataDirFromExe_exe同级data含标记(t *testing.T) {
+	root := t.TempDir()
+	writeMarker(t, filepath.Join(root, "data"))
+
+	got := FindDataDirFromExe(filepath.Join(root, "namer-desktop.exe"))
+	if want := filepath.Join(root, "data"); got != want {
+		t.Fatalf("FindDataDirFromExe = %q, 期望 %q", got, want)
+	}
+}
+
+// TestFindDataDirFromExe_无data目录 exe 同级无 data/，返回空串交由上层回落
+func TestFindDataDirFromExe_无data目录(t *testing.T) {
+	root := t.TempDir()
+
+	if got := FindDataDirFromExe(filepath.Join(root, "namer-desktop.exe")); got != "" {
+		t.Fatalf("FindDataDirFromExe = %q, 期望空串", got)
+	}
+}
+
+// TestFindDataDirFromExe_无标记不误判 data/ 存在但缺 namer.json 标记，不视为物料目录
+func TestFindDataDirFromExe_无标记不误判(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "data"), 0o755); err != nil {
+		t.Fatalf("创建目录失败: %v", err)
+	}
+
+	if got := FindDataDirFromExe(filepath.Join(root, "namer-desktop.exe")); got != "" {
+		t.Fatalf("FindDataDirFromExe = %q, 期望空串（data/ 下无 namer.json）", got)
+	}
+}
+
+// TestFindDataDirFromExe_空exe路径 空串输入直接返回空串，不 panic
+func TestFindDataDirFromExe_空exe路径(t *testing.T) {
+	if got := FindDataDirFromExe(""); got != "" {
+		t.Fatalf("FindDataDirFromExe(\"\") = %q, 期望空串", got)
+	}
+}

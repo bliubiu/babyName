@@ -6,18 +6,17 @@ package main
 // 装配逻辑全部收敛在 internal/bootstrap（store + 物料 + 服务 + 绑定层），
 // 本文件只做三件事：解析目录 → 装配 → 启动 Wails 窗口。
 //
-// 目录语义（dev 与打包一致）：
-//   - 物料：DATA_DIR 环境变量 > 仓库根 data/（dev）> cwd/data（便携打包）
-//   - 库：NAMER_DB_PATH 环境变量 > 物料目录上一级的 namer.db（dev 复用仓库根库）
-//
-// 打包后的用户数据目录迁移（os.UserConfigDir）在后续切片处理。
+// 目录语义（按数据目录来源分叉，见 bootstrap.DataDirSource）：
+//   - 物料：-data > DATA_DIR > 仓库根 data/（dev）> exe 同级 data/（打包）> cwd/data
+//   - dev：库 = 仓库根 namer.db、日志 = 仓库根 logs/（历史布局不变）
+//   - 打包：库与日志收敛到 exe 同级 data/ 内（namer.db、data/logs），
+//     安装目录整体自包含、可整体拷贝迁移
 
 import (
 	"embed"
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/wailsapp/wails/v2"
@@ -37,9 +36,9 @@ var assets embed.FS
 
 var (
 	help      = flag.Bool("help", false, "显示帮助")
-	dataDirOp = flag.String("data", "", "物料数据目录 (默认: DATA_DIR 环境变量 > 仓库根 data/ > cwd/data)")
-	dbPathOp  = flag.String("db", "", "SQLite 库路径 (默认: NAMER_DB_PATH 环境变量 > 物料目录上一级 namer.db)")
-	logPathOp = flag.String("log", "", "日志目录 (默认: 物料目录上一级 logs)")
+	dataDirOp = flag.String("data", "", "物料数据目录 (默认: DATA_DIR 环境变量 > 仓库根 data/ > exe 同级 data/ > cwd/data)")
+	dbPathOp  = flag.String("db", "", "SQLite 库路径 (默认: NAMER_DB_PATH 环境变量 > 按目录来源推导)")
+	logPathOp = flag.String("log", "", "日志目录 (默认: NAMER_LOG_PATH 环境变量 > 按目录来源推导)")
 )
 
 func main() {
@@ -56,23 +55,25 @@ func main() {
 }
 
 func run() error {
-	// 日志先于装配初始化，装配期日志才能落盘
-	if err := initLogger(); err != nil {
+	// 目录解析一次并记住来源：物料 + 库 + 日志均支持环境变量与命令行覆盖
+	dataDir, source, err := bootstrap.ResolveDataDirDetailed(*dataDirOp)
+	if err != nil {
+		return err
+	}
+
+	// 日志先于装配初始化，装配期日志才能落盘（默认位置依赖目录来源）
+	if err := initLogger(dataDir, source); err != nil {
 		return err
 	}
 	defer logger.Sync()
 
-	// 目录解析：物料 + 库 + 日志，均支持环境变量与命令行覆盖
-	dataDir, err := bootstrap.ResolveDataDir(*dataDirOp)
-	if err != nil {
-		return err
-	}
+	// 库路径：-db > NAMER_DB_PATH > 按来源推导（dev=仓库根，打包=data 文件夹内）
 	dbPath := *dbPathOp
 	if strings.TrimSpace(dbPath) == "" {
 		dbPath = os.Getenv("NAMER_DB_PATH")
 	}
 	if strings.TrimSpace(dbPath) == "" {
-		dbPath = filepath.Join(filepath.Dir(dataDir), "namer.db")
+		dbPath = bootstrap.DefaultDBPath(dataDir, source)
 	}
 
 	// 装配：存储 + 物料 + 服务 + 桌面绑定层
@@ -110,16 +111,17 @@ func run() error {
 	})
 }
 
-// initLogger 初始化日志（桌面端默认 INFO + 落盘，目录可由 -log 覆盖）
-func initLogger() error {
+// initLogger 初始化日志（桌面端默认 INFO + 落盘，目录可由 -log/NAMER_LOG_PATH 覆盖）
+//
+// 默认位置按数据目录来源推导：dev=仓库根/logs（与 Web 端一致），
+// 打包=exe 同级 data/logs（与库同处 data 文件夹内）。
+func initLogger(dataDir string, source bootstrap.DataDirSource) error {
 	logPath := strings.TrimSpace(*logPathOp)
 	if logPath == "" {
 		logPath = os.Getenv("NAMER_LOG_PATH")
 	}
 	if logPath == "" {
-		// 默认与库同层：物料目录上一级/logs（dev 即仓库根/logs，与 Web 端一致）
-		dataDir, _ := bootstrap.ResolveDataDir("")
-		logPath = filepath.Join(filepath.Dir(dataDir), "logs")
+		logPath = bootstrap.DefaultLogDir(dataDir, source)
 	}
 	if err := logger.Init(&logger.Config{
 		Level:      "info",

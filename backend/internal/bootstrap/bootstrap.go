@@ -104,25 +104,54 @@ func Run(opts Options) (*Result, error) {
 
 // --- 数据目录解析 ---
 
+// DataDirSource 数据目录的解析来源
+//
+// 区分 dev（仓库结构）与打包态是目录语义的关键分叉：dev 的用户数据
+// （namer.db/logs）沿用「物料目录上一级」的仓库根布局；打包态收敛到
+// exe 同级 data/ 文件夹内，安装目录整体自包含、可整体拷贝迁移。
+type DataDirSource int
+
+const (
+	// SourceExplicit 显式参数（-data / Options.DataDir）
+	SourceExplicit DataDirSource = iota
+	// SourceEnvVar DATA_DIR 环境变量
+	SourceEnvVar
+	// SourceDevRepo 仓库根 data/（源码结构向上探测命中，仅 dev）
+	SourceDevRepo
+	// SourceExeDir exe 同级 data/（打包分发布局）
+	SourceExeDir
+	// SourceCwdDir cwd/data（便携回落）
+	SourceCwdDir
+)
+
 // ResolveDataDir 解析传统文化数据目录（与 cmd/server 的 cwdDataDir 同口径）：
-// 显式指定 > DATA_DIR 环境变量 > 向上探测仓库根 data/ > cwd/data。
-// 四者皆无结果时返回错误——物料目录是启动的硬前提，不猜测。
+// 显式指定 > DATA_DIR 环境变量 > 向上探测仓库根 data/ > exe 同级 data/ > cwd/data。
+// 皆无结果时返回错误——物料目录是启动的硬前提，不猜测。
 //
 // 供桌面入口 main.go 复用，保证入口与装配层用同一套目录语义。
 func ResolveDataDir(explicit string) (string, error) {
+	dir, _, err := ResolveDataDirDetailed(explicit)
+	return dir, err
+}
+
+// ResolveDataDirDetailed 解析数据目录并报告来源（main.go 据此选择 db/logs 默认位置）
+func ResolveDataDirDetailed(explicit string) (string, DataDirSource, error) {
 	if dir := strings.TrimSpace(explicit); dir != "" {
-		return dir, nil
+		return dir, SourceExplicit, nil
 	}
 	if dir := strings.TrimSpace(os.Getenv("DATA_DIR")); dir != "" {
-		return dir, nil
+		return dir, SourceEnvVar, nil
 	}
 	if dir := findDataDir(); dir != "" {
-		return dir, nil
+		return dir, SourceDevRepo, nil
+	}
+	if dir := findDataDirFromExe(); dir != "" {
+		return dir, SourceExeDir, nil
 	}
 	if dir := findDataDirFromCwd(); dir != "" {
-		return dir, nil
+		return dir, SourceCwdDir, nil
 	}
-	return "", fmt.Errorf("未找到传统文化数据目录，请通过 DATA_DIR 环境变量或 Options.DataDir 指定")
+	return "", SourceExplicit, fmt.Errorf("未找到传统文化数据目录，请通过 DATA_DIR 环境变量或 Options.DataDir 指定")
 }
 
 // findDataDir 以本包源文件位置为起点向上探测仓库根 data/（与测试侧共用 paths.FindDataDir）
@@ -133,7 +162,18 @@ var findDataDir = func() string {
 	return paths.FindDataDir(file)
 }
 
-// findDataDirFromCwd 回落 cwd/data（打包后无仓库结构时物料随 exe 分发）
+// findDataDirFromExe 探测 exe 同级 data/（打包分发布局：物料随安装器落在 exe 旁）
+//
+// 提取为包级变量是为了可测：测试注入临时目录布局模拟打包态。
+var findDataDirFromExe = func() string {
+	exePath, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return paths.FindDataDirFromExe(exePath)
+}
+
+// findDataDirFromCwd 回落 cwd/data（便携兜底：从任意工作目录启动时随遇而安）
 func findDataDirFromCwd() string {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -144,6 +184,27 @@ func findDataDirFromCwd() string {
 		return dir
 	}
 	return ""
+}
+
+// DefaultDBPath 按数据目录来源推导 SQLite 库默认路径（flag/env 覆盖优先于本默认值）
+//
+// dev 仓库结构：沿用「物料目录上一级」= 仓库根 namer.db（历史行为不变）；
+// 打包态：收敛到 data 文件夹内，与物料同处 exe 同级 data/，整体自包含。
+func DefaultDBPath(dataDir string, source DataDirSource) string {
+	if source == SourceDevRepo {
+		return filepath.Join(filepath.Dir(dataDir), "namer.db")
+	}
+	return filepath.Join(dataDir, "namer.db")
+}
+
+// DefaultLogDir 按数据目录来源推导日志目录默认位置（flag/env 覆盖优先于本默认值）
+//
+// 分叉规则与 DefaultDBPath 一致：dev 沿用仓库根 logs/，打包态收敛 data/logs。
+func DefaultLogDir(dataDir string, source DataDirSource) string {
+	if source == SourceDevRepo {
+		return filepath.Join(filepath.Dir(dataDir), "logs")
+	}
+	return filepath.Join(dataDir, "logs")
 }
 
 // --- 存储 ---

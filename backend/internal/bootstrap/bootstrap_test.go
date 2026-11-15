@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"name/internal/infrastructure/database/sqlite"
+	"name/internal/paths"
 	"name/internal/testutil"
 )
 
@@ -170,6 +171,152 @@ func TestResolveDataDir_优先级与兜底(t *testing.T) {
 		dir, err := ResolveDataDir("")
 		if err != nil || filepath.Base(dir) != "data" {
 			t.Fatalf("应回落 cwd/data，实际: dir=%s err=%v", dir, err)
+		}
+	})
+}
+
+// makeExeDataLayout 造一份「exe 同级 data/ 含 namer.json」的打包布局，返回 exe 路径
+func makeExeDataLayout(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "data"), 0o755); err != nil {
+		t.Fatalf("创建 data 目录失败: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "data", "namer.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("写入 namer.json 失败: %v", err)
+	}
+	return filepath.Join(root, "namer-desktop.exe")
+}
+
+// replaceFindDataDir 临时替换 dev 仓库探测为无果（模拟打包态），返回恢复函数
+func replaceFindDataDir(t *testing.T) {
+	t.Helper()
+	saved := findDataDir
+	findDataDir = func() string { return "" }
+	t.Cleanup(func() { findDataDir = saved })
+}
+
+// replaceFindDataDirFromExe 临时替换 exe 目录探测，返回恢复函数
+func replaceFindDataDirFromExe(t *testing.T, exePath string) {
+	t.Helper()
+	saved := findDataDirFromExe
+	findDataDirFromExe = func() string { return paths.FindDataDirFromExe(exePath) }
+	t.Cleanup(func() { findDataDirFromExe = saved })
+}
+
+func TestResolveDataDirDetailed_来源分级(t *testing.T) {
+	t.Run("显式指定", func(t *testing.T) {
+		t.Setenv("DATA_DIR", "D:\\not-exist")
+		dir, source, err := ResolveDataDirDetailed("D:\\fixture")
+		if err != nil || dir != "D:\\fixture" || source != SourceExplicit {
+			t.Fatalf("应命中显式来源，实际: dir=%s source=%v err=%v", dir, source, err)
+		}
+	})
+	t.Run("环境变量", func(t *testing.T) {
+		t.Setenv("DATA_DIR", "D:\\from-env")
+		dir, source, err := ResolveDataDirDetailed("")
+		if err != nil || dir != "D:\\from-env" || source != SourceEnvVar {
+			t.Fatalf("应命中环境变量来源，实际: dir=%s source=%v err=%v", dir, source, err)
+		}
+	})
+	t.Run("dev仓库探测", func(t *testing.T) {
+		t.Setenv("DATA_DIR", "")
+		saved := findDataDir
+		findDataDir = func() string { return "D:\\repo\\data" }
+		t.Cleanup(func() { findDataDir = saved })
+
+		dir, source, err := ResolveDataDirDetailed("")
+		if err != nil || dir != "D:\\repo\\data" || source != SourceDevRepo {
+			t.Fatalf("应命中 dev 仓库来源，实际: dir=%s source=%v err=%v", dir, source, err)
+		}
+	})
+	t.Run("exe同级data", func(t *testing.T) {
+		t.Setenv("DATA_DIR", "")
+		replaceFindDataDir(t)
+		exePath := makeExeDataLayout(t)
+		replaceFindDataDirFromExe(t, exePath)
+
+		dir, source, err := ResolveDataDirDetailed("")
+		if err != nil || source != SourceExeDir || filepath.Base(dir) != "data" {
+			t.Fatalf("应命中 exe 同级 data 来源，实际: dir=%s source=%v err=%v", dir, source, err)
+		}
+	})
+	t.Run("cwddata兜底", func(t *testing.T) {
+		t.Setenv("DATA_DIR", "")
+		replaceFindDataDir(t)
+		replaceFindDataDirFromExe(t, "")
+		tmp := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(tmp, "data"), 0o755); err != nil {
+			t.Fatalf("创建 data 目录失败: %v", err)
+		}
+		cwd, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("获取工作目录失败: %v", err)
+		}
+		if err := os.Chdir(tmp); err != nil {
+			t.Fatalf("切换工作目录失败: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Chdir(cwd) })
+
+		dir, source, err := ResolveDataDirDetailed("")
+		if err != nil || source != SourceCwdDir || filepath.Base(dir) != "data" {
+			t.Fatalf("应回落 cwd/data，实际: dir=%s source=%v err=%v", dir, source, err)
+		}
+	})
+	t.Run("皆无报错", func(t *testing.T) {
+		t.Setenv("DATA_DIR", "")
+		replaceFindDataDir(t)
+		replaceFindDataDirFromExe(t, "")
+		tmp := t.TempDir()
+		cwd, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("获取工作目录失败: %v", err)
+		}
+		if err := os.Chdir(tmp); err != nil {
+			t.Fatalf("切换工作目录失败: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Chdir(cwd) })
+
+		if _, _, err := ResolveDataDirDetailed(""); err == nil {
+			t.Fatal("无任何来源应返回错误")
+		}
+	})
+}
+
+func TestResolveDataDir_与Detailed同口径(t *testing.T) {
+	t.Setenv("DATA_DIR", "D:\\from-env")
+	dir, err := ResolveDataDir("")
+	if err != nil || dir != "D:\\from-env" {
+		t.Fatalf("薄包装应与 Detailed 同结果，实际: dir=%s err=%v", dir, err)
+	}
+}
+
+func TestDefaultDBPath_Dev与便携两语义(t *testing.T) {
+	t.Run("dev仓库：物料目录上一级（现行为不变）", func(t *testing.T) {
+		got := DefaultDBPath(filepath.Join("D:", "repo", "data"), SourceDevRepo)
+		if want := filepath.Join("D:", "repo", "namer.db"); got != want {
+			t.Fatalf("DefaultDBPath = %q, 期望 %q", got, want)
+		}
+	})
+	t.Run("便携态：data文件夹内（exe同级）", func(t *testing.T) {
+		got := DefaultDBPath(filepath.Join("D:", "app", "data"), SourceExeDir)
+		if want := filepath.Join("D:", "app", "data", "namer.db"); got != want {
+			t.Fatalf("DefaultDBPath = %q, 期望 %q", got, want)
+		}
+	})
+}
+
+func TestDefaultLogDir_Dev与便携两语义(t *testing.T) {
+	t.Run("dev仓库：物料目录上一级（现行为不变）", func(t *testing.T) {
+		got := DefaultLogDir(filepath.Join("D:", "repo", "data"), SourceDevRepo)
+		if want := filepath.Join("D:", "repo", "logs"); got != want {
+			t.Fatalf("DefaultLogDir = %q, 期望 %q", got, want)
+		}
+	})
+	t.Run("便携态：data文件夹内（exe同级）", func(t *testing.T) {
+		got := DefaultLogDir(filepath.Join("D:", "app", "data"), SourceCwdDir)
+		if want := filepath.Join("D:", "app", "data", "logs"); got != want {
+			t.Fatalf("DefaultLogDir = %q, 期望 %q", got, want)
 		}
 	})
 }
