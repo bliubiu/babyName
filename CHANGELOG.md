@@ -5,6 +5,21 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.15.4]
+
+**新增文档：Wails v2 → v3 升级评估与实施方案（`docs/48`）**
+
+### 📝 文档 / 决策
+- 结论：**可以升，但不在 master 直接升**；建议隔离分支 5 阶段推进，阶段 0 作 go/no-go 判据。master 仍为 Wails v2.17.0，本轮未改动任何可执行代码。
+- 修正上一轮选型判断：本机 `GOTOOLCHAIN=auto` 且已缓存 Go 1.26.x/1.27.1，`GOTOOLCHAIN=go1.26.11 go version` 实测可用；`wails/v3@v3.0.0` 模块可下载、`wails3` CLI 可安装 —— 原先「Go 工具链硬阻塞」不成立。
+- 官方事实：v3.0.0 于 2026-10-26 GA、桌面三平台稳定、要求 Go ≥1.26、v2 继续收 critical 更新、v2→v3 是「真正的移植而非版本升级」、之后 nightly + 每周次版本需精确 pin。
+- 契约实测（隔离 scratch 探针 `wails3 generate bindings -ts`）：`json.RawMessage` → `any`（分享链路几乎不变）；`[]byte` → `Promise<string>` + `$Create.ByteSlice()`（从源头修掉 v2 的 base64 契约漂移）；导出方法 `Startup(ctx)` 会被误生成前端可调用方法，须改名 `ServiceStartup`。
+- 方案覆盖：应用外壳 / 服务注册 / 绑定生成物 / `@wailsio/runtime` / server build 版 Playwright E2E / NSIS 定制 / CI / 每阶段验收命令；附影响面清单与风险、复查触发条件。
+
+### ✅ 验证
+- 只读探测与 scratch 探针：`go mod download -json github.com/wailsapp/wails/v3@v3.0.0` exit 0；`go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0` exit 0；绑定生成 `250 Packages, 1 Service, 4 Methods, 2 Models in 6.4s`。
+- 本轮仅新增文档 + CHANGELOG，未触及可执行代码，故未重跑构建/测试；仓库状态与探针产物见 `docs/48` §8。
+
 ## [2026.11.15.3]
 
 **质量门禁可观测性：覆盖率阶段失败时回显 go test 原始报错**
