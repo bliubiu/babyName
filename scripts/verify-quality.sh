@@ -160,6 +160,8 @@ coverage_gate() {
     local out
     if ! out=$(go -C "$BACKEND_DIR" test "./$pkg" -count=1 -cover 2>&1); then
       fail "覆盖率门禁: $pkg 测试失败"
+      # 输出被 $(...) 捕获，失败时必须回显原始报错；否则偶发失败只剩一行摘要，无从定位
+      printf '[verify] %s 的 go test 原始输出:\n%s\n' "$pkg" "$out" >&2
       failed=1
       continue
     fi
@@ -167,6 +169,7 @@ coverage_gate() {
     cov=$(printf '%s' "$out" | grep -oE 'coverage: [0-9.]+%' | grep -oE '[0-9.]+')
     if [ -z "$cov" ]; then
       fail "覆盖率门禁: $pkg 未能解析覆盖率输出"
+      printf '[verify] %s 的 go test 原始输出:\n%s\n' "$pkg" "$out" >&2
       failed=1
       continue
     fi

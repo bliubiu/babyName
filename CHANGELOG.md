@@ -5,6 +5,20 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.15.3]
+
+**质量门禁可观测性：覆盖率阶段失败时回显 go test 原始报错**
+
+### 🐛 Bug Fixes 问题修复
+- `scripts/verify-quality.sh` 的 `coverage_gate()` 用 `out=$(go -C ... test -count=1 -cover 2>&1)` 捕获输出，测试失败 / 覆盖率数值解析失败时只打印一行 `[FAIL] <pkg> 测试失败`，真实错误被吞掉、无从定位
+- 背景：2026-11-15 推送时 `internal/domain/yijing` 偶发失败即因此无法回溯（单跑 91.9%、整条门禁复跑 92.0% 均绿，重推通过）；当时未使用 `SKIP_VERIFY=1` 绕过
+- 现在两个失败分支都用 `printf '[verify] %s 的 go test 原始输出:\n%s\n' "$pkg" "$out" >&2` 把 go test 原始报错回显到 stderr，并带包名前缀；成功路径与覆盖率不足分支输出保持不变
+
+### ✅ 验证
+- 可控探针（从真实脚本抽取 `coverage_gate` 函数，只替换包路径 / BACKEND_DIR）：`go -C` chdir 失败 → 回显 `go: chdir ... cannot find the file specified.`；不存在的包 → 回显 `stat ... directory not found` / `FAIL ... [setup failed]`；无测试文件包 → 仍正常打印 `= 0.0% < 75%（需补测）`
+- `SKIP_SERVER=1 bash scripts/verify-quality.sh` 全绿（vet / golden / gate_audit / dim_audit 147 项 / 九包覆盖率 76.3%~94.9%）
+- `bash scripts/verify-frontend.sh --require` 全绿（23 个测试文件 / 161 例，tsc 0 错、ESLint 0 error）
+
 ## [2026.11.15.2]
 
 **补记：Wails 桌面端迁移 S1–S4 全链路（11 个既有提交，推送前补齐变更日志）**
