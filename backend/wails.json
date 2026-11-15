@@ -6,7 +6,6 @@
   "frontend:install": "pnpm install",
   "frontend:build": "pnpm build",
   "frontend:dev:watcher": "",
-  "frontend:dev:serverUrl": "http://localhost:34115",
   "author": {
     "name": "bliubiu"
   },

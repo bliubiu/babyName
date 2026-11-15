@@ -17,9 +17,18 @@ if (-not (Get-Command $WailsExe -ErrorAction SilentlyContinue)) {
     $fallback = Join-Path $env:USERPROFILE "go\bin\wails.exe"
     if (Test-Path $fallback) { $WailsExe = $fallback }
     else {
-        Write-Host "[错误] 未找到 wails CLI，请先安装：go install github.com/wailsapp/wails/v2/cmd/wails@latest" -ForegroundColor Red
+        Write-Host "[错误] 未找到 wails CLI，请先安装：go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0" -ForegroundColor Red
         exit 1
     }
+}
+
+# 版本护栏：项目锁定 v2.17.0（go 1.25.x）；dev 启动时 CLI 会把 go.mod 重写为
+# 自身版本（2.17.1 → go 1.26，docs/47 第 2 节的坑），版本不匹配必须拦截
+$wailsVersion = (& $WailsExe version 2>$null | Select-Object -First 1) -replace '^v', ''
+if ($wailsVersion -and $wailsVersion -ne '2.17.0') {
+    Write-Host "[错误] wails CLI 版本为 $wailsVersion，本项目锁定 2.17.0（go.mod 要求 go 1.25）。" -ForegroundColor Red
+    Write-Host "       请安装匹配版本：go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0" -ForegroundColor Red
+    exit 1
 }
 
 # makensis 只认 PATH（wails 同款探测逻辑）；缺失时仅跳过安装器，不影响 exe 构建
