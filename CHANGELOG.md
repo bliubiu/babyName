@@ -5,6 +5,40 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.15.2]
+
+**补记：Wails 桌面端迁移 S1–S4 全链路（11 个既有提交，推送前补齐变更日志）**
+
+> 补记说明：下列提交发生于 2026-11-13 ~ 2026-11-15，按时间线应位于
+> `[2026.11.12.3]` 与 `[2026.11.15.0]` 之间；当时仅在 `docs/47` 留下实施记录、
+> 漏写变更日志，现随本次推送补齐，**既有版本号不追溯修改**。S5 全量 E2E 与
+> 首页 UI 优化分别见 `[2026.11.15.0]` / `[2026.11.15.1]`。
+
+### ✨ New Features 新增功能
+- 【S1】Wails 2.17.0 骨架 + `internal/desktop` 绑定层 + `internal/bootstrap` 装配层（TDD），桌面端绑定方法替代原 HTTP 接口
+- 【S2】前端由 Next.js 16 静态导出迁移至 **Vite 7 + React 19 + HashRouter**：`next/link` → React Router、`next/image` → `<img>`、fetch 封装 → `wailsjs/go/desktop/App` 绑定直调，产物改为 `frontend/dist`；React Query 保留
+- 【S3.5】新增 `/materials` 物料管理页：物料库状态（版本 / 指纹 / 行数 / 导入时间）与手动重导，逐项写入 / 跳过 / 失败明细；内存存储模式明确降级提示，绝不静默空转
+- 【S4】用户数据目录便携语义：打包态 `namer.db` / `logs/` 收敛到 exe 同级 `data/`（不用 `%AppData%`），dev 仓库布局不变；`paths.FindDataDirFromExe` 纯函数可测
+- 【S4】NSIS 安装器：LZMA 压缩、约 63MB 物料随安装器外置分发、user 安装作用域免管理员；卸载保留 `namer.db` / `*.db-wal` / `*.db-shm` / `logs/`，避免抹掉收藏与历史；`scripts/build.ps1` 串接 `wails build -nsis -installscope user`
+
+### 🗑 Deprecated / Removed 废弃与移除
+- 【S3】移除 Gin HTTP 全链路：`cmd/server`、`application/handlers`、`application/response`、`infrastructure/server`、`infrastructure/middleware`，go.mod 中 gin / echo 等依赖随 tidy 收缩
+- 【S3】移除 Web 部署链：Dockerfile / docker-entrypoint.sh / docker-compose×4 / deploy.sh / nginx conf×3 / start.bat / start.ps1 / start_services.ps1；旧 `webui_e2e_test.py` 与 `@e2e-dev/web` 随 Next.js 退役（S5 重写为 Playwright）
+- `docs/26` Docker 部署指南标注废弃并指向 `docs/47`；`scripts/verify-quality.sh` 保留 `SKIP_SERVER=1` 快路径
+
+### 🐛 Bug Fixes 问题修复
+- 【dev 拓扑】`wails dev` 独占 :34115、Vite 退让 :5173，修正前端资产服务端口冲突
+- 【依赖】Wails 由 v2.17.1 降级并固定 v2.17.0，适配项目 Go 1.25.x 约束
+- 【构建】固化 NSIS 编码坑：`project.nsi` / SimpChinese 语言文件须带 UTF-8 BOM，`wails.json` info 字段保持 ASCII（`wails_tools.nsh` 每次 BOM-less 重生成）；NSIS 3.05 从 npmmirror 镜像获取
+
+### 📚 Docs 文档更新
+- `AGENTS.md` 技术栈更新为 Wails 桌面端，补充后端开源字体资源与远端仓库说明
+- 新增 `docs/47-桌面端Wails迁移方案与实施记录.md`：S1–S5 切片进度、移除清单、数据目录与安装器决策、验证记录
+
+### ✅ 验证
+- 桌面端形态的完整验证见 `[2026.11.15.0]`（Playwright 18 例、Go 绑定层 E2E 12 组 / 22 方法、`go test ./...` 52 包、九包覆盖率 76.3%~94.9%）与 `[2026.11.15.1]`（Playwright 23 例、前端三件套全绿）
+- 本条目仅补记文档、无代码改动；推送前门禁由 `.githooks/pre-push` 独立执行
+
 ## [2026.11.15.1]
 
 **起名首页 UI 优化：三分区表单 + 高级项折叠 + 首页局部视觉规范对齐**
