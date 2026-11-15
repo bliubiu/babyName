@@ -547,6 +547,84 @@ export namespace desktop {
 		    return a;
 		}
 	}
+	export class MaterialImportItem {
+	    material: string;
+	    version: string;
+	    rows: number;
+	    skipped: boolean;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MaterialImportItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.material = source["material"];
+	        this.version = source["version"];
+	        this.rows = source["rows"];
+	        this.skipped = source["skipped"];
+	        this.error = source["error"];
+	    }
+	}
+	export class MaterialImportReport {
+	    items: MaterialImportItem[];
+	    written: number;
+	    skipped: number;
+	    failed: number;
+	    elapsed?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MaterialImportReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.items = this.convertValues(source["items"], MaterialImportItem);
+	        this.written = source["written"];
+	        this.skipped = source["skipped"];
+	        this.failed = source["failed"];
+	        this.elapsed = source["elapsed"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class MaterialState {
+	    material: string;
+	    version: string;
+	    checksum: string;
+	    row_count: number;
+	    imported_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MaterialState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.material = source["material"];
+	        this.version = source["version"];
+	        this.checksum = source["checksum"];
+	        this.row_count = source["row_count"];
+	        this.imported_at = source["imported_at"];
+	    }
+	}
 	export class Message {
 	    message: string;
 	

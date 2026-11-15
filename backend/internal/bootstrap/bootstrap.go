@@ -306,6 +306,12 @@ func assembleServices(store database.Store, dataDir string) (*desktop.App, error
 
 	warnClassicsExtractGaps(store)
 
+	// 物料管理器（SQLite 专属：状态查看 + 手动重导；内存存储降级为 nil）
+	var materials desktop.MaterialManager
+	if s, ok := store.(*sqlite.Store); ok {
+		materials = newMaterialManager(s, s, dataDir)
+	}
+
 	return desktop.New(
 		nameSvc,
 		desktop.NewTaskRunner(taskSvc),
@@ -315,7 +321,76 @@ func assembleServices(store database.Store, dataDir string) (*desktop.App, error
 		services.NewShareService(store),
 		desktop.NewCharacterSource(),
 		desktop.NewNameStatSource(),
+		materials,
 	), nil
+}
+
+// --- 物料管理适配器 ---
+
+// materialStateReader 物料库内状态只读面
+type materialStateReader interface {
+	MaterialStates() ([]sqlite.MaterialState, error)
+}
+
+// materialImporter 物料重新导入面
+type materialImporter interface {
+	Import(sqlite.ImportOptions) (*sqlite.ImportReport, error)
+}
+
+// sqliteMaterialManager sqlite.Store 物料面到 desktop.MaterialManager 的适配
+type sqliteMaterialManager struct {
+	reader   materialStateReader
+	importer materialImporter
+	dataDir  string
+}
+
+// newMaterialManager 构造物料管理适配器
+func newMaterialManager(reader materialStateReader, importer materialImporter, dataDir string) desktop.MaterialManager {
+	return sqliteMaterialManager{reader: reader, importer: importer, dataDir: dataDir}
+}
+
+// MaterialStates 物料库内状态列表（物料/版本/指纹/行数/导入时间）
+func (m sqliteMaterialManager) MaterialStates() ([]desktop.MaterialState, error) {
+	states, err := m.reader.MaterialStates()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]desktop.MaterialState, 0, len(states))
+	for _, s := range states {
+		result = append(result, desktop.MaterialState{
+			Material:   s.Material,
+			Version:    s.Version,
+			Checksum:   s.Checksum,
+			RowCount:   s.RowCount,
+			ImportedAt: s.ImportedAt,
+		})
+	}
+	return result, nil
+}
+
+// Reimport 按装配时确定的物料目录重新导入（指纹短路幂等）
+func (m sqliteMaterialManager) Reimport() (*desktop.MaterialImportReport, error) {
+	report, err := m.importer.Import(sqlite.ImportOptions{DataDir: m.dataDir})
+	if err != nil {
+		return nil, err
+	}
+	items := make([]desktop.MaterialImportItem, 0, len(report.Results))
+	for _, r := range report.Results {
+		items = append(items, desktop.MaterialImportItem{
+			Material: r.Material,
+			Version:  r.Version,
+			Rows:     r.Rows,
+			Skipped:  r.Skipped,
+			Err:      r.Err,
+		})
+	}
+	return &desktop.MaterialImportReport{
+		Items:   items,
+		Written: report.Written,
+		Skipped: report.Skipped,
+		Failed:  report.Failed,
+		Elapsed: report.Elapsed,
+	}, nil
 }
 
 // loadCuratedNamesForFate 从库读取策展名注入 fate 引擎共现分白名单（运行时只读 SQLite）

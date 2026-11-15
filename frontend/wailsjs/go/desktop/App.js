@@ -58,6 +58,10 @@ export function GetLunarMonthCalendar(arg1, arg2) {
   return window['go']['desktop']['App']['GetLunarMonthCalendar'](arg1, arg2);
 }
 
+export function GetMaterialStates() {
+  return window['go']['desktop']['App']['GetMaterialStates']();
+}
+
 export function GetNameStats(arg1) {
   return window['go']['desktop']['App']['GetNameStats'](arg1);
 }
@@ -68,6 +72,10 @@ export function GetShare(arg1) {
 
 export function GetTopNames(arg1, arg2) {
   return window['go']['desktop']['App']['GetTopNames'](arg1, arg2);
+}
+
+export function ImportMaterials() {
+  return window['go']['desktop']['App']['ImportMaterials']();
 }
 
 export function SaveFavorite(arg1) {

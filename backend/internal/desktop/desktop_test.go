@@ -227,11 +227,11 @@ func (f *fakeCharacterSource) CharGroups() ([]CharGroup, error) {
 
 // fakeNameStatSource 名字统计源替身
 type fakeNameStatSource struct {
-	gotStatsName  string
-	gotTopLimit   int
-	gotTopKind    string
-	stats         *namestat.NameStat
-	top           []namestat.NameStat
+	gotStatsName string
+	gotTopLimit  int
+	gotTopKind   string
+	stats        *namestat.NameStat
+	top          []namestat.NameStat
 }
 
 func (f *fakeNameStatSource) NameStats(name string) *namestat.NameStat {
@@ -250,12 +250,12 @@ func (f *fakeNameStatSource) TopNames(limit int, kind string) []namestat.NameSta
 // validGenerateReq 合法生成请求（通过 validateGenerateFields 校验的最小入参）
 func validGenerateReq() services.GenerateRequest {
 	return services.GenerateRequest{
-		Surname:    "李",
-		Gender:     "male",
-		BirthYear:  2000,
-		BirthMonth: 1,
-		BirthDay:   1,
-		BirthHour:  10,
+		Surname:     "李",
+		Gender:      "male",
+		BirthYear:   2000,
+		BirthMonth:  1,
+		BirthDay:    1,
+		BirthHour:   10,
 		BirthMinute: 30,
 	}
 }
@@ -268,7 +268,7 @@ func newTestApp() (*App, *fakeNameService, *fakeTaskRunner, *fakeHistoryService,
 	report := &fakeReportService{}
 	shares := &fakeShareStore{}
 	app := New(names, tasks, history, favorite, report, shares,
-		&fakeCharacterSource{}, &fakeNameStatSource{})
+		&fakeCharacterSource{}, &fakeNameStatSource{}, nil)
 	return app, names, tasks, history, favorite, report, shares
 }
 
@@ -339,13 +339,13 @@ func TestEvaluateName_透传并去空格(t *testing.T) {
 	names.evalResp = resp
 
 	got, err := app.EvaluateName(services.EvaluateRequest{
-		Surname:    "李",
-		GivenName:  " 思远 ",
-		Gender:     "male",
-		BirthYear:  2000,
-		BirthMonth: 1,
-		BirthDay:   1,
-		BirthHour:  10,
+		Surname:     "李",
+		GivenName:   " 思远 ",
+		Gender:      "male",
+		BirthYear:   2000,
+		BirthMonth:  1,
+		BirthDay:    1,
+		BirthHour:   10,
 		BirthMinute: 30,
 	})
 	if err != nil {
@@ -671,7 +671,7 @@ func TestGetCharGroups_透传(t *testing.T) {
 	names := &fakeNameService{}
 	chars := &fakeCharacterSource{groups: []CharGroup{{Radical: "木", Name: "树木", Chars: []string{"林"}}}}
 	app := New(names, &fakeTaskRunner{}, &fakeHistoryService{}, &fakeFavoriteService{},
-		&fakeReportService{}, &fakeShareStore{}, chars, &fakeNameStatSource{})
+		&fakeReportService{}, &fakeShareStore{}, chars, &fakeNameStatSource{}, nil)
 
 	got, err := app.GetCharGroups()
 	if err != nil {
@@ -688,7 +688,7 @@ func TestGetTopNames_参数规范化(t *testing.T) {
 	names := &fakeNameService{}
 	stats := &fakeNameStatSource{top: []namestat.NameStat{{}}}
 	app := New(names, &fakeTaskRunner{}, &fakeHistoryService{}, &fakeFavoriteService{},
-		&fakeReportService{}, &fakeShareStore{}, &fakeCharacterSource{}, stats)
+		&fakeReportService{}, &fakeShareStore{}, &fakeCharacterSource{}, stats, nil)
 
 	// 非法 limit 回落默认 20，非法 kind 回落 all
 	if _, err := app.GetTopNames(-5, "unknown"); err != nil {

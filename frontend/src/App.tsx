@@ -9,6 +9,7 @@ import FavoritesPage from '@/app/favorites/page';
 import HistoryPage from '@/app/history/page';
 import HuangliPage from '@/app/huangli/page';
 import JsonViewerPage from '@/app/json-viewer/page';
+import MaterialsPage from '@/app/materials/page';
 import SharePage from '@/app/share/page';
 import StatPage from '@/app/stat/page';
 
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/huangli" element={<HuangliPage />} />
           <Route path="/json-viewer" element={<JsonViewerPage />} />
+          <Route path="/materials" element={<MaterialsPage />} />
           <Route path="/share" element={<SharePage />} />
           <Route path="/stat" element={<StatPage />} />
           <Route path="*" element={<NotFound />} />

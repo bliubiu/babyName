@@ -73,6 +73,42 @@ type NameStatSource interface {
 	TopNames(limit int, kind string) []namestat.NameStat
 }
 
+// --- 物料管理（状态查看 + 手动重导，SQLite 专属） ---
+
+// MaterialState 物料库内状态（对应 sqlite.MaterialState）
+type MaterialState struct {
+	Material   string `json:"material"`
+	Version    string `json:"version"`
+	Checksum   string `json:"checksum"`
+	RowCount   int    `json:"row_count"`
+	ImportedAt string `json:"imported_at"`
+}
+
+// MaterialImportItem 单项物料导入结果
+type MaterialImportItem struct {
+	Material string `json:"material"`
+	Version  string `json:"version"`
+	Rows     int    `json:"rows"`
+	Skipped  bool   `json:"skipped"`
+	Err      string `json:"error,omitempty"`
+}
+
+// MaterialImportReport 一次重导的汇总报告
+type MaterialImportReport struct {
+	Items   []MaterialImportItem `json:"items"`
+	Written int                  `json:"written"`
+	Skipped int                  `json:"skipped"`
+	Failed  int                  `json:"failed"`
+	Elapsed string               `json:"elapsed,omitempty"`
+}
+
+// MaterialManager 物料管理数据源：状态列表 + 重新导入（指纹短路幂等）。
+// 内存存储模式下无物料库，由绑定方法给出明确提示而非静默空转。
+type MaterialManager interface {
+	MaterialStates() ([]MaterialState, error)
+	Reimport() (*MaterialImportReport, error)
+}
+
 // --- 响应结构（前端 TS 绑定的数据契约） ---
 
 // SubmitTaskResult 提交异步任务的结果
@@ -135,17 +171,19 @@ type LunarMonthCalendar struct {
 type App struct {
 	runtimeCtx context.Context
 
-	names    services.NameServiceInterface
-	tasks    TaskRunner
-	history  services.HistoryServiceInterface
-	favorite services.FavoriteServiceInterface
-	report   services.ReportServiceInterface
-	shares   ShareStore
+	names      services.NameServiceInterface
+	tasks      TaskRunner
+	history    services.HistoryServiceInterface
+	favorite   services.FavoriteServiceInterface
+	report     services.ReportServiceInterface
+	shares     ShareStore
 	characters CharacterSource
 	stats      NameStatSource
+	materials  MaterialManager
 }
 
-// New 构造桌面端绑定层。参数即装配好的应用服务（装配见 cmd/desktop）。
+// New 构造桌面端绑定层。参数即装配好的应用服务（装配见 bootstrap）。
+// materials 可为 nil（内存存储模式：物料状态页空展示、重导报错提示）。
 func New(
 	names services.NameServiceInterface,
 	tasks TaskRunner,
@@ -155,6 +193,7 @@ func New(
 	shares ShareStore,
 	characters CharacterSource,
 	stats NameStatSource,
+	materials MaterialManager,
 ) *App {
 	return &App{
 		names:      names,
@@ -165,6 +204,7 @@ func New(
 		shares:     shares,
 		characters: characters,
 		stats:      stats,
+		materials:  materials,
 	}
 }
 
@@ -554,6 +594,41 @@ func (nameStatSource) TopNames(limit int, kind string) []namestat.NameStat {
 
 // NewNameStatSource 默认名字统计数据源
 func NewNameStatSource() NameStatSource { return nameStatSource{} }
+
+// --- 物料管理 ---
+
+// GetMaterialStates 列出物料库内状态（物料/版本/指纹/行数/导入时间）。
+// 内存存储模式返回空列表（无物料库可查，不视为错误）。
+func (a *App) GetMaterialStates() ([]MaterialState, error) {
+	if a.materials == nil {
+		return []MaterialState{}, nil
+	}
+	states, err := a.materials.MaterialStates()
+	if err != nil {
+		// 物料状态错误来自库层，本身已是中文可行动文案，直接透传
+		logger.Error("物料状态读取失败", zap.Error(err))
+		return nil, errors.New(err.Error())
+	}
+	if states == nil {
+		states = []MaterialState{}
+	}
+	return states, nil
+}
+
+// ImportMaterials 手动重新导入物料（从装配时的物料目录扫描，指纹短路幂等）。
+// 重导只写 SQLite；运行期已装载的内存缓存（诗词索引/统计等）需重启应用后生效。
+func (a *App) ImportMaterials() (*MaterialImportReport, error) {
+	if a.materials == nil {
+		return nil, errors.New("当前未使用 SQLite 存储，物料管理不可用")
+	}
+	report, err := a.materials.Reimport()
+	if err != nil {
+		// 物料导入错误来自库层（含校验失败明细），本身已是中文可行动文案，直接透传
+		logger.Error("物料重新导入失败", zap.Error(err))
+		return nil, errors.New(err.Error())
+	}
+	return report, nil
+}
 
 // --- 校验辅助（与 handlers/validator 同口径） ---
 

@@ -18,7 +18,11 @@ import {
   GetHistory, SaveHistory, DeleteHistory, GetFavorites, SaveFavorite, DeleteFavorite,
   GenerateReportPDF, CreateShare, GetShare, GetHuangli, GetLunarCalendar,
   GetLunarMonthCalendar, GetCharGroups, GetNameStats, GetTopNames,
+  GetMaterialStates, ImportMaterials,
 } from '../../wailsjs/go/desktop/App';
+import type {
+  MaterialStatesResponse, MaterialImportResponse,
+} from '@/types/api/materials';
 
 // 错误类型定义（保持原有导出，供调用方 instanceof 判断）
 export class ApiError extends Error {
@@ -490,6 +494,24 @@ export async function getShareSnapshot(id: string): Promise<ShareSnapshot> {
     throw new ServerError('分享内容格式错误');
   }
   return data;
+}
+
+// --- 物料管理（桌面端专属：状态查看 + 手动重导） ---
+
+export async function getMaterialStates(): Promise<MaterialStatesResponse> {
+  const raw = await GetMaterialStates()
+    .catch((err: unknown) => { throw wrapBindingError(err, '物料状态读取失败，请稍后重试'); });
+  const list = Array.isArray(raw) ? raw : [];
+  return { success: true, data: list };
+}
+
+export async function importMaterials(): Promise<MaterialImportResponse> {
+  const report = await ImportMaterials()
+    .catch((err: unknown) => { throw wrapBindingError(err, '物料导入失败，请稍后重试'); });
+  if (!report || !Array.isArray(report.items)) {
+    throw new ServerError('物料导入报告格式错误');
+  }
+  return { success: true, data: report };
 }
 
 // --- 取消语义（原 fetch 版保留） ---

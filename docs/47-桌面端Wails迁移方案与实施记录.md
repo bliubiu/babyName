@@ -149,6 +149,25 @@ Go 侧：
   物料工具仍在使用，仅 server/rate_limit/redis 段随 HTTP 层失效
 - `cmd/namer-cli` 等物料/导出 CLI：与传输层无关，全部保留
 
+### S3.5 物料管理页（插入切片，ADR-008 方案 B）
+
+S3 与 S4 之间插入的桌面端专属功能：物料库状态查看 + 手动重导。
+
+后端：
+
+- `internal/desktop`：新增 `MaterialManager` 窄接口与 `GetMaterialStates` /
+  `ImportMaterials` 绑定方法；内存存储模式降级——状态返回空列表、重导报
+  明确提示（"当前未使用 SQLite 存储，物料管理不可用"），绝不静默空转
+- `internal/bootstrap`：`sqliteMaterialManager` 适配器（窄接口 local interface，
+  仅 SQLite 存储接线）；重导按装配时物料目录执行（指纹短路幂等）
+
+前端：
+
+- `/materials` 页面：状态表格（版本/指纹缩略/行数千分位/导入时间）+ 重导
+  按钮 + 逐项导入明细（写入/跳过/失败三分支）+ 内存模式提示
+- 重导只写 SQLite，运行期内存缓存（诗词索引/字频统计）需重启生效——页面常驻说明
+- 导航入口（数据库图标）；wailsjs TS 绑定重新生成
+
 ## 5. 验证记录
 
 - [x] `wails build` 出包 18.8MB（纯 Go，无 CGO/Node 运行时）
@@ -158,6 +177,9 @@ Go 侧：
 - [x] Wails 降级 v2.17.0 后重建通过（go 1.25.0）
 - [x] S2：tsc 无错、vitest 151 例全绿、vite build 7.5s（gzip 主包 112KB）
 - [x] S3：HTTP 层移除后 `go build ./...`、全量 `go test ./...`、wails build 均通过
+- [x] S3.5：go test 29 包全绿（desktop 37 例、bootstrap 12 例，含物料接线 2 例
+      经 Run 全链路）；tsc 无错、vitest 156 例全绿（含物料页 5 例）；
+      gofmt 干净（desktop/bootstrap 包）
 
 ## 6. 遗留与风险
 

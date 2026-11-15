@@ -176,6 +176,17 @@ export function IconRefresh({ className, size = 18 }: IconProps) {
   );
 }
 
+// 物料库（数据库）图标：物料管理页入口
+export function IconDatabase({ className, size = 18 }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+    </svg>
+  );
+}
+
 // 粤语试听（音量喇叭）图标
 export function IconVolume({ className, size = 18 }: IconProps) {
   return (

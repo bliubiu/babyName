@@ -34,11 +34,15 @@ export function GetLunarCalendar(arg1:number,arg2:number,arg3:number,arg4:number
 
 export function GetLunarMonthCalendar(arg1:number,arg2:number):Promise<desktop.LunarMonthCalendar>;
 
+export function GetMaterialStates():Promise<Array<desktop.MaterialState>>;
+
 export function GetNameStats(arg1:string):Promise<namestat.NameStat>;
 
 export function GetShare(arg1:string):Promise<json.RawMessage>;
 
 export function GetTopNames(arg1:number,arg2:string):Promise<Array<namestat.NameStat>>;
+
+export function ImportMaterials():Promise<desktop.MaterialImportReport>;
 
 export function SaveFavorite(arg1:services.FavoriteRecord):Promise<desktop.RecordID>;
 
