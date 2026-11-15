@@ -129,27 +129,26 @@ export default function HomeContent() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto relative z-10">
-      {/* 主卡片 */}
-      <div className="consultation-sheet red-ribbon corner-decor ink-wash-bg">
+    <div className="max-w-3xl mx-auto relative z-10">
+      {/* 主卡片：咨询笺硬纸封。home-sheet 为首页局部样式，不影响全站组件类。 */}
+      <div className="consultation-sheet red-ribbon corner-decor ink-wash-bg home-sheet">
         {/* 标题区域 */}
-        <div className="text-center pt-4 pb-6">
+        <div className="home-hero">
+          <p className="home-kicker">传统命理 · 智能择名</p>
           <h1 className="font-serif text-3xl md:text-4xl text-crimson tracking-widest ink-calligraphy brush-underline">
             宝宝起名
           </h1>
           <div className="flex items-center justify-center gap-4 mt-5 mb-3">
             <div className="brush-divider max-w-[72px] flex-1" />
-            <span className="text-paper-edge/50 text-xs tracking-[0.6em] font-serif">如意</span>
+            <span className="home-hero-mark">如意</span>
             <div className="brush-divider max-w-[72px] flex-1" />
           </div>
-          <p className="text-sm text-jade/80 tracking-wider">
-            输入宝宝信息，为您推荐最合适的名字
-          </p>
+          <p className="home-hero-subtitle">输入宝宝信息，为您推荐最合适的名字</p>
         </div>
 
         {/* 错误提示 */}
         {errorMessage && (
-          <div className="mb-5 p-3 bg-red-50/80 border border-crimson/15 rounded-xl text-crimson text-sm">
+          <div className="home-error" role="alert">
             {errorMessage}
           </div>
         )}
@@ -157,37 +156,22 @@ export default function HomeContent() {
         {/* 表单 */}
         <Suspense fallback={
           <div className="flex items-center justify-center py-12">
-            <div className="text-jade/60 text-sm">加载中...</div>
+            <div className="home-helper">加载中...</div>
           </div>
         }>
           <NameForm
             isGenerating={isGenerating}
+            progress={progress}
             onSubmit={handleSubmit}
             sourceClassic={sourceClassic}
             onSourceClassicChange={setSourceClassic}
           />
         </Suspense>
-
-        {/* 生成进度（异步任务轮询） */}
-        {isGenerating && progress && (
-          <div className="mt-5 mb-1 px-1" aria-live="polite">
-            <div className="flex justify-between text-xs text-jade/80 mb-1.5">
-              <span>{progress.stage || '生成中'}</span>
-              <span>{Math.round(progress.percent)}%</span>
-            </div>
-            <div className="h-2 bg-ink/5 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-crimson/70 rounded-full transition-all duration-500"
-                style={{ width: `${Math.max(4, Math.min(100, progress.percent))}%` }}
-              />
-            </div>
-          </div>
-        )}
       </div>
 
       {/* 底部装饰 */}
       <div className="text-center mt-8 animate-fade-in-up" style={{ animationDelay: '0.6s' }}>
-        <p className="text-ink-light/30 text-xs tracking-wider">
+        <p className="home-footer-note">
           基于八字五行 · 易经卦象 · 生肖属相
         </p>
       </div>

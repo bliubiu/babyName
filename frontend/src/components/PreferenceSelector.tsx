@@ -24,30 +24,26 @@ export function PreferenceSelector({
   sourceClassic, onSourceClassicChange,
 }: PreferenceSelectorProps) {
   return (
-    <div className="pt-6 border-t border-paper space-y-6">
-
+    <div className="home-preferences">
       {/* ---- 经典来源 ---- */}
-      <section>
-        <h3 className="form-label mb-1">经典来源</h3>
-        <p className="text-xs text-ink-light/50 mb-3">选择特定经典文本作为起名来源（可不选，默认综合所有经典）</p>
+      <section className="home-subsection">
+        <h3 className="home-subsection-title">经典来源</h3>
+        <p className="home-helper mb-3">选择特定经典文本作为起名来源（可不选，默认综合所有经典）</p>
         <div className="flex flex-wrap gap-2">
           {classicOptions.map((option) => (
             <button
               key={option.id}
               type="button"
               onClick={() => onSourceClassicChange(sourceClassic === option.id ? '' : option.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
-                sourceClassic === option.id
-                  ? 'bg-crimson text-white shadow-sm'
-                  : 'bg-paper text-ink-light hover:bg-crimson/10 hover:text-crimson border border-paper-edge/30'
-              }`}
+              aria-pressed={sourceClassic === option.id}
+              className={`home-chip ${sourceClassic === option.id ? 'home-chip-active' : ''}`}
             >
               {option.label}
             </button>
           ))}
         </div>
         {sourceClassic && (
-          <p className="text-xs text-jade mt-2">
+          <p className="home-chip-hint">
             当前已选择：<span className="font-semibold">{sourceClassic}</span>
             ，起名将优先从此来源选字
           </p>
@@ -55,22 +51,18 @@ export function PreferenceSelector({
       </section>
 
       {/* ---- 个性补充 ---- */}
-      <section>
-        <h3 className="form-label mb-3">个性补充</h3>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-          <label className="flex-shrink-0 text-ink-light text-sm">
-            寓意关键词：
-          </label>
-          <input
-            type="text"
-            className="input-field flex-1 max-w-md"
-            placeholder="输入关键词，如：清莲、竹韵、明德、鹤影"
-            value={keywords}
-            onChange={(e) => onKeywordsChange(e.target.value)}
-          />
-        </div>
+      <section className="home-subsection">
+        <h3 className="home-subsection-title">个性补充</h3>
+        <label htmlFor="keywords-input" className="home-helper block mb-2">寓意关键词</label>
+        <input
+          id="keywords-input"
+          type="text"
+          className="input-field"
+          placeholder="输入关键词，如：清莲、竹韵、明德、鹤影"
+          value={keywords}
+          onChange={(e) => onKeywordsChange(e.target.value)}
+        />
       </section>
-
     </div>
   );
 }

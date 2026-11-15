@@ -711,3 +711,432 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ============================================================
+   首页起名表单局部视觉（2026.11.15）
+   作用域：HomeContent / NameForm / PreferenceSelector，全部以 .home-* 或
+   .home-sheet 限定，不修改任何全站组件类；色值一律复用上方 :root 变量，
+   不引入新设计 token（docs/07 §0.1）。
+   ============================================================ */
+
+/* 首页 main：cloud-bg 自带的 overflow:hidden 会创建非滚动容器、令吸底失效；
+   ::before 装饰为 inset:0 的渐变，放开裁剪不会溢出，故仅首页覆盖。 */
+.home-main { overflow: visible; }
+
+/* ---- 咨询笺：还原 docs/07 §8.2 硬纸封（2px 圆角 + 立体纸缘） ----
+   同时放开 overflow，让表单末尾的提交条可在桌面吸底。 */
+.home-sheet {
+  border-radius: 2px;
+  border-color: rgb(var(--color-paper-edge) / 0.75);
+  box-shadow:
+    2px 2px 0 rgba(0, 0, 0, 0.035),
+    -1px -1px 0 rgb(var(--color-paper-edge) / 0.35);
+  overflow: visible;
+}
+
+.home-sheet.red-ribbon { border-radius: 2px; }
+
+.home-sheet.red-ribbon::before {
+  height: 3px;
+  background: linear-gradient(90deg, #8B2323 0%, #CC2A2A 45%, #CC2A2A 55%, #8B2323 100%);
+}
+
+.dark .home-sheet {
+  border-color: rgb(var(--color-paper-edge) / 0.8);
+  box-shadow:
+    2px 2px 0 rgba(0, 0, 0, 0.35),
+    -1px -1px 0 rgb(var(--color-paper-edge) / 0.25);
+}
+
+/* ---- 标题区 ---- */
+.home-hero { @apply text-center pt-2 pb-6; }
+
+.home-kicker {
+  @apply text-xs font-serif mb-3;
+  letter-spacing: 0.35em;
+  color: rgb(var(--color-jade-dark));
+}
+
+.dark .home-kicker { color: rgb(var(--color-jade-light)); }
+
+.home-hero-mark {
+  @apply text-xs font-serif;
+  letter-spacing: 0.6em;
+  color: rgb(var(--color-gold-dark));
+}
+
+.dark .home-hero-mark { color: rgb(var(--color-gold-light)); }
+
+.home-hero-subtitle {
+  @apply text-sm md:text-base;
+  letter-spacing: 0.08em;
+  color: rgb(var(--color-jade-dark));
+}
+
+.dark .home-hero-subtitle { color: rgb(var(--color-jade-light)); }
+
+.home-footer-note {
+  @apply text-xs;
+  letter-spacing: 0.1em;
+  color: rgb(var(--color-ink-light) / 0.8);
+}
+
+.dark .home-footer-note { color: rgb(var(--color-ink-light)); }
+
+.home-error {
+  @apply mb-5 p-3 rounded-lg text-sm border;
+  background: rgb(var(--color-seal-red) / 0.08);
+  border-color: rgb(var(--color-seal-red) / 0.3);
+  color: rgb(var(--color-crimson));
+}
+
+.dark .home-error {
+  background: rgb(var(--color-seal-red) / 0.14);
+  color: rgb(var(--color-crimson-light));
+}
+
+/* ---- 表单分区 ---- */
+.home-form { @apply space-y-7; }
+.home-section { @apply space-y-4; }
+
+.home-section-head { @apply flex items-center gap-2.5 flex-wrap; }
+
+.home-section-index {
+  @apply inline-flex items-center justify-center w-7 h-7 rounded-sm font-serif text-xs flex-shrink-0;
+  background: rgb(var(--color-crimson));
+  color: #fff;
+  box-shadow: 1px 1px 0 rgb(var(--color-crimson-dark) / 0.45);
+}
+
+.dark .home-section-index { background: rgb(var(--color-crimson-light)); }
+
+.home-section-title {
+  @apply font-serif text-lg md:text-xl tracking-wide;
+  color: rgb(var(--color-ink));
+  white-space: nowrap;
+}
+
+.home-section-note {
+  @apply text-xs;
+  color: rgb(var(--color-ink-light) / 0.8);
+}
+
+.dark .home-section-note { color: rgb(var(--color-ink-light)); }
+
+.home-section-rule {
+  @apply flex-1 h-px;
+  min-width: 24px;
+  background: linear-gradient(
+    90deg,
+    rgb(var(--color-paper-edge) / 0.9) 0%,
+    rgb(var(--color-paper-edge) / 0.2) 100%
+  );
+}
+
+.home-grid { @apply grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5; }
+.home-field { @apply space-y-1.5 min-w-0; }
+.home-field > .form-label { margin-bottom: 0; }
+
+.home-optional,
+.home-field-hint {
+  @apply ml-2 text-xs font-normal;
+  color: rgb(var(--color-ink-light) / 0.8);
+}
+
+.dark .home-optional,
+.dark .home-field-hint { color: rgb(var(--color-ink-light)); }
+
+.home-field-error {
+  @apply text-xs mt-1;
+  color: rgb(var(--color-crimson));
+}
+
+.dark .home-field-error { color: rgb(var(--color-crimson-light)); }
+
+/* ---- 墨笔输入框：仅在首页卡片内把全边框改为底边线（docs/07 §8.3） ---- */
+.home-sheet .input-field {
+  border-width: 0 0 2px 0;
+  border-style: solid;
+  border-color: rgb(var(--color-paper-edge) / 0.85);
+  border-radius: 0;
+  background: transparent;
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+  color: rgb(var(--color-ink));
+}
+
+.home-sheet .input-field::placeholder {
+  color: rgb(var(--color-ink-light) / 0.7);
+}
+
+.home-sheet .input-field:focus {
+  border-color: rgb(var(--color-crimson));
+  box-shadow: 0 1px 0 0 rgb(var(--color-crimson) / 0.25);
+  outline: none;
+}
+
+.dark .home-sheet .input-field {
+  border-color: rgb(var(--color-paper-edge));
+}
+
+.dark .home-sheet .input-field::placeholder {
+  color: rgb(var(--color-ink-light) / 0.9);
+}
+
+.dark .home-sheet .input-field:focus {
+  border-color: rgb(var(--color-gold-light));
+  box-shadow: 0 1px 0 0 rgb(var(--color-gold-light) / 0.3);
+}
+
+.home-sheet .input-field.home-input-invalid {
+  border-color: rgb(var(--color-seal-red));
+}
+
+/* ---- 单选卡片：选中态由淡描边改为朱砂描边 + 淡染底 + 内描边 ---- */
+.home-option {
+  @apply flex items-center justify-center gap-2 py-3 rounded-lg border cursor-pointer transition-all duration-200;
+  min-height: 52px;
+  border-color: rgb(var(--color-paper-edge) / 0.7);
+  background: rgb(var(--color-warm-white) / 0.55);
+  color: rgb(var(--color-ink-light));
+}
+
+.home-option:hover { border-color: rgb(var(--color-crimson) / 0.5); }
+
+.home-option-active {
+  border-color: rgb(var(--color-crimson) / 0.85);
+  background: rgb(var(--color-crimson) / 0.08);
+  color: rgb(var(--color-crimson));
+  box-shadow: inset 0 0 0 1px rgb(var(--color-crimson) / 0.25);
+}
+
+.home-option:focus-within {
+  outline: 2px solid rgb(var(--color-crimson) / 0.6);
+  outline-offset: 2px;
+}
+
+.dark .home-option {
+  border-color: rgb(var(--color-paper-edge) / 0.85);
+  background: rgb(var(--color-paper) / 0.45);
+  color: rgb(var(--color-ink-light));
+}
+
+.dark .home-option-active {
+  border-color: rgb(var(--color-crimson-light) / 0.9);
+  background: rgb(var(--color-crimson) / 0.18);
+  color: rgb(var(--color-crimson-light));
+  box-shadow: inset 0 0 0 1px rgb(var(--color-crimson-light) / 0.3);
+}
+
+.home-option-stack { @apply flex-col gap-0.5 py-2.5; }
+
+.home-option-hint {
+  @apply text-xs;
+  color: rgb(var(--color-ink-light) / 0.8);
+}
+
+.dark .home-option-hint { color: rgb(var(--color-ink-light)); }
+
+.home-option-active .home-option-hint { color: rgb(var(--color-crimson) / 0.9); }
+.dark .home-option-active .home-option-hint { color: rgb(var(--color-crimson-light) / 0.9); }
+
+/* ---- 取名偏好：辅助文字对比度从 /40~50 提升到 /85 ---- */
+.home-preferences { @apply space-y-5; }
+
+.home-subsection-title {
+  @apply font-serif text-base mb-1;
+  color: rgb(var(--color-ink));
+}
+
+.home-helper {
+  @apply text-xs leading-relaxed;
+  color: rgb(var(--color-ink-light) / 0.85);
+}
+
+.dark .home-helper { color: rgb(var(--color-ink-light)); }
+
+.home-chip {
+  @apply px-3 py-2 rounded-lg text-sm font-medium border transition-all duration-200 cursor-pointer;
+  min-height: 40px;
+  border-color: rgb(var(--color-paper-edge) / 0.7);
+  background: rgb(var(--color-paper) / 0.45);
+  color: rgb(var(--color-ink-light));
+}
+
+.home-chip:hover {
+  border-color: rgb(var(--color-crimson) / 0.55);
+  color: rgb(var(--color-crimson));
+}
+
+.home-chip-active {
+  border-color: rgb(var(--color-crimson));
+  background: rgb(var(--color-crimson));
+  color: #fff;
+  box-shadow: 0 2px 6px rgb(var(--color-crimson) / 0.2);
+}
+
+.home-chip:focus-visible {
+  outline: 2px solid rgb(var(--color-crimson) / 0.7);
+  outline-offset: 2px;
+}
+
+.dark .home-chip {
+  border-color: rgb(var(--color-paper-edge) / 0.8);
+  background: rgb(var(--color-paper) / 0.55);
+  color: rgb(var(--color-ink-light));
+}
+
+.dark .home-chip-active {
+  border-color: rgb(var(--color-crimson-light));
+  background: rgb(var(--color-crimson-light));
+  color: #1A1A1A;
+}
+
+.home-chip-hint {
+  @apply text-xs mt-2;
+  color: rgb(var(--color-jade-dark));
+}
+
+.dark .home-chip-hint { color: rgb(var(--color-jade-light)); }
+
+/* ---- 高级选项（默认折叠） ---- */
+.home-advanced {
+  @apply pt-4 border-t;
+  border-color: rgb(var(--color-paper-edge) / 0.65);
+}
+
+.home-advanced-toggle {
+  @apply w-full flex items-center gap-2.5 text-left py-2 cursor-pointer rounded-sm;
+}
+
+.home-advanced-toggle:focus-visible {
+  outline: 2px solid rgb(var(--color-crimson) / 0.7);
+  outline-offset: 3px;
+}
+
+.home-advanced-summary { @apply flex items-center gap-2 ml-auto flex-wrap justify-end; }
+
+/* 窄屏优先保证标题与状态可读，把冗长的项目列举收起 */
+@media (max-width: 639px) {
+  .home-advanced-summary .home-section-note { display: none; }
+}
+
+.home-advanced-badge {
+  @apply text-xs px-2 py-0.5 rounded-full;
+  background: rgb(var(--color-crimson) / 0.12);
+  color: rgb(var(--color-crimson));
+}
+
+.dark .home-advanced-badge {
+  background: rgb(var(--color-crimson-light) / 0.2);
+  color: rgb(var(--color-crimson-light));
+}
+
+.home-advanced-chevron {
+  @apply w-4 h-4 flex-shrink-0 transition-transform duration-200;
+  color: rgb(var(--color-jade-dark));
+}
+
+.home-advanced-chevron.is-open { transform: rotate(180deg); }
+.dark .home-advanced-chevron { color: rgb(var(--color-jade-light)); }
+
+.home-advanced-body { @apply mt-4 space-y-5; }
+
+.home-switch-row {
+  @apply flex items-start gap-3 py-3 px-3.5 rounded-lg border;
+  border-color: rgb(var(--color-paper-edge) / 0.65);
+  background: rgb(var(--color-warm-white) / 0.5);
+}
+
+.dark .home-switch-row {
+  border-color: rgb(var(--color-paper-edge) / 0.8);
+  background: rgb(var(--color-paper) / 0.4);
+}
+
+.home-text-action {
+  @apply inline-flex items-center gap-1.5 text-sm py-1 transition-colors duration-200;
+  color: rgb(var(--color-jade-dark));
+}
+
+.home-text-action:hover { color: rgb(var(--color-crimson)); }
+.dark .home-text-action { color: rgb(var(--color-jade-light)); }
+
+.home-text-action-chevron { @apply w-3.5 h-3.5 transition-transform duration-200; }
+.home-text-action-chevron.is-open { transform: rotate(180deg); }
+
+/* ---- 提交条：桌面吸底，保证首屏即可发起生成；移动端保持文档流 ---- */
+.home-submit-bar {
+  position: static;
+  @apply z-20 mt-6 pt-3 pb-1;
+  border-top: 1px solid rgb(var(--color-paper-edge) / 0.65);
+}
+
+@media (min-width: 768px) {
+  .home-submit-bar {
+    position: sticky;
+    bottom: 0;
+    margin-left: -2rem;
+    margin-right: -2rem;
+    padding-left: 2rem;
+    padding-right: 2rem;
+    padding-bottom: 0.5rem;
+    background: rgb(var(--color-warm-white-light));
+    box-shadow: 0 -8px 18px -14px rgba(0, 0, 0, 0.35);
+  }
+
+  /* 上缘淡出：明确提示下方仍有表单内容，避免操作栏生硬切断输入框 */
+  .home-submit-bar::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -14px;
+    height: 14px;
+    background: linear-gradient(
+      to bottom,
+      rgb(var(--color-warm-white-light) / 0),
+      rgb(var(--color-warm-white-light))
+    );
+    pointer-events: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .home-submit-bar {
+    margin-left: -2.5rem;
+    margin-right: -2.5rem;
+    padding-left: 2.5rem;
+    padding-right: 2.5rem;
+  }
+}
+
+.home-submit-row { @apply flex flex-col items-center; }
+
+.home-submit {
+  @apply w-full sm:w-auto text-lg font-bold px-16 py-3 tracking-widest;
+  min-width: 220px;
+}
+
+.home-submit:focus-visible {
+  outline: 3px solid rgb(var(--color-gold) / 0.85);
+  outline-offset: 3px;
+}
+
+.home-progress { @apply mb-3; }
+
+.home-progress-meta {
+  @apply flex justify-between text-xs mb-1.5;
+  color: rgb(var(--color-jade-dark));
+}
+
+.dark .home-progress-meta { color: rgb(var(--color-jade-light)); }
+
+.home-progress-track {
+  @apply h-2 rounded-full overflow-hidden;
+  background: rgb(var(--color-ink) / 0.08);
+}
+
+.home-progress-fill {
+  @apply h-full rounded-full transition-all duration-500;
+  background: linear-gradient(90deg, rgb(var(--color-crimson)), rgb(var(--color-seal-red)));
+}
