@@ -122,8 +122,8 @@ backend/
 
 - 错误约定：绑定方法返回的 error 以文案字符串传给前端，统一中文、可行动
 - 会话：桌面为单用户，收藏/历史/异步任务统一固定会话 `desktop`
-- 数据目录：物料 `DATA_DIR` 环境变量 > 仓库根 data/（dev）> cwd/data（打包）；库 `NAMER_DB_PATH` > 物料目录上一级 namer.db
-- 构建：`wails build` 出单 exe（构建时自动把 ../frontend/dist 同步进 embed 目录）
+- 数据目录（按来源分级，见 `bootstrap.DataDirSource`）：物料 `-data` > `DATA_DIR` > 仓库根 data/（dev）> exe 同级 data/（打包）> cwd/data（兜底）；库 `-db`/`NAMER_DB_PATH` > 按来源推导——dev=仓库根 namer.db，打包=data 文件夹内 namer.db；日志同语义（dev=仓库根 logs/，打包=data/logs）
+- 构建：`wails build` 出单 exe（构建时自动把 ../frontend/dist 同步进 embed 目录）；`wails build -nsis -installscope user` 出安装器（exe + 物料随装 + 卸载保留用户库，见 build/windows/installer/project.nsi）
 
 
 

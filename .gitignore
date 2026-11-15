@@ -198,3 +198,5 @@ cover-func.txt
 # Wails 构建副产物（wails build 自动生成，可随时重建）
 /frontend/package.json.md5
 /backend/assets/
+/backend/build/windows/installer/wails_tools.nsh
+/backend/build/windows/installer/tmp/

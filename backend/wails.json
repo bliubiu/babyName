@@ -11,9 +11,9 @@
     "name": "bliubiu"
   },
   "info": {
-    "productName": "起名 NameMaster",
+    "productName": "NameMaster",
     "productVersion": "1.0.0",
-    "copyright": "Copyright © 2026",
-    "comments": "免费起名工具：八字五行、生肖属相、易经卦象、智能评分"
+    "copyright": "Copyright (c) 2026",
+    "comments": "Free naming tool: BaZi WuXing, Zodiac, YiJing hexagrams, smart scoring"
   }
 }

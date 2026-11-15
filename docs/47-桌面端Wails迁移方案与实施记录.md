@@ -90,15 +90,17 @@ ResolveDataDir（显式 > DATA_DIR > 探测仓库根 data/ > cwd/data）
   → desktop.New(...)
 ```
 
-### 3.3 目录语义（桌面端）
+### 3.3 目录语义（桌面端，S4 起按来源分级）
 
-| 项 | 优先级 |
-|---|---|
-| 物料目录 | `-data` 参数 > `DATA_DIR` > 仓库根 data/（dev）> cwd/data（打包） |
-| 数据库 | `-db` 参数 > `NAMER_DB_PATH` > 物料目录上一级 namer.db |
-| 日志目录 | `-log` 参数 > `NAMER_LOG_PATH` > 物料目录上一级 logs/ |
+数据目录来源（`bootstrap.DataDirSource`，五级）：
+`-data` > `DATA_DIR` > 仓库根 data/（dev 探测）> exe 同级 data/（打包）> cwd/data（兜底）
 
-> 打包后的用户数据目录迁移（os.UserConfigDir + 首跑引导）留待发布切片。
+| 项 | dev（命中仓库结构） | 打包（exe 同级 data/ / cwd/data） |
+|---|---|---|
+| 数据库 | `-db` > `NAMER_DB_PATH` > 仓库根 namer.db | `-db` > `NAMER_DB_PATH` > data 文件夹内 namer.db |
+| 日志目录 | `-log` > `NAMER_LOG_PATH` > 仓库根 logs/ | `-log` > `NAMER_LOG_PATH` > data/logs |
+
+> 打包态安装目录整体自包含（exe + data/ 含物料、库、日志），可整体拷贝迁移。
 
 ## 4. 迁移切片与进度
 
@@ -107,7 +109,8 @@ ResolveDataDir（显式 > DATA_DIR > 探测仓库根 data/ > cwd/data）
 | S1 | Wails 骨架 + 绑定层 + 装配层（TDD） | ✅ commit 1c4abc2 / 1164241 |
 | S2 | 前端 Vite 迁移（Next.js → Vite + React 19 + react-router） | ✅ commit 9ef6d47 |
 | S3 | 移除 Gin / cmd/server / middleware HTTP / docker / nginx / certbot | ✅ |
-| S4 | 用户数据目录（UserConfigDir）+ 安装器（NSIS）+ 图标 | ⏳ |
+| S3.5 | 物料管理页（状态查看 + 手动重导，ADR-008 方案 B） | ✅ commit bdd5332 |
+| S4 | 用户数据目录（exe 同级 data 便携语义）+ NSIS 安装器 + 图标 | ✅ commit 79d46d2 + 本切片 |
 | S5 | e2e 迁移（wails dev :34115 + Playwright）+ 文档收尾 | ⏳ |
 
 ### S2 前端 Vite 迁移清单
@@ -168,6 +171,55 @@ S3 与 S4 之间插入的桌面端专属功能：物料库状态查看 + 手动�
 - 重导只写 SQLite，运行期内存缓存（诗词索引/字频统计）需重启生效——页面常驻说明
 - 导航入口（数据库图标）；wailsjs TS 绑定重新生成
 
+### S4 用户数据目录 + NSIS 安装器（已完成）
+
+决策记录：
+
+- **物料分发：外置随安装器**——data/ 顶层 36 物料 JSON + materials.lock +
+  raw/kangxi-strokecount.csv（约 63MB）打进安装器，装到安装目录 data/。
+  运行期零 JSON 依赖（ADR-008，`InitWithDB` SQLite 策略不读文件），
+  data/ 仅首跑播种与手动重导使用；内嵌 embed 方案否决（exe 80MB+，
+  违背"从源头减小体积"）
+- **用户数据目录：exe 同级 data 文件夹**（便携语义，不用 %AppData%）——
+  打包态 namer.db 与 logs/ 收敛到 data 文件夹内，安装目录整体自包含；
+  dev 仓库布局不变（db/日志仍在仓库根）
+- **安装作用域：user**（`%LocalAppData%\Programs\NameMaster`，免管理员）——
+  便携语义依赖安装目录可写，Program Files 不可写与之冲突
+
+实现：
+
+- `paths.FindDataDirFromExe`：exe 同级 data/ 探测（namer.json 标记判定，
+  纯函数可测）
+- `bootstrap.ResolveDataDirDetailed`：五级来源解析；`DefaultDBPath` /
+  `DefaultLogDir` 按来源推导（dev 沿用仓库根，打包收敛 data 文件夹内）；
+  原 `ResolveDataDir` 薄包装不变
+- `build/windows/installer/project.nsi`（wails 模板定制，wails 不覆盖）：
+  - `SetCompressor /SOLID lzma`：20MB exe + 63MB 物料 → 安装器 13.4MB
+  - 安装 Section 物料随装：`File ..\..\..\..\data\*.json` + materials.lock +
+    raw/kangxi CSV（makensis CWD = installer 目录，4 级上行到仓库根）
+  - 卸载 Section 选择性删除：程序/物料/快捷方式/注册表键全删，**保留
+    namer.db / *.db-wal / *.db-shm / logs/**（防卸载抹掉收藏/历史），
+    `RMDir $INSTDIR` 仅空目录生效
+  - `INFO_PRODUCTNAME "NameMaster"`：避免中文+空格进安装路径/快捷方式
+  - 简体中文第一安装语言
+- `scripts/build.ps1` 步骤 [3/3]：`wails build -nsis -installscope user`；
+  makensis 缺失时提示 winget 安装并跳过（`-SkipInstaller` 可强制跳过）
+- 图标：appicon.png / icon.ico / manifest 已齐备，无新增
+
+NSIS 环境注意（四处编码/获取坑）：
+
+- makensis 获取：sourceforge 在当前网络不可达（winget/curl 均超时），
+  改取 npmmirror electron-builder-binaries 的 NSIS 3.05（makensis + Plugins
+  合并解压至 `~/tools/nsis`，已加入用户 PATH）
+- `project.nsi` 必须带 **UTF-8 BOM**：makensis 以 BOM 识别 UTF-8，
+  BOM 缺失按 ANSI 解析，中文注释直接报 `Bad text encoding`
+- `wails.json` 的 info 字段改 ASCII（productName/copyright/comments）：
+  wails_tools.nsh 每次构建 **BOM-less 重新生成**，含非 ASCII 必炸编译；
+  窗口标题不受影响（来自 main.go 的 options.Title）
+- SimpChinese.nlf/.nsh 需补 BOM（官方包 BOM-less；纯 ASCII 语言不受影响，
+  含中文的语言文件必须 BOM）
+- `wails_tools.nsh` / `installer/tmp/` 已加入 .gitignore（每次构建重写）
+
 ## 5. 验证记录
 
 - [x] `wails build` 出包 18.8MB（纯 Go，无 CGO/Node 运行时）
@@ -180,10 +232,20 @@ S3 与 S4 之间插入的桌面端专属功能：物料库状态查看 + 手动�
 - [x] S3.5：go test 29 包全绿（desktop 37 例、bootstrap 12 例，含物料接线 2 例
       经 Run 全链路）；tsc 无错、vitest 156 例全绿（含物料页 5 例）；
       gofmt 干净（desktop/bootstrap 包）
+- [x] S4：便携冒烟通过——DATA_DIR 指向冒烟布局，真实 63MB 物料播种成功
+      （kangxi 63696 行、name_bigram 124994 行…），db/logs 收敛 data 文件夹
+      内，WAL 生效
+- [x] S4：安装器 E2E——静默安装布局正确（namer.exe + 38 项物料 + raw/ 康熙表）；
+      静默卸载程序/物料/快捷方式/注册表键全删而 namer.db/-wal/-shm/logs 保留；
+      安装器 13.4MB（LZMA 固实压缩）
+- [x] S4：go test 34 包全绿（paths +4 例、bootstrap +10 例），go vet 干净
 
 ## 6. 遗留与风险
 
 - 绑定生成时 `Not found: time.Time` 告警：wails TS 绑定不映射 time.Time
   （HistoryRecord/FavoriteRecord.CreatedAt），前端拿到的是 ISO 字符串，可用
 - `backend/frontend/` 是 embed 目标占位（构建期被同步/还原），不要手工放源码
-- 物料随 exe 分发策略（内嵌 vs 外置 data/）在 S4 决策
+- 物料分发策略已在 S4 决策：外置随安装器（见 S4 小节）
+- dev 机器上运行的打包 exe 仍命中 dev 仓库探测（编译期源码路径经
+  runtime.Caller 嵌入二进制，仓库结构存在即优先），exe 同级 data/ 分支仅在
+  无仓库结构的干净机器上生效——探测逻辑由单测覆盖（临时布局注入）
