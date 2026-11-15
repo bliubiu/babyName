@@ -425,11 +425,28 @@ export interface ReportPayload {
   }>;
 }
 
-/** 导出 PDF：返回二进制 Blob，由调用方触发浏览器下载。 */
+/**
+ * 导出 PDF：返回二进制 Blob，由调用方触发浏览器下载。
+ *
+ * 绑定契约两处坑（HTTP → Wails 迁移遗留）：
+ * - 参数直接透传，不再由 handler 解包 {data:...} 信封，必须传扁平对象；
+ * - Go 方法返回 []byte，运行时经 json.Marshal 编码为 base64 字符串，
+ *   而 typescriptify 生成的声明写成 Array<number>。`new Uint8Array(字符串)`
+ *   会静默得到空数组并报「PDF 内容为空」，故这里兼容两种返回形态。
+ */
 export async function exportReportPDF(data: ReportPayload): Promise<Blob> {
-  const bytes = await GenerateReportPDF({ data })
+  const raw: unknown = await GenerateReportPDF(data as never)
     .catch((err: unknown) => { throw wrapBindingError(err, '导出 PDF 失败，请稍后重试'); });
-  const blob = new Blob([new Uint8Array(bytes ?? [])], { type: 'application/pdf' });
+  let bytes: Uint8Array;
+  if (typeof raw === 'string') {
+    const binary = atob(raw);
+    bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+  } else {
+    bytes = new Uint8Array(Array.isArray(raw) ? (raw as number[]) : []);
+  }
+  // TS 5.7+ 的 Uint8Array<ArrayBufferLike> 与 DOM BlobPart 不直接兼容，
+  // 此处字节一定来自 ArrayBuffer，显式收窄后交给 Blob。
+  const blob = new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' });
   if (!blob.size) {
     throw new ServerError('PDF 内容为空，请稍后重试');
   }
@@ -466,7 +483,9 @@ export async function createShareSnapshot(snapshot: ShareSnapshot): Promise<Shar
   if (!Array.isArray(snapshot.names) || snapshot.names.length === 0) {
     throw new ValidationError('没有可分享的名字');
   }
-  const result = await CreateShare({ data: snapshot })
+  // 绑定层直接透传快照对象：若套 {data:...} 信封，后端字段白名单会把
+  // 顶层唯一的 data 键剔除，返回「分享内容不合法: 没有可分享的内容」。
+  const result = await CreateShare(snapshot as never)
     .catch((err: unknown) => { throw wrapBindingError(err, '创建分享失败，请稍后重试'); });
   if (!result?.id) {
     throw new ServerError('创建分享失败，请稍后重试');

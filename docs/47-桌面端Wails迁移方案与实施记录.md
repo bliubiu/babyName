@@ -111,7 +111,7 @@ ResolveDataDir（显式 > DATA_DIR > 探测仓库根 data/ > cwd/data）
 | S3 | 移除 Gin / cmd/server / middleware HTTP / docker / nginx / certbot | ✅ |
 | S3.5 | 物料管理页（状态查看 + 手动重导，ADR-008 方案 B） | ✅ commit bdd5332 |
 | S4 | 用户数据目录（exe 同级 data 便携语义）+ NSIS 安装器 + 图标 | ✅ commit 79d46d2 + 本切片 |
-| S5 | e2e 迁移（wails dev :34115 + Playwright）+ 文档收尾 | ⏳ |
+| S5 | e2e 迁移（wails dev :34115 + Playwright）+ 文档收尾 | ✅ 本切片（见 S5 小节） |
 
 ### S2 前端 Vite 迁移清单
 
@@ -220,6 +220,53 @@ NSIS 环境注意（四处编码/获取坑）：
   含中文的语言文件必须 BOM）
 - `wails_tools.nsh` / `installer/tmp/` 已加入 .gitignore（每次构建重写）
 
+### S5 桌面端全量 E2E 验证（已完成）
+
+桌面端没有 HTTP 端口，旧 `e2e`（@e2e-dev/web / webui_e2e_test.py）随 Next.js
+一起退役。S5 改用「wails dev 浏览器通道 + Playwright」覆盖 UI 全链路，再补一层
+Go 侧真实装配 E2E 覆盖绑定层全部方法，避免 UI 盲区。
+
+**运行方式**
+
+```
+cd frontend && pnpm e2e        # 脚本已前置 pnpm build，杜绝 dist/ 旧产物假通过
+cd backend  && go test ./internal/bootstrap/ -run TestAppE2E -count=1 -v
+```
+
+`playwright.config.ts` 由 webServer 自动拉起 `wails dev -assetdir ../frontend/dist`
+（:34115），按「显式 env > 固定安装位 > PATH」探测 Wails 2.17.0 CLI；
+`NAMER_DB_PATH` 指向系统临时目录的隔离库，不污染仓库根 namer.db；
+`workers: 1` 强制串行（收藏/历史共享单实例后端，跨用例会互扰）。
+
+**覆盖**
+
+| 层 | 用例 | 范围 |
+|---|---|---|
+| UI（Playwright） | 18 例 / 4 spec | 起名主链路与条件表单（字辈/单字名/经典来源）、跨页收藏与对比、测名、黄历、重名率、历史/JSON/物料页、结果页换一批 / PDF 导出 / 分享往返 / 历史删除 |
+| Go 绑定层 E2E | 12 组 / 22 个方法 | `bootstrap.Run` 真实 SQLite + 63MB 物料装配后逐一调用全部 Bind 方法：同步生成、换一批、测名、异步任务、历史/收藏 CRUD、PDF、分享、黄历/农历/月历、汉字分组/统计、物料状态与重导，另含 10 项参数校验与错误分支 |
+
+**E2E 暴露并修复的契约缺陷（HTTP → Wails 迁移遗留）**
+
+1. 固定会话标识 `desktop` 字面量未通过服务层 `NormalizeSessionID`（要求
+   16–64 位 hex）→ 收藏/历史全链路报「会话标识无效」；改为 `sha256("desktop")`
+   的 64 位十六进制，语义仍为跨重启稳定的单用户会话。
+2. `exportReportPDF` / `createShareSnapshot` 仍按 HTTP 信封传 `{data:...}`，
+   而 Wails 绑定直接透传：后端分享字段白名单把顶层唯一的 `data` 键剔除，
+   报「分享内容不合法: 没有可分享的内容」；PDF 的 `parseReportModel` 也读不到
+   真实字段（生成空壳报告）。改为传扁平对象。
+3. Go `[]byte` 返回值经 Wails `json.Marshal` 实际是 **base64 字符串**，而
+   typescriptify 生成的 TS 声明写 `Array<number>`；`new Uint8Array(字符串)`
+   静默得到空数组 → 前端报「PDF 内容为空」且不触发下载。前端兼容两种形态。
+4. 分享链接返回 `/share?id=`：资产服务器对未知路径返回 404（HashRouter 无
+   SPA fallback），改为 `/#/share?id=`。
+
+以上 2~4 项由 `src/lib/api.test.ts`（5 例）与 Go 绑定层 E2E 的分享/PDF
+子用例共同固化，防止回归。
+
+**已知噪声**：外部浏览器加载时 Wails dev 每次打印
+`Unknown message from front end: runtime:ready`。这是浏览器通道不是原生
+WebView 造成的握手噪声，绑定调用与全部用例均正常，不影响判定。
+
 ## 5. 验证记录
 
 - [x] `wails build` 出包 18.8MB（纯 Go，无 CGO/Node 运行时）
@@ -239,6 +286,10 @@ NSIS 环境注意（四处编码/获取坑）：
       静默卸载程序/物料/快捷方式/注册表键全删而 namer.db/-wal/-shm/logs 保留；
       安装器 13.4MB（LZMA 固实压缩）
 - [x] S4：go test 34 包全绿（paths +4 例、bootstrap +10 例），go vet 干净
+- [x] S5：Playwright 桌面端 E2E **18/18**（wails dev :34115，4 spec，含结果页换一批 / PDF 导出 / 分享往返 / 历史删除）
+- [x] S5：Go 侧真实装配全量绑定 E2E **12 组 / 22 个方法**（`go test ./internal/bootstrap/ -run TestAppE2E`，13.7s）
+- [x] S5：`go test ./...` 52 包全绿、`go vet ./...` 干净、`verify-quality.sh`（SKIP_SERVER=1）全绿（九包覆盖率 76.3%~94.9%）
+- [x] S5：前端三件套 tsc 0 错 / ESLint 0 error（≤34 warning）/ Vitest **161/161**
 
 ## 6. 遗留与风险
 
@@ -249,3 +300,9 @@ NSIS 环境注意（四处编码/获取坑）：
 - dev 机器上运行的打包 exe 仍命中 dev 仓库探测（编译期源码路径经
   runtime.Caller 嵌入二进制，仓库结构存在即优先），exe 同级 data/ 分支仅在
   无仓库结构的干净机器上生效——探测逻辑由单测覆盖（临时布局注入）
+- Wails 生成的 TS 绑定把 `[]byte` 声明为 `Array<number>`，运行时却是 base64
+  字符串（Go `json.Marshal` 语义）。新增二进制返回值的绑定时须在前端做形态
+  兼容，不可照抄 .d.ts 直接 `new Uint8Array(...)`（已在 `src/lib/api.ts` 处理）
+- `pnpm e2e` 已前置 `pnpm build`；若手动 `wails dev` 调试，改了前端源码必须
+  自行重建 `frontend/dist`，否则浏览器测到的是旧产物
+- Wails dev 浏览器通道的 `runtime:ready` 噪声见 S5 小节，不影响绑定调用

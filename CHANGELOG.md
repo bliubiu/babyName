@@ -5,6 +5,39 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.15.0]
+
+**桌面端 S5 收尾：go+wails 全量功能 E2E 验证 + 四处绑定契约缺陷修复**
+
+### ✨ New Features 新增功能
+- 【E2E】Playwright 桌面端 e2e 迁移落地（docs/47 S5）：wails dev :34115 浏览器通道 + 4 个 spec 共 18 例，覆盖起名主链路与条件表单、跨页收藏/对比、测名、黄历、重名率、历史/JSON/物料页，以及结果页换一批 / PDF 导出 / 分享往返 / 历史删除
+- 【E2E】新增 Go 侧真实装配全量绑定 E2E `backend/internal/bootstrap/z_app_e2e_test.go`：SQLite + 真实物料走完 `bootstrap.Run`，12 组子用例逐一验证 Wails Bind 的全部 22 个方法 + 10 项参数校验与错误分支
+- 【前端】新增 `src/lib/api.test.ts` 5 例，固化 Wails 绑定参数形状与 `[]byte` 返回值解码契约
+- 【脚本】`pnpm e2e` 前置 `pnpm build`，杜绝 `frontend/dist` 旧产物造成 E2E 假通过
+
+### 🐛 Bug Fixes 问题修复
+- 【桌面端】修复固定会话标识：`desktop` 字面量未通过服务层 `NormalizeSessionID`（要求 16–64 位 hex），收藏/历史全链路报「会话标识无效」；改用 `sha256("desktop")` 的 64 位十六进制（E2E 发现的 S1 回归）
+- 【桌面端】修复 `exportReportPDF` / `createShareSnapshot` 沿用 HTTP 时代 `{data:...}` 信封：Wails 绑定直接透传，分享因字段白名单清空报「没有可分享的内容」，PDF 报告读不到真实结果；改为传扁平对象
+- 【桌面端】修复 PDF 二进制解码：Go `[]byte` 经 Wails `json.Marshal` 返回 base64 字符串，而生成的 TS 声明写 `Array<number>`，`new Uint8Array(字符串)` 静默得到空数组导致「PDF 内容为空」且无下载；前端兼容 base64 / 数字数组两种形态
+- 【桌面端】修复分享链接未走 hash 路由：`/share?id=` 在资产服务器 404，改为 `/#/share?id=`
+
+### 📚 Docs 文档更新
+- docs/47 §4 S5 标记完成，补 S5 实施小节（运行方式、覆盖矩阵、四处契约缺陷、已知噪声）、§5 验证记录与 §6 遗留风险
+
+### 🔧 Dependencies 依赖更新
+- 移除 `@e2e-dev/web` / `e2e`（Next.js 时代 e2e 框架），新增 `@playwright/test` 1.65.1；`vitest.config.ts` 排除 `e2e/**`，`.gitignore` 忽略 Playwright 产物
+
+### 🗑 Deprecated 废弃功能
+- 删除 `frontend/tests/naming-*.e2e.ts` 旧用例与 `e2e.config*.ts` 旧配置（Web/HTTP 形态已退役）
+
+### ✅ 验证
+- Playwright 桌面端 E2E **18/18**（wails dev :34115，1.6m）
+- Go 侧真实装配全量绑定 E2E **12 组 / 22 方法全绿**（13.7s）
+- `go test ./...` 52 包全绿、`go vet ./...` 干净
+- `verify-quality.sh`（SKIP_SERVER=1）：vet / golden 防漂移 / gate_audit / dim_audit / 九包覆盖率 76.3%~94.9% 全绿
+- `verify-frontend.sh --require`：tsc 0 错 / ESLint 0 error（≤34 warning）/ Vitest **161/161**
+- `pnpm build` 静态产物重建通过
+
 ## [2026.11.12.3]
 
 **一键构建 + 启动 + 验证脚本（零 python 依赖）**

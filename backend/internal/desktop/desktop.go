@@ -10,6 +10,8 @@ package desktop
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,7 +31,14 @@ import (
 //
 // Web 端会话由 cookie（nm_sid）隔离；桌面为单用户应用，收藏/历史/异步任务
 // 的归属统一使用该固定会话。必须跨重启稳定，否则历史与收藏查不到。
-const desktopSessionID = "desktop"
+//
+// 取值不是 "desktop" 字面量：服务层 NormalizeSessionID 只收 16-64 位十六进制
+// （HTTP 时代遗留校验，字面量会被拒收——收藏/历史全链路报"会话标识无效"），
+// 故取 "desktop" 的 SHA-256 十六进制（64 位）：语义仍是固定会话，跨重启稳定。
+var desktopSessionID = func() string {
+	sum := sha256.Sum256([]byte("desktop"))
+	return hex.EncodeToString(sum[:])
+}()
 
 // maxPageSize 单页最大条数（与 handlers 同口径，docs/29 B6）
 const maxPageSize = 100
@@ -437,7 +446,9 @@ func (a *App) CreateShare(data json.RawMessage) (*ShareResult, error) {
 	if err != nil {
 		return nil, toUserError(err, "创建分享失败")
 	}
-	return &ShareResult{ID: id, URL: "/share?id=" + id}, nil
+	// 桌面端为 HashRouter：资产服务器对 /share 这类未知路径返回 404，
+	// 分享链接必须写成 /#/share?id=...，否则外部浏览器打开即空白页。
+	return &ShareResult{ID: id, URL: "/#/share?id=" + id}, nil
 }
 
 // GetShare 按 id 读取分享快照

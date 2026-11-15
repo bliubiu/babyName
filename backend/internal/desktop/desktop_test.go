@@ -719,3 +719,17 @@ func TestStartup_注入Wails上下文(t *testing.T) {
 		t.Fatal("Startup 应注入运行时上下文")
 	}
 }
+
+// --- 固定会话 ---
+
+// TestDesktopSessionID_通过服务层会话校验 桌面固定会话必须能通过服务层
+// NormalizeSessionID（16-64 位十六进制）——收藏/历史全部读写都以此为归属，
+// 校验不过即整链路报"会话标识无效"（e2e 发现的 S1 回归，docs/47 S5）
+func TestDesktopSessionID_通过服务层会话校验(t *testing.T) {
+	if _, err := services.NormalizeSessionID(desktopSessionID); err != nil {
+		t.Fatalf("desktopSessionID 未通过服务层会话校验: %v", err)
+	}
+	if desktopSessionID == "desktop" {
+		t.Fatal("会话标识不可能是字面量 desktop（7 位非十六进制）")
+	}
+}

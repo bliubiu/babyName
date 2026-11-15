@@ -6,6 +6,8 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: [],
+    // e2e/*.spec.ts 归 Playwright（pnpm e2e），不进 vitest
+    exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

@@ -200,3 +200,7 @@ cover-func.txt
 /backend/assets/
 /backend/build/windows/installer/wails_tools.nsh
 /backend/build/windows/installer/tmp/
+
+# Playwright e2e 产物（frontend/e2e 运行生成，可随时重建）
+/frontend/test-results/
+/frontend/playwright-report/
