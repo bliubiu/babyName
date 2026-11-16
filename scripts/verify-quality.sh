@@ -40,6 +40,8 @@ BACKEND_DIR="$ROOT_DIR/backend"
 BIN="$BACKEND_DIR/bin/namer-server.exe"
 DB_PATH="$BACKEND_DIR/namer.db"
 DATA_DIR="$ROOT_DIR/data"
+# 单库路线（ADR-010）：门禁与专项巡检从这份种子库装配，零 JSON 依赖
+SEED_DB="$ROOT_DIR/data/namer.db"
 LOG_DIR="$BACKEND_DIR/bin/logs"
 HOST="127.0.0.1"
 PORT="8080"
@@ -102,6 +104,10 @@ if ! command -v go >/dev/null 2>&1; then
   fail "未找到 go 命令，请先安装 Go 并加入 PATH"
   exit 1
 fi
+if [ ! -f "$SEED_DB" ]; then
+  fail "未找到种子库 $SEED_DB；请先执行 go -C backend run ./tools/build_seed"
+  exit 1
+fi
 if ! command -v curl >/dev/null 2>&1; then
   log "提示: 未找到 curl，就绪探测将依赖 e2e_check 自身预热"
 fi
@@ -131,8 +137,8 @@ run_phase "门禁审计: gate_audit -static-only" \
 # 2+. 专项维度巡检：八字/五行/生肖/诗词出典准确性（不需服务）
 #     dim_audit 直接调用真实 domain 逻辑，用已知答案 fixtures + 结构不变量校验
 # ---------------------------------------------------------------------------
-run_phase "专项维度巡检: dim_audit（八字/五行/生肖/诗词）" \
-  go -C "$BACKEND_DIR" run ./tools/dim_audit -data "$DATA_DIR"
+run_phase "专项维度巡检: dim_audit（单库装配，八字/五行/生肖/诗词）" \
+  go -C "$BACKEND_DIR" run ./tools/dim_audit -db "$SEED_DB"
 
 # ---------------------------------------------------------------------------
 # 2++. 覆盖率门禁（不需服务）：核心命理/评分/应用包覆盖率不低于统一基线

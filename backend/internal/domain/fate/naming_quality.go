@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 // 名字用字质量门禁表（候选池阶段剔除）
@@ -93,6 +94,18 @@ func SetNonNamingChars(chars []string) {
 // NonNamingCharCount 返回门禁字数（诊断/测试用）
 func NonNamingCharCount() int {
 	return len(currentGateSnapshot().nonNaming)
+}
+
+// NonNamingChars 返回门禁字列表（副本，供门禁审计遍历；单库路线下
+// gate_audit 不再直接读 naming_quality.json）
+func NonNamingChars() []string {
+	m := currentGateSnapshot().nonNaming
+	out := make([]string, 0, len(m))
+	for ch := range m {
+		out = append(out, ch)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // IsNonNamingChar 判断单字是否为「不适合入名」的质量门禁字

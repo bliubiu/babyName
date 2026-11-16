@@ -13,3 +13,6 @@ Dockerfile text eol=lf
 *.lock text eol=lf
 *.csv text eol=lf
 *.md text eol=lf
+
+# 二进制种子库：禁止任何行尾/编码转换（ADR-010 单库路线）
+*.db binary

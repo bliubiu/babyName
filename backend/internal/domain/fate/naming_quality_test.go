@@ -2,6 +2,8 @@ package fate
 
 import (
 	"math"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -699,13 +701,17 @@ func TestLoadForbiddenCombosFromJSON(t *testing.T) {
 // LoadForbiddenCombosFromJSON 是幂等的：重复调用应覆盖既有集合，
 // 不应泄漏旧数据或导致 ForbiddenComboCount 单调增长。
 func TestForbiddenComboReload(t *testing.T) {
+	_, file, _, _ := runtime.Caller(0)
+	dataDir := testutil.MustDataDir(t, file)
+	// 单库路线下 CI 只入库种子库，JSON 是构建期输入；本用例专测 JSON
+	// 加载器幂等性，源文件缺失时跳过，而不是拿库数据冒充 JSON 路径。
+	if _, err := os.Stat(filepath.Join(dataDir, "forbidden_combos.json")); err != nil {
+		t.Skip("JSON 源未入库（单库路线），跳过")
+	}
 	n1 := ForbiddenComboCount()
 	if n1 == 0 {
 		t.Skip("禁忌组合表未加载，跳过")
 	}
-	// 二次加载（同一份文件）
-	_, file, _, _ := runtime.Caller(0)
-	dataDir := testutil.MustDataDir(t, file)
 	if err := LoadForbiddenCombosFromJSON(dataDir); err != nil {
 		t.Fatalf("二次加载失败: %v", err)
 	}

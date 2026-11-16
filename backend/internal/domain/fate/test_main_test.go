@@ -1,4 +1,4 @@
-package fate
+package fate_test
 
 import (
 	"fmt"
@@ -6,38 +6,25 @@ import (
 	"runtime"
 	"testing"
 
-	"name/internal/domain/classics"
-	"name/internal/testutil"
+	seedkit "name/internal/testutil/seed"
 )
 
-// TestMain 在包测试前加载诗词经典数据
-// WenHuaRater 的单名语义共现分支（checkSingleNameBigram）依赖 classics 包，
-// 该包通过 ensureShiCiLoaded 惰性等待 shici.json 异步加载完成，
-// 独立运行测试时必须先 LoadFromJSON 触发加载，否则会永久阻塞超时。
-// 数据目录按 namer.json 向上探测（testutil.DataDir），不依赖固定目录层级。
+// TestMain 从种子库装配全部物料（ADR-010 单库路线，CI 零 JSON）
+//
+// 必须用外部测试包 package fate_test：data.InitWithDB 会导入 fate 本身，
+// 若 TestMain 放在 package fate 里会形成 import cycle。包内测试文件继续
+// 使用轻量的 internal/testutil，不受影响。
+//
+// 改造前本包只装三份 JSON：classics / naming_quality / forbidden_combos，
+// 与运行期 SQLite 路径不是同一套数据语义。现在统一走 data.InitWithDB，
+// 门禁字表、禁忌组合、白名单、合规红线、经典语料一次性灌入。
 func TestMain(m *testing.M) {
 	_, file, _, _ := runtime.Caller(0)
-	dataDir := testutil.DataDir(file)
-	if dataDir == "" {
-		fmt.Fprintln(os.Stderr, "未找到物料数据目录，fate 包测试无法运行")
+	cleanup, err := seedkit.Init(file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "单库物料装配失败，fate 包测试无法运行: %v\n", err)
 		os.Exit(1)
 	}
-	if err := classics.LoadFromJSON(dataDir); err != nil {
-		// 非关键：部分测试不依赖诗词数据
-	}
-	// 命名质量门禁字表已外置为 data/naming_quality.json，
-	// 候选池硬剔除与多数评分测试依赖该表，加载失败视为致命。
-	if err := LoadNamingQualityFromJSON(dataDir); err != nil {
-		fmt.Fprintf(os.Stderr, "加载命名质量门禁字表失败: %v\n", err)
-		os.Exit(1)
-	}
-	// 禁忌双字组合表（962 条历史清洗成果，data/forbidden_combos.json）
-	// IsBadCombo 测试依赖该表；缺失时 LoadForbiddenCombosFromJSON 仅警告不阻断，
-	// 但相关测试会基于 ForbiddenComboCount()==0 自动跳过。
-	if err := LoadForbiddenCombosFromJSON(dataDir); err != nil {
-		fmt.Fprintf(os.Stderr, "加载禁忌双字组合表失败: %v\n", err)
-		os.Exit(1)
-	}
-
+	defer cleanup()
 	os.Exit(m.Run())
 }

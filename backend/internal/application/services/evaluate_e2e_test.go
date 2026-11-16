@@ -9,12 +9,12 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
 
 	"name/internal/domain/fate"
-	"name/internal/infrastructure/data"
 )
 
 var (
@@ -27,13 +27,11 @@ var (
 func setupNameServiceE2E(t *testing.T) *NameService {
 	t.Helper()
 	nameSvcE2EOnce.Do(func() {
-		dataDir := e2eDataDir(t)
-		if err := data.Init(dataDir); err != nil {
-			nameSvcE2EInitErr = err
-			return
-		}
+		_, file, _, _ := runtime.Caller(0)
+		loader := e2eSeedDB(t, file)
+		// 物料已由 e2eSeedDB 经 data.InitWithDB 灌入（ADR-010 单库路线）
 		SyncNamingIndexFromHanzi()
-		if curated := loadCuratedNamesForE2E(dataDir); len(curated) > 0 {
+		if curated := e2eCuratedNames(t, loader); len(curated) > 0 {
 			fate.SetCuratedNames(curated)
 		}
 		fateEngine := fate.NewEngine(&HanziDataProvider{}, NewBaziAnalyzerAdapter(), fate.DefaultRaters())

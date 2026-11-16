@@ -16,8 +16,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -29,8 +27,6 @@ import (
 
 	"name/internal/domain/fate"
 	"name/internal/domain/name"
-	"name/internal/infrastructure/data"
-	"name/internal/testutil"
 )
 
 var (
@@ -39,29 +35,22 @@ var (
 	fateServiceE2EInitErr error
 )
 
-// e2eDataDir 基于本文件位置向上探测物料数据目录（不依赖运行 CWD）
-func e2eDataDir(t *testing.T) string {
-	t.Helper()
-	_, file, _, _ := runtime.Caller(0)
-	return testutil.MustDataDir(t, file)
-}
-
-// setupFateNameServiceE2E 装配 FateNameService 实例（与 cmd/server 同序）
+// setupFateNameServiceE2E 装配 FateNameService 实例
+//
+// 单库路线（ADR-010）：物料与策展名都从 data/namer.db 读，与生产装配
+// bootstrap.Run → data.InitWithDB 同路径；CI 不再需要任何 JSON 源。
 func setupFateNameServiceE2E(t *testing.T) *FateNameService {
 	t.Helper()
 	fateServiceE2EOnce.Do(func() {
-		dataDir := e2eDataDir(t)
+		_, file, _, _ := runtime.Caller(0)
+		loader := e2eSeedDB(t, file)
 
-		// 1. 加载全部数据（kangxi → namer → yijing → classic → zodiac → 门禁 → 禁忌组合）
-		if err := data.Init(dataDir); err != nil {
-			fateServiceE2EInitErr = err
-			return
-		}
-		// 2. 同步命名索引（与 cmd/server 一致）
+		// 1. 物料已由 e2eSeedDB 经 data.InitWithDB 灌入内存索引
+		// 2. 同步命名索引（与生产一致）
 		SyncNamingIndexFromHanzi()
 
-		// 3. 注入策展好名（共现分白名单；缺失可忽略）
-		if curated := loadCuratedNamesForE2E(dataDir); len(curated) > 0 {
+		// 3. 注入策展好名（从库读，替代 curated_names.json）
+		if curated := e2eCuratedNames(t, loader); len(curated) > 0 {
 			fate.SetCuratedNames(curated)
 		}
 
@@ -77,27 +66,6 @@ func setupFateNameServiceE2E(t *testing.T) *FateNameService {
 		t.Fatalf("装配 FateNameService 失败: %v", fateServiceE2EInitErr)
 	}
 	return fateServiceE2E
-}
-
-// loadCuratedNamesForE2E 读取 curated_names.json name 字段（与 handler 测试同）
-func loadCuratedNamesForE2E(dataDir string) []string {
-	raw, err := os.ReadFile(filepath.Join(dataDir, "curated_names.json"))
-	if err != nil {
-		return nil
-	}
-	var entries []struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(raw, &entries); err != nil {
-		return nil
-	}
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if e.Name != "" {
-			names = append(names, e.Name)
-		}
-	}
-	return names
 }
 
 // TestFateNameService_E2E_SingleName 端到端：单名生成（男+2024-01-15 12:00）

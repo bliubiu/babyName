@@ -3,28 +3,8 @@ package namestat
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
-	"os"
-	"runtime"
 	"testing"
-
-	"name/internal/domain/hanzi"
-	"name/internal/testutil"
 )
-
-// TestMain 加载人名频率数据库（data/name_frequency.json 等）
-func TestMain(m *testing.M) {
-	_, file, _, _ := runtime.Caller(0)
-	dataDir := testutil.DataDir(file)
-	if dataDir == "" {
-		fmt.Fprintln(os.Stderr, "未找到物料数据目录，namestat 包测试无法运行")
-		os.Exit(1)
-	}
-	if err := hanzi.LoadFrequencyDB(dataDir); err != nil {
-		os.Exit(1)
-	}
-	os.Exit(m.Run())
-}
 
 func TestGetNameCount_SingleChar(t *testing.T) {
 	// 单字名：查单字频率表

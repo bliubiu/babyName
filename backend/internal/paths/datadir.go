@@ -17,6 +17,31 @@ import (
 // 一路爬到根目录才发现无果。
 const maxDataDirDepth = 12
 
+// isDataDir 判定目录是否为物料数据目录
+//
+// 两类标记：
+//   - namer.json：JSON/CSV 源物料目录（离线导入工具、开发期布局）；
+//   - namer.db：单库路线的种子库（CI、安装包、零 JSON 运行期）。
+//
+// 两者并存时语义不变，仍是同一个 data/ 目录；标记扩展到 namer.db 是为了
+// 让「只随装一个二进制库」的分发形态不需要再塞一个占位 JSON。
+func isDataDir(dir string) bool {
+	for _, marker := range [2]string{"namer.json", "namer.db"} {
+		info, err := os.Stat(filepath.Join(dir, marker))
+		if err != nil || info.IsDir() {
+			continue
+		}
+		// 开发期偶有 0 字节 / 4KB 的空 namer.db 残留在非 data/ 目录（例如
+		// backend/namer.db）。若只判「文件存在」，exe 上溯会把这种目录误当
+		// 物料目录。种子库实测约 22MB，这里要求 >1MB 才算有效标记。
+		if marker == "namer.db" && info.Size() <= 1<<20 {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 // FindDataDir 基于调用方源文件位置向上查找物料数据目录
 //
 // 以 namer.json 作为「此处即数据目录」的标记逐级向上探测，因此不依赖固定的
@@ -32,13 +57,17 @@ const maxDataDirDepth = 12
 func FindDataDir(callerFile string) string {
 	dir := filepath.Dir(callerFile)
 	for i := 0; i < maxDataDirDepth; i++ {
-		// 情形一：当前目录本身就是数据目录
+		// 情形一：当前目录本身就是数据目录。
+		// 只用 namer.json 判定：仓库根另有开发期运行库 namer.db，若把 namer.db
+		// 也算进「当前目录」会提前命中仓库根而非真正的 data/ 物料目录。
 		if _, err := os.Stat(filepath.Join(dir, "namer.json")); err == nil {
 			return dir
 		}
-		// 情形二：当前目录下的 data/ 子目录是数据目录（仓库根布局）
+		// 情形二：当前目录下的 data/ 子目录是数据目录（仓库根 / 安装目录布局）。
+		// 单库路线（ADR-010）下分发的 data/ 里只有 namer.db 没有 JSON，
+		// 故判据扩展到「namer.json 或 namer.db 任一存在」。
 		candidate := filepath.Join(dir, "data")
-		if _, err := os.Stat(filepath.Join(candidate, "namer.json")); err == nil {
+		if isDataDir(candidate) {
 			return candidate
 		}
 		parent := filepath.Dir(dir)
@@ -60,7 +89,7 @@ func FindDataDirFromExe(exePath string) string {
 		return ""
 	}
 	candidate := filepath.Join(filepath.Dir(exePath), "data")
-	if _, err := os.Stat(filepath.Join(candidate, "namer.json")); err == nil {
+	if isDataDir(candidate) {
 		return candidate
 	}
 	return ""
@@ -86,11 +115,11 @@ func FindDataDirFromExeWithParents(exePath string) string {
 	for i := 0; i < maxDataDirDepth; i++ {
 		// 情形一：当前目录下的 data/ 是物料目录（仓库根 / 安装目录布局）
 		candidate := filepath.Join(dir, "data")
-		if _, err := os.Stat(filepath.Join(candidate, "namer.json")); err == nil {
+		if isDataDir(candidate) {
 			return candidate
 		}
 		// 情形二：当前目录本身就是物料目录（exe 直接放在 data/ 内）
-		if _, err := os.Stat(filepath.Join(dir, "namer.json")); err == nil {
+		if isDataDir(dir) {
 			return dir
 		}
 		parent := filepath.Dir(dir)

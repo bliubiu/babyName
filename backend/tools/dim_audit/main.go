@@ -18,12 +18,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"name/internal/domain/bazi"
 	"name/internal/domain/classics"
 	"name/internal/domain/hanzi"
 	"name/internal/domain/zodiac"
+	"name/internal/infrastructure/data"
+	"name/internal/infrastructure/database/sqlite"
+	seedkit "name/internal/testutil/seed"
 )
 
 // ---------------------------------------------------------------------------
@@ -105,32 +109,35 @@ func containsAllChars(s string, chars []string) bool {
 
 func main() {
 	var (
-		dataDir string
+		dbPath  string
 		verbose bool
 	)
-	flag.StringVar(&dataDir, "data", "", "根数据目录（含 namer.json / shijing.json 等）；留空则自动探测")
+	flag.StringVar(&dbPath, "db", "", "种子库路径（留空自动探测 data/namer.db）")
+	flag.StringVar(&dbPath, "data", "", "兼容旧参数；语义同 -db（单库路线下不再读 JSON）")
 	flag.BoolVar(&verbose, "v", false, "逐项打印 PASS")
 	flag.Parse()
 
-	if dataDir == "" {
-		dataDir = detectDataDir()
+	if dbPath == "" {
+		_, thisFile, _, _ := runtime.Caller(0)
+		dbPath = seedkit.Path(thisFile)
 	}
-	if dataDir == "" {
-		fmt.Fprintln(os.Stderr, "✗ 无法定位数据目录（需含 namer.json）；请用 -data 指定")
+	if dbPath == "" {
+		fmt.Fprintln(os.Stderr, "✗ 无法定位种子库 data/namer.db；请用 -db 指定或先执行 go run ./tools/build_seed")
 		os.Exit(2)
 	}
-	fmt.Printf("数据目录: %s\n\n", dataDir)
+	fmt.Printf("种子库: %s\n\n", dbPath)
 
-	// 加载真实数据：
-	//   - 汉字五行：LoadNamerFromJSON 读 namer.json（运行时权威源，含五行自动校正）
-	//     —— 注意不可误用 data/raw/hanzi.json（旧原料，无运行时调用方）
-	//   - 诗词索引：BuildPoemIndexFromJSON 读 data 根目录的 shijing/chuci/shici/yuanqu.json
-	if err := hanzi.LoadNamerFromJSON(dataDir); err != nil {
-		fmt.Fprintf(os.Stderr, "✗ 加载汉字数据失败: %v\n", err)
+	// 单库路线（ADR-010）：字库、五行、诗词索引全部经 data.InitWithDB
+	// 从 namer.db 灌入（LoadClassicsFromDB 会重建 GlobalPoemIndex），
+	// 与生产装配同路径，CI 不再需要任何 JSON 源。
+	loader, err := sqlite.NewMaterialLoader(dbPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "✗ 打开种子库失败: %v\n", err)
 		os.Exit(2)
 	}
-	if err := classics.BuildPoemIndexFromJSON(dataDir); err != nil {
-		fmt.Fprintf(os.Stderr, "✗ 构建诗词索引失败: %v\n", err)
+	defer func() { _ = loader.Close() }()
+	if err := data.InitWithDB("", loader); err != nil {
+		fmt.Fprintf(os.Stderr, "✗ 物料装载失败: %v\n", err)
 		os.Exit(2)
 	}
 

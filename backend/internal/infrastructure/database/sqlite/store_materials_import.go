@@ -956,8 +956,8 @@ func (s *Store) importYijing(def schema.Definition, src string, res ImportResult
 		items = append(items, schema.Hexagram{
 			ID: h.ID, Name: h.Name, Number: h.Number, Symbol: h.Symbol,
 			UpperTrigram: h.UpperTrigram, LowerTrigram: h.LowerTrigram,
-			GuaCi: h.GuaCi, XiangCi: h.XiangCi, YaoCi: normalize.Tags(h.YaoCi),
-			TuanCi: h.TuanCi, XiaoXiang: normalize.Tags(h.XiaoXiang),
+			GuaCi: h.GuaCi, XiangCi: h.XiangCi, YaoCi: normalize.OrderedTags(h.YaoCi),
+			TuanCi: h.TuanCi, XiaoXiang: normalize.OrderedTags(h.XiaoXiang),
 			Interpretation: h.Interpretation,
 		})
 	}

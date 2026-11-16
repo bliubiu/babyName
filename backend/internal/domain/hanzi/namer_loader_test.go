@@ -14,14 +14,11 @@ func dataDirFor(t testing.TB) string {
 	return testutil.MustDataDir(t, file)
 }
 
-// TestLoadNamerGroups 验证 namer.json 顶层 charGroups（精选偏旁分组）被正确加载，
-// 取代独立的 standard_chars.json 独立文件。
+// TestLoadNamerGroups 验证 charGroups（精选偏旁分组）被正确装载
+//
+// 单库路线下 TestMain 已从 namer.db 的 char_groups 表装载；这里直接检查
+// 内存索引，不再重复读 JSON（CI 零 JSON）。
 func TestLoadNamerGroups(t *testing.T) {
-	dataDir := dataDirFor(t)
-	if err := LoadNamerFromJSON(dataDir); err != nil {
-		t.Fatalf("LoadNamerFromJSON 失败: %v", err)
-	}
-
 	groups := GetNamerGroups()
 	if len(groups) == 0 {
 		t.Fatal("namer.json 应包含精选偏旁分组(charGroups)，实际为空")
@@ -40,8 +37,7 @@ func TestLoadNamerGroups(t *testing.T) {
 
 // TestGetCharRadicalFromNamer 验证从 namer 数据查询汉字的偏旁（取代盘上 standard_chars.json）。
 func TestGetCharRadicalFromNamer(t *testing.T) {
-	_ = LoadNamerFromJSON(dataDirFor(t))
-
+	// 单库路线：TestMain 已从 namer.db 装载字库，无需再读 JSON
 	// 「林」字在标准字表内，radical 应为木
 	if r := GetCharRadicalFromNamer("林"); r == "" {
 		t.Errorf("「林」的偏旁应非空，实际为空")
@@ -85,9 +81,7 @@ func TestNormalizeGenderChineseEnums(t *testing.T) {
 // TestLoadNamerGenderNormalized 验证加载真实数据后：中文字符"男"/"女"枚举的
 // 好字在内存中的 Gender 已变为 male/female（即与 filter 判定对齐）。
 func TestLoadNamerGenderNormalized(t *testing.T) {
-	if err := LoadNamerFromJSON(dataDirFor(t)); err != nil {
-		t.Fatalf("LoadNamerFromJSON 失败: %v", err)
-	}
+	// 单库路线：TestMain 已从 namer.db 装载，导入期完成性别归一化
 	mu.RLock()
 	defer mu.RUnlock()
 	// 「风」在 namer.json 中标注为"男"，归一化后应为 male

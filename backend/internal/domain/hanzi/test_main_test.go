@@ -1,4 +1,4 @@
-package hanzi
+package hanzi_test
 
 import (
 	"fmt"
@@ -6,26 +6,21 @@ import (
 	"runtime"
 	"testing"
 
-	"name/internal/testutil"
+	seedkit "name/internal/testutil/seed"
 )
 
-// TestMain 在包测试前加载汉字数据
+// TestMain 从种子库装配全部物料（ADR-010 单库路线，CI 零 JSON）
+//
+// 外部测试包 package hanzi_test 避免 data → hanzi → testutil 的 import cycle。
+// 原先只装 kangxi CSV + namer.json；现在经 data.InitWithDB 从 namer.db
+// 读 typed 行，康熙笔画走 kangxi_strokes 表（ADR-013）。
 func TestMain(m *testing.M) {
-	// 数据目录按 namer.json 向上探测，不依赖固定目录层级（testutil.DataDir）
 	_, file, _, _ := runtime.Caller(0)
-	dataDir := testutil.DataDir(file)
-	if dataDir == "" {
-		fmt.Fprintln(os.Stderr, "未找到物料数据目录，hanzi 包测试无法运行")
+	cleanup, err := seedkit.Init(file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "单库物料装配失败，hanzi 包测试无法运行: %v\n", err)
 		os.Exit(1)
 	}
-	// 加载 namer.json（含五行、起名分类等）
-	// 康熙笔画必须在 namer 之前加载（namer_loader 末尾会合并康熙笔画）
-	if err := LoadKangxiStrokesFromCSV(dataDir); err != nil {
-		// 非关键：部分测试可能不依赖 kangxi 数据
-	}
-	if err := LoadNamerFromJSON(dataDir); err != nil {
-		// 非关键：部分测试可能不依赖 namer 数据
-	}
-
+	defer cleanup()
 	os.Exit(m.Run())
 }

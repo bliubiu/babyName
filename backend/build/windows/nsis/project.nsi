@@ -7,8 +7,8 @@
 ##
 ## 相对 v3 官方模板的定制点：
 ##   1. SetCompressor /SOLID lzma —— 物料 JSON 压缩率高，安装器体积显著缩小
-##   2. 安装 Section 追加「物料随装」：仓库根 data/ 顶层物料 + 康熙笔画表
-##      打进安装目录 data/，首跑播种进 SQLite，此后运行期零 JSON 依赖（ADR-008）
+##   2. 安装 Section 只随装一份种子库 data/namer.db（ADR-010「A + 单库」）：
+##      零 JSON 分发、零首跑播种（此前首次启动约 80 秒无窗口），库即唯一真源
 ##   3. 卸载 Section 选择性删除：保留 namer.db / *.db-wal / *.db-shm / logs/
 ##      ——防止卸载抹掉用户收藏、历史与自学习库
 ##   4. INFO_PRODUCTNAME / PRODUCT_EXECUTABLE 固定——避免中文+空格进安装路径/快捷方式
@@ -30,7 +30,7 @@
 
 !include "wails_tools.nsh"
 
-# 固实 LZMA 压缩：物料 JSON（~63MB）压缩后安装器体积可控
+# 固实 LZMA 压缩：种子库约 22MB，固实压缩后安装器体积可控
 SetCompressor /SOLID lzma
 
 # The version information for this two must consist of 4 parts
@@ -91,15 +91,12 @@ Section
 
     !insertmacro wails.files
 
-    # --- 物料随装（S4 / docs/48 阶段 4）---
-    # 仓库根 data/ 顶层物料 + 康熙笔画表打进安装目录 data/。
-    # /nonfatal：构建机缺少物料时仅告警不阻断（CI 场景物料须提前就位）。
-    # /x 排除 *_stats.json：运行期不读取，避免把约 30MB 统计文件塞进安装器。
+    # --- 种子库随装（ADR-010 单库路线）---
+    # 只装一份 data/namer.db（约 22MB），不再随装 54.9MB JSON 物料：
+    # 启动检测到库非空会跳过播种，首次启动不再有约 80 秒无窗口等待。
+    # 不加 /nonfatal：种子库缺失是打包配置错误，必须让安装构建失败。
     SetOutPath "$INSTDIR\data"
-    File /nonfatal /x "*_stats.json" "..\..\..\..\data\*.json"
-    File /nonfatal "..\..\..\..\data\materials.lock"
-    SetOutPath "$INSTDIR\data\raw"
-    File /nonfatal "..\..\..\..\data\raw\kangxi-strokecount.csv"
+    File "..\..\..\..\data\namer.db"
     SetOutPath $INSTDIR
 
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
@@ -116,9 +113,9 @@ Section "uninstall"
 
     RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the WebView2 DataPath
 
-    # --- 选择性卸载：保留用户数据，防止卸载抹掉收藏/历史/自学习库 ---
-    # 程序本体与物料全部删除；namer.db、*.db-wal/-shm、logs/ 原样保留，
-    # 重装后首跑播种自动跳过（库非空），历史数据无缝延续。
+    # --- 选择性卸载：namer.db 同时是种子与用户数据，绝不能删 ---
+    # 程序本体删除；旧版安装残留的 JSON / materials.lock / raw 顺带清理。
+    # namer.db、*.db-wal/-shm、logs/ 原样保留，重装后收藏/历史无缝延续。
     Delete "$INSTDIR\${PRODUCT_EXECUTABLE}"
     Delete "$INSTDIR\data\*.json"
     Delete "$INSTDIR\data\materials.lock"

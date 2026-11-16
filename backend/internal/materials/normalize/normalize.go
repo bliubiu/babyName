@@ -105,6 +105,29 @@ func Stroke(v int) int {
 // Tags 归一标签集合：去空去重排序
 func Tags(in []string) []string { return schema.NormalizeTags(in) }
 
+// OrderedTags 保序归一：去空白、丢空项与重复项，但**不排序**。
+//
+// 用于爻辞、小象辞等「数组下标即语义」的字段：六爻必须按初九→上九排列，
+// 小象须与爻一一对应。通用 Tags 会 sort.Strings，曾把 DB 里的乾卦爻辞按
+// Unicode 字典序重排（亢龙有悔排到初九位置），运行期从库装载后卦象解读
+// 全错；yijing 包的 docs 金标准对拍在切到单库装配后才暴露该缺陷。
+func OrderedTags(in []string) []string {
+	if len(in) == 0 {
+		return []string{}
+	}
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
+}
+
 // Wuxing 归一五行：非法值清空（不臆造，不落受控词表之外的值）
 func Wuxing(v string) string {
 	v = strings.TrimSpace(v)

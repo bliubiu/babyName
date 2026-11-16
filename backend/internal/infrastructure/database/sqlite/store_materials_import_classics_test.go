@@ -354,6 +354,11 @@ func TestImportClassics_真实数据下库路径与JSON路径等价(t *testing.T
 	if realData == "" {
 		t.Skip("未找到物料数据目录（向上探测 namer.json 失败），跳过对拍")
 	}
+	// 单库路线下 CI 只入库种子库，JSON 是构建期输入；本用例专测
+	// 「JSON 路径 vs 库路径等价」，缺源时跳过而不是把库数据当 JSON 基线。
+	if _, err := os.Stat(filepath.Join(realData, "namer.json")); err != nil {
+		t.Skip("JSON 源未入库（单库路线），跳过库/JSON 等价对拍")
+	}
 
 	s := newTestStore(t)
 

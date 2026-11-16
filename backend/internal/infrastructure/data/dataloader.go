@@ -4,8 +4,8 @@
 //
 // 物料来源优先级（docs/31 ADR-008）：
 //
-//	① SQLite 物料库（由 `materials import` 显式导入，归一化与校验已在导入期完成）；
-//	② JSON/CSV 源文件（**仅**离线工具与测试走此路径）。
+//	① SQLite 物料库（由 `tools/build_seed` / `materials import` 构建，唯一交付真源）；
+//	② JSON/CSV 源文件（**仅**构建期导入与离线工具对拍走此路径；ADR-010 单库路线下 CI 零 JSON）。
 //
 // 运行期（有库装载器时）统一以 SQLite 为唯一真源：解析 JSON、字段归一化都发生在
 // 导入期，运行期只把库内行读成 typed 结构，既不重复归一化，也不重复校验。
@@ -80,7 +80,8 @@ var loadedElsewhere = map[string]bool{
 
 // Init 统一装载全部物料（从 JSON/CSV 源文件）
 //
-// 等价于 InitWithDB(dataDir, nil)，用于离线工具与测试等无库场景。
+// 等价于 InitWithDB(dataDir, nil)，用于离线工具与「库/JSON 等价性」对拍；
+// 单库路线（ADR-010）下测试与 CI 门禁已改用 data.InitWithDB，不走此路径。
 func Init(dataDir string) error {
 	return initFromJSON(dataDir)
 }

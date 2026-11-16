@@ -170,3 +170,48 @@ func TestFindDataDirFromExeWithParents_空路径(t *testing.T) {
 		t.Fatalf("FindDataDirFromExeWithParents(\"\") = %q, 期望空串", got)
 	}
 }
+
+// writeSeedDB 在 dir 下创建一个指定大小的稀疏 namer.db（不实际占磁盘）
+func writeSeedDB(t *testing.T, dir string, size int64) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("创建目录失败: %v", err)
+	}
+	f, err := os.Create(filepath.Join(dir, "namer.db"))
+	if err != nil {
+		t.Fatalf("创建种子库标记失败: %v", err)
+	}
+	if err := f.Truncate(size); err != nil {
+		_ = f.Close()
+		t.Fatalf("截断种子库标记失败: %v", err)
+	}
+	_ = f.Close()
+}
+
+// TestFindDataDir_只有种子库 单库路线（ADR-010）下 CI / 安装包只随装 namer.db，
+// 没有 namer.json 也必须能命中 data/ 目录。
+func TestFindDataDir_只有种子库(t *testing.T) {
+	root := t.TempDir()
+	dataDir := filepath.Join(root, "data")
+	writeSeedDB(t, dataDir, 22<<20)
+
+	got := FindDataDir(filepath.Join(root, "backend", "internal", "x_test.go"))
+	if got != dataDir {
+		t.Fatalf("FindDataDir = %q, 期望 %q（仅有 namer.db 的 data/）", got, dataDir)
+	}
+	if got := FindDataDirFromExeWithParents(filepath.Join(root, "namer-desktop.exe")); got != dataDir {
+		t.Fatalf("FindDataDirFromExeWithParents = %q, 期望 %q", got, dataDir)
+	}
+}
+
+// TestFindDataDir_空库不算标记 开发期仓库根可能存在 0 字节 / 4KB 的空 namer.db，
+// 不能让它把上溯探测提前截断在非 data/ 目录（尤其 exe 在 backend/bin 时）。
+func TestFindDataDir_空库不算标记(t *testing.T) {
+	root := t.TempDir()
+	writeSeedDB(t, filepath.Join(root, "data"), 4<<10)
+
+	got := FindDataDir(filepath.Join(root, "backend", "internal", "x_test.go"))
+	if got != "" {
+		t.Fatalf("FindDataDir = %q, 期望空串（4KB namer.db 不是有效种子库）", got)
+	}
+}

@@ -5,6 +5,30 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.16.5]
+
+**实施：ADR-010「A + 单库」——测试 / CI / 运行期 / 安装包统一从 namer.db 装配**
+
+### ✨ 改进
+- 新增 `tools/build_seed`：一条命令从 33 个源物料生成单文件 `data/namer.db`（实测 22,122,496 B，12 类物料，4.5s），并封存为 `journal_mode=delete` + `VACUUM`；`--verify-only` 校验完整性（integrity_check、13 张必需表非空、5 张用户表为空、sha256、无 WAL 残留），已接入 CI `quality-fast` 独立步骤。
+- 新增 `sqlite.MaterialLoader`（`mode=ro` 只读连接）：多测试进程并发装载同一份入库种子库，不建表、不切 WAL、不改脏 git 工作区；复用 `*Store` 的物料读取方法，不重复实现。
+- 6 个领域包的 TestMain 改为 `package X_test` 外部包 + `internal/testutil/seed` 装配（避免 `data → domain → testutil` 的 import cycle）；`services` 两个 e2e 文件共用一次只读装配，策展名从 `curated_names` 表读。`gate_audit` / `dim_audit` 同样改走单库并新增 `-db` 参数。
+- `paths.isDataDir` 同时认 `namer.json` / `namer.db`（>1MB 才算有效，避免仓库根空库误命中），使「只随装一个二进制库」的安装包仍能被目录探测命中；新增 2 个单测。
+- `.gitignore` 退役此前为 CI 白名单入库的 11 个 `data/*.json`（17MB），只保留 `!data/namer.db`；`.gitattributes` 标注 `*.db binary`。NSIS 改为只随装种子库、不再塞 54.9MB JSON，卸载仍保留 `namer.db` / WAL / SHM / logs。
+- docs/31 ADR-010 补记最终决策（只产二进制、单库、JSON 降级为构建期输入、只读装载器、封存单文件）。
+
+### 🐛 Bug Fixes 问题修复
+- **易经导入把六爻顺序排乱了**：`importYijing` 对 `YaoCi` / `XiaoXiang` 使用通用 `normalize.Tags`（内部 `sort.Strings`），按 Unicode 字典序重排了「初九→上九」的爻辞，生产运行期从库装载后卦象解读一直是乱序。新增保序的 `normalize.OrderedTags` 并改用于这两个字段；切到单库装配后 yijing 包的 docs 金标准对拍才暴露此问题。
+- 遗留发现（本次未改）：`data/yijing.json` 有 2 卦象辞、1 处爻辞、约 23 卦的 `Symbol` 上下卦顺序与代码内置金标准不一致；yijing 包测试改用 `InitHanziOnly`（只从库读字库，保留内置 `HexagramList` 作为对拍对象），避免 DB 数据覆盖测试基线。该源数据分歧应独立评估。
+
+### ✅ 验证
+- `go run ./tools/build_seed`：exit 0，12 项物料 0 失败，`integrity=ok`、`journal_mode=delete`、5 张用户表全空；重生成两次 sha256 稳定可复现。
+- `go test ./internal/domain/{fate,hanzi,name,yijing,namestat,classics} ./internal/testutil/... ./internal/paths ./internal/bootstrap ./internal/application/services -count=1`：全绿；golden 快照零漂移，`dim_audit` 147/147、`gate_audit -static-only` exit 0。
+- 单库装配回归测试验证字库 8105 行、康熙笔画、门禁表、禁忌组合均从库灌入；路径探测单测覆盖「只有 namer.db」与「4KB 空库不算标记」两种形态。
+- **零 JSON CI 模拟**：隔离树 `data/` 下只放一份 `namer.db`（无任何 JSON/CSV），`SKIP_SERVER=1 verify-quality.sh` 全绿 —— golden 零漂移、`dim_audit` 147/147、九包覆盖率 76.7%~94.9%（本地全量物料下同款门禁亦全绿，fate 77.1%）。此前远端 `quality-fast` 的 golden / namestat 失败由此消除。
+- NSIS 重新打包 exit 0：安装器 12,649,489 B；makensis 报告原始安装数据 43,495,813 B ≈ exe 19,524,608 + 种子库 22,122,496 + WebView2 bootstrapper 1,793,816 + 小文件，证明 54.9MB JSON 已不再随装。
+- `verify-frontend.sh --require`：tsc / eslint / vitest（161 例）全绿；`cd frontend && pnpm e2e`：Playwright 23/23 全绿。
+
 ## [2026.11.16.4]
 
 **修复：远端 CI 的 GTK / CGO 编译失败（quality-fast / quality-bindings）**

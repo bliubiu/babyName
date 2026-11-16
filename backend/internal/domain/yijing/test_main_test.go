@@ -1,4 +1,4 @@
-package yijing
+package yijing_test
 
 import (
 	"fmt"
@@ -6,21 +6,20 @@ import (
 	"runtime"
 	"testing"
 
-	"name/internal/domain/hanzi"
-	"name/internal/testutil"
+	seedkit "name/internal/testutil/seed"
 )
 
+// TestMain 从种子库装配全部物料（ADR-010 单库路线，CI 零 JSON）
+//
+// 外部测试包 package yijing_test 避免 data → yijing 的 import cycle。
+// 原先只装 namer.json 供梅花易数取笔画；现在同时灌入六十四卦数据。
 func TestMain(m *testing.M) {
 	_, file, _, _ := runtime.Caller(0)
-	dataDir := testutil.DataDir(file)
-	if dataDir == "" {
-		fmt.Fprintln(os.Stderr, "未找到物料数据目录，yijing 包测试无法运行")
+	cleanup, err := seedkit.InitHanziOnly(file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "单库物料装配失败，yijing 包测试无法运行: %v\n", err)
 		os.Exit(1)
 	}
-	// 加载汉字数据（梅花易数依赖 HanziData 中的笔画数）
-	if err := hanzi.LoadNamerFromJSON(dataDir); err != nil {
-		// 非关键：部分测试可能不依赖汉字数据
-	}
-
+	defer cleanup()
 	os.Exit(m.Run())
 }

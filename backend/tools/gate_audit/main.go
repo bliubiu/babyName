@@ -20,11 +20,11 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -34,6 +34,8 @@ import (
 	"name/internal/domain/hanzi"
 	"name/internal/infrastructure/cache"
 	"name/internal/infrastructure/data"
+	"name/internal/infrastructure/database/sqlite"
+	seedkit "name/internal/testutil/seed"
 )
 
 type genResult struct {
@@ -47,7 +49,7 @@ type genResult struct {
 }
 
 func main() {
-	dataDirFlag := flag.String("data", "data", "数据目录")
+	dbFlag := flag.String("db", "", "种子库路径（留空自动探测 data/namer.db）")
 	surname := flag.String("surname", "张", "姓氏")
 	gender := flag.String("gender", "male", "性别 male/female")
 	count := flag.Int("count", 50, "期望名字数")
@@ -55,22 +57,46 @@ func main() {
 	staticOnly := flag.Bool("static-only", false, "只做静态覆盖分析，不跑生成对照")
 	flag.Parse()
 
-	dataDir := resolveDataDir(*dataDirFlag)
-	if err := data.Init(dataDir); err != nil {
+	// 单库路线（ADR-010）：门禁、策展名、字库全部从种子库读，零 JSON 依赖
+	dbPath := *dbFlag
+	if dbPath == "" {
+		_, thisFile, _, _ := runtime.Caller(0)
+		dbPath = seedkit.Path(thisFile)
+	}
+	if dbPath == "" {
+		fmt.Fprintln(os.Stderr, "✗ 未找到种子库 data/namer.db；请用 -db 指定或先执行 go run ./tools/build_seed")
+		os.Exit(2)
+	}
+	loader, err := sqlite.NewMaterialLoader(dbPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "打开种子库失败: %v\n", err)
+		os.Exit(2)
+	}
+	defer func() { _ = loader.Close() }()
+	if err := data.InitWithDB("", loader); err != nil {
 		fmt.Fprintf(os.Stderr, "数据装载失败: %v\n", err)
 		os.Exit(2)
 	}
 	services.SyncNamingIndexFromHanzi()
 	cache.Init()
 
-	gate := readGate(dataDir)
+	gate := fate.NonNamingChars()
 	if len(gate) == 0 {
-		fmt.Fprintf(os.Stderr, "门禁表为空或读取失败（%s/naming_quality.json）\n", dataDir)
+		fmt.Fprintln(os.Stderr, "门禁表为空（种子库 naming_gate 表无数据）")
 		os.Exit(2)
 	}
-	if names := readCuratedNames(dataDir); len(names) > 0 {
-		fate.SetCuratedNames(names)
+	if entries, err := loader.LoadAllCuratedNames(); err == nil {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			if e.Name != "" {
+				names = append(names, e.Name)
+			}
+		}
+		if len(names) > 0 {
+			fate.SetCuratedNames(names)
+		}
 	}
+	dataDir := filepath.Dir(dbPath) // 仅用于报告文案，不读 JSON
 
 	fmt.Println(repeat("=", 96))
 	fmt.Println("门禁表覆盖审计 ——  data/naming_quality.json")
@@ -318,37 +344,8 @@ func generate(provider *services.HanziDataProvider, filter fate.Filter, surname,
 
 // ---------- 数据读取 ----------
 
-func readGate(dataDir string) []string {
-	raw, err := os.ReadFile(filepath.Join(dataDir, "naming_quality.json"))
-	if err != nil {
-		return nil
-	}
-	var out []string
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil
-	}
-	return out
-}
-
-func readCuratedNames(dataDir string) []string {
-	raw, err := os.ReadFile(filepath.Join(dataDir, "curated_names.json"))
-	if err != nil {
-		return nil
-	}
-	var entries []struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(raw, &entries); err != nil {
-		return nil
-	}
-	out := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if e.Name != "" {
-			out = append(out, e.Name)
-		}
-	}
-	return out
-}
+// 门禁字表与策展名已改从种子库读（fate.NonNamingChars / loader.LoadAllCuratedNames），
+// 原先的 readGate / readCuratedNames 直读 JSON 路径随单库路线退役。
 
 func resolveDataDir(preferred string) string {
 	for _, dir := range []string{preferred, "data", "../data", "../../data"} {

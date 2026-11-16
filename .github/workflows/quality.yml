@@ -46,6 +46,10 @@ jobs:
           cache: true
           cache-dependency-path: backend/go.sum
 
+      - name: 校验种子库完整性（单文件 / 必需物料非空 / 无用户数据）
+        working-directory: backend
+        run: go run ./tools/build_seed --verify-only
+
       - name: 运行快路径验证（SKIP_SERVER=1）
         working-directory: ${{ github.workspace }}
         env:
@@ -92,8 +96,9 @@ jobs:
   # 前端三件套（docs/45 阶段 0 / P1-29）：类型检查 + ESLint + 单元测试
   # 与 Go 门禁解耦：Go job 不需要 Node，本 job 不需要 Go。
   # hook 可被 SKIP_VERIFY / --no-verify 绕过，故 CI 必须独立存在。
-  # Playwright 23 例走 Wails v3 server build，需全量 data/ 物料与 Chromium，
-  # 仓库仅入库门禁最小集，故由本地 `cd frontend && pnpm e2e` 承担（docs/48 阶段 3）。
+  # Go 侧门禁与单测统一从入库的 data/namer.db 装配（ADR-010 单库路线），
+  # 不再依赖 data/*.json 白名单；Playwright 23 例需 Chromium 与隔离库，
+  # 仍由本地 `cd frontend && pnpm e2e` 承担（docs/48 阶段 3）。
   # ---------------------------------------------------------------------------
   quality-frontend:
     name: 前端门禁（tsc + eslint + vitest）

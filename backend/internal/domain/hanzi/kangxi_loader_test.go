@@ -1,8 +1,22 @@
 package hanzi
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
+
+// requireKangxiCSV 定位 CSV 源；单库路线下 CI 只入库 namer.db，
+// CSV 属于构建期导入输入，缺失时这两个「CSV 加载器单测」无对象可测，
+// 跳过而不是拿库内裁剪版（7838 字）去断言全量（63696 字）。
+func requireKangxiCSV(t *testing.T) string {
+	t.Helper()
+	dir := dataDirFor(t)
+	if _, err := os.Stat(filepath.Join(dir, "raw", "kangxi-strokecount.csv")); err != nil {
+		t.Skip("CSV 源未入库（单库路线），跳过；全量笔画由 tools/build_seed 自检保证")
+	}
+	return dir
+}
 
 // TestLoadKangxiStrokesFromCSV 康熙笔画表加载
 //
@@ -12,8 +26,9 @@ import (
 //  3. 未收录字返回 0（兜底）
 //  4. 缺失文件降级（仅警告，不返回错误）
 func TestLoadKangxiStrokesFromCSV(t *testing.T) {
-	if !IsKangxiStrokesLoaded() {
-		t.Skip("康熙笔画表未加载（data/raw/kangxi-strokecount.csv 缺失），跳过")
+	dir := requireKangxiCSV(t)
+	if err := LoadKangxiStrokesFromCSV(dir); err != nil {
+		t.Fatalf("加载康熙笔画 CSV 失败: %v", err)
 	}
 
 	// 笔画抽样验证（康熙字典权威值）
@@ -55,12 +70,12 @@ func TestLoadKangxiStrokesFromCSV(t *testing.T) {
 //
 // 重复加载同一文件，集合数量应保持稳定（不单调增长）。
 func TestLoadKangxiStrokesReload(t *testing.T) {
-	if !IsKangxiStrokesLoaded() {
-		t.Skip("康熙笔画表未加载，跳过")
+	dir := requireKangxiCSV(t)
+	if err := LoadKangxiStrokesFromCSV(dir); err != nil {
+		t.Fatalf("首次加载失败: %v", err)
 	}
-
 	n1 := KangxiStrokesCount()
-	if err := LoadKangxiStrokesFromCSV(dataDirFor(t)); err != nil {
+	if err := LoadKangxiStrokesFromCSV(dir); err != nil {
 		t.Fatalf("二次加载失败: %v", err)
 	}
 	if KangxiStrokesCount() != n1 {
