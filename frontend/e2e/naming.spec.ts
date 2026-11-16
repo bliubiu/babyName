@@ -1,8 +1,8 @@
 /**
  * 起名主链路 E2E（@playwright/test，docs/47 S5）
  *
- * 运行：pnpm e2e（webServer 自动拉起 wails dev :34115，浏览器通道走
- * WebSocket IPC，与原生窗口同一 dispatcher）。
+ * 运行：pnpm e2e（webServer 自动拉起 Wails v3 server build :8080，
+ * 走与桌面 WebView 相同的 /wails/runtime HTTP IPC，docs/48 阶段 3）。
  *
  * 未配置模型：纯确定性断言（locator + expect），零模型调用。
  */

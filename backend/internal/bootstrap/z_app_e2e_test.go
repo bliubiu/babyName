@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"name/internal/application/services"
 	"name/internal/testutil"
 )
@@ -40,7 +41,10 @@ func TestAppE2E_桌面绑定全量功能(t *testing.T) {
 	defer func() { _ = res.Close() }()
 
 	app := res.App
-	app.Startup(context.Background()) // 模拟 Wails 生命周期回调
+	// 模拟 Wails v3 服务生命周期回调（原 v2 OnStartup，docs/48 §4.1）
+	if err := app.ServiceStartup(context.Background(), application.ServiceOptions{}); err != nil {
+		t.Fatalf("ServiceStartup 失败: %v", err)
+	}
 
 	genReq := services.GenerateRequest{
 		Surname: "李", Gender: "male",

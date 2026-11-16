@@ -93,16 +93,16 @@
 
 ==4层**DDD 架构（领域驱动设计）**和**TDD（测试驱动开发）**设计思想==
 
-| 层级       | 技术                                                       |
-| ---------- | ---------------------------------------------------------- |
-| 桌面框架   | Wails v2.17.0（适配 go 1.25.x；v2.17.1 起强制 go 1.26）      |
-| 前端       | Vite 7+，React 19.2+，TypeScript 7.0+                       |
-| 样式       | Tailwind CSS                                               |
-| 状态管理   | Zustand                                                    |
-| 图表库     | ECharts                                                    |
-| 包管理器   | pnpm，禁用npm管理                                          |
-| 后端       | go 1.25.10+，纯 Go 实现，无 CGO 依赖（已移除 Gin HTTP 层）    |
-| 数据持久化 | modernc.org/sqlite， SQLite（默认）                         |
+| 层级       | 技术                                            |
+| ---------- | ----------------------------------------------- |
+| 桌面框架   | Wails v3                                        |
+| 前端       | Vite 7+，React 19.2+，TypeScript 7.0+           |
+| 样式       | Tailwind CSS                                    |
+| 状态管理   | Zustand                                         |
+| 图表库     | ECharts                                         |
+| 包管理器   | pnpm，禁用npm管理                               |
+| 后端       | go 1.26.0+（go.mod），纯 Go 实现，无 CGO 依赖  |
+| 数据持久化 | modernc.org/sqlite， SQLite（默认）             |
 
 
 
@@ -110,11 +110,13 @@
 
 ```
 backend/
-  ├ main.go                  Wails 入口（目录解析 → 装配 → 窗口）
-  ├ wails.json               Wails 配置（frontend:dir 指向 ../frontend）
+  ├ main.go                  Wails v3 入口（目录解析 → 装配 → 服务/窗口）
+  ├ Taskfile.yml             wails3 build / package 任务（前端源码在 ../frontend）
+  ├ build/config.yml         v3 产品元信息（替代 v2 的 wails.json）
+  ├ frontend/dist/           Vite 产物同步进此目录供 //go:embed
   └ internal/
       ├ desktop/             绑定层：替代原 /api/v1 HTTP handler，
-      │                      前端经 frontend/wailsjs 生成的 TS 绑定直接调用
+      │                      前端经 frontend/bindings 生成的 TS 绑定直接调用
       ├ bootstrap/           装配层：存储 + 物料播种 + 服务装配
       ├ domain/…             领域层（不变）
       └ infrastructure/…     基础设施（不变，已移除 server/middleware HTTP 部分）
@@ -123,7 +125,7 @@ backend/
 - 错误约定：绑定方法返回的 error 以文案字符串传给前端，统一中文、可行动
 - 会话：桌面为单用户，收藏/历史/异步任务统一固定会话 `desktop`
 - 数据目录（按来源分级，见 `bootstrap.DataDirSource`）：物料 `-data` > `DATA_DIR` > 仓库根 data/（dev）> exe 同级 data/（打包）> cwd/data（兜底）；库 `-db`/`NAMER_DB_PATH` > 按来源推导——dev=仓库根 namer.db，打包=data 文件夹内 namer.db；日志同语义（dev=仓库根 logs/，打包=data/logs）
-- 构建：`wails build` 出单 exe（构建时自动把 ../frontend/dist 同步进 embed 目录）；`wails build -nsis -installscope user` 出安装器（exe + 物料随装 + 卸载保留用户库，见 build/windows/installer/project.nsi）
+- 构建：`wails3 build` 出单 exe（前端产物由 `pnpm build` 末尾的 `scripts/sync-dist.mjs` 同步进 embed 目录）；`wails3 package` 出安装器（exe + 物料随装 + 卸载保留用户库，见 `build/windows/nsis/project.nsi`）；一键脚本 `scripts/build.ps1` 封装上述两步。产物落在 `backend/bin/`
 
 
 

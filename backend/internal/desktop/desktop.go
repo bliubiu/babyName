@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.uber.org/zap"
 	apperrors "name/internal/application/errors"
 	"name/internal/application/services"
@@ -217,9 +218,14 @@ func New(
 	}
 }
 
-// Startup Wails 生命周期回调：注入运行时上下文（服务调用据此传播取消信号）
-func (a *App) Startup(ctx context.Context) {
+// ServiceStartup Wails v3 服务生命周期回调：注入运行时上下文（服务调用据此传播取消信号）
+//
+// v2 的导出 Startup(ctx) 在 v3 会被绑定生成器误当成前端可调用方法暴露；
+// 生成器只排除 ServiceName / ServiceStartup / ServiceShutdown / ServeHTTP，
+// 因此改为实现 application.ServiceStartup 接口（docs/48 §4.1）。
+func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
 	a.runtimeCtx = ctx
+	return nil
 }
 
 // ctx 服务调用上下文：优先运行时上下文，测试/未启动时回落 Background

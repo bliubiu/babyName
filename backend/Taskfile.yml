@@ -1,0 +1,57 @@
+version: '3'
+
+# Wails v3 构建任务（精简自官方 Taskfile，docs/48 阶段 4）。
+#
+# 与官方模板的差异：官方假设 Go 模块根即项目根、前端源码是 frontend/ 子目录；
+# 本项目 Go 模块根是 backend/，前端源码在同级 ../frontend，embed 目录才是
+# backend/frontend/。故 build:frontend 用 dir: ../frontend，由 pnpm build 末尾的
+# scripts/sync-dist.mjs 把 dist 同步到 backend/frontend/dist 供 //go:embed。
+#
+# 运行：
+#   wails3 build            构建桌面 exe（backend/bin/namer-desktop.exe）
+#   wails3 package          构建 NSIS 安装器（backend/bin/namer-amd64-installer.exe）
+#   wails3 task run         运行已构建的 exe
+# 可用 CLI 变量覆盖：WAILS3=<wails3 可执行文件路径>（未加入 PATH 时）。
+vars:
+  APP_NAME: namer-desktop
+  BIN_DIR: bin
+  NSIS_DIR: build/windows/nsis
+  WAILS3: '{{.WAILS3 | default "wails3"}}'
+
+tasks:
+  build:
+    summary: 构建 Wails v3 桌面 exe（含前端产物同步）
+    cmds:
+      - task: build:frontend
+      # production tag 关闭 dev 特性；不带 server tag，Server 选项由框架编译期隔离
+      # （pkg/application/application_server.go: //go:build server），桌面版不会监听 8080。
+      - go build -tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" .
+    env:
+      CGO_ENABLED: '0'
+
+  build:frontend:
+    summary: 构建 Vite 前端并同步产物到 Go embed 目录
+    dir: ../frontend
+    cmds:
+      - pnpm build
+
+  package:
+    summary: 构建 NSIS 安装器（user 作用域、物料随装、卸载保留用户库）
+    deps: [build]
+    cmds:
+      # wails.webview2runtime 宏需要同目录的 MicrosoftEdgeWebview2Setup.exe（生成物，不入库）
+      - '{{.WAILS3}} generate webview2bootstrapper -dir "{{.NSIS_DIR}}"'
+      - task: create:nsis:installer
+
+  create:nsis:installer:
+    summary: 调用 makensis 编译安装脚本（CWD 必须是 nsis 目录，File 相对路径依赖它）
+    # go-task 的 dir 只在任务级生效，写在 cmd 对象里会被忽略（曾导致
+    # makensis "Can't open script project.nsi"）。
+    dir: '{{.NSIS_DIR}}'
+    cmds:
+      - makensis -DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user -DARG_WAILS_AMD64_BINARY="..\..\..\bin\{{.APP_NAME}}.exe" project.nsi
+
+  run:
+    summary: 运行已构建的桌面 exe
+    cmds:
+      - '"{{.BIN_DIR}}/{{.APP_NAME}}.exe"'

@@ -19,7 +19,7 @@ import {
   GenerateReportPDF, CreateShare, GetShare, GetHuangli, GetLunarCalendar,
   GetLunarMonthCalendar, GetCharGroups, GetNameStats, GetTopNames,
   GetMaterialStates, ImportMaterials,
-} from '../../wailsjs/go/desktop/App';
+} from '../../bindings/name/internal/desktop/app';
 import type {
   MaterialStatesResponse, MaterialImportResponse,
 } from '@/types/api/materials';

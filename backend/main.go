@@ -1,10 +1,18 @@
 package main
 
-// 桌面端入口（Wails v2）
+// 桌面端入口（Wails v3）
 //
 // 定位：替代 cmd/server 的 HTTP 部署形态，成为唯一的桌面交付物。
 // 装配逻辑全部收敛在 internal/bootstrap（store + 物料 + 服务 + 绑定层），
-// 本文件只做三件事：解析目录 → 装配 → 启动 Wails 窗口。
+// 本文件只做三件事：解析目录 → 装配 → 启动 Wails 应用。
+//
+// 与 v2 的差异（docs/48）：
+//   - wails.Run(&options.App{...}) → application.New + Window.NewWithOptions + app.Run()
+//   - Bind []interface{} → Services []application.Service（生命周期改由
+//     desktop.App.ServiceStartup 承载）
+//   - assetserver.Options{Assets} → application.BundledAssetFileServer（同时提供
+//     /wails/runtime.js；自动生成 index.html 所在子目录前缀）
+//   - Server 选项仅在 -tags server 构建下生效，供 Playwright E2E 直连真实 Go 服务
 //
 // 目录语义（按数据目录来源分叉，见 bootstrap.DataDirSource）：
 //   - 物料：-data > DATA_DIR > 仓库根 data/（dev）> exe 同级 data/（打包）> cwd/data
@@ -19,17 +27,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"name/internal/bootstrap"
 	"name/internal/infrastructure/logger"
 )
 
-// assets 前端静态资源。wails build 会把 ../frontend/dist 自动同步到
-// backend/frontend/dist（见 wails.json 的 frontend:dir），构建后清理还原。
+// assets 前端静态资源。构建时把 ../frontend/dist 同步到 backend/frontend/dist
+// 供 embed（见 Taskfile.yml 的 build:frontend 任务）。
 //
 //go:embed all:frontend/dist
 var assets embed.FS
@@ -92,23 +97,33 @@ func run() error {
 		logger.String("数据库", dbPath),
 	)
 
-	// 启动 Wails 窗口；Bind 的 App 即前端可直接调用的全部方法
-	return wails.Run(&options.App{
+	app := application.New(application.Options{
+		Name:        "起名 NameMaster",
+		Description: "基于八字五行、易经卦象与音形义的智能起名工具",
+		Services: []application.Service{
+			// 生成器静态分析此调用，绑定 res.App 的全部导出方法（Startup 已改名
+			// ServiceStartup，不会被暴露成前端可调用方法，docs/48 §4.1）
+			application.NewService(res.App),
+		},
+		Assets: application.AssetOptions{
+			Handler: application.BundledAssetFileServer(assets),
+		},
+		// 仅在 -tags server 构建下生效：Playwright 直连 127.0.0.1:8080，
+		// 不创建原生窗口（docs/48 阶段 3）。生产桌面构建自动忽略此字段。
+		Server: application.ServerOptions{
+			Host: "127.0.0.1",
+			Port: 8080,
+		},
+	})
+
+	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "起名 NameMaster",
 		Width:  1280,
 		Height: 860,
-		AssetServer: &assetserver.Options{
-			Assets: assets,
-		},
-		OnStartup: res.App.Startup,
-		Bind: []interface{}{
-			res.App,
-		},
-		Windows: &windows.Options{
-			WebviewIsTransparent: false,
-			WindowIsTranslucent:  false,
-		},
+		URL:    "/",
 	})
+
+	return app.Run()
 }
 
 // initLogger 初始化日志（桌面端默认 INFO + 落盘，目录可由 -log/NAMER_LOG_PATH 覆盖）
@@ -135,7 +150,7 @@ func initLogger(dataDir string, source bootstrap.DataDirSource) error {
 }
 
 func printHelp() {
-	fmt.Println("起名 NameMaster 桌面端 (Wails)")
+	fmt.Println("起名 NameMaster 桌面端 (Wails v3)")
 	fmt.Println("")
 	fmt.Println("Usage:")
 	fmt.Println("  namer-desktop.exe [options]")

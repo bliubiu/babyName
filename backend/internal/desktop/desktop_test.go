@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
 	apperrors "name/internal/application/errors"
 	"name/internal/application/services"
 	"name/internal/domain/namestat"
@@ -709,14 +710,16 @@ func TestGetTopNames_参数规范化(t *testing.T) {
 
 // --- 上下文 ---
 
-func TestStartup_注入Wails上下文(t *testing.T) {
+func TestServiceStartup_注入Wails上下文(t *testing.T) {
 	app, _, _, _, _, _, _ := newTestApp()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	app.Startup(ctx)
+	if err := app.ServiceStartup(ctx, application.ServiceOptions{}); err != nil {
+		t.Fatalf("ServiceStartup 不应返回错误: %v", err)
+	}
 	if app.ctx() != ctx {
-		t.Fatal("Startup 应注入运行时上下文")
+		t.Fatal("ServiceStartup 应注入运行时上下文")
 	}
 }
 

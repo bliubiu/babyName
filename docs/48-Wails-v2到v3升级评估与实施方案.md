@@ -1,7 +1,8 @@
 # 48 Wails v2 → v3 升级评估与实施方案
 
-> 状态：**评估完成，未启动迁移**；master 仍为 Wails v2.17.0，本轮未改动任何可执行代码
-> 日期：2026-11-15
+> 状态：**阶段 0~4 已在隔离分支 `refactor/wails-v3` 实施完成**（实施记录见 §9）；
+> master 仍保持 Wails v2.17.0 可交付，未完成合并前不切换主线
+> 日期：2026-11-15 评估，2026-11-16 实施
 > 关联：`docs/47`（v2 桌面端迁移实施记录）、2026-11-15「Wails vs MyGo 选型决策」
 
 ## 1. 结论
@@ -173,3 +174,57 @@ frontend/bindings/v3probe/app.ts:
 - 仓库代码、配置、CI、NSIS **一行未动**；仅新增本文档与 CHANGELOG 条目。
 - 工作区存在**非本轮产生**的 `AGENTS.md` 未提交改动（Go 版本标注改为 `1.25.10+|1.26.11+`）；顺带提示：Markdown 表格内未转义的 `|` 会破坏表格列，建议写成 `1.25.10+ / 1.26.11+`。本轮未修改该文件。
 - `.workbuddy/tmp/` 下的 `tools/wails3.exe` 与 `v3-probe/` 是 scratch 探针产物，可保留供阶段 0 复用。
+
+---
+
+## 9. 实施记录（2026-11-16，分支 `refactor/wails-v3`）
+
+> master 未改动：v2.17.0 主线保持可交付，本节只描述隔离分支。
+
+### 9.1 阶段 0：可行性 spike（通过）
+
+- `go.mod` 升 `go 1.26.0` + `wails/v3 v3.0.0`；`go mod tidy` 连带 `modernc.org/sqlite` 1.29.5→1.44.3、`golang.org/x/text` 0.42.0。`go test ./...`（52 包）、`go vet ./...`、`SKIP_SERVER=1 bash scripts/verify-quality.sh` 全绿。
+- 真实 `desktop.App` 绑定生成：`1 Service, 22 Methods`；`json.RawMessage` → `any`、`[]byte` → `Promise<string>` + `$Create.ByteSlice()`；改名后的 `ServiceStartup` 被生成器正确排除。
+
+### 9.2 阶段 1：应用外壳与服务
+
+- `main.go` 改为 `application.New` / `application.NewService(res.App)` / `BundledAssetFileServer(assets)` / `app.Window.NewWithOptions` / `app.Run()`；`Startup` → `ServiceStartup(ctx, application.ServiceOptions) error`，`desktop_test.go` 与 `z_app_e2e_test.go` 同步调用。
+- 新增 `Server: application.ServerOptions{Host: "127.0.0.1", Port: 8080}` 供 E2E。**已核实**（`pkg/application/application_options.go:125-134`、`application_server.go:1` 的 `//go:build server`）该字段只在 `-tags server` 构建下生效，桌面生产 exe 不会监听 8080。
+
+### 9.3 阶段 2：绑定与前端
+
+- `frontend/bindings/` 生成物入库、`frontend/wailsjs/` 删除；`api.ts`（唯一封装）改 import，`api.test.ts` 改 mock 路径，`eslint.config.js` / `vitest.config.ts` 的忽略/排除同步；`@wailsio/runtime@3.0.0` 精确 pin。
+- 新增 `frontend/scripts/sync-dist.mjs` 并挂到 `pnpm build` 末尾：v3 不再由 CLI 自动把 `../frontend/dist` 同步进 embed 目录，缺这一步会重现 docs/47 S5 的「改了 src 却服务旧 dist」E2E 假通过。
+- 4 处契约对齐：PDF base64 解码、`createShareSnapshot` 扁平对象、分享链接 `/#/share?id=`、`GetShare` 返回 `any`。
+
+### 9.4 阶段 3：验证链重搭
+
+- `playwright.config.ts` webServer → `go run -tags server,production .`（127.0.0.1:8080），保留隔离库 `NAMER_DB_PATH`、`workers=1`；`pnpm e2e` 前置 `pnpm build`。
+- 23/23 通过，`runtime:ready` 握手噪声消失。官方边界不变：server build **不覆盖**原生窗口/菜单/托盘/原生对话框，exe 级冒烟仍需人工。
+
+### 9.5 阶段 4：打包 / CI / 文档
+
+**v3 CLI 要求 Taskfile（评估阶段未预见的硬门槛）**：`wails3 build` 内部是 `wails3 task build`，原目录无 Taskfile 直接报 `No Taskfile found at backend`。官方 Taskfile 假设 Go 模块根即项目根、`frontend/` 是其子目录，而本项目前端在 `../frontend`，故**不套用官方多平台模板**，改自建精简 `backend/Taskfile.yml`（`build` / `build:frontend` / `package` / `create:nsis:installer` / `run`）。v2 的 `scripts/build.ps1` 改为薄封装，构建逻辑只有一份。
+
+**NSIS 目录迁移**：v3 官方路径是 `build/windows/nsis/project.nsi`（v2 为 `build/windows/installer/project.nsi`）。`wails_tools.nsh` 的 `wails.*` 宏名与 v2 完全一致（含 `wails.associateCustomProtocols` / `wails.unassociateCustomProtocols`），故「LZMA 固实压缩 / 63MB 物料随装 / 卸载保留 `namer.db`+WAL+SHM+logs / 简体中文优先」四段定制原样移植；新增 `!define PRODUCT_EXECUTABLE "namer-desktop.exe"` 与 `INFO_COPYRIGHT`，`OutFile` 改 `..\..\..\bin\...`，UTF-8 BOM 保留。`build/config.yml` 取代 `wails.json` 承载产品元信息。
+
+**go-task 坑**：`dir` 只在**任务级**生效，写在 `cmd` 对象里会被忽略，首次实测报 `makensis: Can't open script project.nsi`；拆出独立任务 `create:nsis:installer`（`dir: build/windows/nsis`）后通过。
+
+**物料瘦身**：`File /nonfatal /x "*_stats.json"` 排除 4 个运行期不读取的统计 JSON（约 30MB）；安装器 install data 54.9MB、LZMA 压缩后 11.85MB（21.5%）。
+
+**CI 硬约束（本轮新增发现）**：v3 的 linux 平台代码（`menu_linux.go` / `webview_window_linux.go`）依赖 GTK/WebKit，`GOOS=linux CGO_ENABLED=0 go build ./...` 报 `undefined: pointer`。解法是全局 `GOFLAGS=-tags=server`（框架编译无窗口实现，业务代码不变）；已实测 linux 下 `go build -tags server ./...` 与 `go test -tags server -c` 测试二进制链接均 exit 0，Windows 下 `go test -tags server ./...` 全绿。注意这与 `verify-quality.sh` 的 `SKIP_SERVER=1`（跳过已退役 HTTP E2E 段）语义不同。
+
+CI 最终三个 job：`quality-fast`（Go 快路径门禁）、`quality-bindings`（`go install wails3@v3.0.0` → 重新生成 TS 绑定 → `git diff --exit-code -- frontend/bindings`，防 `$Call.ByID` 方法 ID 漂移）、`quality-frontend`（tsc/eslint/vitest）。原 `quality-e2e` 仍引用已退役的 `cmd/server`，且因仓库只入库最小物料而永远跳过，已移除；Playwright 23 例需要全量 `data/` 物料与 Chromium，继续由本地 `cd frontend && pnpm e2e` 承担。
+
+### 9.6 实测产物与未覆盖项
+
+| 项 | 结果 |
+|---|---|
+| `wails3 build` | exit 0，`backend/bin/namer-desktop.exe` = 19,508,224 B |
+| `wails3 package` | exit 0，`backend/bin/namer-amd64-installer.exe` = 11,852,207 B |
+| `GOOS=linux CGO_ENABLED=0 go build -tags server ./...` | exit 0 |
+| server build E2E | Playwright 23/23 |
+| Go / 前端门禁 | 全绿（见 CHANGELOG `[2026.11.16.0]`） |
+
+- **未做（需人工 GUI 冒烟）**：干净目录安装 → 首跑播种 → 收藏/历史落库 → 卸载重装数据延续；原生窗口/菜单/托盘/对话框；server build 之外的 exe 双击启动。
+- **pin 纪律**：Go module / `wails3` CLI / `@wailsio/runtime` 三者同为 `3.0.0`；任一升级须同步三者并重新生成绑定，否则 `quality-bindings` 会拦截。

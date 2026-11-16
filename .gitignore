@@ -195,11 +195,17 @@ go-test-result.txt
 # 本地覆盖率明细报告（go test -coverprofile 生成，可随时重新生成）
 cover-func.txt
 
-# Wails 构建副产物（wails build 自动生成，可随时重建）
+# Wails v3 构建副产物（wails3 build / package 自动生成，可随时重建）
 /frontend/package.json.md5
 /backend/assets/
-/backend/build/windows/installer/wails_tools.nsh
-/backend/build/windows/installer/tmp/
+# frontend/dist 的产物由 scripts/sync-dist.mjs 同步进 Go embed 目录；
+# 只保留 .gitkeep，避免 embed 目录在干净检出时不存在（go build 直接失败）。
+/backend/frontend/dist/*
+!/backend/frontend/dist/.gitkeep
+/backend/bin/
+/backend/build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+/backend/build/windows/nsis/tmp/
+*.syso
 
 # Playwright e2e 产物（frontend/e2e 运行生成，可随时重建）
 /frontend/test-results/

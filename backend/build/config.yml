@@ -1,0 +1,20 @@
+# Wails v3 项目构建元信息（docs/48 阶段 4）。
+# 取代 v2 时代的 backend/wails.json：v3 CLI 从这里读取 info 生成 .syso /
+# wails_tools.nsh / MSIX 等构建资产。改动 info 后可执行
+# `wails3 update build-assets -name namer -binaryname namer-desktop.exe -config build/config.yml -dir build`
+# 刷新 build/windows/nsis/wails_tools.nsh（project.nsi 是定制文件，不会被覆盖）。
+version: '3'
+
+info:
+  companyName: "bliubiu"
+  productName: "NameMaster"
+  productIdentifier: "com.bliubiu.namemaster"
+  description: "基于八字五行、易经卦象与音形义的智能起名工具"
+  copyright: "Copyright (c) 2026"
+  comments: "Free naming tool: BaZi WuXing, Zodiac, YiJing hexagrams, smart scoring"
+  version: "1.0.0"
+
+# 本项目不注册文件关联与自定义协议；wails.associateFiles /
+# wails.associateCustomProtocols 宏展开为空，保留调用仅为兼容官方模板。
+fileAssociations: []
+protocols: []

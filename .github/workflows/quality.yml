@@ -11,9 +11,18 @@ concurrency:
   group: quality-${{ github.ref }}
   cancel-in-progress: true
 
+# Wails v3 的 linux 平台代码（menu_linux.go / webview_window_linux.go 等）依赖
+# GTK/WebKit，纯 Go、无 CGO 的 ubuntu runner 直接编译会报 undefined: pointer。
+# server tag 让框架编译无窗口实现（pkg/application/application_server.go），
+# 业务代码与桌面版完全一致；已实测 GOOS=linux CGO_ENABLED=0 下
+# `go build -tags server ./...` 与 `go test -tags server` 测试二进制均可链接。
+# 注意：这与 verify-quality.sh 的 SKIP_SERVER=1（跳过已退役的 HTTP E2E 段）不是一回事。
+env:
+  GOFLAGS: "-tags=server"
+
 jobs:
   # ---------------------------------------------------------------------------
-  # 快路径（无需服务/数据库）：单元 + 门禁审计 + 专项维度巡检
+  # 快路径（无需服务/数据库）：单元 + 门禁审计 + 专项维度巡检 + 覆盖率
   # 覆盖：评分正确性、评分快照防漂移、九维 score_detail 透传、
   #       门禁表覆盖、八字/五行/生肖/诗词出典准确性（dim_audit）
   # ---------------------------------------------------------------------------
@@ -37,11 +46,13 @@ jobs:
         run: bash scripts/verify-quality.sh
 
   # ---------------------------------------------------------------------------
-  # 全量（含端到端 E2E 18 项）：自动构建后端、导入物料库、启动服务后跑 e2e_check
-  # 需要构建 namer.db；耗时较长，作为独立 job 以便并发/按需执行
+  # Wails v3 绑定一致性（docs/48 §4.2）
+  # 绑定调用走 $Call.ByID(数字ID)，Go 方法增删/改名后若不重新生成，
+  # 前后端 ID 会静默错位。此 job 用与 go.mod 同版本的 CLI 重生成并 diff，
+  # 生成物（frontend/bindings/）必须入库，缺改即失败。
   # ---------------------------------------------------------------------------
-  quality-e2e:
-    name: 全量（含 E2E 端到端 18 项）
+  quality-bindings:
+    name: Wails v3 绑定一致性（重新生成 + diff）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,34 +64,24 @@ jobs:
           cache: true
           cache-dependency-path: backend/go.sum
 
-      # docs/43 P0-1：data/ 全量物料（约 60M）不随仓库分发，仅 dim_audit 最小集入库。
-      # 先用 manifest --check 校验必需源文件，缺失时显式警告并跳过本 job，
-      # 而不是让 import 在半途静默失败、门禁必红。
-      - name: 校验全量物料（缺失则显式跳过 E2E）
+      - name: 安装 wails3 CLI（与 go.mod / @wailsio/runtime 同为 v3.0.0）
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+
+      - name: 重新生成 TS 绑定
         working-directory: backend
-        id: manifest
         run: |
-          if go run ./cmd/materials manifest --check --data ../data; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::data/ 全量物料未随仓库分发（仓库仅入库 dim_audit 最小集），quality-e2e 显式跳过；如需 E2E 门禁请按 docs/40 物料清单准备 data/"
-          fi
+          WAILS3="$(go env GOPATH)/bin/wails3"
+          "$WAILS3" generate bindings -ts -d ../frontend/bindings
 
-      - name: 构建物料库 namer.db
-        if: steps.manifest.outputs.ready == 'true'
-        working-directory: backend
-        run: go run ./cmd/materials import --data ../data --db ./namer.db
-
-      - name: 运行全量验证（自动构建+启服务+E2E）
-        if: steps.manifest.outputs.ready == 'true'
-        working-directory: ${{ github.workspace }}
-        run: bash scripts/verify-quality.sh
+      - name: 生成物必须与入库版本一致
+        run: git diff --exit-code -- frontend/bindings
 
   # ---------------------------------------------------------------------------
   # 前端三件套（docs/45 阶段 0 / P1-29）：类型检查 + ESLint + 单元测试
   # 与 Go 门禁解耦：Go job 不需要 Node，本 job 不需要 Go。
-  # hook 可被 SKIP_VERIFY / --no-verify 绕过，故 CI 必须独立存在，不能只靠 hook。
+  # hook 可被 SKIP_VERIFY / --no-verify 绕过，故 CI 必须独立存在。
+  # Playwright 23 例走 Wails v3 server build，需全量 data/ 物料与 Chromium，
+  # 仓库仅入库门禁最小集，故由本地 `cd frontend && pnpm e2e` 承担（docs/48 阶段 3）。
   # ---------------------------------------------------------------------------
   quality-frontend:
     name: 前端门禁（tsc + eslint + vitest）

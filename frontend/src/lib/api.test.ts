@@ -31,7 +31,7 @@ const mocks = vi.hoisted(() => ({
   ImportMaterials: vi.fn(),
 }));
 
-vi.mock('../../wailsjs/go/desktop/App', () => mocks);
+vi.mock('../../bindings/name/internal/desktop/app', () => mocks);
 
 import { exportReportPDF, createShareSnapshot } from './api';
 

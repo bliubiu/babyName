@@ -63,9 +63,8 @@ test('结果页导出 PDF：下载到有效的 PDF 文件', async ({ page }) => 
 });
 
 test('结果页分享：创建快照 → 打开分享链接 → 读回同一份结果', async ({ page, context }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
-    origin: 'http://localhost:34115',
-  });
+  // 不绑定 origin：server build（8080）与 v2 浏览器通道（34115）都能复用本用例
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await gotoResult(page);
 
   await page.getByRole('button', { name: '分享' }).click();

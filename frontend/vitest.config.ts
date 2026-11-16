@@ -14,7 +14,7 @@ export default defineConfig({
       exclude: [
         'node_modules/',
         'dist/',
-        'wailsjs/',
+        'bindings/',
         'public/',
         '**/*.test.{ts,tsx}',
         '**/*.spec.{ts,tsx}',

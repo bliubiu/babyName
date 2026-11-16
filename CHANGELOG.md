@@ -5,6 +5,39 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.16.0]
+
+**Wails v2.17.0 → v3.0.0 迁移（隔离分支 `refactor/wails-v3`，`docs/48` 阶段 0~4）**
+
+### ⚠️ Breaking Changes 破坏性变更
+- `backend/go.mod`：`go 1.25.0` → `go 1.26.0`，`wails/v2 v2.17.0` → `wails/v3 v3.0.0`；`go mod tidy` 连带 `modernc.org/sqlite` 1.29.5→1.44.3、`golang.org/x/text` 0.42.0
+- 应用外壳重写：`wails.Run(&options.App{...})` → `application.New` + `application.NewService(res.App)` + `BundledAssetFileServer(assets)` + `app.Window.NewWithOptions` + `app.Run()`
+- 生命周期：`desktop.App.Startup(ctx)` → `ServiceStartup(ctx, application.ServiceOptions) error`（v3 绑定生成器会把导出的 `Startup` 误暴露成前端可调用方法）
+- 前端绑定：删除 `frontend/wailsjs/`，改为 `frontend/bindings/`（生成物入库、禁止手改）；新增并精确 pin `@wailsio/runtime@3.0.0`；`api.ts` / `api.test.ts` 改 import 与 mock 路径
+- 配置与产物：v2 `backend/wails.json` 退役，改 `backend/build/config.yml` + `backend/Taskfile.yml`；产物目录由 `backend/build/bin/` 改为 `backend/bin/`
+- NSIS：`build/windows/installer/project.nsi` → `build/windows/nsis/project.nsi`（v3 官方路径），保留 LZMA / 物料随装 / 卸载保留用户库；新增 `/x "*_stats.json"` 排除运行期不读取的 4 个统计 JSON
+- E2E 通道：`wails dev :34115` → server build（`go run -tags server,production .` 直连 127.0.0.1:8080），去掉 `runtime:ready` 握手噪声
+
+### ✨ New Features 新增功能
+- 【构建】`backend/Taskfile.yml`：`wails3 build`（`pnpm build` 同步 embed 产物 + `go build -tags production`）、`wails3 package`（WebView2 bootstrapper + makensis user 安装器）、`wails3 task run`
+- 【构建】`scripts/build.ps1` 改为 v3 薄封装：CLI 定位 + `go.mod`/`package.json` 双版本护栏 + 可选跳过安装器
+- 【CI】`.github/workflows/quality.yml` 全局 `GOFLAGS=-tags=server` 绕开 v3 linux GTK/WebKit 依赖；新增 `quality-bindings` job（重生成 TS 绑定 + `git diff --exit-code` 防方法 ID 漂移）；移除已退役的 HTTP E2E job
+
+### 🐛 Bug Fixes 问题修复
+- 新增 `frontend/scripts/sync-dist.mjs`：`pnpm build` 末尾把 dist 同步到 `backend/frontend/dist` 供 `//go:embed`，修掉 v3 不再自动同步导致的「改了 src 却服务旧 dist」E2E 假通过
+- `.gitignore`：忽略 `backend/frontend/dist/*`（保留 `.gitkeep`）、`backend/bin/`、WebView2 bootstrapper、`*.syso`
+- 绑定契约从源头修正：`[]byte` → `Promise<string>` + `$Create.ByteSlice()`（v2 的 `.d.ts` 写 `Array<number>`、运行时却是 base64 字符串），`json.RawMessage` → `any`
+
+### 📚 Docs 文档更新
+- `docs/48` 状态从「评估完成，未启动迁移」更新为阶段 0~4 实施记录；`docs/47 §2` 标注为 v2 历史快照；`AGENTS.md` 技术栈 / 架构 / 构建段落同步 v3
+
+### ✅ 验证
+- `wails3 build` exit 0（exe 19,508,224 B）；`wails3 package` exit 0（安装器 11,852,207 B，LZMA 压缩率 21.5%，物料 54.9MB 随装）
+- `go test ./...`（52 包）、`go test -tags server ./...`、`go vet ./...`、`SKIP_SERVER=1 bash scripts/verify-quality.sh` 全绿
+- `GOOS=linux CGO_ENABLED=0 go build -tags server ./...` 与测试二进制链接 exit 0（CI 无 GUI 方案的依据）
+- `cd frontend && pnpm e2e` Playwright 23/23；`bash scripts/verify-frontend.sh --require` 全绿
+- `wails3 generate bindings -ts -dry`：1 Service / 22 Methods，`ServiceStartup` 正确排除
+
 ## [2026.11.15.4]
 
 **新增文档：Wails v2 → v3 升级评估与实施方案（`docs/48`）**

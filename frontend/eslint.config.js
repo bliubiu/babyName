@@ -7,7 +7,9 @@ import globalsPkg from 'globals';
 const { browser, node, es2024 } = globalsPkg;
 
 export default tseslint.config(
-  { ignores: ['node_modules/', '.next/', 'out/', 'public/', '*.config.js', '*.config.mjs', 'coverage/', 'dist/', 'build/', 'wailsjs/'] },
+  // bindings/ 是 wails3 generate bindings 的生成物（自带 @ts-ignore 与 any），
+  // 不参与 lint；变更应改 Go 侧签名后重新生成，禁止手改（docs/48 §4.2）。
+  { ignores: ['node_modules/', '.next/', 'out/', 'public/', '*.config.js', '*.config.mjs', 'coverage/', 'dist/', 'build/', 'bindings/'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

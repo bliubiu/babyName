@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/sync-dist.mjs",
     "lint": "eslint .",
     "postinstall": "node scripts/hoist-deps.mjs",
     "test": "vitest run",
@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.95.2",
+    "@wailsio/runtime": "3.0.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "react": "^19.2.7",
