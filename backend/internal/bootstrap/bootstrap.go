@@ -162,7 +162,11 @@ var findDataDir = func() string {
 	return paths.FindDataDir(file)
 }
 
-// findDataDirFromExe 探测 exe 同级 data/（打包分发布局：物料随安装器落在 exe 旁）
+// findDataDirFromExe 以 exe 实际位置为锚点探测物料目录（含逐级上溯）
+//
+// 打包构建带 -trimpath，基于 runtime.Caller 的源码位置探测（findDataDir）在
+// 产物中失效；上溯可让 backend/bin 下的 exe 命中仓库根 data/，安装版仍优先
+// 命中自带的同级 data/。详见 paths.FindDataDirFromExeWithParents。
 //
 // 提取为包级变量是为了可测：测试注入临时目录布局模拟打包态。
 var findDataDirFromExe = func() string {
@@ -170,7 +174,7 @@ var findDataDirFromExe = func() string {
 	if err != nil {
 		return ""
 	}
-	return paths.FindDataDirFromExe(exePath)
+	return paths.FindDataDirFromExeWithParents(exePath)
 }
 
 // findDataDirFromCwd 回落 cwd/data（便携兜底：从任意工作目录启动时随遇而安）

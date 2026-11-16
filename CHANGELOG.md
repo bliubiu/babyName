@@ -5,6 +5,24 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.16.2]
+
+**修复：Wails v3 打包 exe 双击静默退出（人工 GUI 冒烟）**
+
+### 🐛 Bug Fixes 问题修复
+- 现象：`backend/bin/namer-desktop.exe` 双击 / 命令行运行后无窗口、无报错，PowerShell 直接返回；受控探针捕获到 `exit 1` 与 `错误: 未找到传统文化数据目录，请通过 DATA_DIR 环境变量或 Options.DataDir 指定`。
+- 根因：`wails3 build` 带 `-trimpath`，`runtime.Caller(0)` 的编译期源文件绝对路径被抹成模块相对路径，dev 侧基于源码位置的 `paths.FindDataDir` 在产物中必然失效；`FindDataDirFromExe` 又只查 exe 同级 `data/`，而 `backend/bin/data/` 不存在 → 目录来源全部落空，`run()` 在日志初始化之前就返回。构建参数 `-H windowsgui` 让 GUI 子系统没有控制台，stderr 对用户不可见，于是表现为「静默退出」。
+- 修复一：新增 `paths.FindDataDirFromExeWithParents`，以 `os.Executable()` 真实位置为锚点，先查同级 `data/`，再逐级上溯（≤12 层，以 `namer.json` 为标记）；`backend/bin` 上溯两级命中仓库根 `data/`，安装版仍优先命中随装的同级 `data/`。`bootstrap.findDataDirFromExe` 改调新函数，原 `FindDataDirFromExe` 语义与既有 4 个测试保持不变。
+- 修复二：启动失败可见化。`main.go` 的 `run()` 错误分支新增 exe 同级 `startup-error.log` 落盘，并在 Windows 下用 `user32!MessageBoxW` 弹出「起名 NameMaster 启动失败」错误框；`startup_error_windows.go` / `startup_error_other.go` 按平台分离，非 Windows 走空实现，保证 CI 的 linux server build 可编译。新增 5 个单测覆盖上溯命中 / 同级优先 / 当前目录即数据目录 / 空路径 / 错误日志落盘。
+
+### ✅ 验证
+- 修复前对照探针（Python `subprocess.Popen` + `EnumWindows` 枚举顶层窗口）：无参数启动 `exit 1`、无窗口；显式 `-data` 启动则进程存活且出现 `起名 NameMaster` 窗口 → 证明 exe / WebView2 / embed 前端 / 装配链路本身无误。
+- 修复后重新 `wails3 build`（exe 19,544,064 B）：无参数启动在首跑播种约 80 秒后创建 `起名 NameMaster` 主窗口；项目外孤立目录启动则弹出错误框并写入 `startup-error.log`（内容含具体原因）。
+- `go test ./...`（52 包）、`go vet ./...`、`GOOS=linux CGO_ENABLED=0 go build -tags server ./...`、`SKIP_SERVER=1 verify-quality.sh`（dim_audit 147/147、九包 76.3%~94.9%）、`verify-frontend.sh --require`（161 例）、`pnpm e2e`（23/23）全绿；绑定生成物 22 文件归一化行尾后零差异（仓库存 LF、Windows 工作区 CRLF，非契约漂移）。
+
+### ⚠️ 遗留体验
+- 安装器不预置 SQLite 库，首次启动会在 `data/` 内新建库并播种物料，约 80 秒内没有窗口也没有进度提示，易被误判为「没反应」；之后启动恢复正常。后续可考虑预置种子库或装配期进度提示。
+
 ## [2026.11.16.1]
 
 **v3 分支交付收尾：CI 编译约束隔离 + 推送/合并基线**

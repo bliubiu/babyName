@@ -65,3 +65,39 @@ func FindDataDirFromExe(exePath string) string {
 	}
 	return ""
 }
+
+// FindDataDirFromExeWithParents 以 exe 实际位置为锚点，逐级向上探测物料目录。
+//
+// 背景（docs/48 §9）：wails3 build 带 -trimpath，runtime.Caller(0) 返回的
+// 编译期源文件绝对路径被抹成模块相对路径，dev 侧基于源码位置的 FindDataDir
+// 在打包产物中必然失效；若 exe 同级又恰好没有随装 data/（例如直接运行
+// backend/bin/namer-desktop.exe），所有来源落空，应用在日志初始化之前就
+// 静默退出。以 exe 真实路径上溯可同时覆盖两种布局：
+//   - 安装版：第一级即命中安装目录自带的 data/（优先级最高）
+//   - 源码内构建：backend/bin 上溯两级命中仓库根 data/
+//
+// 与 FindDataDirFromExe 的区别仅在于「是否上溯」；原函数保持只查同级，
+// 以维持既有测试契约。命中判据统一为 namer.json 标记，避免误判空目录。
+func FindDataDirFromExeWithParents(exePath string) string {
+	if exePath == "" {
+		return ""
+	}
+	dir := filepath.Dir(exePath)
+	for i := 0; i < maxDataDirDepth; i++ {
+		// 情形一：当前目录下的 data/ 是物料目录（仓库根 / 安装目录布局）
+		candidate := filepath.Join(dir, "data")
+		if _, err := os.Stat(filepath.Join(candidate, "namer.json")); err == nil {
+			return candidate
+		}
+		// 情形二：当前目录本身就是物料目录（exe 直接放在 data/ 内）
+		if _, err := os.Stat(filepath.Join(dir, "namer.json")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}

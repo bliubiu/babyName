@@ -125,3 +125,48 @@ func TestFindDataDirFromExe_空exe路径(t *testing.T) {
 		t.Fatalf("FindDataDirFromExe(\"\") = %q, 期望空串", got)
 	}
 }
+
+// --- 打包态上溯探测（wails3 build -trimpath 后源码路径探测失效的修复）---
+
+// TestFindDataDirFromExeWithParents_上级data命中 exe 在 backend/bin，仓库根 data/ 应被回溯命中
+func TestFindDataDirFromExeWithParents_上级data命中(t *testing.T) {
+	root := t.TempDir()
+	writeMarker(t, filepath.Join(root, "data"))
+
+	exe := filepath.Join(root, "backend", "bin", "namer-desktop.exe")
+	if got := FindDataDirFromExeWithParents(exe); got != filepath.Join(root, "data") {
+		t.Fatalf("FindDataDirFromExeWithParents = %q, 期望 %q", got, filepath.Join(root, "data"))
+	}
+}
+
+// TestFindDataDirFromExeWithParents_同级优先 安装版自带 data/ 时优先同级，不上溯
+func TestFindDataDirFromExeWithParents_同级优先(t *testing.T) {
+	root := t.TempDir()
+	writeMarker(t, filepath.Join(root, "data"))
+	bin := filepath.Join(root, "backend", "bin")
+	writeMarker(t, filepath.Join(bin, "data"))
+
+	exe := filepath.Join(bin, "namer-desktop.exe")
+	if got, want := FindDataDirFromExeWithParents(exe), filepath.Join(bin, "data"); got != want {
+		t.Fatalf("应优先命中 exe 同级 data，实际 %q，期望 %q", got, want)
+	}
+}
+
+// TestFindDataDirFromExeWithParents_当前目录即数据目录 exe 直接放在 data/ 内
+func TestFindDataDirFromExeWithParents_当前目录即数据目录(t *testing.T) {
+	root := t.TempDir()
+	dataDir := filepath.Join(root, "data")
+	writeMarker(t, dataDir)
+
+	got := FindDataDirFromExeWithParents(filepath.Join(dataDir, "namer-desktop.exe"))
+	if got != dataDir {
+		t.Fatalf("FindDataDirFromExeWithParents = %q, 期望 %q", got, dataDir)
+	}
+}
+
+// TestFindDataDirFromExeWithParents_空路径 空串输入直接返回空串，不 panic
+func TestFindDataDirFromExeWithParents_空路径(t *testing.T) {
+	if got := FindDataDirFromExeWithParents(""); got != "" {
+		t.Fatalf("FindDataDirFromExeWithParents(\"\") = %q, 期望空串", got)
+	}
+}

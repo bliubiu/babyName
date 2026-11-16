@@ -226,5 +226,13 @@ CI 最终三个 job：`quality-fast`（Go 快路径门禁）、`quality-bindings
 | server build E2E | Playwright 23/23 |
 | Go / 前端门禁 | 全绿（见 CHANGELOG `[2026.11.16.0]`） |
 
-- **未做（需人工 GUI 冒烟）**：干净目录安装 → 首跑播种 → 收藏/历史落库 → 卸载重装数据延续；原生窗口/菜单/托盘/对话框；server build 之外的 exe 双击启动。
+- **未做（需人工 GUI 冒烟）**：干净目录安装 → 收藏/历史落库 → 卸载重装数据延续；原生菜单/托盘/对话框。exe 双击启动已于 2026-11-16 复核（见 §9.7）。
 - **pin 纪律**：Go module / `wails3` CLI / `@wailsio/runtime` 三者同为 `3.0.0`；任一升级须同步三者并重新生成绑定，否则 `quality-bindings` 会拦截。
+
+### 9.7 exe 双击静默退出（人工 GUI 冒烟暴露，已修复）
+
+- 现象：`backend/bin/namer-desktop.exe` 双击 / 命令行运行后无窗口、无报错；受控探针捕获 `exit 1` + `错误: 未找到传统文化数据目录，请通过 DATA_DIR 环境变量或 Options.DataDir 指定`。
+- 根因：`-trimpath` 把 `runtime.Caller(0)` 的源文件绝对路径抹成模块相对路径，dev 侧基于源码位置的 `paths.FindDataDir` 在产物中必然失效；`FindDataDirFromExe` 又只查 exe 同级 `data/`，直接运行 `backend/bin` 下的 exe 时该目录不存在 → 所有目录来源落空，`run()` 在日志初始化之前退出。`-H windowsgui` 使 GUI 子系统无控制台，stderr 不可见，于是「静默」。
+- 修复：新增 `paths.FindDataDirFromExeWithParents`（以 `os.Executable()` 为锚点上溯 ≤12 层，`namer.json` 为标记）供 `bootstrap.findDataDirFromExe` 使用；`main.go` 启动失败分支增加 exe 同级 `startup-error.log` + Windows `user32!MessageBoxW` 错误框（按平台分文件，非 Windows 空实现）。详见 CHANGELOG `[2026.11.16.2]`。
+- 复核：重新 `wails3 build` 后无参数启动创建 `起名 NameMaster` 主窗口（首跑播种约 80 秒）；项目外孤立目录启动弹出错误框并落盘日志。
+- **遗留体验**：安装器不预置 SQLite 库，首次启动播种约 80 秒内没有窗口 / 进度提示，易被误判为「没反应」；后续可预置种子库或在装配前显示进度。

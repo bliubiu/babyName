@@ -25,7 +25,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -54,9 +56,30 @@ func main() {
 	}
 
 	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+		msg := fmt.Sprintf("应用启动失败：%v", err)
+		// -H windowsgui 构建的 GUI 子系统没有控制台，stderr 对用户不可见；
+		// 而目录解析等早期失败发生在日志系统初始化之前，若不额外落盘 + 弹框，
+		// 表现为「双击后什么都没发生」（docs/48 §9 人工冒烟暴露）。
+		writeStartupError(msg)
+		showStartupError(msg)
+		fmt.Fprintln(os.Stderr, msg)
 		os.Exit(1)
 	}
+}
+
+// writeStartupError 把启动错误写到 exe 同级 startup-error.log，便于无控制台时排查。
+func writeStartupError(msg string) {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	_ = writeStartupErrorLog(filepath.Dir(exe), msg)
+}
+
+// writeStartupErrorLog 抽成纯函数便于单测：写入一行带时间戳的错误说明。
+func writeStartupErrorLog(dir, msg string) error {
+	line := fmt.Sprintf("%s %s\n", time.Now().Format("2006-01-02 15:04:05"), msg)
+	return os.WriteFile(filepath.Join(dir, "startup-error.log"), []byte(line), 0o644)
 }
 
 func run() error {
