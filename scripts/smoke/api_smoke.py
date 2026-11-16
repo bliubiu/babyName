@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# ⚠️ 已退役（2026-11-13，桌面端迁移 S3）：目标拓扑 Gin HTTP :8080 已移除，
+# 本脚本仅存档；桌面端验证见 frontend/e2e（Playwright）与 backend/internal/bootstrap/z_app_e2e_test.go。
 """全业务 API 冒烟测试（按实际注册路由，docs/44 E2E 验证产物）。
 
 覆盖 9 大类 23 用例：健康检查、生成（同步/异步/任务轮询/探索换一批/测名）、

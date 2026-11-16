@@ -1,4 +1,6 @@
 #!/bin/bash
+# ⚠️ 仍有效：namer-cli 与传输层无关，桌面端迁移不影响本脚本。
+#（区分说明：同目录 api_smoke.py 打 Gin HTTP :8080，已随 S3 退役。）
 # namer-cli 全参数矩阵 E2E 冒烟（docs/44 E2E 验证产物，14 用例）
 #
 # 覆盖：text/json 输出、TOML 配置加载、命令行 > TOML 优先级、女宝单字名、
