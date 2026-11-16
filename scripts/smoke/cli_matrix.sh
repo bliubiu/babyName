@@ -10,7 +10,8 @@
 # 用法（在仓库根或任意目录）：
 #     bash scripts/smoke/cli_matrix.sh
 # 前置：go -C backend build -o backend/bin/namer-cli-e2e.exe ./cmd/namer-cli
-#       物料库 backend/namer.db 已导入（materials status 无缺失）
+#       物料库 data/namer.db 已就位（ADR-010 单库交付：tools/build_seed 构建唯一
+#       真库，旧口径的 backend/namer.db + materials import 已废弃）
 #
 # 断言用 python -I 传参形式（勿把仓库路径内嵌进 -c 字符串：Windows Python
 # 不识别 Git Bash 的 /tmp 等虚拟路径，曾致 C6/C7/C8 假失败）。
@@ -18,7 +19,7 @@
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CLI="$ROOT/backend/bin/namer-cli-e2e.exe"
-DB="$ROOT/backend/namer.db"
+DB="$ROOT/data/namer.db"
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
 PASS=0; FAIL=0
