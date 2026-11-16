@@ -34,6 +34,7 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+	"name/internal/domain/yijing"
 	"name/internal/infrastructure/database/sqlite"
 )
 
@@ -49,19 +50,19 @@ var requiredTables = []string{
 var userTables = []string{"favorites", "history", "gate_review", "name_feedback", "shares"}
 
 type report struct {
-	OK           bool              `json:"ok"`
-	Mode         string            `json:"mode"`
-	DBPath       string            `json:"dbPath"`
-	Bytes        int64             `json:"bytes"`
-	SHA256       string            `json:"sha256"`
-	JournalMode  string            `json:"journalMode"`
-	Integrity    string            `json:"integrity"`
-	Rows         map[string]int    `json:"rows"`
-	UserRows     map[string]int    `json:"userRows"`
-	Materials    int               `json:"materials,omitempty"`
-	ImportFailed int               `json:"importFailed,omitempty"`
-	Elapsed      string            `json:"elapsed"`
-	Error        string            `json:"error,omitempty"`
+	OK           bool           `json:"ok"`
+	Mode         string         `json:"mode"`
+	DBPath       string         `json:"dbPath"`
+	Bytes        int64          `json:"bytes"`
+	SHA256       string         `json:"sha256"`
+	JournalMode  string         `json:"journalMode"`
+	Integrity    string         `json:"integrity"`
+	Rows         map[string]int `json:"rows"`
+	UserRows     map[string]int `json:"userRows"`
+	Materials    int            `json:"materials,omitempty"`
+	ImportFailed int            `json:"importFailed,omitempty"`
+	Elapsed      string         `json:"elapsed"`
+	Error        string         `json:"error,omitempty"`
 }
 
 func main() {
@@ -162,6 +163,80 @@ func build(dataDir, out string) report {
 	return r
 }
 
+// verifyYijingHexagrams 校验种子库卦象与代码内置金标准一致。
+//
+// 只比对源自内置表的字段（卦辞/象辞/爻辞/符号/上下卦）；彖传与小象传由
+// docs/玄学/易经 合并而来，内置表为空，故不参与此处对拍。
+func verifyYijingHexagrams(db *sql.DB) error {
+	want := make(map[int]yijing.Hexagram, len(yijing.HexagramList))
+	for _, h := range yijing.HexagramList {
+		want[h.Number] = h
+	}
+
+	rows, err := db.Query(`SELECT id, number, name, symbol, upper_trigram, lower_trigram,
+		gua_ci, xiang_ci, yao_ci FROM yijing_hexagrams ORDER BY number`)
+	if err != nil {
+		return fmt.Errorf("查询 yijing_hexagrams 失败: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	seen := 0
+	for rows.Next() {
+		var id, number, upper, lower int
+		var name, symbol, guaCi, xiangCi, yaoJSON string
+		if err := rows.Scan(&id, &number, &name, &symbol, &upper, &lower,
+			&guaCi, &xiangCi, &yaoJSON); err != nil {
+			return fmt.Errorf("读取卦象行失败: %v", err)
+		}
+		w, ok := want[number]
+		if !ok {
+			return fmt.Errorf("种子库卦序 %d（%s）不在内置卦表中", number, name)
+		}
+		seen++
+		if id != w.ID || name != w.Name {
+			return fmt.Errorf("卦 #%d 标识不一致: id=%d name=%q，内置=%d/%q", number, id, name, w.ID, w.Name)
+		}
+		if upper != w.UpperTrigram || lower != w.LowerTrigram {
+			return fmt.Errorf("卦 #%d（%s）上下卦不一致: %d/%d，内置=%d/%d",
+				number, name, upper, lower, w.UpperTrigram, w.LowerTrigram)
+		}
+		// 显式校验符号顺序：上卦符号在前，与 GetHexagramSymbol 同口径
+		wantSym := yijing.TrigramMap[upper] + yijing.TrigramMap[lower]
+		if symbol != wantSym {
+			return fmt.Errorf("卦 #%d（%s）symbol=%q 与上下卦 %d/%d 推导 %q 不一致",
+				number, name, symbol, upper, lower, wantSym)
+		}
+		if symbol != w.Symbol {
+			return fmt.Errorf("卦 #%d（%s）symbol=%q，内置=%q", number, name, symbol, w.Symbol)
+		}
+		if guaCi != w.GuaCi {
+			return fmt.Errorf("卦 #%d（%s）卦辞=%q，内置=%q", number, name, guaCi, w.GuaCi)
+		}
+		if xiangCi != w.XiangCi {
+			return fmt.Errorf("卦 #%d（%s）象辞=%q，内置=%q", number, name, xiangCi, w.XiangCi)
+		}
+		var yao []string
+		if err := json.Unmarshal([]byte(yaoJSON), &yao); err != nil {
+			return fmt.Errorf("卦 #%d（%s）爻辞 JSON 解析失败: %v", number, name, err)
+		}
+		if len(yao) != len(w.YaoCi) {
+			return fmt.Errorf("卦 #%d（%s）爻辞 %d 条，内置 %d 条", number, name, len(yao), len(w.YaoCi))
+		}
+		for i := range yao {
+			if yao[i] != w.YaoCi[i] {
+				return fmt.Errorf("卦 #%d（%s）第 %d 爻=%q，内置=%q", number, name, i+1, yao[i], w.YaoCi[i])
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("遍历卦象失败: %v", err)
+	}
+	if seen != len(want) {
+		return fmt.Errorf("种子库卦象 %d 卦，内置 %d 卦", seen, len(want))
+	}
+	return nil
+}
+
 func verify(out string) report {
 	absOut, err := filepath.Abs(out)
 	if err != nil {
@@ -220,6 +295,13 @@ func verify(out string) report {
 			return r
 		}
 	}
+	// 卦象是历史漂移高发区：旧 yijing.json 曾带 23 卦 symbol 下卦在前、比卦
+	// 爻辞错位等错误。种子库必须与代码内置金标准一致，--verify-only 也拦得住。
+	if err := verifyYijingHexagrams(db); err != nil {
+		r.Error = err.Error()
+		return r
+	}
+
 	for _, table := range userTables {
 		var exists int
 		if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&exists); err != nil {

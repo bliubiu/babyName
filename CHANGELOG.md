@@ -5,6 +5,28 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.16.7]
+
+**修复：易经物料旧快照错误回灌（23 卦符号反序等）+ 导出链路自我污染**
+
+### 🐛 Bug Fixes 问题修复
+- 逐项对拍 `data/yijing.json`、内置 `HexagramList` 与 `docs/玄学/易经/*.md`：内置卦表与金标准零实质分歧；所有差异集中在 JSON 快照，且已随 `namer.db` 进入生产链路。四类真实差异：
+  - **23 卦 `symbol` 写成下卦在前**（#5 需、#6 讼、#11 泰、#12 否、#15 谦、#18 蛊、#19 临、#23 剥、#24 复、#28 大过、#39 蹇、#40 解、#43 夬、#44 姤、#45 萃、#46 升、#47 困、#50 鼎、#54 归妹、#55 丰、#56 旅、#59 涣、#62 小过）。其 `upper_trigram` / `lower_trigram` 字段本身正确，仅符号串反序。影响梅花易数本卦/变卦/互卦展示与 `GetHexagramSymbol` 一致性断言；不影响上下卦 ID 与评分。
+  - **象辞 2 卦**：#32 恒 误把彖传的「相与」写进大象；#59 涣 写成「风水涣」而非「风行水上，涣」。
+  - **爻辞 1 处实质**：#8 比 丢第 4 爻「外比之，贞吉」，并把第 5 爻拆成两条，六爻与金标准逐爻错位；另 #3 屯 第 4 爻少一个逗号（归一化等价，仅标点）。
+  - **卦辞 1 卦**：#59 涣 少「，利贞」。
+- 根因：`cmd/export_data` 先 `data.Init(dataDir)` 把旧 `yijing.json` 灌入 `HexagramList`，再从被污染的 `@内存表` 导出回同一份 JSON —— 历史错误被原样自我复制，重跑导出永远修不掉。
+- 修复：`main()` 在 `data.Init` **之前**快照内置 `HexagramList`，`mergeYijingCanonical(builtin)` 只从 docs 合并 `TuanCi` / `XiaoXiang`（内置表这两字段为空），其余字段一律沿用内置表。重跑导出即从金标准收敛，不再依赖手工改 JSON。
+- `tools/build_seed --verify-only` 新增 `verifyYijingHexagrams`：逐卦比对库内卦辞/象辞/爻辞/符号/上下卦与内置表，并显式校验 `symbol == TrigramMap[upper]+TrigramMap[lower]`。旧库实测被拦（exit 1，报 #3 屯爻辞差异），证明 CI 能拦截此类回灌。
+- 已重生成 `data/namer.db`（22,122,496 B，`sha256=548b59b2…e1c5f7`，`integrity=ok`、`journal_mode=delete`、5 张用户表全空、12 类物料 0 失败）。库内 64 卦符号反序清零，四处文本差异全部修正。
+- 遗留说明：`tuan_ci` / `xiao_xiang` 的 64 卦差异为设计如此（内置表为空、JSON 从文档合并）；解析噪声（坤小象混入文言尾、履小象截断等）未在本次范围；#8 比 的文档文件名「坎上下坤」是文档笔误，非代码问题。
+
+### ✅ 验证
+- `go run ./cmd/export_data`：exit 0，64 卦全部合并彖传/小象；重生成 JSON 后符号反序 0、比卦六爻恢复、恒/涣象辞与涣卦卦辞回归金标准。
+- `go run ./tools/build_seed --verify-only`：旧库 exit 1（拦截生效），新库 exit 0；直接查库确认 `symbol_bad=0`、#3/#8/#32/#59 文本正确。
+- `GOFLAGS=-tags=server CGO_ENABLED=0 SKIP_SERVER=1 bash scripts/verify-quality.sh`：exit 0，`==== 全部质量防线通过 ✅ ====`，golden 快照零漂移、`dim_audit` 147/147、`gate_audit` 通过、九包覆盖率 77.1%~94.9%。
+- `bash scripts/verify-frontend.sh --require`：exit 0，tsc / ESLint / Vitest 161 例全绿。
+
 ## [2026.11.16.6]
 
 **修复：golden 快照随 CPU 核数漂移 + CI 缺中文字体导致覆盖率假低**

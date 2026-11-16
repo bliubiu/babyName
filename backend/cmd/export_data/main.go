@@ -30,6 +30,12 @@ func writeJSON(path string, data interface{}) error {
 }
 
 func main() {
+	// 在 data.Init 之前快照代码内置卦表：yijing.json 必须以内置表（docs 金标准
+	// 对拍对象）为真源。data.Init 会用待导出的旧 JSON 覆盖 HexagramList，
+	// 若拿覆盖后的表回写，历史遗留错误（如 23 卦 symbol 下卦在前）会自我复制。
+	builtinHexagrams := make([]yijing.Hexagram, len(yijing.HexagramList))
+	copy(builtinHexagrams, yijing.HexagramList)
+
 	// 数据目录：基于本源文件位置向上探测仓库根 data/（与 cmd/server、namer-cli 同一套
 	// paths.FindDataDir），探测无果回落 ./data 保留历史语义
 	_, thisFile, _, _ := runtime.Caller(0)
@@ -59,7 +65,7 @@ func main() {
 
 	// 导出易经64卦：合并 docs/玄学/易经 语料解析出的彖传/小象传
 	//（金标准文本以文档为单一真源，运行库经 materials import 从本 JSON 装载）
-	yjExport, n := mergeYijingCanonical()
+	yjExport, n := mergeYijingCanonical(builtinHexagrams)
 	if n == 0 {
 		fmt.Println("警告: 未找到 docs/玄学/易经 卦文档，yijing.json 不含彖传/小象传")
 	}
@@ -84,10 +90,16 @@ func main() {
 	fmt.Println("数据导出完成")
 }
 
-// mergeYijingCanonical 合并 docs/玄学/易经 语料解析出的彖传/小象传到内存卦表。
+// mergeYijingCanonical 把 docs/玄学/易经 解析出的彖传/小象传合并到传入的
+// 内置卦表快照，生成 yijing.json 的导出副本。
+//
+// 只合并 TuanCi / XiaoXiang（内置表这两字段为空）；卦辞、象辞、爻辞、符号、
+// 上下卦一律沿用内置表。这样即使源 yijing.json 带历史错误，重跑导出也会
+// 自动收敛到金标准，不会把旧快照原样写回。
+//
 // 文档目录基于本源文件位置向上查找（与数据目录同一套探测思路）。
 // 返回导出副本与成功合并的卦数；文档缺失时返回原列表副本与 0（不阻塞导出）。
-func mergeYijingCanonical() ([]yijing.Hexagram, int) {
+func mergeYijingCanonical(builtin []yijing.Hexagram) ([]yijing.Hexagram, int) {
 	_, thisFile, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(thisFile)
 	var docsDir string
@@ -104,8 +116,8 @@ func mergeYijingCanonical() ([]yijing.Hexagram, int) {
 		dir = parent
 	}
 
-	out := make([]yijing.Hexagram, 0, len(yijing.HexagramList))
-	for _, h := range yijing.HexagramList {
+	out := make([]yijing.Hexagram, 0, len(builtin))
+	for _, h := range builtin {
 		out = append(out, h)
 	}
 	if docsDir == "" {
