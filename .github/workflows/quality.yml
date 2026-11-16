@@ -65,6 +65,10 @@ jobs:
           cache-dependency-path: backend/go.sum
 
       - name: 安装 wails3 CLI（与 go.mod / @wailsio/runtime 同为 v3.0.0）
+        # go install pkg@version 在模块外编译 CLI 自身，清掉全局 server tag，
+        # 避免把业务侧的构建约束带进 CLI 构建。
+        env:
+          GOFLAGS: ""
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
 
       - name: 重新生成 TS 绑定
