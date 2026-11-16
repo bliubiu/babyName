@@ -236,3 +236,12 @@ CI 最终三个 job：`quality-fast`（Go 快路径门禁）、`quality-bindings
 - 修复：新增 `paths.FindDataDirFromExeWithParents`（以 `os.Executable()` 为锚点上溯 ≤12 层，`namer.json` 为标记）供 `bootstrap.findDataDirFromExe` 使用；`main.go` 启动失败分支增加 exe 同级 `startup-error.log` + Windows `user32!MessageBoxW` 错误框（按平台分文件，非 Windows 空实现）。详见 CHANGELOG `[2026.11.16.2]`。
 - 复核：重新 `wails3 build` 后无参数启动创建 `起名 NameMaster` 主窗口（首跑播种约 80 秒）；项目外孤立目录启动弹出错误框并落盘日志。
 - **遗留体验**：安装器不预置 SQLite 库，首次启动播种约 80 秒内没有窗口 / 进度提示，易被误判为「没反应」；后续可预置种子库或在装配前显示进度。
+
+### 9.8 启动失败提示友好化与崩溃兜底（CHANGELOG `[2026.11.16.3]`）
+
+- §9.7 只解决「看得见」：弹框直接显示 `err.Error()`，含 `DATA_DIR` / `Options.DataDir` 等内部术语，用户不知道能做什么；且 `run()` 之外任何 panic（WebView2 初始化、物料解析、GUI 回调）依旧静默。
+- 收敛为一个跨平台纯函数层 `backend/startup_failure.go`：四类失败 → 稳定错误代码（`E-1001` 数据目录 / `E-1002` 数据初始化 / `E-1003` 窗口运行时 / `E-1999` panic）；`formatFriendlyMessage` 只讲可操作信息，`formatDiagnostic` 保留原始错误、路径、环境与调用栈。分类依据错误文本稳定子串，不引入新错误类型、不改装配契约。
+- `main.go` 用 `fatalStartup` 统一出口 + `main()` 的 `defer recover()`，任何退出前都经过「日志落盘 → MessageBoxW → stderr → exit 1」；`startup-error.log` 改追加，`MessageBoxW` 加 `MB_TOPMOST`。
+- **错误代码约定**：新增失败类别时先在 `startup_failure.go` 分配代码并登记到本节，用户反馈只需报代码（弹框支持 Ctrl+C 复制全文）；弹框禁止出现内部环境变量名、Go 类型或包名。
+- **首跑体验仍未解决**：安装器不预置种子库，首次启动播种约 80 秒无窗口；`printHelp()` 已补说明，但 GUI 双击看不到帮助，后续可考虑装配期进度窗口或预置库。
+- 探针结论：MessageBox 的 Static 子窗口文本经 repr 核验为标准 CRLF（16 个 `\r\n`），把探针 stdout 重定向到文件产生的空行是 Windows 文本模式二次转换的显示假象，不是弹框双行距。

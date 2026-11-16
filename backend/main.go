@@ -55,19 +55,39 @@ func main() {
 		return
 	}
 
+	// 统一崩溃兜底：run() 之外任何未被转成 error 的 panic（WebView2 初始化、
+	// 物料解析、GUI 回调等）在 -H windowsgui 下同样会静默退出。捕获后走
+	// 与「返回 error」完全相同的出口，保证任何退出前都有说明（docs/48 §9.8）。
+	defer func() {
+		if r := recover(); r != nil {
+			fatalStartup(nil, r)
+		}
+	}()
+
 	if err := run(); err != nil {
-		msg := fmt.Sprintf("应用启动失败：%v", err)
-		// -H windowsgui 构建的 GUI 子系统没有控制台，stderr 对用户不可见；
-		// 而目录解析等早期失败发生在日志系统初始化之前，若不额外落盘 + 弹框，
-		// 表现为「双击后什么都没发生」（docs/48 §9 人工冒烟暴露）。
-		writeStartupError(msg)
-		showStartupError(msg)
-		fmt.Fprintln(os.Stderr, msg)
-		os.Exit(1)
+		fatalStartup(err, nil)
 	}
 }
 
-// writeStartupError 把启动错误写到 exe 同级 startup-error.log，便于无控制台时排查。
+// fatalStartup 是所有启动失败 / 崩溃的唯一出口。
+// 三路输出各司其职，互不混用：
+//   - startup-error.log：完整技术诊断（原始错误、路径、环境、panic 栈），可反馈
+//   - MessageBoxW：面向用户的友好话术 + 可操作步骤 + 错误代码，不暴露内部术语
+//   - stderr：技术诊断，供 dev / CI 控制台排查（GUI 子系统下不可见）
+//
+// 注意 os.Exit 不执行 defer，故这里不会与 main 的 recover 互相触发。
+func fatalStartup(err error, panicValue any) {
+	f := classifyStartupFailure(err, panicValue)
+	diagnostic := formatDiagnostic(f)
+
+	writeStartupError(diagnostic)
+	showStartupError(formatFriendlyMessage(f))
+	fmt.Fprint(os.Stderr, diagnostic)
+	os.Exit(1)
+}
+
+// writeStartupError 把诊断写到 exe 同级 startup-error.log。
+// 早期失败发生在日志系统初始化之前，这是唯一可靠的排查留痕。
 func writeStartupError(msg string) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -76,10 +96,18 @@ func writeStartupError(msg string) {
 	_ = writeStartupErrorLog(filepath.Dir(exe), msg)
 }
 
-// writeStartupErrorLog 抽成纯函数便于单测：写入一行带时间戳的错误说明。
+// writeStartupErrorLog 抽成纯函数便于单测：以追加方式写入带时间戳的记录。
+// 追加而非覆盖，避免连续多次启动失败把上一次的诊断冲掉。
 func writeStartupErrorLog(dir, msg string) error {
 	line := fmt.Sprintf("%s %s\n", time.Now().Format("2006-01-02 15:04:05"), msg)
-	return os.WriteFile(filepath.Join(dir, "startup-error.log"), []byte(line), 0o644)
+	f, err := os.OpenFile(filepath.Join(dir, "startup-error.log"),
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(line)
+	return err
 }
 
 func run() error {
@@ -180,4 +208,9 @@ func printHelp() {
 	fmt.Println("")
 	fmt.Println("Options:")
 	flag.PrintDefaults()
+	fmt.Println("")
+	fmt.Println("启动说明:")
+	fmt.Println("  - 首次启动需初始化数据，约 1~2 分钟内没有窗口属正常现象，请耐心等待")
+	fmt.Println("  - 启动失败会弹出说明，并在 exe 同目录生成 startup-error.log")
+	fmt.Println("  - 数据目录默认按 exe 位置自动探测，也可用 -data 或 DATA_DIR 环境变量指定")
 }

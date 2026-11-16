@@ -5,6 +5,21 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.16.3]
+
+**改进：启动失败 / 崩溃前给出友好提示说明（GUI 冒烟后续）**
+
+### ✨ 改进
+- 承接 `[2026.11.16.2]` 的「错误可见化」：此前弹框直接显示 `应用启动失败：%v`，把 `DATA_DIR`、`Options.DataDir` 等内部术语抛给最终用户，也没说明用户能做什么；同时任何未被转成 error 的 panic 依旧静默退出。
+- 新增 `backend/startup_failure.go`（跨平台纯函数、可单测）：把失败分为四类并分配稳定错误代码 —— `E-1001` 数据目录缺失 / `E-1002` 数据初始化失败 / `E-1003` 窗口或 WebView2 运行时启动失败 / `E-1999` 未预期异常。
+- 弹框文案改为「发生了什么 → 可能原因 → 建议按顺序尝试 → 错误代码 → 如何反馈」：含 `data 文件夹` 处置、`-data` 指定路径、`Ctrl+C` 复制内容与 `startup-error.log` 位置，不再暴露内部术语；`MessageBoxW` 增加 `MB_TOPMOST` 保证置顶可见。
+- 完整技术诊断只落盘 / 输出 stderr：原始错误、程序路径、工作目录、`GOOS/GOARCH`、Go 版本，panic 时附调用栈；`startup-error.log` 改为**追加**，连续多次失败不再互相覆盖。
+- `main.go` 新增 `fatalStartup` 统一出口 + `main()` 的 `defer recover()`：run() 返回错误与未捕获 panic 走同一条「落盘 → 弹框 → stderr → exit 1」路径；`os.Exit` 不执行 defer，二者不会互相触发。`printHelp()` 补充首次启动 1~2 分钟初始化、失败弹框与日志位置的说明。
+
+### ✅ 验证
+- 新增 8 个单测（四类分类 / panic 栈 / 友好文案不泄露内部术语 / 诊断上下文 / 日志追加 / 关键词大小写）；`go test ./...`（52 包）、`go vet`、`GOOS=linux CGO_ENABLED=0 go build -tags server ./...` 与 linux 测试二进制链接全绿；质量门禁 dim_audit 147/147、九包覆盖率 76.3%~94.9%；前端 161 例、`pnpm e2e` 23/23。
+- 重建 exe（19,523,072 B）后用 Win32 受控探针实测：正常双击 3 秒出现 `起名 NameMaster` 主窗口（defer recover 不回归）；孤立目录启动弹出「起名 NameMaster 启动失败」，抓取 MessageBox 的 Static 子窗口文本确认含「可能原因 / 建议按顺序尝试 / E-1001 / startup-error.log / Ctrl+C」且不含 `DATA_DIR`、`Options.DataDir`；`startup-error.log` 含错误代码、原始技术原因、程序路径、运行环境；`exit 1`，stderr 含诊断块。弹框换行经 repr 核验为标准 CRLF（探针日志中的空行属 Windows 文本重定向显示假象）。
+
 ## [2026.11.16.2]
 
 **修复：Wails v3 打包 exe 双击静默退出（人工 GUI 冒烟）**
