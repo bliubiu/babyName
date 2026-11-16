@@ -5,6 +5,23 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.16.4]
+
+**修复：远端 CI 的 GTK / CGO 编译失败（quality-fast / quality-bindings）**
+
+### 🐛 Bug Fixes 问题修复
+- 现象：`gh` 核验 master 最新 run `43801416430` 及 2026-11-11 以来历史 run 均 failure（非 v3 合并引入）。两个 Go job 的报错集中在 pkg-config：`quality-bindings` 安装 `go install .../cmd/wails3@v3.0.0` 编译 `internal/operatingsystem` 时 `Package gtk4 was not found` / `Package 'webkitgtk-6.0' not found`；`quality-fast` 的 `go vet ./...` 除上述两项外还撞 `glib-2.0 / gobject-2.0 / gio-unix-2.0 / libsoup-3.0`（`internal/assetserver/webview`）。仅 `quality-frontend` 绿。
+- 根因：Wails v3 的 Linux cgo 文件（`webkit_linux.go` 的 `//go:build linux && cgo` + `#cgo pkg-config: gtk4 webkitgtk-6.0`）在 ubuntu runner 默认 `CGO_ENABLED=1` 下参与编译。原 workflow 只有全局 `GOFLAGS=-tags=server`（解决「无窗口实现」），未处理 cgo 层；安装 CLI 的 step 局部清空 `GOFLAGS` 后仍保留 `CGO_ENABLED=1`。
+- 修复：`.github/workflows/quality.yml` 全局 `env` 新增 `CGO_ENABLED: "0"`，作用于三个 job。`go install` step 继续局部 `GOFLAGS: ""`（避免业务构建约束污染 CLI 自身编译），但继承 `CGO_ENABLED=0` → cgo 文件被排除，无需在 runner 安装数百 MB GTK/WebKit 开发库，CI 更快更稳。**未改动任何业务代码**。
+
+### ✅ 验证（本地模拟 CI 环境）
+- 源码佐证：`internal/operatingsystem/webkit_linux.go` 的 build 约束为 `linux && cgo && !gtk3 && !android`，`CGO_ENABLED=0` 时该 cgo 文件不参与编译。
+- `GOOS=linux CGO_ENABLED=0 GOFLAGS="" go install .../cmd/wails3@v3.0.0` 与带 `-tags=server` 两种组合均 exit 0；`backend` 下 `GOOS=linux CGO_ENABLED=0 GOFLAGS="-tags=server" go vet ./...` / `go build ./...` 均 exit 0。
+- `CGO_ENABLED=0 GOFLAGS="-tags=server"` 下重新生成 TS 绑定，22 个文件归一化行尾后与入库版本零差异（生成器不受 tag / cgo 开关影响）；`verify-quality.sh` 不覆盖 `CGO_ENABLED` / `GOFLAGS`，全局 env 生效；workflow YAML 解析通过（三 job、env 值正确）。
+
+### ⚠️ 边界：quality-fast 仍有一类非 GTK 失败
+- golden 快照漂移（`王正 76` vs `王诗 74.8`）与 `namestat` 测试失败源于 **CI 只入库 11 个 data 文件 / 17.1MB，本地 159 个 / 189.2MB**，评分物料不全导致候选与分值不同；与 CGO / GTK 无关。gate_audit、dim_audit（147/147）与其余七包覆盖率门禁在 CI 均已通过。物料策略（全量入库 / CI 制品下载 / 专用最小快照）需单独决策，本次未动，也不应在 CI 用 `UPDATE_GOLDEN=1` 掩盖。
+
 ## [2026.11.16.3]
 
 **改进：启动失败 / 崩溃前给出友好提示说明（GUI 冒烟后续）**

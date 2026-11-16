@@ -11,14 +11,21 @@ concurrency:
   group: quality-${{ github.ref }}
   cancel-in-progress: true
 
-# Wails v3 的 linux 平台代码（menu_linux.go / webview_window_linux.go 等）依赖
-# GTK/WebKit，纯 Go、无 CGO 的 ubuntu runner 直接编译会报 undefined: pointer。
-# server tag 让框架编译无窗口实现（pkg/application/application_server.go），
-# 业务代码与桌面版完全一致；已实测 GOOS=linux CGO_ENABLED=0 下
-# `go build -tags server ./...` 与 `go test -tags server` 测试二进制均可链接。
+# Wails v3 的 linux 平台代码有两层约束，CI 用两个开关分别处理：
+#   1) pkg/application 的窗口实现需要 server tag 才能编译无窗口变体；
+#   2) internal/operatingsystem、internal/assetserver/webview 等包带 cgo 文件
+#      （webkit_linux.go 的 //go:build linux && cgo），编译时会经 pkg-config 找
+#      gtk4 / webkitgtk-6.0 / glib-2.0 / libsoup-3.0。ubuntu runner 默认
+#      CGO_ENABLED=1，于是 go vet ./... 与 go install wails3@v3.0.0 都因缺
+#      这些开发库而失败（远端 CI 长期红，见 docs/48 §9.9）。
+# CI 只做静态检查、单测、门禁与绑定生成，不需要原生窗口，故全局关闭 CGO，
+# 让框架走纯 Go 实现，比在 runner 装数百 MB GTK 开发库更快更稳。
+# 已实测 GOOS=linux CGO_ENABLED=0 + -tags=server 下 go build / go vet /
+# go install wails3 CLI 均 exit 0，且绑定生成物与入库版本零差异。
 # 注意：这与 verify-quality.sh 的 SKIP_SERVER=1（跳过已退役的 HTTP E2E 段）不是一回事。
 env:
   GOFLAGS: "-tags=server"
+  CGO_ENABLED: "0"
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -66,7 +73,8 @@ jobs:
 
       - name: 安装 wails3 CLI（与 go.mod / @wailsio/runtime 同为 v3.0.0）
         # go install pkg@version 在模块外编译 CLI 自身，清掉全局 server tag，
-        # 避免把业务侧的构建约束带进 CLI 构建。
+        # 避免把业务侧的构建约束带进 CLI 构建；CGO_ENABLED=0 由全局 env 生效，
+        # 使 internal/operatingsystem 的 cgo 文件被排除，无需 GTK/WebKit 开发库。
         env:
           GOFLAGS: ""
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0

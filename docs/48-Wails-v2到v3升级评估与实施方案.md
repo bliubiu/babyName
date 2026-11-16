@@ -212,7 +212,7 @@ frontend/bindings/v3probe/app.ts:
 
 **物料瘦身**：`File /nonfatal /x "*_stats.json"` 排除 4 个运行期不读取的统计 JSON（约 30MB）；安装器 install data 54.9MB、LZMA 压缩后 11.85MB（21.5%）。
 
-**CI 硬约束（本轮新增发现）**：v3 的 linux 平台代码（`menu_linux.go` / `webview_window_linux.go`）依赖 GTK/WebKit，`GOOS=linux CGO_ENABLED=0 go build ./...` 报 `undefined: pointer`。解法是全局 `GOFLAGS=-tags=server`（框架编译无窗口实现，业务代码不变）；已实测 linux 下 `go build -tags server ./...` 与 `go test -tags server -c` 测试二进制链接均 exit 0，Windows 下 `go test -tags server ./...` 全绿。注意这与 `verify-quality.sh` 的 `SKIP_SERVER=1`（跳过已退役 HTTP E2E 段）语义不同。
+**CI 硬约束（本轮新增发现）**：v3 的 linux 平台代码（`menu_linux.go` / `webview_window_linux.go`）依赖 GTK/WebKit，`GOOS=linux CGO_ENABLED=0 go build ./...` 报 `undefined: pointer`。解法是全局 `GOFLAGS=-tags=server`（框架编译无窗口实现，业务代码不变）；已实测 linux 下 `go build -tags server ./...` 与 `go test -tags server -c` 测试二进制链接均 exit 0，Windows 下 `go test -tags server ./...` 全绿。注意这与 `verify-quality.sh` 的 `SKIP_SERVER=1`（跳过已退役 HTTP E2E 段）语义不同。**2026-11-16 补充**：该 tag 只解决「无窗口实现」，并未解决 Linux cgo 文件对 GTK/WebKit 的依赖，远端 CI 仍因此长期红；最终解法见 §9.9。
 
 CI 最终三个 job：`quality-fast`（Go 快路径门禁）、`quality-bindings`（`go install wails3@v3.0.0` → 重新生成 TS 绑定 → `git diff --exit-code -- frontend/bindings`，防 `$Call.ByID` 方法 ID 漂移）、`quality-frontend`（tsc/eslint/vitest）。原 `quality-e2e` 仍引用已退役的 `cmd/server`，且因仓库只入库最小物料而永远跳过，已移除；Playwright 23 例需要全量 `data/` 物料与 Chromium，继续由本地 `cd frontend && pnpm e2e` 承担。
 
@@ -245,3 +245,11 @@ CI 最终三个 job：`quality-fast`（Go 快路径门禁）、`quality-bindings
 - **错误代码约定**：新增失败类别时先在 `startup_failure.go` 分配代码并登记到本节，用户反馈只需报代码（弹框支持 Ctrl+C 复制全文）；弹框禁止出现内部环境变量名、Go 类型或包名。
 - **首跑体验仍未解决**：安装器不预置种子库，首次启动播种约 80 秒无窗口；`printHelp()` 已补说明，但 GUI 双击看不到帮助，后续可考虑装配期进度窗口或预置库。
 - 探针结论：MessageBox 的 Static 子窗口文本经 repr 核验为标准 CRLF（16 个 `\r\n`），把探针 stdout 重定向到文件产生的空行是 Windows 文本模式二次转换的显示假象，不是弹框双行距。
+
+### 9.9 远端 CI 的 GTK / CGO 修复（CHANGELOG `[2026.11.16.4]`）
+
+- §9.5 阶段 4 只处理了「无窗口实现」：全局 `GOFLAGS=-tags=server` 让 `pkg/application` 编 server 变体，但 Wails v3 另有一批 Linux cgo 文件 —— `internal/operatingsystem/webkit_linux.go`（`//go:build linux && cgo && !gtk3 && !android` + `#cgo pkg-config: gtk4 webkitgtk-6.0`）与 `internal/assetserver/webview`（`glib-2.0 gobject-2.0 gtk4 webkitgtk-6.0 gio-unix-2.0 libsoup-3.0`）。ubuntu runner 默认 `CGO_ENABLED=1`，它们仍参与编译 → `go vet ./...` 与 `go install wails3@v3.0.0` 都报 `Package gtk4 was not found in the pkg-config search path`。这是 2026-11-11 以来 master run 长期 failure 的主因之一，与 v3 合并无关。
+- 两种修法取舍：① apt 安装 `libgtk-4-dev` / `libwebkitgtk-6.0-dev` / `libglib2.0-dev` / `libsoup-3.0-dev` + `pkg-config`（数百 MB、拖慢每次 CI，runner 镜像升级后可能再变）；② 全局 `CGO_ENABLED=0` 让框架走纯 Go 实现。CI 只需静态检查、单测、门禁与绑定生成，不需要原生窗口，故取 ②。
+- 最终 workflow：全局 `env = {GOFLAGS: "-tags=server", CGO_ENABLED: "0"}`；`quality-bindings` 安装 CLI 的 step 仍局部 `GOFLAGS: ""`（避免业务 tag 污染 CLI 自身编译），但继承 `CGO_ENABLED=0`。`quality-frontend` 不使用 Go，不受影响。
+- 实测证据：`GOOS=linux CGO_ENABLED=0` 下 `go install wails3@v3.0.0`（带 / 不带 server tag 两种）、`go vet -tags server ./...`、`go build -tags server ./...` 均 exit 0；`CGO_ENABLED=0 GOFLAGS=-tags=server` 下重新生成 TS 绑定，22 文件归一化行尾后与入库版本零差异（生成器不受 tag / cgo 开关影响）；`verify-quality.sh` 不覆盖这两个变量。
+- **边界（非本次范围）**：`quality-fast` 的 golden 快照漂移（`王正 76` vs `王诗 74.8`）与 `namestat` 失败源于 CI 只入库 11 个 data 文件 / 17.1MB（本地 159 个 / 189.2MB），评分物料不全；与 CGO 无关。gate_audit、dim_audit 147/147 及其余七包覆盖率门禁在 CI 均已通过。物料策略（全量入库 / CI 制品下载 / 专用最小快照）需单独决策，禁止在 CI 用 `UPDATE_GOLDEN=1` 掩盖。
