@@ -7,18 +7,20 @@
 
 ## [2026.11.16.6]
 
-**修复：golden 快照随 CPU 核数漂移（CI 2 核 vs 本机 16 核）**
+**修复：golden 快照随 CPU 核数漂移 + CI 缺中文字体导致覆盖率假低**
 
 ### 🐛 Bug Fixes 问题修复
 - A + 单库落地后远端 run `43837943912` 仍失败，失败点与物料无关：`female-2024-summer-double` 第 0 位 `林玙宝 85.5` 变成 `林玥贞 85.4`。干净检出、CI 同款 Go 1.26.0 / `CGO_ENABLED=0` / `-tags=server`、种子库校验、`gate_audit` 2990 字、`dim_audit` 147/147 与其余八包覆盖率均通过。
 - 根因：`generateDoubleName` 按 `runtime.NumCPU()` 切分逻辑 worker，每个 worker 用**自己的**局部 `ExcellentTable` 堆顶计算早停阈值（`堆顶×0.6`）。分片边界随 CPU 核数变化 → 局部阈值与保留条目变化 → 最终 Top10 漂移。临时实验把分片强制为 2，逐字复现了 CI 的 4 行 diff；强制 16 则与本地 golden 完全一致，证实不是 SQLite / JSON / 时区 / Go 版本问题。
 - 修复：新增固定常量 `candidateShardCount = 16`，`workerCountHint` 改为「固定 16 分片，仅随候选池大小收缩」，不再读取 `runtime.NumCPU()`；实际并行度仍由 `candidateWorkerLimit`（容量 = CPU 核数）钳制。低核机器只是排队执行同一组确定性分片，结果跨机器一致，且既有 golden 基线零漂移——**没有**使用 `UPDATE_GOLDEN` 掩盖。
 - 新增 `TestWorkerCountHint_PlatformIndependent`，锁定分片数不得重新依赖 CPU 核数。
+- 首轮修复后远端 run `43840442031` 的 golden / gate_audit / dim_audit 与其余八包全部通过，但 `services` 覆盖率仅 70.4%（本地 79.9%）：`report_service_test.go` / `pdf_test.go` 在找不到系统中文 TrueType 字体时 `t.Skip`，Linux runner 无中文字体，PDF 渲染分支整段未执行。新增仓库内字体夹具 `backend/testdata/fonts/cjk-test-subset.ttf`（从 simhei 按测试文本子集化，968 字形 / 220,452 B），测试在无 `NAMER_PDF_FONT` 时自动指向该夹具，夹具缺失直接失败；不再跳过 PDF 用例，也不在 CI 安装系统字体包。
 
 ### ✅ 验证
 - `go test ./internal/domain/fate ./internal/application/services -count=1`：全绿；golden 快照零漂移。
 - 2 / 4 / 8 / 16 / 32 分片对照实验：旧逻辑下仅 16 分片匹配现有基线，2 分片精确复现 CI 失败；修复后分片数恒为 16，不再随机器变化。
 - 关闭早停的对照实验验证了 2 / 16 worker 结果完全一致（算法本身可确定性），但该方案使 golden 单测耗时从约 2.7s 增至 13~38s 且需重建基线，故未采用，留作后续独立评估。
+- 字体夹具接入后 `go test ./internal/infrastructure/pdf ./internal/application/services -count=1 -cover`：分别 73.8% / 79.6%，verbose 输出中 `--- SKIP` 计数为 0；无需设置任何环境变量，本机与 CI 走同一份测试字体。
 
 ## [2026.11.16.5]
 

@@ -3,9 +3,30 @@ package services
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+// useTestCJKFont 为 PDF 用例启用仓库内测试字体。
+//
+// CI runner 默认没有中文字体：旧实现遇到 loadFont 失败就 t.Skip，导致 PDF
+// 渲染分支整段不被覆盖，services 包覆盖率从 ~79% 掉到 70.4%。测试字体是
+// 从 simhei 按测试文本子集化的小文件，随仓库分发，保证跨平台真实执行。
+func useTestCJKFont(t *testing.T) {
+	t.Helper()
+	if os.Getenv("NAMER_PDF_FONT") != "" {
+		return
+	}
+	_, file, _, _ := runtime.Caller(0)
+	path := filepath.Join(filepath.Dir(file), "..", "..", "..", "testdata", "fonts", "cjk-test-subset.ttf")
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("测试用中文字体缺失（%s）：%v", path, err)
+	}
+	t.Setenv("NAMER_PDF_FONT", path)
+}
 
 func sampleReportPayload() map[string]interface{} {
 	return map[string]interface{}{
@@ -36,10 +57,11 @@ func sampleReportPayload() map[string]interface{} {
 // 注意正文是 CID 编码的十六进制串，不能直接 grep 汉字；改为断言 ToUnicode CMap 里
 // 出现了对应字符的码位（只有真正排入版的字符才会被写入 CMap）。
 func TestGeneratePDFContainsRealData(t *testing.T) {
+	useTestCJKFont(t)
 	svc := NewReportService()
 	b, err := svc.GeneratePDF(context.Background(), sampleReportPayload())
 	if err != nil {
-		t.Skipf("本机无可用中文字体，跳过：%v", err)
+		t.Fatalf("PDF 生成失败：%v", err)
 	}
 
 	if !bytes.HasPrefix(b, []byte("%PDF-")) {
@@ -97,14 +119,12 @@ func hex4(v rune) string {
 
 // TestGeneratePDFEmptyData 空数据也要产出可读报告（而非 500）
 func TestGeneratePDFEmptyData(t *testing.T) {
+	useTestCJKFont(t)
 	svc := NewReportService()
 
 	for _, data := range []interface{}{nil, map[string]interface{}{}, "not-an-object"} {
 		b, err := svc.GeneratePDF(context.Background(), data)
 		if err != nil {
-			if strings.Contains(err.Error(), "字体") {
-				t.Skipf("本机无可用中文字体，跳过：%v", err)
-			}
 			t.Fatalf("data=%v 时 GeneratePDF 失败: %v", data, err)
 		}
 		if !bytes.HasPrefix(b, []byte("%PDF-")) {
