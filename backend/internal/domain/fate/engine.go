@@ -51,10 +51,22 @@ var candidateWorkerActive atomic.Int64
 // 超过 candidateWorkerLimit 容量）。仅用于测试断言，生产路径零额外开销。
 var candidateWorkerPeak atomic.Int64
 
+// candidateShardCount 是双名枚举的固定逻辑分片数。
+//
+// ★ 必须与 CPU 核数解耦：每个 worker 用局部 ExcellentTable 的堆顶计算早停阈值
+// （堆顶分 × 0.6），分片边界改变就会改变各分片的阈值与保留条目，进而改变
+// 最终 Top-N。此前按 runtime.NumCPU() 分片，16 核本机与 2 核 GitHub runner
+// 生成不同榜单（golden 快照逐字复现该差异：林玥贞 85.4 vs 林玙宝 85.5）。
+//
+// 固定 16 分片保持既有 golden 基线不变；实际并行度仍由 candidateWorkerLimit
+// 按 CPU 核数钳制，低核机器只是排队执行同一组确定性分片，结果不随机器变化。
+const candidateShardCount = 16
+
 // workerCountHint 计算双重枚举的 worker 规划数：
-// 仍按 CPU 核数切分候选池以获得均匀分片，但实际并发由 candidateWorkerLimit 钳制。
+// 逻辑分片数固定（见 candidateShardCount），仅随候选池大小收缩；
+// 实际并发由 candidateWorkerLimit 钳制，与分片数不是同一概念。
 func workerCountHint(n int) int {
-	workers := runtime.NumCPU()
+	workers := candidateShardCount
 	if workers < 1 {
 		workers = 1
 	}

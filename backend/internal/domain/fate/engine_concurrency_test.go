@@ -7,6 +7,24 @@ import (
 	"time"
 )
 
+// TestWorkerCountHint_PlatformIndependent 守护 golden 快照的跨机器可复现性。
+//
+// 分片数曾取 runtime.NumCPU()：每个分片的局部早停阈值不同，16 核本机与
+// 2 核 CI 会产出不同 Top-N。这里锁定「分片数只由固定常量与候选池大小决定」，
+// 防止后续改动重新把 CPU 核数带进分片边界。
+func TestWorkerCountHint_PlatformIndependent(t *testing.T) {
+	if got := workerCountHint(1000); got != candidateShardCount {
+		t.Fatalf("workerCountHint(1000) = %d，期望固定分片数 %d（不得依赖 CPU 核数）",
+			got, candidateShardCount)
+	}
+	if got := workerCountHint(3); got != 3 {
+		t.Fatalf("workerCountHint(3) = %d，期望受候选池大小收缩为 3", got)
+	}
+	if got := workerCountHint(0); got != 1 {
+		t.Fatalf("workerCountHint(0) = %d，期望 1", got)
+	}
+}
+
 // TestDoubleNameWorkerLimitBoundsPeak 并发放大回归（P2-7）：
 // 双重枚举的全局 worker 令牌必须把并发峰值钳制在容量内，无论多少请求在飞。
 //
