@@ -5,6 +5,23 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.16.1]
+
+**v3 分支交付收尾：CI 编译约束隔离 + 推送/合并基线**
+
+### 🐛 Bug Fixes 问题修复
+- `.github/workflows/quality.yml`：全局 `GOFLAGS=-tags=server`（让 v3 的 linux 无窗口代码能在 ubuntu runner 编译）会随环境传递到 `go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0`，把业务侧构建约束带进 CLI 自身编译；在 `quality-bindings` 的安装步骤用 `env: GOFLAGS: ""` 局部清空，业务测试 job 仍保留 server tag。
+- `.githooks/pre-push` 注释同步：端到端用例现由本地 `cd frontend && pnpm e2e` 23 例承担（v3 server build），CI 三 job 不含 E2E；原注释仍写「18 项交给 CI 全量跑」，与现状不符，仅改注释、不改门禁逻辑。
+
+### 📌 分支与合并基线（截至本次交付）
+- v3 全部改动位于隔离分支 `refactor/wails-v3`；`master` 仍停在 Wails v2.17.0（`e8823a4`），未纳入 v3 代码。
+- 本地 `master` 相对 `origin/master`（`5fc2217`）领先 2 个既有提交：`54ff965`（质量脚本原始输出回显）、`e8823a4`（docs/48 评估方案）；二者已包含在 v3 分支历史中。故本分支并入 `master` 为**纯 fast-forward**（merge-base 即 master 当前 HEAD），无冲突，推送 master 时这两个提交会一并补齐。
+- 主线切换前仍需人工冒烟：原生窗口 / 菜单 / 托盘 / 对话框、exe 双击启动、干净目录首跑播种、卸载重装后 `namer.db` 数据延续 —— server build 的 23 例 E2E 不覆盖这些。
+
+### ✅ 验证
+- 模拟 CI `quality-bindings`：`wails3 generate bindings -ts -d ../frontend/bindings` + `git diff --exit-code -- frontend/bindings` exit 0，22 个生成物与入库版本零差异。
+- 全量回归结果见 `[2026.11.16.0]`：Go 52 包 / `go vet` / 质量门禁（dim_audit 147/147、九包覆盖率 76.3%~94.9%）、前端 161 例、Playwright 23/23、`wails3 build` exe 与 `wails3 package` NSIS 安装器均产出成功。
+
 ## [2026.11.16.0]
 
 **Wails v2.17.0 → v3.0.0 迁移（隔离分支 `refactor/wails-v3`，`docs/48` 阶段 0~4）**

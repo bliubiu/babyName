@@ -5,10 +5,11 @@
 # 作用：在 `git push` 前跑「快路径」质量验证（Go 单元/门禁/维度 + 前端三件套），
 #       任一阶段失败即阻断推送（退出码非 0），把问题挡在本地。
 #
-# 快路径不含端到端 E2E（E2E 需启服务，慢），E2E 交给 CI 全量跑：
+# 快路径不含端到端 E2E（E2E 需启服务，慢），E2E 由本地承担：
 #   - Go 单元/门禁/专项维度：本 hook（SKIP_SERVER=1）
 #   - 前端 tsc/eslint/vitest：本 hook（scripts/verify-frontend.sh）
-#   - 端到端 18 项          ：CI workflow（.github/workflows/quality.yml）
+#   - 端到端 23 项          ：本地 `cd frontend && pnpm e2e`（Wails v3 server build，
+#                              需全量 data/ 物料与 Chromium，CI 不跑，见 docs/48 阶段 3）
 # 注：hook 可被跳过，故 CI 里前端三件套另有独立 job，不能只靠本 hook。
 #
 # 跳过方式：
