@@ -5,6 +5,33 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.18.1]
+
+**构建脚本完善 + 历史死脚本清理（仓库瘦身，零业务代码改动）**
+
+### 🗑 Deprecated 废弃功能
+- 删除 `backend/scripts/` 下 11 个 JSON 时代的一次性 Python 物料清洗/探查脚本
+  （`build_forbidden_combos` / `check_data` / `check_data2` / `check_poetry` /
+  `check_radicals` / `convert_poetry` / `extract_radicals` / `gen_missing_go` /
+  `gen_radical_map` / `generate_corrected_data` / `verify_coverage`）：产物早已固化进
+  Go 代码与 `data/namer.db`，输入 raw 清单部分已删，现行构建/测试/CI（`build_seed`、
+  `materials import`、Taskfile、三个 CI job）零引用
+- 删除 `scripts/smoke/api_smoke.py`（Gin HTTP :8080 拓扑随 S3 退役，头部已标存档）、
+  `frontend/Dockerfile` / `.dockerignore` / `nginx-frontend.conf` / `package.json.md5`
+  （旧 Web 部署链遗留）与 `scripts/smoke/__pycache__`；保留仍有效的 `cli_matrix.sh`
+- `docs/05` 部署后验证节移除对已删 `api_smoke.py` 的两处引用
+
+### 📈 Improvements 性能/体验优化
+- `scripts/build.ps1` 新增种子库校验前置（与 CI `build_seed --verify-only` 同口径）：
+  构建前校验种子库为纯净分发态（单文件 / journal_mode=delete / 13 张物料表非空 /
+  卦象对齐金标准 / 用户表为空）。因开发机 `data/namer.db` 同时是种子与运行库
+  （会夹带本机收藏/历史、可能被 WAL 污染），前置采用「备份运行库 → git HEAD 纯净库
+  临时替换 → 校验 → 构建 → finally 无条件恢复」的安全流程，既拦住坏库打包，又不丢
+  本机数据。实测备份/替换/恢复往返无损（history 3 条保留）
+
+### 📚 Docs 文档更新
+- `build.ps1` 头部补充种子库策略说明与「构建前关闭 app」提示
+
 ## [2026.11.18.0]
 
 **v3 落地全量业务验证归档 + CLI 矩阵脚本对齐 ADR-010 单库口径**
