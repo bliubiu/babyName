@@ -3,29 +3,18 @@ package services
 import (
 	"bytes"
 	"context"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
 
-// useTestCJKFont 为 PDF 用例启用仓库内测试字体。
+// useTestCJKFont 确保 PDF 用例走内置开源字体路径。
 //
-// CI runner 默认没有中文字体：旧实现遇到 loadFont 失败就 t.Skip，导致 PDF
-// 渲染分支整段不被覆盖，services 包覆盖率从 ~79% 掉到 70.4%。测试字体是
-// 从 simhei 按测试文本子集化的小文件，随仓库分发，保证跨平台真实执行。
+// 生产代码默认使用随二进制内置的 Noto Sans SC，
+// 仓库不再依赖测试字体夹具。清除环境变量避免外部
+// 设置的 NAMER_PDF_FONT 影响测试确定性；CI 干净检出无需任何额外准备。
 func useTestCJKFont(t *testing.T) {
 	t.Helper()
-	if os.Getenv("NAMER_PDF_FONT") != "" {
-		return
-	}
-	_, file, _, _ := runtime.Caller(0)
-	path := filepath.Join(filepath.Dir(file), "..", "..", "..", "testdata", "fonts", "cjk-test-subset.ttf")
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("测试用中文字体缺失（%s）：%v", path, err)
-	}
-	t.Setenv("NAMER_PDF_FONT", path)
+	t.Setenv("NAMER_PDF_FONT", "")
 }
 
 func sampleReportPayload() map[string]interface{} {

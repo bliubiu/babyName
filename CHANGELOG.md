@@ -5,6 +5,42 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.17.2]
+
+**PDF 字体内置化：开源 Noto Sans SC 随二进制分发，彻底摆脱系统字体依赖**
+
+此前 PDF 报告依赖系统安装中文字体（Windows `simhei.ttf` 等），CI 则靠 968 字形的测试夹具
+`cjk-test-subset.ttf` 撑覆盖率——两条割裂链路，干净机器/容器无字体即 500。本轮把项目自带的
+开源字体正式接入生产链路，统一为单一真源。
+
+### ✨ New Features 新增功能
+- **内置开源中文字体**：`NotoSansSC.ttf`（17.7MB / 3.1 万字形，SIL OFL 1.1）用 `go:embed` 编进
+  exe，`pdf/embedded_font.go` 提供 `sync.Once` 单例解析（进程内只重建一次 cmap）。PDF 报告在
+  任何机器开箱可用，无需系统字体与 `NAMER_PDF_FONT`。技术验证：完整解析→子集化→重新解析→
+  字形字节逐字一致→成文零缺字，中文与拼音声调可 `pdftotext` 提取，字体内嵌 `emb/sub/uni=yes`
+- **字体优先级**：`NAMER_PDF_FONT` 显式指定 → 内置字体（默认）→ 平台系统字体（仅内置异常兜底）；
+  外部字体不可用时告警并回落内置，不再直接报错
+- **合规**：随字体附带 `pdf/fonts/OFL.txt`（从项目的思源黑体官方包提取的 Adobe + OFL 1.1 全文），
+  满足再分发授权要求
+
+### 🗑️ Removed 移除
+- 删除测试字体夹具 `backend/testdata/fonts/cjk-test-subset.ttf`；pdf 包与 services 包单测改用
+  内置字体，与生产同一份，CI 干净检出无需任何字体准备，消除"夹具缺字掩盖真实缺字"的风险
+
+### 📚 Docs 文档更新
+- `docs/05` 字体章节：从"须装中文字体"改为"内置开箱可用"，补充三级优先级与 OFL 说明
+- `docs/25` 实现说明：新增 `embedded_font.go` 职责、字体优先级、可变字体子集固化默认轮廓的说明
+
+### ⚠️ 影响
+- 桌面 exe 体积 19.5MB → **37.4MB**（+17.9MB，即内嵌字体），换取 PDF 零外部依赖
+
+### ✅ 验证
+- Go 门禁 exit 0（九包 77.1%~94.9%，services 79.6%、dim_audit 147/147、golden 零漂移）
+- 前端门禁 exit 0（tsc / eslint / vitest 176 例）
+- Playwright E2E 25/25（含结果页导出 PDF）
+- 桌面绑定全量 E2E、go vet ./...、go build ./... 全通过
+- 无 `NAMER_PDF_FONT` 环境实生成 PDF：60KB、`NotoSansSC-Thin` 内嵌、中文/声调可提取、无缺字方框
+
 ## [2026.11.17.1]
 
 **业务能力补全：结果页筛选修复、历史缓存、24 节气科普、命理布局、PDF 全面重做**

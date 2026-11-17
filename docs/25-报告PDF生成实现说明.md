@@ -29,7 +29,8 @@
 | `ttf.go` | TrueType 解析：表目录、`cmap`（format 4/12）、`loca`、`glyf`、`hmtx`、复合字形依赖；`resolveGlyph` 字形解析（精确 → 折音降级） |
 | `subset.go` | 字形子集化：按需收集 + 重编号 + 复合字形子号重写 + 表校验和 |
 | `document.go` | PDF 对象模型、页面与内容流、顶层排版 API（Text/Paragraph/FillRect/Rule/Footer） |
-| `font.go` | 系统字体发现与校验（`NAMER_PDF_FONT` → 平台常见路径） |
+| `font.go` | 系统字体发现与校验（`NAMER_PDF_FONT` → 平台常见路径），仅作最后兜底 |
+| `embedded_font.go` | 内置开源中文字体（Noto Sans SC / SIL OFL 1.1）的 `go:embed` 与单例解析——**默认字体来源** |
 
 输出：PDF 1.7，字体为 **Type0 + CIDFontType2 + Identity-H**，
 CID 直接等于子集内的新字形号，因此 `/CIDToGIDMap /Identity`，无需额外映射流；
@@ -37,8 +38,9 @@ CID 直接等于子集内的新字形号，因此 `/CIDToGIDMap /Identity`，无
 
 ### 字体子集化
 
-一次报告只用到几百个字形，而 `simhei.ttf` 有 9.7 MB。子集化后的报告约 **53 KB**，
-`pdffonts` 校验为 `CID TrueType / Identity-H / emb yes / sub yes / uni yes`。
+一次报告只用到几百个字形，而内置字体 `NotoSansSC.ttf` 有 17 MB（约 3.1 万字形）。
+子集化后的报告约 **16 KB**，`pdffonts` 校验为 `CID TrueType / Identity-H / emb yes / sub yes / uni yes`。
+内置字体是**可变字体**，但子集化只固化默认轮廓到静态 `glyf`，PDF 渲染器无需处理可变轴。
 
 子集里刻意**不携带 `cmap`**（PDF 侧通过 CIDToGIDMap 定位字形，不需要它），
 因此解析器允许字体缺 `cmap`。
@@ -58,8 +60,13 @@ CID 直接等于子集内的新字形号，因此 `/CIDToGIDMap /Identity`，无
 
 ## 4. 字体发现与降级
 
-- 查找顺序：`NAMER_PDF_FONT` → 平台常见路径（Windows/Linux/macOS，见 `font.go`）。
-- 每个候选都会被真实解析并**校验含「中」字字形**：只检查"文件能解析"是不够的，
+- 查找顺序（见 `report_service.go:loadFont`）：
+  1. `NAMER_PDF_FONT` 指定的外部字体（显式覆盖，兼容自定义场景）；
+  2. **内置开源字体 Noto Sans SC（默认）**——随二进制分发，任何机器开箱可用；
+  3. 平台系统字体（仅内置字体异常的兜底，走 `font.go` 的 `FindSystemCJKFont`）。
+- 内置字体采用 SIL OFL 1.1 授权，可随应用嵌入分发；许可证全文见
+  `backend/internal/infrastructure/pdf/fonts/OFL.txt`。
+- 每个系统字体候选都会被真实解析并**校验含「中」字字形**：只检查"文件能解析"是不够的，
   macOS 的 `PingFang.ttc` 首个字体是西文，Linux 上也存在只有拉丁字形的 `.ttf`。
 - 支持 `.ttc`（TrueType 集合，取第 0 个字体）；**不支持 `.otf`/CFF**，会明确报错。
 - 字体缺字时的降级：先尝试**去变音符号**（`ā → a`，走 `golang.org/x/text/unicode/norm`），

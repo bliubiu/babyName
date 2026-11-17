@@ -6,34 +6,25 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
 
 // loadTestFont 载入测试用中文 TrueType 字体。
 //
-// 优先使用仓库内按测试文本子集化的字体夹具，避免 CI 无中文字体时整组 skip；
-// 外部显式设置 NAMER_PDF_FONT 时尊重调用方配置。
+// 直接使用随二进制内置的开源字体（Noto Sans SC），与生产链路同一份字体，
+// 彻底摆脱对系统字体/仓库夹具的依赖：CI 干净检出即可运行，无整组 skip。
+// 外部显式设置 NAMER_PDF_FONT 时尊重调用方配置，便于验证自定义字体路径。
 func loadTestFont(t *testing.T) []byte {
 	t.Helper()
-	if os.Getenv("NAMER_PDF_FONT") == "" {
-		_, file, _, _ := runtime.Caller(0)
-		path := filepath.Join(filepath.Dir(file), "..", "..", "..", "testdata", "fonts", "cjk-test-subset.ttf")
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("测试用中文字体缺失（%s）：%v", path, err)
+	if p := os.Getenv("NAMER_PDF_FONT"); p != "" {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("read font %s failed: %v", p, err)
 		}
-		t.Setenv("NAMER_PDF_FONT", path)
+		return data
 	}
-	p, err := FindSystemCJKFont()
-	if err != nil {
-		t.Fatalf("未找到可用中文 TrueType 字体：%v", err)
-	}
-	data, err := os.ReadFile(p)
-	if err != nil {
-		t.Fatalf("读取字体 %s 失败：%v", p, err)
-	}
-	return data
+	return EmbeddedFontBytes()
 }
 
 func TestParseTTFBasic(t *testing.T) {

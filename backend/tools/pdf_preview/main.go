@@ -29,11 +29,12 @@ func main() {
 	out := flag.String("out", filepath.Join("..", ".workbuddy", "tmp", "report_sample.pdf"), "输出 PDF 路径")
 	flag.Parse()
 
-	if fontPath, err := pdf.FindSystemCJKFont(); err != nil {
-		fmt.Fprintf(os.Stderr, "未找到可用中文字体：%v\n", err)
+	// 与线上一致：ReportService 默认用内置开源字体，无需系统安装中文字体。
+	if _, err := pdf.LoadEmbeddedFont(); err != nil {
+		fmt.Fprintf(os.Stderr, "内置中文字体不可用：%v\n", err)
 		os.Exit(2)
 	} else {
-		fmt.Printf("使用字体：%s\n", fontPath)
+		fmt.Printf("使用字体：%s\n", pdf.EmbeddedFontName)
 	}
 
 	payload := map[string]interface{}{

@@ -164,32 +164,67 @@ func parseReportModel(data interface{}) reportModel {
 
 // loadFont 载入并解析中文字体（进程内只解析一次，docs/46 P2）。
 //
+// 字体来源优先级：
+//  1. NAMER_PDF_FONT 指定的外部字体（兼容自定义场景，显式覆盖优先）；
+//  2. 内置开源字体 Noto Sans SC（默认）——随二进制分发，任何机器开箱可用，
+//     不依赖系统是否安装中文字体；
+//  3. 平台系统字体（仅当内置字体解析失败这类异常情况才回落）。
+//
 // 字体解析开销较大（CJK 字体 10-20MB，需重建 cmap/glyf/loca 目录），故只解析一次
 // 并缓存不可变的 *pdf.Font，后续每次 /report/pdf 仅按用到的 rune 子集化，不再重解析。
-// 找不到字体时直接报错：宁可让接口返回「报告生成失败」，也不能输出一份正文全是
+// 所有来源都失败时直接报错：宁可让接口返回「报告生成失败」，也不能输出一份正文全是
 // 空白/方框的"报告"——后者用户无从判断是数据问题还是渲染问题。
 func (s *ReportService) loadFont() (*pdf.Font, error) {
 	s.fontOnce.Do(func() {
+		// 1. 显式覆盖：调用方指定的外部字体优先
+		if env := os.Getenv("NAMER_PDF_FONT"); env != "" {
+			if font, path, err := loadFontFromPath(env); err == nil {
+				s.font, s.fontPath = font, path
+				logger.Info("报告使用外部中文字体（NAMER_PDF_FONT）", zap.String("font", path))
+				return
+			} else {
+				logger.Warn("NAMER_PDF_FONT 指定的字体不可用，回落内置字体",
+					zap.String("font", env), zap.Error(err))
+			}
+		}
+
+		// 2. 默认：内置开源字体（开箱可用，零外部依赖）
+		if font, err := pdf.LoadEmbeddedFont(); err == nil {
+			s.font, s.fontPath = font, pdf.EmbeddedFontName
+			logger.Info("报告使用内置开源中文字体", zap.String("font", pdf.EmbeddedFontName))
+			return
+		} else {
+			logger.Warn("内置中文字体不可用，尝试系统字体", zap.Error(err))
+		}
+
+		// 3. 兜底：平台系统字体（内置字体异常的极端情况）
 		path, err := pdf.FindSystemCJKFont()
 		if err != nil {
-			s.fontErr = err
+			s.fontErr = fmt.Errorf("PDF 字体不可用：内置字体解析失败，且系统未找到可用中文字体：%w", err)
 			return
 		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			s.fontErr = fmt.Errorf("读取中文字体 %s 失败: %w", path, err)
-			return
-		}
-		font, err := pdf.ParseFont(data)
+		font, path, err := loadFontFromPath(path)
 		if err != nil {
 			s.fontErr = err
 			return
 		}
-		s.font = font
-		s.fontPath = path
-		logger.Info("报告中文字体已就绪", zap.String("font", path), zap.Int("bytes", len(data)))
+		s.font, s.fontPath = font, path
+		logger.Info("报告使用系统中文字体", zap.String("font", path))
 	})
 	return s.font, s.fontErr
+}
+
+// loadFontFromPath 读取并解析指定路径的中文字体，返回句柄与规范化后的路径。
+func loadFontFromPath(path string) (*pdf.Font, string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, path, fmt.Errorf("读取中文字体 %s 失败: %w", path, err)
+	}
+	font, err := pdf.ParseFont(data)
+	if err != nil {
+		return nil, path, err
+	}
+	return font, path, nil
 }
 
 // GeneratePDF 生成 PDF 报告
