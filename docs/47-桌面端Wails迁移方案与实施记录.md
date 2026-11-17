@@ -209,6 +209,13 @@ S3 与 S4 之间插入的桌面端专属功能：物料库状态查看 + 手动�
   makensis 缺失时提示 winget 安装并跳过（`-SkipInstaller` 可强制跳过）
 - 图标：appicon.png / icon.ico / manifest 已齐备，无新增
 
+> **后续演进（2026-11-16/17）**：本节"63MB 物料随装"已被 **ADR-010「A + 单库」**
+> 取代——安装器改为只随装一份种子库 `data/namer.db`（约 22MB，`tools/build_seed`
+> 产物，同时是种子与用户数据），JSON 物料不再进安装器；探测标记扩展为
+> `namer.json` 或 `namer.db`（>1MB）；构建链由 `wails build -nsis` 迁至
+> `wails3 task package`（`build/windows/nsis/project.nsi`）。装/卸实测记录见
+> docs/48 §9.10。
+
 NSIS 环境注意（四处编码/获取坑）：
 
 - makensis 获取：sourceforge 在当前网络不可达（winget/curl 均超时），

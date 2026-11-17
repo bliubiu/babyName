@@ -131,10 +131,10 @@ backend/
 
 ### 数据持久化
 
-- data目录存储相关智慧经典字库json文件
-- 支持从json文件物料人工导入到sqlite（wal模式）数据库表持久化存储
+- data 目录存储智慧经典字库 JSON 源物料（仅作构建期输入）；**唯一交付真库为 `data/namer.db`**（约 22MB，由 `backend/tools/build_seed` 从源物料构建，ADR-010「A + 单库」，测试/CI/运行期/安装包共用）
+- 运行期零 JSON 依赖：SQLite（wal 模式）为唯一真源，桌面端首跑库空才从 JSON 播种（指纹短路幂等）；`cmd/materials import` 旧导入流程已退役
 - `modernc.org/sqlite` ：纯 Go 实现，无 CGO
-- 开源字体资源： `name\backend\assets`
+- 开源字体资源： `name\backend\assets`；PDF 报告内置 NotoSansSC（go:embed，开箱可用）
 
 
 

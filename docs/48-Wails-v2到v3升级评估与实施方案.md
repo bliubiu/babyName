@@ -218,6 +218,9 @@ CI 最终三个 job：`quality-fast`（Go 快路径门禁）、`quality-bindings
 
 ### 9.6 实测产物与未覆盖项
 
+> 数据为阶段 4 收口（2026-11-16）快照；后续演进（字体内置化、ADR-010 单库随装、
+> 全量验证）见 §9.10，最新产物数值以该节为准。
+
 | 项 | 结果 |
 |---|---|
 | `wails3 build` | exit 0，`backend/bin/namer-desktop.exe` = 19,508,224 B |
@@ -226,7 +229,7 @@ CI 最终三个 job：`quality-fast`（Go 快路径门禁）、`quality-bindings
 | server build E2E | Playwright 23/23 |
 | Go / 前端门禁 | 全绿（见 CHANGELOG `[2026.11.16.0]`） |
 
-- **未做（需人工 GUI 冒烟）**：干净目录安装 → 收藏/历史落库 → 卸载重装数据延续；原生菜单/托盘/对话框。exe 双击启动已于 2026-11-16 复核（见 §9.7）。
+- **未做（需人工 GUI 冒烟）**：干净目录安装 → 收藏/历史落库 → 卸载重装数据延续；原生菜单/托盘/对话框。exe 双击启动已于 2026-11-16 复核（见 §9.7）。——其中**安装/卸载保库环节已于 2026-11-17 实测通过**（见 §9.10）；「重装后收藏/历史延续」仍待测。
 - **pin 纪律**：Go module / `wails3` CLI / `@wailsio/runtime` 三者同为 `3.0.0`；任一升级须同步三者并重新生成绑定，否则 `quality-bindings` 会拦截。
 
 ### 9.7 exe 双击静默退出（人工 GUI 冒烟暴露，已修复）
@@ -253,3 +256,46 @@ CI 最终三个 job：`quality-fast`（Go 快路径门禁）、`quality-bindings
 - 最终 workflow：全局 `env = {GOFLAGS: "-tags=server", CGO_ENABLED: "0"}`；`quality-bindings` 安装 CLI 的 step 仍局部 `GOFLAGS: ""`（避免业务 tag 污染 CLI 自身编译），但继承 `CGO_ENABLED=0`。`quality-frontend` 不使用 Go，不受影响。
 - 实测证据：`GOOS=linux CGO_ENABLED=0` 下 `go install wails3@v3.0.0`（带 / 不带 server tag 两种）、`go vet -tags server ./...`、`go build -tags server ./...` 均 exit 0；`CGO_ENABLED=0 GOFLAGS=-tags=server` 下重新生成 TS 绑定，22 文件归一化行尾后与入库版本零差异（生成器不受 tag / cgo 开关影响）；`verify-quality.sh` 不覆盖这两个变量。
 - **边界（非本次范围）**：`quality-fast` 的 golden 快照漂移（`王正 76` vs `王诗 74.8`）与 `namestat` 失败源于 CI 只入库 11 个 data 文件 / 17.1MB（本地 159 个 / 189.2MB），评分物料不全；与 CGO 无关。gate_audit、dim_audit 147/147 及其余七包覆盖率门禁在 CI 均已通过。物料策略（全量入库 / CI 制品下载 / 专用最小快照）需单独决策，禁止在 CI 用 `UPDATE_GOLDEN=1` 掩盖。
+
+### 9.10 v3 落地全量业务验证（2026-11-17，七层矩阵）
+
+v3 合并 + ADR-010 单库交付 + 字体内置化之后的一轮**全量业务能力验证**，
+覆盖代码健康 / 后端测试 / 前端三件套 / 桌面 e2e / 质量门禁 / CLI 矩阵 / 打包分发七层：
+
+| 层 | 验证项 | 结果 |
+|---|---|---|
+| A 代码健康 | `go build` / `go vet` / `gofmt`（desktop/bootstrap/paths） | 全干净 |
+| B 后端全量 | 30 包 / 1043 测试函数（八字/五行/生肖/易经/紫微/诗词/门禁/评分/收藏/历史/分享/黄历/物料 + Go 真实装配绑定 E2E 22 方法） | 全绿 |
+| C 前端三件套 | tsc 0 错 / eslint 0 error / vitest / vite build + sync-dist | 全绿 |
+| D 桌面 e2e | server build 版 Playwright（当日 23/23；次日常量轮次后 25/25） | 全绿 |
+| E 质量门禁 | verify-quality（九包覆盖率 ≥75%）+ verify-frontend | 全绿 |
+| G CLI 矩阵 | cli_matrix.sh（修正前置口径后 15/15） | 全绿 |
+| F 打包分发 | 见下 | 全绿 |
+
+F 层打包实测（ADR-010 单库语义）：
+
+- `wails3 build` → `namer-desktop.exe`（当日 19.5MB；字体内置化后 37.4MB，见 CHANGELOG `[2026.11.17.2]`）
+- 便携冒烟：exe + `data/namer.db`（21.1MB 单库）→ 进程存活、db 直连 exe 同级
+  `data/`、免播种（字库 8105 行已在库）、10 项物料从库装载、日志落 `data/logs`
+- `wails3 task package` → 安装器 12,655,666 B（43.6MB 载荷 LZMA 压至 28.9%，只随装
+  单库 `data/namer.db`，不再带 JSON 物料）
+- 静默安装 `/S` → `%LocalAppData%\Programs\NameMaster\{namer-desktop.exe, data\namer.db}` 布局正确
+- 安装版启动存活 20s+（§9.7 静默退出修复有效性回归确认）+ db 直连安装目录
+  `data/namer.db`（"使用 SQLite 存储"日志佐证）
+- 静默卸载 `/S` → 程序与快捷方式删净，`namer.db` / `-wal` / `-shm` / `logs/` 保留
+
+**过程发现与修复**：
+
+- `scripts/smoke/cli_matrix.sh` 残留 ADR-010 之前口径（`backend/namer.db` +
+  `materials import`），实测 9/14 假失败（exe 缺失 + 225KB 空库，负面用例因
+  "非零退出即过"而假通过）。修正为唯一真库 `data/namer.db`
+  （`tools/build_seed` 产物）后 15/15——修复 commit `4e5011d`。
+- **方法学**：`materials import` 经管道重跑时退出码被吞（`| tail` 语义），
+  任务退出码与产物须双重确认；本报告所有 ✅ 均以产物/日志二次核验。
+
+**仍待测（不阻塞）**：
+
+- 重装后收藏/历史数据延续（卸载保库已验证，缺"重装后读回"半程）
+- 原生菜单 / 托盘 / 原生对话框（server build e2e 的官方边界之外）
+- 仓库根 `data/namer.db` 的 git 跟踪策略：二进制产物入库后每次
+  `build_seed` / 运行期写入都会产生不可读 diff，建议单独决策（LFS / 出库 / 白名单）
