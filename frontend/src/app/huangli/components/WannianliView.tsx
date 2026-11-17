@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type KeyboardEvent } from 'react';
 import type { LunarMonthCalendar } from '@/lib/api';
 
 interface WannianliViewProps {
@@ -90,11 +90,19 @@ export function WannianliView({ currentYear, currentMonth, selectedDate, monthLu
             onDateSelect(date);
             if (term && onSolarTermClick) onSolarTermClick(term, date);
           };
+          // 节气格是可交互元素：补键盘监听（Enter/Space），避免 a11y 警告
+          const handleDayKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              handleDayClick();
+            }
+          };
 
           return (
             <div
               key={day}
               role={term ? 'button' : undefined}
+              tabIndex={term ? 0 : undefined}
               aria-label={term ? `${day}日 ${term}，查看节气科普` : undefined}
               className={`relative h-14 flex flex-col items-center justify-center rounded-xl cursor-pointer transition-all ${
                 isSelected
@@ -104,6 +112,7 @@ export function WannianliView({ currentYear, currentMonth, selectedDate, monthLu
                     : 'hover:bg-warm-white/80 text-ink'
               }`}
               onClick={handleDayClick}
+              onKeyDown={term ? handleDayKeyDown : undefined}
               title={term ? `${term} · 点击查看科普` : (showMark ? showMark : undefined)}
             >
               <div className="text-sm font-medium leading-none">{day}</div>
