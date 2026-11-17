@@ -9,11 +9,14 @@ import type { HuangliData, LunarCalendarData } from './types';
 import { zodiacIcons, getZodiacSign } from './types';
 import { DayView } from './components/DayView';
 import { WannianliView } from './components/WannianliView';
+import { SolarTermModal } from './components/SolarTermModal';
 import { buildClampedDate } from './dateUtils';
 
 const HuangliPage = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [activeTab, setActiveTab] = useState<'day' | 'month'>('day');
+  // 点击万年历节气日时展示的科普弹窗状态
+  const [activeSolarTerm, setActiveSolarTerm] = useState<{ term: string; date: Date } | null>(null);
 
   const year = selectedDate.getFullYear();
   const month = selectedDate.getMonth() + 1;
@@ -204,10 +207,20 @@ const HuangliPage = () => {
               monthLunar={monthLunar}
               onDateSelect={setSelectedDate}
               onTodayClick={goToToday}
+              onSolarTermClick={(term, date) => setActiveSolarTerm({ term, date })}
             />
           )
         )}
       </div>
+
+      {/* 节气科普弹窗：点击万年历节气日触发 */}
+      {activeSolarTerm && (
+        <SolarTermModal
+          term={activeSolarTerm.term}
+          date={activeSolarTerm.date}
+          onClose={() => setActiveSolarTerm(null)}
+        />
+      )}
     </main>
   );
 };

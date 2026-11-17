@@ -23,6 +23,9 @@ export default function HistoryPage() {
   const { data: historyResponse, error, isLoading } = useQuery({
     queryKey: ['history'],
     queryFn: () => getHistory(),
+    // 客户端导航（返回首页再进历史）必须拉最新数据：生成落库的写入端在
+    // 别的组件，仅靠 invalidate 可能错过；每次进入都重取，成本是一次本地绑定调用。
+    refetchOnMount: 'always',
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

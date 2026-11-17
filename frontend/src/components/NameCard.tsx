@@ -190,7 +190,7 @@ function NameCard({
           {name.gender === 'male' ? '男' : '女'}
         </span>
         {name.wuxing && (
-          <span className={`wuxing-tag ${wuxingTagClass[name.wuxing] || ''}`}>
+          <span className={`wuxing-tag ${wuxingTagClass[name.wuxing.charAt(0)] || ''}`}>
             {name.wuxing}
           </span>
         )}

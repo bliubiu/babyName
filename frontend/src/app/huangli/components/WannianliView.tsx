@@ -8,9 +8,11 @@ interface WannianliViewProps {
   monthLunar?: LunarMonthCalendar | null;
   onDateSelect: (date: Date) => void;
   onTodayClick: () => void;
+  /** 点击节气日时触发科普弹窗；非节气日不触发 */
+  onSolarTermClick?: (term: string, date: Date) => void;
 }
 
-export function WannianliView({ currentYear, currentMonth, selectedDate, monthLunar, onDateSelect, onTodayClick }: WannianliViewProps) {
+export function WannianliView({ currentYear, currentMonth, selectedDate, monthLunar, onDateSelect, onTodayClick, onSolarTermClick }: WannianliViewProps) {
   const daysInMonth = Array.from({ length: new Date(currentYear, currentMonth, 0).getDate() }, (_, i) => i + 1);
   const firstDayOfMonth = new Date(currentYear, currentMonth - 1, 1).getDay();
   const emptySlots = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
@@ -80,19 +82,29 @@ export function WannianliView({ currentYear, currentMonth, selectedDate, monthLu
           const mark = lunarMarkMap[day];
           const festivalMark = mark?.lunarFestival || mark?.solarTerm || '';
           const showMark = festivalMark || holiday;
+          // 科普判据用严格的 solarTerm（仅当天恰好交节才非空），不用会回退
+          // 上一节气的 LunarCalendar.solarTerm。清明等双重身份日照样能触发。
+          const term = mark?.solarTerm || '';
+
+          const handleDayClick = () => {
+            onDateSelect(date);
+            if (term && onSolarTermClick) onSolarTermClick(term, date);
+          };
 
           return (
             <div
               key={day}
-              className={`h-14 flex flex-col items-center justify-center rounded-xl cursor-pointer transition-all ${
+              role={term ? 'button' : undefined}
+              aria-label={term ? `${day}日 ${term}，查看节气科普` : undefined}
+              className={`relative h-14 flex flex-col items-center justify-center rounded-xl cursor-pointer transition-all ${
                 isSelected
                   ? 'bg-crimson text-white'
                   : isToday
                     ? 'bg-crimson/10 text-crimson border border-crimson/20'
                     : 'hover:bg-warm-white/80 text-ink'
               }`}
-              onClick={() => onDateSelect(date)}
-              title={showMark ? showMark : undefined}
+              onClick={handleDayClick}
+              title={term ? `${term} · 点击查看科普` : (showMark ? showMark : undefined)}
             >
               <div className="text-sm font-medium leading-none">{day}</div>
               {showMark && (
@@ -107,6 +119,10 @@ export function WannianliView({ currentYear, currentMonth, selectedDate, monthLu
                 }`}>
                   {festivalMark || holiday}
                 </div>
+              )}
+              {/* 节气日右上角小圆点：提示「可点击查看科普」，区别于普通节日 */}
+              {term && (
+                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
               )}
             </div>
           );

@@ -21,6 +21,12 @@ export interface CollapsibleSectionProps {
   unmountOnCollapse?: boolean;
   /** 外层 section 附加类；宽屏网格布局里传 '' 可去掉默认的纵向外边距 */
   className?: string;
+  /**
+   * 宽屏铺满：覆盖 .card 默认的 max-w-lg（512px）上限。
+   * 命理依据区在宽屏网格里需要占满列宽，否则易经/紫微展开后
+   * 内容被压在 512px 内大量折行、纵向拉得很长。
+   */
+  wide?: boolean;
   children: ReactNode;
 }
 
@@ -40,6 +46,7 @@ export default function CollapsibleSection({
   onOpenChange,
   unmountOnCollapse = true,
   className = 'mb-4 md:mb-6',
+  wide = false,
   children,
 }: CollapsibleSectionProps) {
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
@@ -68,7 +75,7 @@ export default function CollapsibleSection({
   const shouldRenderContent = isOpen || (!unmountOnCollapse && hasOpened);
 
   return (
-    <section className={`card animate-fade-in-up ${className}`}>
+    <section className={`card animate-fade-in-up ${wide ? 'max-w-none mx-0' : ''} ${className}`}>
       <h2 className="m-0">
         <button
           type="button"

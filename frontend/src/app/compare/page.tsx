@@ -130,7 +130,7 @@ export default function ComparePage() {
                             </div>
                           </div>
                         ) : metric.key === 'wuxing' ? (
-                          <span className={`text-lg font-medium ${wuxingColors[metric.getValue(name) as string] || 'text-ink'}`}>
+                          <span className={`text-lg font-medium ${wuxingColors[(metric.getValue(name) as string)?.charAt(0)] || 'text-ink'}`}>
                             {metric.getValue(name)}
                           </span>
                         ) : metric.key === 'meaning' ? (

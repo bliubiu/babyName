@@ -11,7 +11,6 @@ interface NameFilterProps {
 }
 
 export interface NameFilters {
-  gender?: 'male' | 'female';
   wuxing?: string;
   minStrokes?: number;
   maxStrokes?: number;
@@ -29,10 +28,6 @@ const wuxingOptions = [
 
 export default function NameFilter({ filters, onFilterChange, totalNames, filteredCount }: NameFilterProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-
-  const handleGenderChange = (gender: 'male' | 'female' | undefined) => {
-    onFilterChange({ ...filters, gender });
-  };
 
   const handleWuxingChange = (wuxing: string | undefined) => {
     onFilterChange({ ...filters, wuxing });
@@ -61,7 +56,7 @@ export default function NameFilter({ filters, onFilterChange, totalNames, filter
     onFilterChange({});
   };
 
-  const hasActiveFilters = filters.gender || filters.wuxing || filters.minStrokes || filters.maxStrokes || filters.minFrequencyTier || filters.maxFrequencyTier;
+  const hasActiveFilters = filters.wuxing || filters.minStrokes || filters.maxStrokes || filters.minFrequencyTier || filters.maxFrequencyTier;
 
   // 高级筛选不再是居中窄卡片：与上方筛选工具带同宽，收起时只占一行，
   // 避免结果页中部出现「一条窄卡 + 两侧大片空白」（设计稿对齐）。
@@ -88,36 +83,6 @@ export default function NameFilter({ filters, onFilterChange, totalNames, filter
 
       {isExpanded && (
         <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <p className="block text-sm text-jade mb-2">性别</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleGenderChange(filters.gender === 'male' ? undefined : 'male')}
-                className={`min-h-[44px] px-4 py-2 rounded-lg transition-colors ${
-                  filters.gender === 'male'
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-warm-white text-ink hover:bg-warm-white/80'
-                }`}
-                aria-label={`筛选男性名字${filters.gender === 'male' ? '（已选中）' : ''}`}
-                aria-pressed={filters.gender === 'male'}
-              >
-                男
-              </button>
-              <button
-                onClick={() => handleGenderChange(filters.gender === 'female' ? undefined : 'female')}
-                className={`min-h-[44px] px-4 py-2 rounded-lg transition-colors ${
-                  filters.gender === 'female'
-                    ? 'bg-pink-500 text-white'
-                    : 'bg-warm-white text-ink hover:bg-warm-white/80'
-                }`}
-                aria-label={`筛选女性名字${filters.gender === 'female' ? '（已选中）' : ''}`}
-                aria-pressed={filters.gender === 'female'}
-              >
-                女
-              </button>
-            </div>
-          </div>
-
           <div>
             <p className="block text-sm text-jade mb-2">五行</p>
             <div className="flex flex-wrap gap-2">

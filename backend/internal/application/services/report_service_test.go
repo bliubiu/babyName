@@ -170,3 +170,73 @@ func TestParseReportModelToleratesShapes(t *testing.T) {
 		t.Error("非对象输入时 HasData 应为 false")
 	}
 }
+
+// TestParseReportModelFullDetail 详批扩展字段（rishou/nayin/analysis/wuxing_dist/scores/options）应正确解析。
+func TestParseReportModelFullDetail(t *testing.T) {
+	m := parseReportModel(map[string]interface{}{
+		"rishou": "甲", "nayin": "海中金", "zodiac": "鼠",
+		"analysis":     []interface{}{"【八字格局】日主为甲", "【五行平衡】整体均衡"},
+		"wuxing_dist":  map[string]interface{}{"金": float64(1), "木": float64(5), "水": float64(0)},
+		"options":      map[string]interface{}{"detail": "full"},
+		"names": []interface{}{
+			map[string]interface{}{
+				"full_name": "李沐", "score": 92.0,
+				"scores": []interface{}{
+					map[string]interface{}{"name": "五行", "score": float64(90)},
+					map[string]interface{}{"name": "音律", "score": float64(88)},
+				},
+			},
+		},
+	})
+	if m.Rishou != "甲" || m.Nayin != "海中金" || m.Zodiac != "鼠" {
+		t.Errorf("扩展字段解析异常：%+v", m)
+	}
+	if !m.FullDetail {
+		t.Error("默认/options=full 应为详批模式")
+	}
+	if len(m.Analysis) != 2 || m.Analysis[0] != "【八字格局】日主为甲" {
+		t.Errorf("analysis 解析异常：%#v", m.Analysis)
+	}
+	if m.WuXingDist["木"] != 5 || m.WuXingDist["水"] != 0 {
+		t.Errorf("wuxing_dist 解析异常：%#v", m.WuXingDist)
+	}
+	if len(m.Names) != 1 || len(m.Names[0].Scores) != 2 || m.Names[0].Scores[0].Score != 90 {
+		t.Errorf("scores 解析异常：%+v", m.Names)
+	}
+
+	// summary 模式关闭详批
+	if s := parseReportModel(map[string]interface{}{"options": map[string]interface{}{"detail": "summary"}}); s.FullDetail {
+		t.Error("options.detail=summary 应关闭详批")
+	}
+}
+
+// TestGeneratePDFFullDetail 详批模式 PDF（含分布图、解读、各维评分）应正常生成。
+func TestGeneratePDFFullDetail(t *testing.T) {
+	useTestCJKFont(t)
+	payload := sampleReportPayload()
+	payload["analysis"] = []interface{}{
+		"【八字格局】日主为丙，日柱丙申。",
+		"【五行平衡】分布为金1、木5、水1、火1、土1，整体偏枯，需补益水。",
+		"【喜用神补益】喜用神为水、木，宜选属水属木之字。",
+	}
+	payload["wuxing_dist"] = map[string]interface{}{"金": 1, "木": 5, "水": 1, "火": 1, "土": 1}
+	payload["rishou"] = "丙"
+	payload["nayin"] = "山下火"
+	payload["zodiac"] = "龙"
+	payload["names"].([]interface{})[0].(map[string]interface{})["scores"] = []interface{}{
+		map[string]interface{}{"name": "五行", "score": 92},
+		map[string]interface{}{"name": "音律", "score": 88},
+	}
+
+	svc := NewReportService()
+	b, err := svc.GeneratePDF(context.Background(), payload)
+	if err != nil {
+		t.Fatalf("详批 PDF 生成失败：%v", err)
+	}
+	if !bytes.HasPrefix(b, []byte("%PDF-")) || len(b) < 10*1024 {
+		t.Errorf("详批 PDF 输出异常：%d 字节", len(b))
+	}
+	if !bytes.HasSuffix(b, []byte("%%EOF\n")) {
+		t.Error("详批 PDF 缺少 EOF")
+	}
+}

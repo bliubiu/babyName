@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, lazy, Suspense } from 'react';
 import { useRouter } from '@/lib/navigation';
 import { useNameStore } from '@/lib/store';
 import { generateNamesWithProgress, saveHistory } from '@/lib/api';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/Toast';
 import { validateBirthTime, validateSurname } from '@/lib/validation';
 import { buildGenerateRequest } from '@/lib/generateRequest';
@@ -23,6 +23,7 @@ interface FormErrors {
 export default function HomeContent() {
   const router = useRouter();
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const { formData, setFormData, setGenerateResult } = useNameStore();
 
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -66,6 +67,10 @@ export default function HomeContent() {
           birth_time: `${formData.birthHour}:${formData.birthMinute.toString().padStart(2, '0')}`,
           birth_location: formData.birthLocation,
           results: data,
+        }).then(() => {
+          // 落库成功后让历史页缓存失效：否则 5 分钟 staleTime 内，
+          // 客户端导航到历史页会命中旧的空缓存，显示「暂无历史记录」。
+          queryClient.invalidateQueries({ queryKey: ['history'] });
         }).catch((err) => {
           console.error('Failed to save history:', err);
         });

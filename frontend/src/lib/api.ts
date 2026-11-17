@@ -416,12 +416,26 @@ export interface ReportPayload {
   bazi?: string;
   wuxing?: string;
   xiyongshen?: string;
+  /** 日主强弱 */
+  rishou?: string;
+  /** 纳音 */
+  nayin?: string;
+  /** 生肖 */
+  zodiac?: string;
+  /** 命理详批文本（前端 generateDetailAnalysis 生成） */
+  analysis?: string[];
+  /** 五行分布数值，用于条形图；键为单字 金木水火土 */
+  wuxing_dist?: Record<string, number>;
+  /** 导出详略：full=含命理详批与分布图，summary=仅基本信息+名字表 */
+  options?: { detail?: 'full' | 'summary' };
   names?: Array<{
     full_name?: string;
     pinyin?: string;
     wuxing?: string;
     score?: number | string;
     meaning?: string;
+    /** 各维评分（如 五行/音律/字义…），PDF 详批模式展示 */
+    scores?: Array<{ name: string; score: number }>;
   }>;
 }
 

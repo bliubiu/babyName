@@ -108,6 +108,17 @@ describe('CollapsibleSection 折叠语义与过渡', () => {
     expect(screen.getByRole('button', { name: /八字分析/ })).toHaveAttribute('aria-expanded', 'false');
   });
 
+  it('wide 变体覆盖 .card 的 max-w-lg 宽度帽，避免展开内容被压成 512px', () => {
+    const { container: normal } = render(<CollapsibleSection title="普通"><div>x</div></CollapsibleSection>);
+    const { container: wide } = render(<CollapsibleSection title="宽块" wide><div>x</div></CollapsibleSection>);
+
+    const normalSection = normal.querySelector('section')!;
+    const wideSection = wide.querySelector('section')!;
+    expect(normalSection.className).not.toContain('max-w-none');
+    expect(wideSection.className).toContain('max-w-none');
+    expect(wideSection.className).toContain('mx-0');
+  });
+
   it('unmountOnCollapse=false：首次收起仍懒挂载，展开过一次后收起保留内容', () => {
     render(
       <CollapsibleSection title="八字分析" unmountOnCollapse={false}>

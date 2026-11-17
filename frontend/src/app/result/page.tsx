@@ -18,6 +18,8 @@ import ResultActions from '@/components/ResultActions';
 import CompareTray from '@/components/CompareTray';
 import type { NameFilters } from '@/components/NameFilter';
 import CollapsibleSection from '@/components/CollapsibleSection';
+import { applyNameFilters, sortNames, scoreOf, WUXING_ORDER, type SortKey } from './nameFiltering';
+import { buildPdfAnalysis } from './reportAnalysis';
 
 const BaziAnalysis = lazy(() => import('@/components/BaziAnalysis'));
 const HexagramDisplay = lazy(() => import('@/components/HexagramDisplay'));
@@ -43,10 +45,7 @@ const DEFAULT_ANALYSIS_OPEN: Record<AnalysisKey, boolean> = {
   ziwei: false,
 };
 
-type SortKey = 'score' | 'strokes' | 'wuxing';
-const WUXING_ORDER = ['金', '木', '水', '火', '土'];
 const PAGE_SIZE = 20;
-const scoreOf = (n: Name) => n.total_score ?? n.score ?? 0;
 
 // 收藏列表的共享空数组常量，配合 useMemo 保证引用稳定（见下方 cachedFavorites）
 const EMPTY_FAVORITES: FavoriteData[] = [];
@@ -100,47 +99,26 @@ export default function ResultPage() {
   const [showFullReport, setShowFullReport] = useState(false);
   // 折叠态提到页面层集中管理，才能提供「全部展开 / 全部收起」
   const [analysisOpen, setAnalysisOpen] = useState<Record<AnalysisKey, boolean>>(DEFAULT_ANALYSIS_OPEN);
+  // 易经折叠块内两个长组件改二级 Tabs，一次只显示一栏，避免纵向串成一条长龙
+  const [hexagramTab, setHexagramTab] = useState<'divination' | 'detail'>('divination');
   const allAnalysisOpen = Object.values(analysisOpen).every(Boolean);
   const toggleAllAnalysis = () => {
     const next = !allAnalysisOpen;
     setAnalysisOpen({ bazi: next, hexagram: next, ziwei: next });
   };
 
-  const filteredNames = useMemo(() => result?.names ? result.names.filter((name: Name) => {
-    if (filters.gender && name.gender !== filters.gender) return false;
-    if (filters.wuxing && name.wuxing !== filters.wuxing) return false;
-    if (filters.minStrokes && name.strokes < filters.minStrokes) return false;
-    if (filters.maxStrokes && name.strokes > filters.maxStrokes) return false;
-    // 人名频率过滤（基于 frequency_score 评分，0-100 分制）
-    if (filters.minFrequencyTier && name.frequency_score !== undefined) {
-      // 将 frequency_score 映射回 tier（简化逻辑：分数越高 = tier 越高）
-      const estimatedTier = name.frequency_score >= 90 ? 5
-        : name.frequency_score >= 70 ? 4
-        : name.frequency_score >= 55 ? 3
-        : name.frequency_score >= 35 ? 2
-        : name.frequency_score >= 15 ? 1
-        : 0;
-      if (estimatedTier < filters.minFrequencyTier) return false;
-    }
-    return true;
-  }) : [], [result, filters]);
+  // 过滤依据当前展示的数据源：换一批（exploreBatch）也应受同一套条件约束，
+  // 否则点「换一批」后五行/笔画/频率筛选会静默失效。
+  // 过滤与排序规则抽到 nameFiltering 纯函数，页面与单测共用同一份真源。
+  const filterSource = exploreBatch ?? result?.names;
+  const filteredNames = useMemo(
+    () => (filterSource ? applyNameFilters(filterSource, filters) : []),
+    [filterSource, filters]
+  );
 
   // 排序 + 分页：原实现硬截 slice(0,20)，顶部却写「共 N 个候选」，
   // 第 21 个之后的名字永远无法到达。这里按排序键重排并按需加载更多。
-  const displayList = useMemo(() => {
-    const list = [...(exploreBatch ?? filteredNames)];
-    if (sortKey === 'strokes') {
-      return list.sort((a, b) => (a.strokes ?? 0) - (b.strokes ?? 0) || scoreOf(b) - scoreOf(a));
-    }
-    if (sortKey === 'wuxing') {
-      return list.sort((a, b) => {
-        const ai = WUXING_ORDER.indexOf(a.wuxing ?? '');
-        const bi = WUXING_ORDER.indexOf(b.wuxing ?? '');
-        return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || scoreOf(b) - scoreOf(a);
-      });
-    }
-    return list.sort((a, b) => scoreOf(b) - scoreOf(a));
-  }, [filteredNames, exploreBatch, sortKey]);
+  const displayList = useMemo(() => sortNames(filteredNames, sortKey), [filteredNames, sortKey]);
 
   const topNames = displayList.slice(0, visibleCount);
 
@@ -211,6 +189,10 @@ export default function ResultPage() {
          baziInfo.bazi.day_ganzhi, baziInfo.bazi.hour_ganzhi].filter(Boolean).join(' ')
       : '';
     const wx = baziInfo?.wuxing;
+    const wuxingDist = wx
+      ? { 金: wx.jin, 木: wx.mu, 水: wx.shui, 火: wx.huo, 土: wx.tu }
+      : undefined;
+    const analysis = buildPdfAnalysis(result, formData.surname, result?.nayin ?? '', result?.zodiac ?? '', result?.hexagram);
     return {
       surname: formData.surname,
       gender: formData.gender,
@@ -219,12 +201,19 @@ export default function ResultPage() {
       bazi: pillars,
       wuxing: wx ? `金${wx.jin} 木${wx.mu} 水${wx.shui} 火${wx.huo} 土${wx.tu}` : '',
       xiyongshen: baziInfo?.xiyongshen?.join('、') ?? '',
+      rishou: baziInfo?.rishou,
+      nayin: nayin || undefined,
+      zodiac: zodiac || undefined,
+      analysis,
+      wuxing_dist: wuxingDist,
+      options: { detail: 'full' as const },
       names: (result?.names ?? []).slice(0, 30).map((n: Name) => ({
         full_name: n.full_name || `${n.surname}${n.given_name}`,
         pinyin: n.pinyin,
         wuxing: n.wuxing,
         score: scoreOf(n),
         meaning: n.meaning,
+        scores: n.score_detail?.map(d => ({ name: d.name, score: d.score })),
       })),
     };
   };
@@ -310,6 +299,8 @@ export default function ResultPage() {
         birth_time: `${formData.birthHour}:${formData.birthMinute.toString().padStart(2, '0')}`,
         birth_location: formData.birthLocation,
         results: data,
+      }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ['history'] });
       }).catch(() => { /* 历史留痕失败不阻断生成 */ });
       setSelectedName(null);
       setCompareNames([]);
@@ -531,7 +522,7 @@ export default function ResultPage() {
 
   // 列表变化后按 key 回查；查不到（已被筛掉）时不渲染详情而不是崩溃
   const selectedEntry = selectedName ? nameByKey(selectedName) : undefined;
-  const hasQuickFilters = !!(filters.gender || filters.wuxing || filters.minStrokes || filters.maxStrokes || filters.minFrequencyTier || filters.maxFrequencyTier);
+  const hasQuickFilters = !!(filters.wuxing || filters.minStrokes || filters.maxStrokes || filters.minFrequencyTier || filters.maxFrequencyTier);
 
   return (
     <main className="min-h-screen py-4 md:py-8 px-4 md:px-6 pb-28">
@@ -621,20 +612,6 @@ export default function ResultPage() {
           <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-jade/80 mr-1">筛选</span>
-            {(['male', 'female'] as const).map(g => (
-              <button
-                key={g}
-                type="button"
-                aria-pressed={filters.gender === g}
-                onClick={() => updateFilters(prev => ({ ...prev, gender: prev.gender === g ? undefined : g }))}
-                className={`min-h-[44px] px-3 py-1.5 rounded-xl text-xs transition-colors ${
-                  filters.gender === g ? 'bg-crimson text-white' : 'bg-warm-white text-ink hover:bg-warm-white/80'
-                }`}
-              >
-                {g === 'male' ? '男孩' : '女孩'}
-              </button>
-            ))}
-            <span className="w-px h-5 bg-paper/60 mx-1" aria-hidden="true" />
             {WUXING_ORDER.map(w => (
               <button
                 key={w}
@@ -759,9 +736,11 @@ export default function ResultPage() {
             </button>
           </div>
 
-          {/* 宽屏双列铺开：收起时也把横向空间用起来，第三块跨两列避免半屏空白 */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+          {/* 宽屏多列铺开：lg 起双列、2xl 起三列；三项均 wide 铺满列宽，
+              避免 .card 的 max-w-lg 把展开内容压成 512px 导致纵向过长。 */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4 items-start">
           <CollapsibleSection
+            wide
             className=""
             title="八字分析"
             summary={`日主 ${bazi.rishou} · 喜用神 ${bazi.xiyongshen.join('、')} · ${zodiac}`}
@@ -777,6 +756,7 @@ export default function ResultPage() {
           {/* 易经卦象 + 卦象详解：本卦经文 / 本互变三卦 / 体用断卦（docs/42 P2-9/10） */}
           {(hexagram || hexagram_detail) && (
             <CollapsibleSection
+              wide
               className=""
               title="易经卦象 · 卦象详解"
               summary={hexagramSummary}
@@ -784,7 +764,29 @@ export default function ResultPage() {
               onOpenChange={(v) => setAnalysisOpen((prev) => ({ ...prev, hexagram: v }))}
               unmountOnCollapse={false}
             >
-              {hexagram && (
+              {/* 二级 Tabs：卦象经文 / 卦象详解分栏，避免两组长文纵向串联 */}
+              {(hexagram || hexagram_detail) && (
+                <div className="flex border-b border-paper/50 mb-4">
+                  {([
+                    { id: 'divination', label: '本卦与经文', show: !!hexagram },
+                    { id: 'detail', label: '体用断卦', show: !!hexagram_detail },
+                  ] as const).filter(t => t.show).map(t => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setHexagramTab(t.id)}
+                      className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                        hexagramTab === t.id
+                          ? 'text-crimson border-b-2 border-crimson'
+                          : 'text-ink-light/70 hover:text-ink'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {hexagramTab === 'divination' && hexagram && (
                 <Suspense fallback={<div className="p-4 text-jade/80 text-sm">加载卦象...</div>}>
                   <HexagramDisplay
                     hexagram={hexagram}
@@ -795,24 +797,23 @@ export default function ResultPage() {
                   />
                 </Suspense>
               )}
-              {hexagram_detail && (
-                <div className="mt-5 border-t border-paper/40 pt-4">
-                  <Suspense fallback={<div className="p-4 text-jade/80 text-sm">加载卦象详解...</div>}>
-                    <HexagramDetailDisplay
-                      detail={hexagram_detail}
-                      tiyong={tiyong}
-                      embedded
-                      embeddedTitle="卦象详解"
-                    />
-                  </Suspense>
-                </div>
+              {hexagramTab === 'detail' && hexagram_detail && (
+                <Suspense fallback={<div className="p-4 text-jade/80 text-sm">加载卦象详解...</div>}>
+                  <HexagramDetailDisplay
+                    detail={hexagram_detail}
+                    tiyong={tiyong}
+                    embedded
+                    embeddedTitle="卦象详解"
+                  />
+                </Suspense>
               )}
             </CollapsibleSection>
           )}
 
           {ziwei && (
             <CollapsibleSection
-              className="xl:col-span-2"
+              wide
+              className="lg:col-span-2 2xl:col-span-1"
               title="紫微斗数"
               summary={ziweiSummary}
               open={analysisOpen.ziwei}

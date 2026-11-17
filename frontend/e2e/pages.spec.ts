@@ -37,6 +37,27 @@ test('黄历页：今日黄历标题与宜忌内容渲染', async ({ page }) => 
   await expect(page.getByText('忌', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
 });
 
+test('万年历节气科普：点击节气日弹出知识卡，可关闭', async ({ page }) => {
+  await page.goto('/#/huangli');
+  await expect(page.getByRole('heading', { name: '今日黄历' })).toBeVisible();
+
+  await page.getByRole('button', { name: '万年历' }).click();
+  // 选 1 月：每年 1 月必含小寒、大寒两个节气，避免依赖当前月份
+  await page.locator('select').nth(1).selectOption('1');
+
+  const termCell = page.locator('[aria-label*="查看节气科普"]').first();
+  await expect(termCell).toBeVisible({ timeout: 30_000 });
+  await termCell.click();
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('节气三候')).toBeVisible();
+  await expect(dialog.getByText('节气故事')).toBeVisible();
+
+  await dialog.getByRole('button', { name: '关闭节气科普' }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
 test('重名率查询：填名字 → 查询 → 重名人数与热门名字榜出现', async ({ page }) => {
   await page.goto('/#/stat');
   await expect(page.getByRole('heading', { name: '重名率查询' })).toBeVisible();

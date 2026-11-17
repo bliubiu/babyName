@@ -4,23 +4,30 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import NameFilter from './NameFilter';
 
 describe('NameFilter 受控筛选', () => {
-  it('点击性别只上报，视图由父组件传入的 filters 决定', () => {
+  it('五行 chip 只上报单字，实际过滤由结果页按包含匹配负责', () => {
     const onFilterChange = vi.fn();
     const { rerender } = render(
       <NameFilter filters={{}} onFilterChange={onFilterChange} totalNames={60} filteredCount={60} />
     );
 
     fireEvent.click(screen.getByRole('button', { name: '展开筛选面板' }));
-    fireEvent.click(screen.getByRole('button', { name: /筛选男性名字/ }));
-    expect(onFilterChange).toHaveBeenCalledWith({ gender: 'male' });
+    fireEvent.click(screen.getByRole('button', { name: /筛选水五行名字/ }));
+    expect(onFilterChange).toHaveBeenCalledWith({ wuxing: '水' });
     // 受控：父组件没更新前，本地不得偷偷改成选中态
-    expect(screen.getByRole('button', { name: /筛选男性名字/ })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: /筛选水五行名字/ })).toHaveAttribute('aria-pressed', 'false');
 
     rerender(
-      <NameFilter filters={{ gender: 'male' }} onFilterChange={onFilterChange} totalNames={60} filteredCount={30} />
+      <NameFilter filters={{ wuxing: '水' }} onFilterChange={onFilterChange} totalNames={60} filteredCount={30} />
     );
-    expect(screen.getByRole('button', { name: /筛选男性名字（已选中）/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /筛选水五行名字（已选中）/ })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('(30/60)')).toBeInTheDocument();
+  });
+
+  it('不再提供性别筛选（首页已定性别，候选名无区分度）', () => {
+    render(<NameFilter filters={{}} onFilterChange={vi.fn()} totalNames={60} filteredCount={60} />);
+    fireEvent.click(screen.getByRole('button', { name: '展开筛选面板' }));
+    expect(screen.queryByRole('button', { name: /筛选男性名字/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('性别')).not.toBeInTheDocument();
   });
 
   it('高级筛选为全宽紧凑工具条，不再使用居中窄卡片', () => {
@@ -36,7 +43,7 @@ describe('NameFilter 受控筛选', () => {
     const onFilterChange = vi.fn();
     render(
       <NameFilter
-        filters={{ gender: 'male', wuxing: '水' }}
+        filters={{ wuxing: '水' }}
         onFilterChange={onFilterChange}
         totalNames={60}
         filteredCount={8}

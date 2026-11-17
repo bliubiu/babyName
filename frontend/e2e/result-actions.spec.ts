@@ -92,6 +92,23 @@ test('结果页分享：创建快照 → 打开分享链接 → 读回同一份�
   await expect(page.getByText(/共 \d+ 个名字/)).toBeVisible();
 });
 
+test('历史记录：先造空缓存，生成后经导航按钮进入仍可见（防陈缓存缺陷）', async ({ page }) => {
+  // 复现用户路径：先访问历史页让 ['history'] 缓存成空，再生成，最后用导航按钮
+  // （客户端路由）进入历史页。旧实现落库后未 invalidate，会命中 5 分钟内
+  // 的陈空缓存显示「暂无历史记录」；page.goto 直达因全新挂载无法暴露此缺陷。
+  await page.goto('/#/history');
+  await expect(page.getByRole('heading', { name: '历史记录' })).toBeVisible();
+
+  await gotoResult(page);
+  // 回首页（客户端导航），再点「查看历史记录」进入——不是 page.goto
+  await page.getByRole('button', { name: '返回首页' }).click();
+  await page.getByRole('button', { name: '查看历史记录' }).click();
+
+  await expect(page.getByRole('heading', { name: '历史记录' })).toBeVisible();
+  await expect(page.getByText('暂无历史记录')).toHaveCount(0);
+  await expect(page.locator('div.card button').first()).toBeVisible({ timeout: 30_000 });
+});
+
 test('历史记录：生成自动落库，可删除该条', async ({ page }) => {
   await gotoResult(page);
 

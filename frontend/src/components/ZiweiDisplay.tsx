@@ -104,7 +104,7 @@ export default function ZiweiDisplay({ ziwei, embedded = false }: ZiweiDisplayPr
         {/* 十二宫落星 */}
         <div>
           <span className="text-xs text-jade font-medium">十二宫落星</span>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
             {PALACES.map((gong) => {
               const zhu = ziwei.zhu_xing?.[gong] ?? [];
               const fu = ziwei.fu_xing?.[gong] ?? [];
