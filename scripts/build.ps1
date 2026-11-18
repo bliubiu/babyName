@@ -2,6 +2,7 @@
 # 产物：
 #   backend/bin/namer-desktop.exe              单文件桌面 exe
 #   backend/bin/namer-amd64-installer.exe     NSIS 安装器（user 作用域 + 种子库随装）
+#   backend/bin/namer.db                       现场制作的纯净种子库（release 上传用，不含本机数据）
 #
 # 真正的构建逻辑在 backend/Taskfile.yml（wails3 build / wails3 package）：
 # 本脚本只负责 CLI 定位、版本护栏、种子库制作校验与前置检查，避免两套构建逻辑漂移。
@@ -127,6 +128,13 @@ if ($verifyExit -ne 0) {
 }
 Write-Host "  [完成] 种子库现场制作并校验通过" -ForegroundColor Green
 
+# 4.3.1 把纯净库另存到发布产物区，供 release.ps1 上传。
+#      这一步必须在 finally 恢复开发机库之前完成：工作区 data/namer.db 会含本机
+#      收藏/历史，绝不能作为对外分发的种子库。
+$ReleaseSeed = Join-Path $BackendDir "bin\namer.db"
+Copy-Item $FreshSeed $ReleaseSeed -Force
+Write-Host "  发布用纯净种子库已留存: $ReleaseSeed" -ForegroundColor Gray
+
 # 4.4 用新库替换工作区库供 NSIS 打包（NSIS 的 File 指令硬编码读 data/namer.db）
 Copy-Item $FreshSeed $SeedDb -Force
 $seedSwapped = $true
@@ -181,5 +189,6 @@ Write-Host "产物: $(Join-Path $BackendDir 'bin\namer-desktop.exe')"
 if ($HasMakensis) {
     Write-Host "安装器: $(Join-Path $BackendDir 'bin\namer-amd64-installer.exe')"
 }
-Write-Host "种子库: $(Join-Path $RootDir 'data\namer.db')（已恢复为开发机运行库）"
+Write-Host "发布种子库: $(Join-Path $BackendDir 'bin\namer.db')（纯净，供 release 上传）"
+Write-Host "开发机库: $(Join-Path $RootDir 'data\namer.db')（已恢复，含本机收藏/历史）"
 Write-Host "启动方式: 双击 exe，或在 backend 目录运行 .\bin\namer-desktop.exe"

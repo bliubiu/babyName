@@ -28,6 +28,15 @@
   go-task 的 shell 不认 Windows 反斜杠长路径，实测 `wails3 package` 因此 exit 127
   （not found），转正斜杠后安装包正常产出（20.9MB / 含现场制作种子库）
 
+### 🐛 Bug Fixes 缺陷修复（发布前拦截）
+- **发布库泄露风险**：原 `release.ps1` 上传 `data/namer.db` 作为种子库，但该路径在
+  `build.ps1` 的 finally 中被恢复为开发机运行库（实测含 3 条 history 用户数据）——
+  一旦发布即泄露本机数据。修复：`build.ps1` 在现场库校验通过后另存一份纯净库到
+  `backend/bin/namer.db`（不受 finally 恢复影响），`release.ps1` 改上传这份纯净库
+- **发布构建找不到 CLI**：`release.ps1` 调 `build.ps1` 时未转发 CLI 路径，而本机
+  `wails3` 既不在 PATH、也不在 `go/bin`，完整构建必然失败。新增 `-Wails3Path`
+  参数并透传给 `build.ps1`
+
 ### 📚 Docs 文档更新
 - `build.ps1` 头部注释更新为现场制库策略说明
 

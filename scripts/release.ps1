@@ -13,8 +13,10 @@
 #   powershell -ExecutionPolicy Bypass -File scripts/release.ps1
 #   scripts\release.ps1 -SkipBuild        # 产物已就绪，仅打 tag + 发布（谨慎）
 #   scripts\release.ps1 -DryRun           # 只做前置校验并显示将执行的操作，不实际发布
+#   scripts\release.ps1 -Wails3Path D:\tools\wails3.exe   # CLI 不在 PATH 时显式指定
 
 param(
+    [string]$Wails3Path = "", # wails3 CLI 不在 PATH 时显式指定，转发给 build.ps1
     [switch]$SkipBuild,   # 跳过构建，直接用 backend/bin 下现有产物（需自行保证新鲜）
     [switch]$DryRun       # 演练模式：只校验 + 打印，不打 tag / 不发布
 )
@@ -100,14 +102,18 @@ if ($SkipBuild) {
 }
 else {
     Write-Host "[1/3] 调用 build.ps1 构建三件套 ..." -ForegroundColor Yellow
-    & (Join-Path $PSScriptRoot "build.ps1")
+    $buildScript = Join-Path $PSScriptRoot "build.ps1"
+    if ($Wails3Path) { & $buildScript -Wails3Path $Wails3Path }
+    else { & $buildScript }
     if ($LASTEXITCODE -ne 0) { Die "build.ps1 构建失败" }
 }
 
 # 8. 校验产物存在
 $exe = Join-Path $BackendDir "bin\namer-desktop.exe"
 $installer = Join-Path $BackendDir "bin\namer-amd64-installer.exe"
-$db = Join-Path $RootDir "data\namer.db"
+# 必须上传 build.ps1 现场制作的纯净库（bin\namer.db），而非工作区 data\namer.db——
+# 后者是含本机收藏/历史、可能被 WAL 污染的运行库，一旦上传即泄露用户数据。
+$db = Join-Path $BackendDir "bin\namer.db"
 foreach ($p in @($exe, $installer, $db)) {
     if (-not (Test-Path $p)) { Die "发布产物缺失: $p" }
 }
