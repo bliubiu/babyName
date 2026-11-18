@@ -3,7 +3,7 @@
 import { useRouter } from '@/lib/navigation';
 import ThemeToggle from './ThemeToggle';
 import { IconArrowLeft, IconHistory, IconHeart, IconCalendar, IconCamera, IconFileText, IconClipboardCheck, IconJson, IconDatabase } from './Icons';
-import { showMaterials } from '@/lib/featureFlags';
+import { showJsonViewer, showMaterials } from '@/lib/featureFlags';
 
 interface NavigationProps {
   showBackButton?: boolean;
@@ -76,14 +76,16 @@ export default function Navigation({
           <IconCalendar size={16} />
           <span className="hidden sm:inline">黄历</span>
         </button>
-        <button
-          onClick={() => router.push('/json-viewer')}
-          className="flex items-center gap-1.5 text-jade hover:text-crimson transition-all duration-300 px-2.5 py-1.5 rounded-lg hover:bg-crimson/5 text-sm"
-          aria-label="JSON 美化查看器"
-        >
-          <IconJson size={16} />
-          <span className="hidden sm:inline">JSON</span>
-        </button>
+        {showJsonViewer() && (
+          <button
+            onClick={() => router.push('/json-viewer')}
+            className="flex items-center gap-1.5 text-jade hover:text-crimson transition-all duration-300 px-2.5 py-1.5 rounded-lg hover:bg-crimson/5 text-sm"
+            aria-label="JSON 美化查看器"
+          >
+            <IconJson size={16} />
+            <span className="hidden sm:inline">JSON</span>
+          </button>
+        )}
         {showMaterials() && (
           <button
             onClick={() => router.push('/materials')}

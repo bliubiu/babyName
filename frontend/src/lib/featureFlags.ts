@@ -8,3 +8,12 @@
 export function showMaterials(): boolean {
   return import.meta.env.VITE_SHOW_MATERIALS === 'true';
 }
+
+/**
+ * VITE_SHOW_JSON=true 时显示「JSON 美化查看器」导航入口；默认隐藏。
+ * 原因：JSON 查看器面向开发/调试场景（查看接口原始返回），对终端用户
+ * 无意义且易误导，与物料入口同口径按需开启。
+ */
+export function showJsonViewer(): boolean {
+  return import.meta.env.VITE_SHOW_JSON === 'true';
+}
