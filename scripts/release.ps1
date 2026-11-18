@@ -21,7 +21,11 @@ param(
     [switch]$DryRun       # 演练模式：只校验 + 打印，不打 tag / 不发布
 )
 
-$ErrorActionPreference = "Stop"
+# PowerShell 5.1 会把 native 命令（wails3 / go-task / git / gh）写到 stderr 的
+# 正常进度信息包装成 NativeCommandError；Stop 模式下会据此误终止构建（实测
+# wails3 build 的 `task: [build:frontend] pnpm build` 即触发）。脚本对每一步都
+# 显式检查 $LASTEXITCODE，故用 Continue，让退出码而非 stderr 决定成败。
+$ErrorActionPreference = "Continue"
 $RootDir = Split-Path -Parent $PSScriptRoot
 $BackendDir = Join-Path $RootDir "backend"
 $Changelog = Join-Path $RootDir "CHANGELOG.md"
