@@ -28,6 +28,11 @@
 ### 🐛 Bug Fixes 缺陷修复
 - 修复原脚本"失败后提示重跑续传"却无法兑现的问题：前置 tag 校验与
   `gh release create` 都会因已存在而拦截，`-Resume` 分支解决该矛盾
+- digest 回验在 PowerShell 5.1 下失效：`gh ... --jq '.assets[]|select(.name=="xx")'`
+  的表达式内双引号会被 native 调用层剥掉，jq 报 `function not defined: namer/0`。
+  改为拉整段 JSON 用 `ConvertFrom-Json` 本地过滤（实测三附件 digest 全部 MATCH）
+- SHA256SUMS.txt 行尾：`WriteAllLines` 在 Windows 写 CRLF，导致 `sha256sum -c`
+  把 `\r` 当文件名而校验失败；改用 LF 拼接写入（实测三个文件全 OK）
 
 ## [2026.11.18.2]
 

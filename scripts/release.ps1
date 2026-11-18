@@ -60,10 +60,17 @@ function Upload-Asset([string]$Tag, [string]$Path, [int]$Retries) {
         & gh release upload $Tag $Path --clobber 2>$null
         $uploadExit = $LASTEXITCODE
         if ($uploadExit -eq 0) {
-            # 回验远端 digest，防弱网下文件上传不完整仍报告成功
-            $jq = '.assets[] | select(.name=="' + $name + '") | .digest'
-            $digest = & gh release view $Tag --json assets --jq $jq 2>$null
-            if ($LASTEXITCODE -eq 0 -and $digest -match '^sha256:([0-9a-f]{64})$') {
+            # 回验远端 digest，防弱网下文件上传不完整仍报告成功。
+            # 注意：不要用 `--jq '.assets[]|select(.name=="xx")'`——PowerShell 5.1
+            #  调 native 命令时会剥掉表达式里的双引号，jq 把 namer.db 当函数调用
+            #  报 "function not defined: namer/0"。改为拉整段 JSON 在本地过滤。
+            $assetsJson = & gh release view $Tag --json assets 2>$null
+            $digest = $null
+            if ($LASTEXITCODE -eq 0 -and $assetsJson) {
+                $asset = ($assetsJson | ConvertFrom-Json).assets | Where-Object { $_.name -eq $name } | Select-Object -First 1
+                if ($asset) { $digest = $asset.digest }
+            }
+            if ($digest -match '^sha256:([0-9a-f]{64})$') {
                 $remoteHash = $Matches[1]
                 if ($remoteHash -eq $localHash) {
                     Write-Host "  [完成] $name digest 匹配 ($($localHash.Substring(0,12))...)" -ForegroundColor Green
@@ -72,7 +79,7 @@ function Upload-Asset([string]$Tag, [string]$Path, [int]$Retries) {
                 Write-Host "  [警告] $name 哈希不一致（本地 $localHash / 远端 $remoteHash），重试" -ForegroundColor Yellow
             }
             else {
-                Write-Host "  [警告] $name 上传后无法读取 digest，重试" -ForegroundColor Yellow
+                Write-Host "  [警告] $name 上传后无法读取 digest（远端值: $digest），重试" -ForegroundColor Yellow
             }
         }
         else {
@@ -154,7 +161,7 @@ if ($DryRun) {
     Write-Host "  - gh release create $tag --title 'NameMaster $tag' --generate-notes（空壳）"
     Write-Host "  - 生成 SHA256SUMS.txt（三产物 sha256 清单）"
     Write-Host "  - 逐个上传并通过 digest 回验（单个失败重试 $UploadRetries 次）："
-    foreach ($f in @('namer.db', 'namer-amd64-installer.exe', 'namer-desktop.exe', 'SHA256SUMS.txt')) {
+    foreach ($f in @('namer.db', 'namer-amd64-installer.exe', 'SHA256SUMS.txt', 'namer-desktop.exe')) {
         Write-Host "      - $f"
     }
     Write-Host "[DryRun] 未做任何修改。" -ForegroundColor Yellow
@@ -213,8 +220,9 @@ foreach ($p in @($db, $installer, $exe)) {
     $checksumLines += "$hash  $(Split-Path -Leaf $p)"
     Write-Host "  SHA256 $(Split-Path -Leaf $p): $hash" -ForegroundColor Gray
 }
-# 用 UTF-8 无 BOM 写入（内容全为 ASCII，避免 BOM 破坏 sha256sum -c 解析）
-[System.IO.File]::WriteAllLines($checksumFile, $checksumLines, (New-Object System.Text.UTF8Encoding($false)))
+# 用 UTF-8 无 BOM + LF 写入：内容全 ASCII；WriteAllLines 在 Windows 会写 CRLF，
+# 而 sha256sum -c 会把行尾 \r 当文件名的一部分导致校验失败，故手动拼 "`n"。
+[System.IO.File]::WriteAllText($checksumFile, (($checksumLines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
 Write-Host "[4/4] SHA256SUMS.txt 已生成" -ForegroundColor Green
 
 # 11. 分步发布：先建空 release，再逐个上传。
