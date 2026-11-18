@@ -36,6 +36,10 @@
 - **发布构建找不到 CLI**：`release.ps1` 调 `build.ps1` 时未转发 CLI 路径，而本机
   `wails3` 既不在 PATH、也不在 `go/bin`，完整构建必然失败。新增 `-Wails3Path`
   参数并透传给 `build.ps1`
+- **发布脚本误中断/误阻断**：`$ErrorActionPreference=Stop` 会把 go-task 写到 stderr
+  的正常进度当原生命令错误而中止构建，改为 `Continue`（靠 `$LASTEXITCODE` 判定成败）；
+  推 tag 时 pre-push hook 依赖 `bash`，PowerShell 会话无 `bash` 致推送被误阻断，
+  tag push 局部设 `SKIP_VERIFY=1`（构建已完整校验、CI 有独立门禁）
 
 ### 📚 Docs 文档更新
 - `build.ps1` 头部注释更新为现场制库策略说明
