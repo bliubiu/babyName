@@ -5,6 +5,32 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.18.2]
+
+**构建链闭环：现场制作种子库 + 独立 release 发布脚本**
+
+### 📈 Improvements 性能/体验优化
+- `scripts/build.ps1` 种子库来源从「取 git 已入库版本」改为「现场制作」：构建期用
+  `build_seed --data ../data --out <临时区>` 从 36 个源物料 JSON 重建全新纯净库，
+  独立 `--verify-only` 二次校验后供 NSIS 打包；制作全程在临时区，打包前短暂替换、
+  finally 无条件恢复开发机运行库（含本机收藏/历史），一条命令完成从源物料到可分发
+  产物，与 CI 同口径
+- 新增 `scripts/release.ps1` 独立发布脚本：前置校验（HEAD 与远端同步 / 交付路径 clean /
+  CHANGELOG 版本 / tag 不冲突）→ 调 build.ps1 构建三件套 → 打 CalVer tag 推送 →
+  `gh release create` 上传 exe / 安装包 / 种子库。构建与发布职责分离，可复用；
+  版本号唯一真源 = CHANGELOG 顶部 `## [CalVer]`；支持 `-DryRun` 演练与 `-SkipBuild`
+  - release 的 clean 校验聚焦交付路径（源码/脚本/文档/CI/物料），有意忽略 `.agents/`
+  历史 churn 与本机运行库 `data/namer.db`（发布用现场制作库，不读工作区那份）
+- 两份 `.ps1` 脚本改用 UTF-8 **with BOM**：PowerShell 5.1 按 GBK 误读无 BOM 的 UTF-8
+  中文脚本会导致语法错/中文乱码，加 BOM 后 5.1 与 pwsh 7 均可正确执行（Go/前端
+  源码仍遵循 AGENTS.md 的无 BOM 约定，此例外仅限 Windows 专属 .ps1）
+- `build.ps1` 修复：向 Taskfile 传 `WAILS3` 变量时把 CLI 路径反斜杠统一转正斜杠——
+  go-task 的 shell 不认 Windows 反斜杠长路径，实测 `wails3 package` 因此 exit 127
+  （not found），转正斜杠后安装包正常产出（20.9MB / 含现场制作种子库）
+
+### 📚 Docs 文档更新
+- `build.ps1` 头部注释更新为现场制库策略说明
+
 ## [2026.11.18.1]
 
 **构建脚本完善 + 历史死脚本清理（仓库瘦身，零业务代码改动）**
