@@ -44,7 +44,7 @@ var assets embed.FS
 var (
 	help      = flag.Bool("help", false, "显示帮助")
 	dataDirOp = flag.String("data", "", "物料数据目录 (默认: DATA_DIR 环境变量 > 仓库根 data/ > exe 同级 data/ > cwd/data)")
-	dbPathOp  = flag.String("db", "", "SQLite 库路径 (默认: NAMER_DB_PATH 环境变量 > 按目录来源推导)")
+	dbPathOp  = flag.String("db", "", "SQLite 库路径 (默认: NAMER_DB_PATH 环境变量 > 按目录来源推导；指向新路径=自动建库播种，即干净库；指向既有文件=私有库)")
 	logPathOp = flag.String("log", "", "日志目录 (默认: NAMER_LOG_PATH 环境变量 > 按目录来源推导)")
 )
 
@@ -213,4 +213,10 @@ func printHelp() {
 	fmt.Println("  - 首次启动需初始化数据，约 1~2 分钟内没有窗口属正常现象，请耐心等待")
 	fmt.Println("  - 启动失败会弹出说明，并在 exe 同目录生成 startup-error.log")
 	fmt.Println("  - 数据目录默认按 exe 位置自动探测，也可用 -data 或 DATA_DIR 环境变量指定")
+	fmt.Println("")
+	fmt.Println("私有/干净数据库 (-db):")
+	fmt.Println("  namer-desktop.exe -db D:/my/private.db    指向既有文件 = 使用该私有库（收藏/历史独立）")
+	fmt.Println("  namer-desktop.exe -db D:/new/clean.db     指向不存在路径 = 自动建库并播种（干净库）")
+	fmt.Println("  常驻私有库可为 exe 建快捷方式，在快捷方式「目标」末尾追加 -db 参数；")
+	fmt.Println("  注意 -db 优先于默认推导，首次建库约 1~2 分钟（播种）后正常使用")
 }

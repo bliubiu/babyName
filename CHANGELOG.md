@@ -5,6 +5,47 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.19.1]
+
+**JSON 导航入口构建开关 + 私有/干净数据库用法文档化**
+
+### ✨ New Features 新增功能
+- 【构建开关】「JSON 美化查看器」导航入口对齐物料入口口径：新增
+  `VITE_SHOW_JSON` 构建开关（`featureFlags.showJsonViewer`），默认隐藏
+  （开发者调试工具，终端用户无意义），`true` 时显示；路由 `/#/json-viewer`
+  保持直达可达，与导航入口显隐解耦
+
+### 📚 Docs 文档更新
+- 【私有/干净库】`-help` 帮助与 `-db` 参数说明补充产品语义：指向既有文件 =
+  私有库（收藏/历史独立），指向不存在路径 = 自动建库播种（干净库，首跑
+  约 1~2 分钟）；常驻切换推荐「多快捷方式 + 目标追加 -db」用法
+- `docs/48` 新增 §9.11「私有 / 干净数据库用法」：用法对照表、优先级、
+  播种幂等与「运行期不支持热切换」边界
+
+### ✅ 验证
+- 前端门禁：tsc 0 错 / vitest 180 例（+2 JSON 开关用例）/ e2e 全绿；
+  `go vet` / `go build` 干净
+
+## [2026.11.19.0]
+
+**fix(desktop): FindDataDir 拒绝相对 callerFile，根治 CWD 假命中**
+
+### 🐛 Bug Fixes 问题修复
+- `-trimpath` 构建产物中 `runtime.Caller(0)` 是模块相对路径，
+  `paths.FindDataDir` 逐级 stat 以进程 CWD 为锚点解析：CWD 恰在仓库结构内时
+  假命中 DevRepo（返回裸相对 `data`），且 DevRepo 优先级高于 exe 同级 data/
+  探测。两类实测故障——仓库内 CWD 启动打包 exe 串台使用仓库 namer.db/logs
+  （冒烟假阳性）；安装版启动时 db/logs 相对解析到安装根、24MB 随装单库被
+  无视、播种按相对 `data\raw` 找源物料失败 → E-1002 启动失败弹框
+- 修复：非绝对 callerFile 直接返回空串（dev 源码 runtime.Caller 恒为绝对，
+  不影响开发期），打包态由 `FindDataDirFromExeWithParents` 正确接管
+  （commit `d9354b4`，TDD：修复前红测试实证假命中）
+
+### ✅ 验证
+- 仓库内 CWD 冒烟（自身单库命中 + 仓库零污染）、安装版启动 db 直连
+  `%LocalAppData%\Programs\NameMaster\data\namer.db`、卸载保库，全部通过；
+  go test 30 包全绿；exe 37.4MB / 安装器 20.9MB 重建通过
+
 ## [2026.11.18.4]
 
 **分发版物料入口默认隐藏：构建开关 VITE_SHOW_MATERIALS**
