@@ -30,6 +30,8 @@ export default function App() {
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/huangli" element={<HuangliPage />} />
           <Route path="/json-viewer" element={<JsonViewerPage />} />
+          {/* 物料管理路由保留：开发/运维可直接访问 /#/materials 排障；
+              导航入口由 VITE_SHOW_MATERIALS 控制，分发版默认隐藏（见 Navigation.tsx）。 */}
           <Route path="/materials" element={<MaterialsPage />} />
           <Route path="/share" element={<SharePage />} />
           <Route path="/stat" element={<StatPage />} />

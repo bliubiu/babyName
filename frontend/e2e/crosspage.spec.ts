@@ -29,6 +29,13 @@ test('收藏链路：生成 → 收藏候选 → 收藏页出现 → 取消收�
   await expect(page.getByText(fullName).first()).toHaveCount(0, { timeout: 30_000 });
 });
 
+test('导航入口：分发版默认隐藏物料管理', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: '宝宝起名' })).toBeVisible();
+  // VITE_SHOW_MATERIALS 未注入（默认构建），物料入口不应出现在导航栏
+  await expect(page.getByRole('button', { name: '物料管理' })).toHaveCount(0);
+});
+
 test('对比链路：生成 → 选 2 个加入对比 → 对比页综合分析出现', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: '宝宝起名' })).toBeVisible();
