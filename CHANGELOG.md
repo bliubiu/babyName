@@ -5,6 +5,30 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.18.3]
+
+**release 发布健壮性：分步上传 + 自动重试 + SHA256 完整性校验**
+
+### 📈 Improvements 性能/体验优化
+- `scripts/release.ps1` 上传从「一次性 `gh release create <三文件>`」改为分步：
+  先建空 release（`--generate-notes`），再逐个 `gh release upload --clobber`。
+  弱网下大文件（exe 37MB）超时只影响单个附件，不再整体回滚；上传顺序按
+  小→大（db / 安装包 / 校验清单 / exe），大文件最后传
+- **单文件上传自动重试**：新增 `-UploadRetries N`（默认 3），HTTP 408 等瞬断
+  自动重试 + 5s 间隔；每个附件上传后用 `gh release view --json assets` 的
+  `digest` 与本地 SHA256 逐一回验，哈希不一致即判失败重试，杜绝"上传成功但
+  文件不完整"
+- **SHA256 完整性校验**：发布时生成 `backend/bin/SHA256SUMS.txt`（标准
+  `<sha256>  <文件名>` 两空格格式、UTF-8 无 BOM、不含自身）随 release 上传，
+  下载方可 `sha256sum -c SHA256SUMS.txt` 校验三件套；控制台同时打印每个文件哈希
+- **断点续传**：新增 `-Resume`——tag / release 已存在时跳过占用校验、打 tag 与
+  创建 release，只补传附件；部分上传失败后提示用 `-Resume -UploadRetries 5`
+  续传，无需清理已发布内容。非 Resume 模式下若 release 已存在则拒绝重复创建
+
+### 🐛 Bug Fixes 缺陷修复
+- 修复原脚本"失败后提示重跑续传"却无法兑现的问题：前置 tag 校验与
+  `gh release create` 都会因已存在而拦截，`-Resume` 分支解决该矛盾
+
 ## [2026.11.18.2]
 
 **构建链闭环：现场制作种子库 + 独立 release 发布脚本**
