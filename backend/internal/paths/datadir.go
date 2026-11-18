@@ -55,6 +55,14 @@ func isDataDir(dir string) bool {
 //
 // 找不到时返回空串，由调用方决定回落、跳过还是失败。
 func FindDataDir(callerFile string) string {
+	// callerFile 必须是绝对路径。-trimpath 构建产物中 runtime.Caller(0) 返回
+	// 模块相对路径，下面的逐级 stat 会以进程 CWD 为锚点解析：CWD 恰在仓库
+	// 结构内时会假命中 DevRepo（数据串台 / 播种按相对路径找不到源物料），
+	// 且 DevRepo 优先级高于 exe 同级 data/ 探测，打包语义被整体带偏。
+	// dev 源码中 runtime.Caller 恒为绝对路径，此校验不影响开发期探测。
+	if !filepath.IsAbs(callerFile) {
+		return ""
+	}
 	dir := filepath.Dir(callerFile)
 	for i := 0; i < maxDataDirDepth; i++ {
 		// 情形一：当前目录本身就是数据目录。

@@ -215,3 +215,31 @@ func TestFindDataDir_空库不算标记(t *testing.T) {
 		t.Fatalf("FindDataDir = %q, 期望空串（4KB namer.db 不是有效种子库）", got)
 	}
 }
+
+// TestFindDataDir_相对callerFile直接拒绝 -trimpath 构建产物中 runtime.Caller(0)
+// 返回模块相对路径，其逐级 stat 会以进程 CWD 为锚点：CWD 恰在仓库结构内时假命中
+// DevRepo（0719 实测：冒烟串台用仓库库、安装版播种找相对 data\raw 失败 E-1002），
+// 且 DevRepo 优先级压过 exe 同级 data/ 探测。故非绝对 callerFile 必须直接拒绝。
+func TestFindDataDir_相对callerFile直接拒绝(t *testing.T) {
+	// CWD 之下造一份 data/namer.db（>1MB）——修复前相对路径探测会命中它
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "data"), 0o755); err != nil {
+		t.Fatalf("创建 data 目录失败: %v", err)
+	}
+	big := make([]byte, 2<<20) // 2MB，超过 namer.db 标记的 1MB 阈值
+	if err := os.WriteFile(filepath.Join(root, "data", "namer.db"), big, 0o644); err != nil {
+		t.Fatalf("写入 namer.db 失败: %v", err)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("获取工作目录失败: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("切换工作目录失败: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+
+	if got := FindDataDir("name/internal/bootstrap/bootstrap.go"); got != "" {
+		t.Fatalf("相对 callerFile 应直接拒绝（防 CWD 假命中），实际返回 %q", got)
+	}
+}
