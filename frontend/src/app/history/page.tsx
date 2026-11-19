@@ -113,6 +113,9 @@ export default function HistoryPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
+            <div className="empty-seal" aria-hidden>
+              空
+            </div>
             <p className="text-jade text-sm tracking-wider">暂无历史记录</p>
             <p className="text-ink-light text-xs mt-2">每次起名结果会自动保存在这里</p>
             <button onClick={() => router.push('/')} className="mt-6 btn-primary">开始起名</button>

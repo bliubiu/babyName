@@ -748,24 +748,89 @@
     -1px -1px 0 rgb(var(--color-paper-edge) / 0.25);
 }
 
-/* ---- 标题区 ---- */
-.home-hero { @apply text-center pt-2 pb-6; }
+/* ---- 标题区（引首题签 × 主标题 × 落款钤印） ---- */
+.home-hero { @apply relative text-center pt-2 pb-6 px-4 sm:px-10; }
 
+/* 引首题签：竖排小签贴左，像卷轴首部的题跋条——移动端转横排置中，
+   避免 vertical-rl 在窄屏挤压标题（DESIGN.md §7 反套路：kicker 题签化而非西式 eyebrow） */
 .home-kicker {
-  @apply text-xs font-serif mb-3;
-  letter-spacing: 0.35em;
+  @apply font-serif;
+  writing-mode: vertical-rl;
+  letter-spacing: 0.5em;
+  font-size: 0.72rem;
   color: rgb(var(--color-jade-dark));
+  padding: 0.9rem 0.35rem;
+  border-top: 2px solid rgb(var(--color-crimson) / 0.55);
+  border-bottom: 1px solid rgb(var(--color-paper-edge) / 0.8);
+  @apply absolute left-3 sm:left-6 top-1;
+}
+@media (max-width: 640px) {
+  .home-kicker {
+    writing-mode: horizontal-tb;
+    @apply relative left-auto top-auto inline-block;
+    letter-spacing: 0.35em;
+    padding: 0.15rem 0.75rem;
+    border-top-width: 0;
+    border-left: 2px solid rgb(var(--color-crimson) / 0.55);
+    border-bottom-width: 0;
+    margin-bottom: 0.75rem;
+  }
 }
 
 .dark .home-kicker { color: rgb(var(--color-jade-light)); }
 
+/* 落款钤印：右上角微微歪斜的手工钤印感；入场用既有 seal-press 动画（tailwind）。
+   .seal-mark 为可复用印章形制（评分徽章等后续复用，DESIGN.md §5）。 */
+.seal-mark {
+  @apply inline-flex items-center justify-center font-serif select-none;
+  border: 2px solid rgb(var(--color-seal-red) / 0.85);
+  border-radius: 3px;
+  color: rgb(var(--color-seal-red));
+  transform: rotate(-2.5deg);
+}
+.seal-mark:hover { transform: rotate(0deg); transition: transform 0.3s ease-out; }
+
+/* 评分印章：候选名卡分数的形制化呈现（DESIGN.md §5 印章体系）。
+   色档映射：>=90 朱章（推荐强）/ 80-89 金章 / <80 墨章——扫视即可分层。 */
+.score-seal {
+  @apply inline-flex items-center justify-center font-serif font-bold select-none;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+  padding: 0.2rem 0.45rem;
+  font-size: 1.05rem;
+  line-height: 1.1;
+  transform: rotate(-2deg);
+  min-width: 3.4rem;
+  transition: transform 0.25s ease-out;
+}
+.card:hover .score-seal { transform: rotate(0deg); }
+
+/* 空态闲章：圆形「空」章 + 引导文案（DESIGN.md §5 空态模式），无插画纯形制 */
+.empty-seal {
+  @apply mx-auto mb-3 flex items-center justify-center font-serif select-none;
+  width: 4rem;
+  height: 4rem;
+  border: 2px solid rgb(var(--color-paper-edge));
+  border-radius: 50%;
+  color: rgb(var(--color-paper-edge));
+  font-size: 1.4rem;
+  letter-spacing: 0.1em;
+  transform: rotate(-3deg);
+}
+.score-seal-red { color: rgb(var(--color-seal-red)); }
+.score-seal-gold { color: rgb(var(--color-gold-dark)); }
+.dark .score-seal-gold { color: rgb(var(--color-gold-light)); }
+.score-seal-ink { color: rgb(var(--color-ink-light)); }
+
 .home-hero-mark {
-  @apply text-xs font-serif;
-  letter-spacing: 0.6em;
-  color: rgb(var(--color-gold-dark));
+  @apply absolute right-3 sm:right-6 top-2 text-xs leading-relaxed;
+  padding: 0.5rem 0.45rem;
+  writing-mode: vertical-rl;
+  letter-spacing: 0.35em;
+  animation: sealPress 0.6s ease-out 0.5s both;
 }
 
-.dark .home-hero-mark { color: rgb(var(--color-gold-light)); }
+.dark .home-hero-mark { color: rgb(var(--color-seal-red-light)); border-color: rgb(var(--color-seal-red-light) / 0.7); }
 
 .home-hero-subtitle {
   @apply text-sm md:text-base;
@@ -788,6 +853,15 @@
   background: rgb(var(--color-seal-red) / 0.08);
   border-color: rgb(var(--color-seal-red) / 0.3);
   color: rgb(var(--color-crimson));
+  animation: errorShake 0.36s ease-out both;
+}
+
+@keyframes errorShake {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  50% { transform: translateX(4px); }
+  75% { transform: translateX(-2px); }
+  100% { transform: translateX(0); }
 }
 
 .dark .home-error {
@@ -1115,6 +1189,12 @@
 .home-submit {
   @apply w-full sm:w-auto text-lg font-bold px-16 py-3 tracking-widest;
   min-width: 220px;
+  /* 钤印式按压：按下收缩回弹，模拟落印手感（DESIGN.md §4 反馈动效） */
+  transition: transform 0.12s ease-out, box-shadow 0.2s ease-out, filter 0.2s ease-out;
+}
+.home-submit:not(:disabled):active {
+  transform: scale(0.96);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .home-submit:focus-visible {

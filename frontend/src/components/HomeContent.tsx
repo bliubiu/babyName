@@ -137,18 +137,24 @@ export default function HomeContent() {
     <div className="max-w-3xl mx-auto relative z-10">
       {/* 主卡片：咨询笺硬纸封。home-sheet 为首页局部样式，不影响全站组件类。 */}
       <div className="consultation-sheet red-ribbon corner-decor ink-wash-bg home-sheet">
-        {/* 标题区域 */}
+        {/* 标题区域：引首题签（左竖）× 主标题 × 落款钤印（右） */}
         <div className="home-hero">
-          <p className="home-kicker">传统命理 · 智能择名</p>
+          <p className="home-kicker" aria-hidden>
+            传统命理 · 智能择名
+          </p>
           <h1 className="font-serif text-3xl md:text-4xl text-crimson tracking-widest ink-calligraphy brush-underline">
             宝宝起名
           </h1>
           <div className="flex items-center justify-center gap-4 mt-5 mb-3">
             <div className="brush-divider max-w-[72px] flex-1" />
-            <span className="home-hero-mark">如意</span>
+            <p className="home-hero-subtitle whitespace-nowrap">
+              输入宝宝信息，为您推荐最合适的名字
+            </p>
             <div className="brush-divider max-w-[72px] flex-1" />
           </div>
-          <p className="home-hero-subtitle">输入宝宝信息，为您推荐最合适的名字</p>
+          <span className="home-hero-mark seal-mark" aria-hidden>
+            如意
+          </span>
         </div>
 
         {/* 错误提示 */}

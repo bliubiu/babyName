@@ -661,6 +661,9 @@ export default function ResultPage() {
 
           {topNames.length === 0 ? (
             <div className="card text-center py-10">
+              <div className="empty-seal" aria-hidden>
+                空
+              </div>
               <p className="text-ink font-medium mb-1">没有符合条件的名字</p>
               <p className="text-sm text-jade-dark/90 mb-4">试试放宽筛选条件，或换一批新名字</p>
               <button

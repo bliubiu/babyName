@@ -150,10 +150,16 @@ function NameCard({
         </div>
 
         <div className="flex items-center gap-1.5 flex-shrink-0 pr-1">
-          {/* 大号分数：列表页第一扫视信号（原为小 chip，权重不足） */}
-          <span className="flex items-baseline gap-0.5" aria-label={`综合评分 ${score.toFixed(1)} 分`}>
-            <span className="font-serif text-2xl leading-none text-gold-dark font-bold">{score.toFixed(1)}</span>
-            <span className="text-[10px] text-ink-light/90">分</span>
+          {/* 评分印章：色档映射 >=90 朱章 / 80-89 金章 / 其余墨章（DESIGN.md §5）。
+              aria-label「综合评分 X 分」是既有测试锚点，勿改文案 */}
+          <span
+            className={`score-seal ${
+              score >= 90 ? 'score-seal-red' : score >= 80 ? 'score-seal-gold' : 'score-seal-ink'
+            }`}
+            aria-label={`综合评分 ${score.toFixed(1)} 分`}
+            title={`综合评分 ${score.toFixed(1)} 分`}
+          >
+            {score.toFixed(1)}
           </span>
           {onToggleFavorite && (
             <button
