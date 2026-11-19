@@ -62,7 +62,7 @@ export function WannianliView({ currentYear, currentMonth, selectedDate, monthLu
       {/* 星期标题 */}
       <div className="grid grid-cols-7 gap-1 mb-2">
         {weekDays.map((d, i) => (
-          <div key={i} className={`text-center py-1.5 text-xs font-medium ${i >= 5 ? 'text-crimson/60' : 'text-jade/60'}`}>
+          <div key={i} className={`text-center py-1.5 text-xs font-medium ${i >= 5 ? 'text-crimson/60' : 'text-jade-dark/90'}`}>
             {d}
           </div>
         ))}

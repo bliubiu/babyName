@@ -22,7 +22,7 @@ export function DayView({
   if (!huangliData) {
     return (
       <div className="card text-center py-12">
-        <p className="text-jade/60">暂无黄历数据</p>
+        <p className="text-jade-dark/90">暂无黄历数据</p>
       </div>
     );
   }
@@ -55,7 +55,7 @@ export function DayView({
                 <span key={i} className="text-xs px-2 py-0.5 bg-jade/8 text-jade rounded-full">{item}</span>
               ))
             ) : (
-              <span className="text-ink-light/40 text-xs">诸事不宜</span>
+              <span className="text-ink-light text-xs">诸事不宜</span>
             )}
           </div>
         </div>
@@ -70,7 +70,7 @@ export function DayView({
                 <span key={i} className="text-xs px-2 py-0.5 bg-crimson/8 text-crimson rounded-full">{item}</span>
               ))
             ) : (
-              <span className="text-ink-light/40 text-xs">诸事皆宜</span>
+              <span className="text-ink-light text-xs">诸事皆宜</span>
             )}
           </div>
         </div>
@@ -152,8 +152,8 @@ export function DayView({
           {(huangliData.hours?.length ? huangliData.hours : tianGanDiZhi.map((_, i) => ({ timeRange: shichenTime[i], jiXiong: '' }))).map((hour, i) => (
             <div key={i} className="text-center p-2 bg-warm-white/60 rounded-lg">
               <div className="text-xs font-medium text-ink">{tianGanDiZhi[i]}</div>
-              <div className="text-[10px] text-jade/60 mt-0.5">{hour.timeRange}</div>
-              <div className={`text-xs font-medium mt-0.5 ${hour.jiXiong === '吉' ? 'text-jade' : hour.jiXiong === '凶' ? 'text-crimson' : 'text-ink-light/40'}`}>
+              <div className="text-[10px] text-jade-dark/90 mt-0.5">{hour.timeRange}</div>
+              <div className={`text-xs font-medium mt-0.5 ${hour.jiXiong === '吉' ? 'text-jade' : hour.jiXiong === '凶' ? 'text-crimson' : 'text-ink-light'}`}>
                 {hour.jiXiong || '—'}
               </div>
             </div>

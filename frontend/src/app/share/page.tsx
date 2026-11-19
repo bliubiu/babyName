@@ -60,13 +60,13 @@ export default function SharePage() {
         <Navigation showBackButton={true} showHistory={false} showFavorites={false} />
 
         {state.status === 'loading' && (
-          <div className="card text-center py-14 text-jade/80 text-sm">正在读取分享内容…</div>
+          <div className="card text-center py-14 text-jade-dark/90 text-sm">正在读取分享内容…</div>
         )}
 
         {state.status === 'error' && (
           <div className="card text-center py-14">
             <p className="text-ink font-medium mb-2">无法打开这份分享</p>
-            <p className="text-sm text-jade/80 mb-6">{state.message}</p>
+            <p className="text-sm text-jade-dark/90 mb-6">{state.message}</p>
             <button
               type="button"
               onClick={() => router.push('/')}
@@ -88,13 +88,13 @@ export default function SharePage() {
                   共 {state.data.names.length} 个名字{state.data.total ? ` / 原结果 ${state.data.total} 个` : ''} · 来自朋友分享
                 </p>
               </div>
-              <span className="text-xs text-jade/80">匿名分享 · 不含出生信息</span>
+              <span className="text-xs text-jade-dark/90">匿名分享 · 不含出生信息</span>
             </div>
 
             {chips.length > 0 && (
               <div className="mb-5 flex flex-wrap gap-2">
                 {chips.map(chip => (
-                  <span key={chip} className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade/80 rounded-full">
+                  <span key={chip} className="text-xs px-2.5 py-1 bg-warm-white/80 text-jade-dark/90 rounded-full">
                     {chip}
                   </span>
                 ))}
@@ -112,7 +112,7 @@ export default function SharePage() {
                         <span className="text-sm text-gold font-medium">{name.score.toFixed(1)}分</span>
                       )}
                     </div>
-                    <div className="mt-1 text-xs text-jade/80">
+                    <div className="mt-1 text-xs text-jade-dark/90">
                       {[name.pinyin, name.wuxing].filter(Boolean).join(' · ')}
                     </div>
                     {name.meaning && (
@@ -124,7 +124,7 @@ export default function SharePage() {
             </section>
 
             <div className="card flex flex-wrap items-center justify-between gap-3 p-4">
-              <p className="text-sm text-jade/80">想按自己的生辰重新算一份？</p>
+              <p className="text-sm text-jade-dark/90">想按自己的生辰重新算一份？</p>
               <button
                 type="button"
                 onClick={() => router.push('/')}

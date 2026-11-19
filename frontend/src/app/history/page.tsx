@@ -114,7 +114,7 @@ export default function HistoryPage() {
               </svg>
             </div>
             <p className="text-jade text-sm tracking-wider">暂无历史记录</p>
-            <p className="text-ink-light/40 text-xs mt-2">每次起名结果会自动保存在这里</p>
+            <p className="text-ink-light text-xs mt-2">每次起名结果会自动保存在这里</p>
             <button onClick={() => router.push('/')} className="mt-6 btn-primary">开始起名</button>
           </div>
         ) : (
@@ -138,7 +138,7 @@ export default function HistoryPage() {
                 >
                   <div className="flex justify-between items-start mb-3">
                     <div>
-                      <p className="text-xs text-jade/70">
+                      <p className="text-xs text-jade-dark/90">
                         {record.created_at ? new Date(record.created_at).toLocaleString('zh-CN') : ''}
                       </p>
                       <p className="font-serif text-base md:text-lg text-ink mt-1">
@@ -148,7 +148,7 @@ export default function HistoryPage() {
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDelete(record.id); }}
                       disabled={deletingId === record.id}
-                      className="p-1.5 rounded-full text-ink-light/30 hover:text-crimson transition-all opacity-0 group-hover:opacity-100 disabled:opacity-40"
+                      className="p-1.5 rounded-full text-ink-light hover:text-crimson transition-all opacity-0 group-hover:opacity-100 disabled:opacity-40"
                     >
                       <IconTrash size={16} />
                     </button>
@@ -165,7 +165,7 @@ export default function HistoryPage() {
                         </span>
                       ))}
                       {results.names.length > 5 && (
-                        <span className="px-2.5 py-1 text-jade/50 text-xs">
+                        <span className="px-2.5 py-1 text-jade-dark/90 text-xs">
                           +{results.names.length - 5}
                         </span>
                       )}

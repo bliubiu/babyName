@@ -139,7 +139,7 @@ export default function NameFilter({ filters, onFilterChange, totalNames, filter
 
           <div>
             <p className="block text-sm text-jade mb-2">人名频率</p>
-            <p className="text-xs text-jade/80 mb-2">基于120万人名语料统计，筛选常用/罕见人名用字</p>
+            <p className="text-xs text-jade-dark/90 mb-2">基于120万人名语料统计，筛选常用/罕见人名用字</p>
             <div className="flex flex-wrap gap-2">
               {[
                 { value: 5, label: '极高频(Top1%)' },

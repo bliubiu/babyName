@@ -30,7 +30,7 @@ function SyllableChip({ char, jp }: { char?: string; jp: JyutpingSyllable }) {
           {toneLabel(jp.tone)}
         </span>
       ) : (
-        <span className="text-xs text-ink-light/70">无声调</span>
+        <span className="text-xs text-ink-light">无声调</span>
       )}
     </div>
   );
@@ -119,7 +119,7 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
                   ? 'text-crimson bg-crimson/10'
                   : ttsDisabled
                     ? 'text-ink-light/20 cursor-not-allowed'
-                    : 'text-ink-light/30 hover:text-crimson'
+                    : 'text-ink-light hover:text-crimson'
               }`}
             >
               <IconVolume size={18} />
@@ -141,7 +141,7 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
               <SyllableChip key={i} char={aligned ? chars[i] : undefined} jp={jp} />
             ))}
           </div>
-          <p className="text-xs text-jade/70 leading-relaxed">
+          <p className="text-xs text-jade-dark/90 leading-relaxed">
             粤拼标注（Jyutping）以数字标注声调：1 阴平（高平）、2 阴上（高升）、3 阴去（中平）、
             4 阳平（低降）、5 阳上（低升）、6 阳去（中平）；平声（1/2）与仄声（3-6）交替
             是粤语音律评分的基础。以 -p/-t/-k 收尾的为入声，发音短促急收。
@@ -152,7 +152,7 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
       {/* 粤语分明细（粤语音律 + 粤语谐音） */}
       {hasCantoneseScore && (
         <div className="space-y-2.5 pt-3 border-t border-paper/30">
-          <p className="text-xs text-jade/70 tracking-wider">粤语分分解</p>
+          <p className="text-xs text-jade-dark/90 tracking-wider">粤语分分解</p>
           <div className="score-bar mb-2">
             <div className="score-bar-fill" style={{ width: `${Math.min(100, cantoneseScore)}%` }} />
           </div>
@@ -160,22 +160,22 @@ export default function CantoneseScore({ name }: CantoneseScoreProps) {
             details.map(d => (
               <div key={d.name} className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-ink-light/70 w-16 flex-shrink-0">{d.name}</span>
+                  <span className="text-xs text-ink-light w-16 flex-shrink-0">{d.name}</span>
                   <div className="flex-1 h-2 bg-paper/40 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full ${cantoneseColorMap[d.name] || 'bg-jade'} transition-all duration-700`}
                       style={{ width: `${Math.min(100, d.score)}%` }}
                     />
                   </div>
-                  <span className="text-xs text-ink-light/70 w-8 text-right font-medium">{d.score.toFixed(0)}</span>
+                  <span className="text-xs text-ink-light w-8 text-right font-medium">{d.score.toFixed(0)}</span>
                 </div>
                 {d.detail && (
-                  <p className="text-xs text-jade/70 ml-16 leading-relaxed">{d.detail}</p>
+                  <p className="text-xs text-jade-dark/90 ml-16 leading-relaxed">{d.detail}</p>
                 )}
               </div>
             ))
           ) : (
-            <p className="text-xs text-jade/70 ml-16">粤语音律 + 粤语谐音加权聚合（粤语分已并入综合分）</p>
+            <p className="text-xs text-jade-dark/90 ml-16">粤语音律 + 粤语谐音加权聚合（粤语分已并入综合分）</p>
           )}
         </div>
       )}

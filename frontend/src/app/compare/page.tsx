@@ -61,7 +61,7 @@ export default function ComparePage() {
           <Navigation showBackButton={true} showHistory={true} showFavorites={true} />
           <div className="consultation-sheet text-center py-16 animate-fade-in-up corner-decor">
             <p className="text-jade text-sm tracking-wider">请先选择至少2个名字进行对比</p>
-            <p className="text-ink-light/40 text-xs mt-2">在结果页勾选名字后点击「对比」</p>
+            <p className="text-ink-light text-xs mt-2">在结果页勾选名字后点击「对比」</p>
             <button onClick={() => router.push('/')} className="mt-6 btn-primary">去起名</button>
           </div>
         </div>
@@ -106,7 +106,7 @@ export default function ComparePage() {
                       <div className="font-serif text-xl md:text-2xl text-ink">
                         {name.surname}{name.given_name}
                       </div>
-                      <div className="text-xs text-jade/70 mt-0.5">{name.pinyin}</div>
+                      <div className="text-xs text-jade-dark/90 mt-0.5">{name.pinyin}</div>
                     </th>
                   ))}
                 </tr>

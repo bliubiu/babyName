@@ -168,23 +168,23 @@ export default function NameDetail({ name }: NameDetailProps) {
         {/* 各维度评分分解（含依据文字） */}
         {scoreDetails.length > 0 && (
           <div className="space-y-2.5">
-            <p className="text-xs text-jade/70 tracking-wider">评分分解</p>
+            <p className="text-xs text-jade-dark/90 tracking-wider">评分分解</p>
             {scoreDetails.map(d => {
               const color = colorMap[d.name] || 'bg-jade';
               return (
                 <div key={d.name} className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-ink-light/70 w-16 flex-shrink-0">{d.name}</span>
+                    <span className="text-xs text-ink-light w-16 flex-shrink-0">{d.name}</span>
                     <div className="flex-1 h-2 bg-paper/40 rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full ${color} transition-all duration-700`}
                         style={{ width: `${Math.min(100, d.score)}%` }}
                       />
                     </div>
-                    <span className="text-xs text-ink-light/70 w-8 text-right font-medium">{d.score.toFixed(0)}</span>
+                    <span className="text-xs text-ink-light w-8 text-right font-medium">{d.score.toFixed(0)}</span>
                   </div>
                   {d.detail && (
-                    <p className="text-xs text-jade/70 ml-16 leading-relaxed">
+                    <p className="text-xs text-jade-dark/90 ml-16 leading-relaxed">
                       {d.detail}
                     </p>
                   )}

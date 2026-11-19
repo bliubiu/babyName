@@ -83,7 +83,7 @@ export default function FavoritesPage() {
               <IconHeart size={48} className="text-paper-edge/40" />
             </div>
             <p className="text-jade text-sm tracking-wider">尚未收藏名字</p>
-            <p className="text-ink-light/40 text-xs mt-2">在结果页点击心形即可收藏</p>
+            <p className="text-ink-light text-xs mt-2">在结果页点击心形即可收藏</p>
             <button
               onClick={() => router.push('/')}
               className="mt-6 btn-primary"
@@ -104,12 +104,12 @@ export default function FavoritesPage() {
                     <p className="font-serif text-xl text-ink truncate">
                       {fav.surname}{fav.given_name}
                     </p>
-                    <p className="text-xs text-jade/70 mt-0.5">{fav.pinyin}</p>
+                    <p className="text-xs text-jade-dark/90 mt-0.5">{fav.pinyin}</p>
                   </div>
                   <button
                     onClick={() => fav.id && handleDelete(fav.id)}
                     disabled={deletingId === fav.id}
-                    className="p-1.5 rounded-full text-ink-light/30 hover:text-crimson transition-all hover:scale-110 opacity-0 group-hover:opacity-100"
+                    className="p-1.5 rounded-full text-ink-light hover:text-crimson transition-all hover:scale-110 opacity-0 group-hover:opacity-100"
                     title="删除收藏"
                   >
                     <IconTrash size={16} />
@@ -117,7 +117,7 @@ export default function FavoritesPage() {
                 </div>
 
                 <div className="flex items-center gap-2 mt-3">
-                  <span className="text-xs px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">
+                  <span className="text-xs px-2 py-0.5 bg-warm-white/80 text-jade-dark/90 rounded-full">
                     {fav.gender === 'male' ? '男' : '女'}
                   </span>
                   <span className="text-xs px-2 py-0.5 bg-gold/10 text-gold-dark rounded-full font-medium">

@@ -71,7 +71,7 @@ export function SolarTermModal({ term, date, onClose }: SolarTermModalProps) {
           <button
             onClick={onClose}
             aria-label="关闭节气科普"
-            className="p-2 text-ink-light/70 hover:text-crimson transition-colors text-xl leading-none"
+            className="p-2 text-ink-light hover:text-crimson transition-colors text-xl leading-none"
             title="关闭"
           >
             ×
@@ -80,7 +80,7 @@ export function SolarTermModal({ term, date, onClose }: SolarTermModalProps) {
 
         <div className="p-6 space-y-5 max-h-[65vh] overflow-y-auto">
           {/* 副标题：拼音 / 别称 / 日期 */}
-          <div className="text-sm text-jade/80 space-x-3">
+          <div className="text-sm text-jade-dark/90 space-x-3">
             <span className="font-serif tracking-wide">{knowledge.pinyin}</span>
             {knowledge.alias && <span>· 又称{knowledge.alias}</span>}
             {dateLabel && <span>· {dateLabel}</span>}
@@ -98,7 +98,7 @@ export function SolarTermModal({ term, date, onClose }: SolarTermModalProps) {
             <div className="grid grid-cols-3 gap-2">
               {knowledge.phenology.map((p, i) => (
                 <div key={p} className="rounded-lg bg-warm-white border border-paper/60 p-3 text-center">
-                  <div className="text-[10px] text-jade/60 mb-1">{['初候', '二候', '三候'][i]}</div>
+                  <div className="text-[10px] text-jade-dark/90 mb-1">{['初候', '二候', '三候'][i]}</div>
                   <div className="text-sm text-ink font-medium">{p}</div>
                 </div>
               ))}
@@ -127,11 +127,11 @@ export function SolarTermModal({ term, date, onClose }: SolarTermModalProps) {
           <section aria-label="诗词">
             <div className="consultation-sheet corner-decor rounded-lg p-4">
               <p className="font-serif text-ink text-center leading-relaxed">{knowledge.poem.text}</p>
-              <p className="text-right text-xs text-jade/70 mt-2">— {knowledge.poem.author}《{knowledge.poem.title}》</p>
+              <p className="text-right text-xs text-jade-dark/90 mt-2">— {knowledge.poem.author}《{knowledge.poem.title}》</p>
             </div>
           </section>
 
-          <p className="text-[11px] text-jade/50 text-center">
+          <p className="text-[11px] text-jade-dark/90 text-center">
             内容仅作传统文化科普，不构成气象或养生建议
           </p>
         </div>

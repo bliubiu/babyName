@@ -464,7 +464,7 @@ export default function ResultPage() {
           <Navigation showBackButton={true} showHistory={true} showFavorites={true} />
           <div className="text-center py-16">
             <p className="text-ink font-medium mb-2">没有可展示的起名结果</p>
-            <p className="text-jade/80 text-sm mb-6">
+            <p className="text-jade-dark/90 text-sm mb-6">
               生成结果不落盘，刷新后需重新生成；表单信息仍保存在本机，可一键重来
             </p>
             <div className="flex flex-wrap justify-center gap-2">
@@ -555,17 +555,17 @@ export default function ResultPage() {
 
         {/* 命理要点：紧凑单行徽章（结论常显，长文按需下钻） */}
         <div className="mb-3 flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">日主 {bazi.rishou}</span>
-          <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">喜用神 {bazi.xiyongshen.join('、')}</span>
-          <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">{zodiac}</span>
+          <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade-dark/90 rounded-full">日主 {bazi.rishou}</span>
+          <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade-dark/90 rounded-full">喜用神 {bazi.xiyongshen.join('、')}</span>
+          <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade-dark/90 rounded-full">{zodiac}</span>
           {hexagram && (
-            <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">第{hexagram.number}卦 {hexagram.name}</span>
+            <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade-dark/90 rounded-full">第{hexagram.number}卦 {hexagram.name}</span>
           )}
           {tiyong?.verdict && (
-            <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">体用{tiyong.verdict}</span>
+            <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade-dark/90 rounded-full">体用{tiyong.verdict}</span>
           )}
           {ziwei?.five_elements && (
-            <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">{ziwei.five_elements}</span>
+            <span className="text-[11px] px-2 py-0.5 bg-warm-white/80 text-jade-dark/90 rounded-full">{ziwei.five_elements}</span>
           )}
         </div>
 
@@ -611,7 +611,7 @@ export default function ResultPage() {
           {/* 筛选 + 排序同一条工具带：首屏少占一行，右侧排序对齐设计稿 */}
           <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-jade/80 mr-1">筛选</span>
+            <span className="text-xs text-jade-dark/90 mr-1">筛选</span>
             {WUXING_ORDER.map(w => (
               <button
                 key={w}
@@ -636,7 +636,7 @@ export default function ResultPage() {
             )}
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-jade/80">排序</span>
+              <span className="text-xs text-jade-dark/90">排序</span>
               <select
                 aria-label="排序方式"
                 value={sortKey}
@@ -650,7 +650,7 @@ export default function ResultPage() {
             </div>
           </div>
 
-          <Suspense fallback={<div className="p-4 text-jade/80 text-sm">加载筛选器...</div>}>
+          <Suspense fallback={<div className="p-4 text-jade-dark/90 text-sm">加载筛选器...</div>}>
             <NameFilter
               filters={filters}
               onFilterChange={updateFilters}
@@ -662,7 +662,7 @@ export default function ResultPage() {
           {topNames.length === 0 ? (
             <div className="card text-center py-10">
               <p className="text-ink font-medium mb-1">没有符合条件的名字</p>
-              <p className="text-sm text-jade/80 mb-4">试试放宽筛选条件，或换一批新名字</p>
+              <p className="text-sm text-jade-dark/90 mb-4">试试放宽筛选条件，或换一批新名字</p>
               <button
                 type="button"
                 onClick={() => updateFilters({})}
@@ -708,12 +708,12 @@ export default function ResultPage() {
                 加载更多 {topNames.length} / {displayList.length}
               </button>
             ) : (
-              <span className="text-xs text-jade/80">已展示全部 {displayList.length} 个候选</span>
+              <span className="text-xs text-jade-dark/90">已展示全部 {displayList.length} 个候选</span>
             )}
             <button
               type="button"
               onClick={() => document.getElementById('analysis-sections')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-              className="min-h-[44px] px-2 text-xs text-jade/80 hover:text-crimson transition-colors"
+              className="min-h-[44px] px-2 text-xs text-jade-dark/90 hover:text-crimson transition-colors"
             >
               八字分析 · 卦象详解 · 紫微斗数（默认收起）↓
             </button>
@@ -748,7 +748,7 @@ export default function ResultPage() {
             onOpenChange={(v) => setAnalysisOpen((prev) => ({ ...prev, bazi: v }))}
             unmountOnCollapse={false}
           >
-            <Suspense fallback={<div className="p-4 text-jade/80 text-sm">加载八字分析...</div>}>
+            <Suspense fallback={<div className="p-4 text-jade-dark/90 text-sm">加载八字分析...</div>}>
               <BaziAnalysis bazi={bazi} nayin={nayin} zodiac={zodiac} embedded />
             </Suspense>
           </CollapsibleSection>
@@ -778,7 +778,7 @@ export default function ResultPage() {
                       className={`flex-1 py-2 text-sm font-medium transition-colors ${
                         hexagramTab === t.id
                           ? 'text-crimson border-b-2 border-crimson'
-                          : 'text-ink-light/70 hover:text-ink'
+                          : 'text-ink-light hover:text-ink'
                       }`}
                     >
                       {t.label}
@@ -787,7 +787,7 @@ export default function ResultPage() {
                 </div>
               )}
               {hexagramTab === 'divination' && hexagram && (
-                <Suspense fallback={<div className="p-4 text-jade/80 text-sm">加载卦象...</div>}>
+                <Suspense fallback={<div className="p-4 text-jade-dark/90 text-sm">加载卦象...</div>}>
                   <HexagramDisplay
                     hexagram={hexagram}
                     yaoLines={hexagram_detail?.original_yao_lines}
@@ -798,7 +798,7 @@ export default function ResultPage() {
                 </Suspense>
               )}
               {hexagramTab === 'detail' && hexagram_detail && (
-                <Suspense fallback={<div className="p-4 text-jade/80 text-sm">加载卦象详解...</div>}>
+                <Suspense fallback={<div className="p-4 text-jade-dark/90 text-sm">加载卦象详解...</div>}>
                   <HexagramDetailDisplay
                     detail={hexagram_detail}
                     tiyong={tiyong}
@@ -820,7 +820,7 @@ export default function ResultPage() {
               onOpenChange={(v) => setAnalysisOpen((prev) => ({ ...prev, ziwei: v }))}
               unmountOnCollapse={false}
             >
-              <Suspense fallback={<div className="p-4 text-jade/80 text-sm">加载紫微斗数...</div>}>
+              <Suspense fallback={<div className="p-4 text-jade-dark/90 text-sm">加载紫微斗数...</div>}>
                 <ZiweiDisplay ziwei={ziwei} embedded />
               </Suspense>
             </CollapsibleSection>
@@ -853,7 +853,7 @@ export default function ResultPage() {
                           <span>{name.given_name}</span>
                         </div>
                         <div className="mt-3 text-center">
-                          <div className="text-xs text-jade/80">{name.pinyin}</div>
+                          <div className="text-xs text-jade-dark/90">{name.pinyin}</div>
                           <div className="text-xs text-gold mt-0.5 font-medium">{scoreOf(name).toFixed(1)}分</div>
                         </div>
                       </div>

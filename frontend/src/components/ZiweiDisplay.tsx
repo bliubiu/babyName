@@ -22,13 +22,13 @@ const BRIGHTNESS_STYLE: Record<string, string> = {
   利: 'bg-teal-500/15 text-teal-600',
   平: 'bg-sky-500/15 text-sky-600',
   // 凶格（不/陷）改用中性自适应色，暗色下不露白
-  不: 'bg-ink-light/10 text-ink-light/70',
+  不: 'bg-ink-light/10 text-ink-light',
   陷: 'bg-ink-light/15 text-ink-light/80',
 };
 
 function brightnessTag(b: string | undefined) {
   if (!b) return null;
-  const cls = BRIGHTNESS_STYLE[b] ?? 'bg-ink-light/10 text-ink-light/70';
+  const cls = BRIGHTNESS_STYLE[b] ?? 'bg-ink-light/10 text-ink-light';
   return (
     <span className={`ml-1 px-1.5 py-0.5 rounded text-xs leading-none ${cls}`}>{b}</span>
   );
@@ -37,7 +37,7 @@ function brightnessTag(b: string | undefined) {
 export default function ZiweiDisplay({ ziwei, embedded = false }: ZiweiDisplayProps) {
   if (!ziwei) {
     return (
-      <div className="text-center py-6 text-ink-light/70 text-sm">
+      <div className="text-center py-6 text-ink-light text-sm">
         暂无紫微斗数排盘数据
       </div>
     );
@@ -115,7 +115,7 @@ export default function ZiweiDisplay({ ziwei, embedded = false }: ZiweiDisplayPr
                   key={gong}
                   className="p-3 bg-warm-white/50 rounded-xl border border-crimson/5"
                 >
-                  <div className="text-xs text-jade/80 mb-1.5">{gong}</div>
+                  <div className="text-xs text-jade-dark/90 mb-1.5">{gong}</div>
                   {hasContent ? (
                     <div className="space-y-1">
                       {zhu.length > 0 && (
@@ -129,18 +129,18 @@ export default function ZiweiDisplay({ ziwei, embedded = false }: ZiweiDisplayPr
                         </div>
                       )}
                       {fu.length > 0 && (
-                        <div className="text-ink-light/70 text-xs">
+                        <div className="text-ink-light text-xs">
                           辅：{fu.join('、')}
                         </div>
                       )}
                       {sui.length > 0 && (
-                        <div className="text-ink-light/70 text-xs">
+                        <div className="text-ink-light text-xs">
                           曜：{sui.join('、')}
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="text-ink-light/30 text-xs">—</div>
+                    <div className="text-ink-light text-xs">—</div>
                   )}
                 </div>
               );
@@ -185,7 +185,7 @@ export default function ZiweiDisplay({ ziwei, embedded = false }: ZiweiDisplayPr
 function SummaryItem({ label, value }: { label: string; value?: string }) {
   return (
     <div className="p-2.5 bg-warm-white/60 rounded-xl">
-      <span className="text-xs text-jade/70 block">{label}</span>
+      <span className="text-xs text-jade-dark/90 block">{label}</span>
       <p className="text-ink text-sm mt-0.5 font-medium">{value || '—'}</p>
     </div>
   );

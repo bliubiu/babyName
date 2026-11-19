@@ -83,7 +83,7 @@ export default function EvaluatePage() {
             <h1 className="font-serif text-2xl md:text-3xl text-crimson tracking-widest">
               测名
             </h1>
-            <p className="text-sm text-jade/80 tracking-wider mt-3">
+            <p className="text-sm text-jade-dark/90 tracking-wider mt-3">
               输入候选名字与生辰，看它在八字八维下的表现与风险体检
             </p>
           </div>
@@ -173,7 +173,7 @@ export default function EvaluatePage() {
                 <span className="text-crimson">{result.name.surname}</span>
                 <span>{result.name.given_name}</span>
               </div>
-              <div className="text-jade/70 text-sm mt-2">{result.name.pinyin}</div>
+              <div className="text-jade-dark/90 text-sm mt-2">{result.name.pinyin}</div>
               <div className="text-gold text-2xl font-medium mt-3">
                 {(result.name.total_score ?? result.name.score).toFixed(1)} 分
               </div>
@@ -187,7 +187,7 @@ export default function EvaluatePage() {
 
             {/* 卦象（本卦经文 + 四象限解读，docs/42 P2-10） */}
             {result.hexagram && (
-              <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载卦象...</div>}>
+              <Suspense fallback={<div className="p-4 text-jade-dark/90 text-sm">加载卦象...</div>}>
                 <HexagramDisplay
                   hexagram={result.hexagram}
                   yaoLines={result.name.hexagram_detail?.original_yao_lines}
@@ -199,7 +199,7 @@ export default function EvaluatePage() {
 
             {/* 卦象详解：本/互/变三卦并排 + 体用断卦 */}
             {result.name.hexagram_detail && (
-              <Suspense fallback={<div className="p-4 text-jade/60 text-sm">加载卦象详解...</div>}>
+              <Suspense fallback={<div className="p-4 text-jade-dark/90 text-sm">加载卦象详解...</div>}>
                 <HexagramDetailDisplay
                   detail={result.name.hexagram_detail}
                   tiyong={result.name.tiyong}
@@ -228,7 +228,7 @@ export default function EvaluatePage() {
                         />
                       </div>
                       {dim.detail && (
-                        <p className="text-xs text-ink-light/70 mt-1 leading-relaxed">{dim.detail}</p>
+                        <p className="text-xs text-ink-light mt-1 leading-relaxed">{dim.detail}</p>
                       )}
                     </div>
                   ))}

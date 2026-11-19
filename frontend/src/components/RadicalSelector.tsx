@@ -104,8 +104,8 @@ export function RadicalSelector({ onSelectChars, selectedChars, disabled }: Radi
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-jade">
             <span className="font-medium">{activeGroup.name}</span>
-            <span className="text-jade/60">·</span>
-            <span className="text-jade/60">{activeGroup.meaning}</span>
+            <span className="text-jade-dark/90">·</span>
+            <span className="text-jade-dark/90">{activeGroup.meaning}</span>
           </div>
           <div
             className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 gap-1.5"
@@ -163,7 +163,7 @@ export function RadicalSelector({ onSelectChars, selectedChars, disabled }: Radi
 
       {/* 提示 */}
       {!activeRadical && (
-        <p className="text-sm text-jade/60 text-center py-2">
+        <p className="text-sm text-jade-dark/90 text-center py-2">
           点击上方偏旁标签浏览对应汉字，点击汉字即可选中
         </p>
       )}

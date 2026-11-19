@@ -91,7 +91,7 @@ export default function CollapsibleSection({
               {summary}
             </span>
           )}
-          <span className="ml-auto shrink-0 inline-flex items-center gap-1 text-xs text-jade/80 group-hover:text-jade transition-colors">
+          <span className="ml-auto shrink-0 inline-flex items-center gap-1 text-xs text-jade-dark/90 group-hover:text-jade transition-colors">
             <span className="hidden sm:inline">{isOpen ? '收起' : '展开'}</span>
             <IconChevronDown
               size={16}

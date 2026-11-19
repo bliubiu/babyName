@@ -92,7 +92,7 @@ const MaterialsPage = () => {
           <div className="overflow-x-auto rounded-xl border border-ink/10 bg-white/70 shadow-sm">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-ink/50 border-b border-ink/10">
+                <tr className="text-left text-ink-light border-b border-ink/10">
                   <th className="px-4 py-3 font-medium">物料</th>
                   <th className="px-4 py-3 font-medium">版本</th>
                   <th className="px-4 py-3 font-medium hidden sm:table-cell">指纹</th>
@@ -105,11 +105,11 @@ const MaterialsPage = () => {
                   <tr key={s.material} className="border-b border-ink/5 last:border-b-0 hover:bg-crimson/5 transition-colors">
                     <td className="px-4 py-3 font-medium text-ink">{s.material}</td>
                     <td className="px-4 py-3 text-ink/70">{s.version || '—'}</td>
-                    <td className="px-4 py-3 text-ink/50 font-mono text-xs hidden sm:table-cell" title={s.checksum}>
+                    <td className="px-4 py-3 text-ink-light font-mono text-xs hidden sm:table-cell" title={s.checksum}>
                       {s.checksum ? `${s.checksum.slice(0, 8)}…` : '—'}
                     </td>
                     <td className="px-4 py-3 text-right text-ink/70 tabular-nums">{s.row_count.toLocaleString('zh-CN')}</td>
-                    <td className="px-4 py-3 text-ink/50 hidden md:table-cell">{s.imported_at || '—'}</td>
+                    <td className="px-4 py-3 text-ink-light hidden md:table-cell">{s.imported_at || '—'}</td>
                   </tr>
                 ))}
               </tbody>

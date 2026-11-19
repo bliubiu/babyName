@@ -38,7 +38,7 @@ export default function RiskList({ risks, title = '风险体检', embedded = fal
   const list = (
     <ul className="space-y-2.5">
       {items.length === 0 ? (
-        <li className="text-sm text-ink-light/70">未发现需要留意的风险项</li>
+        <li className="text-sm text-ink-light">未发现需要留意的风险项</li>
       ) : (
         items.map((item, idx) => (
           <li key={idx} className="flex items-start gap-3">

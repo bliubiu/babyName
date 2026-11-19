@@ -32,7 +32,7 @@ export default function CompareTray({
       className="fixed inset-x-0 bottom-0 z-40 border-t border-paper/60 bg-warm-white-light/95 backdrop-blur-sm"
     >
       <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center gap-2">
-        <span className="text-xs text-jade/80 mr-1">
+        <span className="text-xs text-jade-dark/90 mr-1">
           {count > 0 ? `已选 ${count}/${MAX_COMPARE}` : '选 2–4 个名字对比'}
         </span>
 
@@ -57,7 +57,7 @@ export default function CompareTray({
           <button
             type="button"
             onClick={onClear}
-            className="min-h-[44px] px-2 text-xs text-jade/80 hover:text-crimson transition-colors"
+            className="min-h-[44px] px-2 text-xs text-jade-dark/90 hover:text-crimson transition-colors"
           >
             清空
           </button>
@@ -69,7 +69,7 @@ export default function CompareTray({
           className={`ml-auto min-h-[44px] px-4 py-1.5 rounded-xl text-sm transition-all duration-200 ${
             ready
               ? 'bg-crimson text-white hover:bg-crimson-light'
-              : 'bg-warm-white text-jade/80 border border-paper/60'
+              : 'bg-warm-white text-jade-dark/90 border border-paper/60'
           }`}
         >
           {ready ? `开始对比 ${count} 个` : '开始对比'}

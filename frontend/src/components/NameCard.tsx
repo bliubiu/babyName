@@ -139,10 +139,10 @@ function NameCard({
               {fullName}
             </button>
           </div>
-          <p className="text-xs text-jade/80 mt-0.5 ml-6">
+          <p className="text-xs text-jade-dark/90 mt-0.5 ml-6">
             {name.pinyin}
             {name.jyutping && (
-              <span className="ml-2 text-jade/60 font-mono tracking-wide" title={`粤拼：${name.jyutping}`}>
+              <span className="ml-2 text-jade-dark/90 font-mono tracking-wide" title={`粤拼：${name.jyutping}`}>
                 粤 {name.jyutping}
               </span>
             )}
@@ -153,14 +153,14 @@ function NameCard({
           {/* 大号分数：列表页第一扫视信号（原为小 chip，权重不足） */}
           <span className="flex items-baseline gap-0.5" aria-label={`综合评分 ${score.toFixed(1)} 分`}>
             <span className="font-serif text-2xl leading-none text-gold-dark font-bold">{score.toFixed(1)}</span>
-            <span className="text-[10px] text-gold-dark/70">分</span>
+            <span className="text-[10px] text-ink-light/90">分</span>
           </span>
           {onToggleFavorite && (
             <button
               onClick={handleFavoriteClick}
               aria-label={isFavorite ? `取消收藏 ${fullName}` : `收藏 ${fullName}`}
               className={`transition-all duration-200 p-1.5 rounded-full hover:scale-110 ${
-                isFavorite ? 'text-seal-red' : 'text-ink-light/70 hover:text-seal-red'
+                isFavorite ? 'text-seal-red' : 'text-ink-light hover:text-seal-red'
               }`}
               title={isFavorite ? '取消收藏' : '收藏'}
             >
@@ -176,7 +176,7 @@ function NameCard({
             onClick={handleToggleDetail}
             aria-label={showDetail ? `收起 ${fullName} 详情` : `查看 ${fullName} 详情`}
             aria-expanded={showDetail}
-            className="transition-all duration-200 p-1.5 rounded-full text-ink-light/70 hover:text-crimson hover:scale-110"
+            className="transition-all duration-200 p-1.5 rounded-full text-ink-light hover:text-crimson hover:scale-110"
             title={showDetail ? '收起详情' : '查看详情'}
           >
             {showDetail ? <IconChevronUp size={18} /> : <IconChevronDown size={18} />}
@@ -186,7 +186,7 @@ function NameCard({
 
       {/* 标签行：性别 + 五行 + 推荐理由（最多 3 个，轻量扫视） */}
       <div className="flex items-center flex-wrap gap-1.5 mt-2.5 ml-6">
-        <span className="text-xs px-2 py-0.5 bg-warm-white/80 text-jade/80 rounded-full">
+        <span className="text-xs px-2 py-0.5 bg-warm-white/80 text-jade-dark/90 rounded-full">
           {name.gender === 'male' ? '男' : '女'}
         </span>
         {name.wuxing && (
@@ -205,7 +205,7 @@ function NameCard({
         {name.reasons?.slice(0, 3).map((reason, idx) => (
           <span
             key={idx}
-            className="text-xs px-2 py-0.5 bg-warm-white/60 text-jade/80 rounded-full truncate max-w-[7.5rem]"
+            className="text-xs px-2 py-0.5 bg-warm-white/60 text-jade-dark/90 rounded-full truncate max-w-[7.5rem]"
             title={reason}
           >
             {reason}

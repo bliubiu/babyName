@@ -36,7 +36,7 @@ export default function HexagramDisplay({
 
   if (!hexagram) {
     return (
-      <div className="text-center py-6 text-ink-light/70 text-sm">
+      <div className="text-center py-6 text-ink-light text-sm">
         暂无卦象数据
       </div>
     );
@@ -64,7 +64,7 @@ export default function HexagramDisplay({
             className="w-28 md:w-32 h-auto"
           />
           <div className="text-center">
-            <div className="text-xs text-jade/70 mb-1">第{hexagram.number}卦</div>
+            <div className="text-xs text-jade-dark/90 mb-1">第{hexagram.number}卦</div>
             <span className="text-lg font-serif text-crimson">{hexagram.name}</span>
             {hexagram.symbol && (
               <span className="block text-2xl font-serif text-ink/70 mt-1" aria-hidden>
@@ -100,7 +100,7 @@ export default function HexagramDisplay({
 
         {/* 卦德 */}
         {hexagram.gua_de && (
-          <div className="text-center text-xs text-jade/70">
+          <div className="text-center text-xs text-jade-dark/90">
             卦德：{hexagram.gua_de}
           </div>
         )}
@@ -181,7 +181,7 @@ export default function HexagramDisplay({
             <button
               type="button"
               onClick={() => setShowYaoText((v) => !v)}
-              className="w-full flex items-center justify-center gap-1.5 text-xs text-jade/70 hover:text-jade transition-colors py-1"
+              className="w-full flex items-center justify-center gap-1.5 text-xs text-jade-dark/90 hover:text-jade transition-colors py-1"
               aria-expanded={showYaoText}
             >
               {showYaoText ? '收起逐爻经文' : '展开逐爻经文（爻辞 · 小象）'}
@@ -211,7 +211,7 @@ export default function HexagramDisplay({
                       </span>
                       <p className="text-ink text-sm mt-1 leading-relaxed">{ci}</p>
                       {xiaoXiang && (
-                        <p className="text-ink-light/70 text-xs mt-1 leading-relaxed">
+                        <p className="text-ink-light text-xs mt-1 leading-relaxed">
                           《象》曰：{xiaoXiang}
                         </p>
                       )}
