@@ -463,6 +463,9 @@ export default function ResultPage() {
         <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto">
           <Navigation showBackButton={true} showHistory={true} showFavorites={true} />
           <div className="text-center py-16">
+            <div className="empty-seal" aria-hidden>
+              空
+            </div>
             <p className="text-ink font-medium mb-2">没有可展示的起名结果</p>
             <p className="text-jade-dark/90 text-sm mb-6">
               生成结果不落盘，刷新后需重新生成；表单信息仍保存在本机，可一键重来

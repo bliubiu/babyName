@@ -749,31 +749,36 @@
 }
 
 /* ---- 标题区（引首题签 × 主标题 × 落款钤印） ---- */
-.home-hero { @apply relative text-center pt-2 pb-6 px-4 sm:px-10; }
+.home-hero {
+  @apply flex items-stretch gap-3 sm:gap-6 pt-3 pb-6 px-4 sm:px-10;
+}
+.home-hero-main { @apply flex-1 text-center min-w-0; }
 
 /* 引首题签：竖排小签贴左，像卷轴首部的题跋条——移动端转横排置中，
    避免 vertical-rl 在窄屏挤压标题（DESIGN.md §7 反套路：kicker 题签化而非西式 eyebrow） */
+/* 左题签：flex 三列布局的起点列，高度随正文列 stretch（永不溢出） */
 .home-kicker {
-  @apply font-serif;
+  @apply flex items-center justify-center font-serif flex-shrink-0;
   writing-mode: vertical-rl;
-  letter-spacing: 0.5em;
+  white-space: nowrap; /* 竖排单列：防折列错序 */
+  letter-spacing: 0.45em;
   font-size: 0.72rem;
   color: rgb(var(--color-jade-dark));
-  padding: 0.9rem 0.35rem;
+  padding: 0.9rem 0.4rem;
   border-top: 2px solid rgb(var(--color-crimson) / 0.55);
   border-bottom: 1px solid rgb(var(--color-paper-edge) / 0.8);
-  @apply absolute left-3 sm:left-6 top-1;
 }
 @media (max-width: 640px) {
+  /* 移动端：签转横排整行置中（竖排在窄屏会挤压正文列） */
+  .home-hero { @apply flex-col items-center; }
   .home-kicker {
     writing-mode: horizontal-tb;
-    @apply relative left-auto top-auto inline-block;
+    @apply inline-flex;
     letter-spacing: 0.35em;
-    padding: 0.15rem 0.75rem;
+    padding: 0.15rem 0.9rem;
     border-top-width: 0;
     border-left: 2px solid rgb(var(--color-crimson) / 0.55);
     border-bottom-width: 0;
-    margin-bottom: 0.75rem;
   }
 }
 
@@ -823,7 +828,7 @@
 .score-seal-ink { color: rgb(var(--color-ink-light)); }
 
 .home-hero-mark {
-  @apply absolute right-3 sm:right-6 top-2 text-xs leading-relaxed;
+  @apply flex items-center justify-center flex-shrink-0 self-start text-xs leading-relaxed;
   padding: 0.5rem 0.45rem;
   writing-mode: vertical-rl;
   letter-spacing: 0.35em;
@@ -831,6 +836,15 @@
 }
 
 .dark .home-hero-mark { color: rgb(var(--color-seal-red-light)); border-color: rgb(var(--color-seal-red-light) / 0.7); }
+
+/* 移动端钤印：随流居中（必须排在基础定义之后，同特异性靠顺序覆盖） */
+@media (max-width: 640px) {
+  .home-hero-mark {
+    position: static;
+    align-self: center;
+    margin-top: 0.75rem;
+  }
+}
 
 .home-hero-subtitle {
   @apply text-sm md:text-base;
