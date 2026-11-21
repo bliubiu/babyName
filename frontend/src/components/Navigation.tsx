@@ -1,7 +1,6 @@
 'use client';
 
 import { useRouter } from '@/lib/navigation';
-import ThemeToggle from './ThemeToggle';
 import { IconArrowLeft, IconHistory, IconHeart, IconCalendar, IconCamera, IconFileText, IconClipboardCheck, IconJson, IconDatabase } from './Icons';
 import { showJsonViewer, showMaterials } from '@/lib/featureFlags';
 
@@ -117,7 +116,6 @@ export default function Navigation({
           </button>
         )}
         <div className="ml-1 pl-2 border-l border-warm-white/60">
-          <ThemeToggle />
         </div>
       </div>
     </nav>

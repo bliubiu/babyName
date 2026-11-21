@@ -35,7 +35,8 @@
     --font-noto-serif-sc: 'Noto Serif SC', 'STSong', 'SimSun', 'Songti SC', serif;
   }
 
-  /* ---- 深色模式色彩变量 ---- */
+  /* ---- 深色模式色彩变量（休眠：切换入口与防闪烁脚本已于 2026-11-21 移除，
+       产品锁死亮色；变量段保留备将来重启暗色主题。勿在组件层散写 dark: 工具类） ---- */
   .dark {
     --color-warm-white: 17 17 17;
     --color-warm-white-light: 28 28 30;

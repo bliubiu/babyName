@@ -73,20 +73,6 @@ test('移动端：无横向溢出、高级标题单行、操作条保持文档�
   await expect(page.getByRole('button', { name: '开始取名' })).toBeVisible();
 });
 
-test('暗色主题：html.dark 生效，辅助文字使用全不透明的 ink-light', async ({ page }) => {
-  await page.addInitScript(() => {
-    try { localStorage.setItem('theme', 'dark'); } catch { /* storage 不可用时忽略 */ }
-  });
-  await page.goto('/');
-
-  await expect(page.locator('html')).toHaveClass(/dark/);
-  const helperColor = await page.locator('.home-helper').first().evaluate(
-    (el) => getComputedStyle(el).color
-  );
-  // 亮色为 rgba(74,74,74,0.85)；暗色必须去掉透明度，避免 1.4:1 级别的弱对比
-  expect(helperColor).toBe('rgb(168, 168, 168)');
-});
-
 test('回归防线：分区后常用字段与经典来源仍默认可见', async ({ page }) => {
   await page.goto('/');
 

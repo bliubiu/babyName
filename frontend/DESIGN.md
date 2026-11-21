@@ -59,7 +59,7 @@
 | 骨架屏 | `Skeleton.tsx` | 列表/卡片级，shimmer 驱动 |
 | 进度 | `.home-progress` 族 | stage 文案 + percent，aria-live="polite" |
 | 空态 | 卡片内大字 + 引导文案 | 印记式（大字号 + ink-light），不放插画 |
-| 暗色 | CSS 变量整体翻转（`.dark` 重定义 :root 值） | 组件层勿散写 dark: 工具类，变量已覆盖 |
+| 暗色 | **已停用（2026-11-21）**：切换入口与防闪烁脚本已移除，产品锁死亮色 | `.dark` CSS 变量段保留休眠备将来重启；组件层勿散写 dark: 工具类 |
 
 ## 6. Floor 底线（永不发布，hallmark 对应）
 

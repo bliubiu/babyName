@@ -5,6 +5,25 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.21.2]
+
+**fix(frontend): 移除深色模式切换——暗色观感不佳，产品锁死亮色**
+
+### 🗑️ Removed 移除功能
+- 移除导航栏「深色/浅色」切换按钮（ThemeToggle 组件删除，IconSun/IconMoon
+  随删）与 index.html 防闪烁自动暗色脚本（localStorage('theme') /
+  prefers-color-scheme 自动检测一并停用）——旧用户 localStorage 残留
+  'theme'=dark 不再生效，刷新即回亮色
+- 背景：暗色变量翻转下组件层次缺失，观感"一片暗色"（用户实测反馈）
+
+### 📚 Docs 文档更新
+- DESIGN.md 暗色行标注停用；globals.css .dark 变量段标注休眠（保留备
+  将来重启暗色主题）
+
+### ✅ 验证
+- tsc 0 错 / vitest 180 例全绿 / e2e 25/25（暗色用例随功能退役删除）/
+  vite build 通过
+
 ## [2026.11.21.1]
 
 **UI 工艺深化第二轮：其余 7 页铺开（印章体系/空态印记/对比度收尾）**

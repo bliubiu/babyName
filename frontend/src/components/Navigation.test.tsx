@@ -4,9 +4,6 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Navigation from './Navigation';
 
-// 主题开关与被测逻辑无关，替换为占位（避免触碰 Wails runtime）
-vi.mock('./ThemeToggle', () => ({ default: () => 'theme-toggle' }));
-
 function renderNav() {
   return render(
     <MemoryRouter>
