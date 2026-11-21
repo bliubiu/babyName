@@ -5,6 +5,18 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.21.3]
+
+### 📚 Docs 文档更新
+- `docs/05 部署使用手册`整篇重写为 **Wails v3 桌面端**（1.1 版 → 2.0）：构建
+  （Taskfile 一键脚本 + 三重 pin 护栏 + ADR-010 种子库现场制作策略）、NSIS
+  分发（user 作用域/随装单库/卸载保库）、数据目录语义与 -db 私有/干净库、
+  startup-error.log 错误代码表（E-1001~E-1999）；清除 Web 时代部署拓扑
+  （Gin HTTP/Next.js/Docker/nginx/3000·8080 端口/手工 embed 复制）冗余，
+  1059 行 → 约 200 行
+- 构建脚本核对：scripts/build.ps1（-Wails3Path/-SkipInstaller/种子库备份恢复）
+  与 Taskfile 任务名、startup_failure.go 错误代码逐项与手册对齐
+
 ## [2026.11.21.2]
 
 **fix(frontend): 移除深色模式切换——暗色观感不佳，产品锁死亮色**
