@@ -19,7 +19,10 @@ import StatPage from '@/app/stat/page';
 export default function App() {
   return (
     <Providers>
-      <div className="fixed inset-0 bg-texture bg-xiangyun pointer-events-none" />
+      {/* 背景纹理双层叠加：噪点颗粒 + 祥云暗纹。同元素双类会因 background-image
+          互相覆盖只剩一个（DESIGN.md §2 纹理规则），必须分层。 */}
+      <div className="fixed inset-0 bg-xiangyun pointer-events-none" />
+      <div className="fixed inset-0 bg-texture pointer-events-none" />
       <div className="relative z-10 min-h-screen">
         <Routes>
           <Route path="/" element={<HomePage />} />

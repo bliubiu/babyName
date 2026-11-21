@@ -472,27 +472,27 @@
 /* ---- 宣纸纹理基底 ---- */
 .bg-texture {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-  opacity: 0.03;
+  opacity: 0.055;
   mix-blend-mode: multiply;
   pointer-events: none;
 }
 
 .dark .bg-texture {
-  opacity: 0.04;
+  opacity: 0.06;
   mix-blend-mode: screen;
 }
 
 /* ---- 祥云纹暗纹 ---- */
 .bg-xiangyun {
-  background-image: url("data:image/svg+xml,%3Csvg width='160' height='120' viewBox='0 0 160 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 70 Q30 50 50 55 Q55 40 70 45 Q75 30 90 38 Q105 28 115 40 Q130 35 135 50 Q150 48 155 60 Q158 70 150 75 Q145 85 130 82 Q120 90 105 85 Q90 95 75 88 Q60 96 45 88 Q30 92 20 85 Q10 80 20 70Z' fill='rgba(74,74,74,0.04)'/%3E%3Cpath d='M100 20 Q105 12 115 15 Q118 8 128 12 Q132 5 140 10 Q142 18 135 22 Q128 30 118 26 Q108 30 100 24 Q95 22 100 20Z' fill='rgba(74,74,74,0.03)'/%3E%3Cpath d='M0 90 Q8 85 18 88 Q22 80 32 84 Q35 78 42 82 Q40 90 32 94 Q22 98 12 94 Q4 96 0 90Z' fill='rgba(74,74,74,0.02)'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg width='160' height='120' viewBox='0 0 160 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 70 Q30 50 50 55 Q55 40 70 45 Q75 30 90 38 Q105 28 115 40 Q130 35 135 50 Q150 48 155 60 Q158 70 150 75 Q145 85 130 82 Q120 90 105 85 Q90 95 75 88 Q60 96 45 88 Q30 92 20 85 Q10 80 20 70Z' fill='rgba(74,74,74,0.032)'/%3E%3Cpath d='M100 20 Q105 12 115 15 Q118 8 128 12 Q132 5 140 10 Q142 18 135 22 Q128 30 118 26 Q108 30 100 24 Q95 22 100 20Z' fill='rgba(74,74,74,0.024)'/%3E%3Cpath d='M0 90 Q8 85 18 88 Q22 80 32 84 Q35 78 42 82 Q40 90 32 94 Q22 98 12 94 Q4 96 0 90Z' fill='rgba(74,74,74,0.018)'/%3E%3C/svg%3E");
   background-repeat: repeat;
-  background-size: 160px 120px;
+  background-size: 170px 128px;
 }
 
 .dark .bg-xiangyun {
-  background-image: url("data:image/svg+xml,%3Csvg width='160' height='120' viewBox='0 0 160 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 70 Q30 50 50 55 Q55 40 70 45 Q75 30 90 38 Q105 28 115 40 Q130 35 135 50 Q150 48 155 60 Q158 70 150 75 Q145 85 130 82 Q120 90 105 85 Q90 95 75 88 Q60 96 45 88 Q30 92 20 85 Q10 80 20 70Z' fill='rgba(255,255,255,0.03)'/%3E%3Cpath d='M100 20 Q105 12 115 15 Q118 8 128 12 Q132 5 140 10 Q142 18 135 22 Q128 30 118 26 Q108 30 100 24 Q95 22 100 20Z' fill='rgba(255,255,255,0.02)'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg width='160' height='120' viewBox='0 0 160 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 70 Q30 50 50 55 Q55 40 70 45 Q75 30 90 38 Q105 28 115 40 Q130 35 135 50 Q150 48 155 60 Q158 70 150 75 Q145 85 130 82 Q120 90 105 85 Q90 95 75 88 Q60 96 45 88 Q30 92 20 85 Q10 80 20 70Z' fill='rgba(255,255,255,0.028)'/%3E%3Cpath d='M100 20 Q105 12 115 15 Q118 8 128 12 Q132 5 140 10 Q142 18 135 22 Q128 30 118 26 Q108 30 100 24 Q95 22 100 20Z' fill='rgba(255,255,255,0.022)'/%3E%3C/svg%3E");
   background-repeat: repeat;
-  background-size: 160px 120px;
+  background-size: 170px 128px;
 }
 
 /* ---- 回纹边框 ---- */

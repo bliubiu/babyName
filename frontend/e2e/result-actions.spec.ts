@@ -120,8 +120,11 @@ test('历史记录：生成自动落库，可删除该条', async ({ page }) => 
   // 删除按钮为纯图标（IconTrash），按记录卡片内的按钮定位
   const deleteButtons = page.locator('div.card button');
   await expect(deleteButtons.first()).toBeVisible({ timeout: 30_000 });
-  const countBefore = await deleteButtons.count();
+  // 以「被删条目消失」为准：e2e 库历史总数可能超过分页上限（100 条满页），
+  // 删一条后下一条顶位使 count 不变，按 count-1 断言会假失败（2026.11.21 实测）
+  const firstCard = page.locator('div.card').first();
+  const firstCardText = await firstCard.innerText();
   await deleteButtons.first().click();
   await expect(page.getByText('删除成功')).toBeVisible({ timeout: 30_000 });
-  await expect(deleteButtons).toHaveCount(countBefore - 1, { timeout: 30_000 });
+  await expect(firstCard).not.toHaveText(firstCardText, { timeout: 30_000 });
 });
