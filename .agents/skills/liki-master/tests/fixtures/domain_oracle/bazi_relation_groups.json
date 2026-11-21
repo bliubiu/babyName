@@ -1,0 +1,114 @@
+{
+  "schema_version": "domain-oracle-bazi-relation-groups-v2",
+  "basis": "天干五合、地支六合、三合、三会、六冲、六害与三刑通行口径；组成立必须成员齐备，自刑须同支成双。紧邻天干五合进 gan_he，隔位 / 远隔只进 gan_he_candidate。",
+  "sources": [
+    "《三命通会》合会冲刑",
+    "《子平真诠》地支关系",
+    "《三命通会》天干五合"
+  ],
+  "cases": [
+    {
+      "id": "gan-he-and-branch-he",
+      "pillars": [
+        "甲子",
+        "己巳",
+        "甲子",
+        "乙丑"
+      ],
+      "expected": [
+        {
+          "field": "gan_he",
+          "group": "甲己"
+        },
+        {
+          "field": "zhi_liu_he",
+          "group": "子丑"
+        }
+      ]
+    },
+    {
+      "id": "complete-sanhe",
+      "pillars": [
+        "甲申",
+        "甲子",
+        "甲辰",
+        "甲子"
+      ],
+      "expected": [
+        {
+          "field": "san_he",
+          "group": "申子辰"
+        }
+      ]
+    },
+    {
+      "id": "chou-xu-wei-xing",
+      "pillars": [
+        "乙丑",
+        "甲戌",
+        "甲未",
+        "甲子"
+      ],
+      "expected": [
+        {
+          "field": "liu_chong",
+          "group": "丑未"
+        },
+        {
+          "field": "liu_hai",
+          "group": "子未"
+        },
+        {
+          "field": "liu_xing",
+          "group": "丑戌未"
+        },
+        {
+          "field": "zhi_liu_he",
+          "group": "子丑"
+        }
+      ]
+    },
+    {
+      "id": "zi-self-xing-requires-pair",
+      "pillars": [
+        "甲子",
+        "甲子",
+        "甲午",
+        "甲午"
+      ],
+      "expected": [
+        {
+          "field": "liu_chong",
+          "group": "子午"
+        },
+        {
+          "field": "liu_xing",
+          "group": "午午"
+        }
+      ]
+    },
+    {
+      "id": "non-adjacent-stem-he-is-candidate-not-tight-group",
+      "pillars": [
+        "甲子",
+        "丙寅",
+        "己巳",
+        "庚午"
+      ],
+      "expected": [
+        {
+          "field": "gan_he_candidate",
+          "group": "甲己"
+        },
+        {
+          "field": "liu_chong",
+          "group": "子午"
+        },
+        {
+          "field": "liu_hai",
+          "group": "寅巳"
+        }
+      ]
+    }
+  ]
+}
