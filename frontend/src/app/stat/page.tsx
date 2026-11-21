@@ -14,7 +14,7 @@ function rateLevel(rate: number): { label: string; className: string } {
   if (rate >= 0.1) return { label: '重名度较高', className: 'bg-crimson/5 text-crimson' };
   if (rate >= 0.01) return { label: '重名度一般', className: 'bg-gold/10 text-gold' };
   if (rate > 0) return { label: '重名度较低', className: 'bg-jade/10 text-jade' };
-  return { label: '未收录', className: 'bg-warm-white text-paper-edge/60' };
+  return { label: '未收录', className: 'bg-warm-white text-ink-light' };
 }
 
 // 格式化占比：0.0523 → "0.052%"
@@ -180,7 +180,12 @@ const StatPage = () => {
             </div>
           )}
           {!topQuery.isLoading && !topQuery.isError && topNames.length === 0 && (
-            <p className="text-center text-paper-edge/60 py-8 text-sm">暂无数据</p>
+            <>
+              <div className="empty-seal" aria-hidden>
+                空
+              </div>
+              <p className="text-center text-ink-light text-sm">暂无数据</p>
+            </>
           )}
           {!topQuery.isLoading && !topQuery.isError && topNames.length > 0 && (
             <ul className="space-y-2">

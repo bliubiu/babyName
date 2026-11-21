@@ -72,15 +72,15 @@ export default function FavoritesPage() {
           <h1 className="font-serif text-2xl md:text-3xl text-ink ink-calligraphy">我的收藏</h1>
           <div className="flex items-center justify-center gap-4 mt-3">
             <div className="brush-divider max-w-[60px] flex-1" />
-            <span className="text-paper-edge/40 text-xs tracking-[0.5em] font-serif">珍藏</span>
+            <span className="text-jade-dark/80 text-xs tracking-[0.5em] font-serif">珍藏</span>
             <div className="brush-divider max-w-[60px] flex-1" />
           </div>
         </div>
 
         {favorites.length === 0 ? (
           <div className="consultation-sheet text-center py-16 animate-fade-in-up corner-decor">
-            <div className="flex justify-center mb-4">
-              <IconHeart size={48} className="text-paper-edge/40" />
+            <div className="empty-seal" aria-hidden>
+              空
             </div>
             <p className="text-jade text-sm tracking-wider">尚未收藏名字</p>
             <p className="text-ink-light text-xs mt-2">在结果页点击心形即可收藏</p>

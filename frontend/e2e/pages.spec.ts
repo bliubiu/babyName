@@ -25,8 +25,9 @@ test('测名链路：填姓名 → 开始测名 → 评分结果出现', async (
   await page.getByPlaceholder('如：浩然').fill('浩然');
   await page.getByRole('button', { name: '开始测名' }).click();
 
-  // 评分出现（X.X 分 形式）且八维评分依据渲染
-  await expect(page.getByText(/\d+\.\d+ 分/).first()).toBeVisible({ timeout: 60_000 });
+  // 评分出现：名帖印章（score-seal-lg）章内「综合评分」小字 + 数字——
+  // IAB playwright 表面无 page.getByLabelText，以章内文本为锚
+  await expect(page.getByText('综合评分').first()).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText('八维评分依据')).toBeVisible({ timeout: 60_000 });
 });
 

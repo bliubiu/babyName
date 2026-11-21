@@ -60,6 +60,9 @@ export default function ComparePage() {
         <div className="max-w-4xl mx-auto">
           <Navigation showBackButton={true} showHistory={true} showFavorites={true} />
           <div className="consultation-sheet text-center py-16 animate-fade-in-up corner-decor">
+            <div className="empty-seal" aria-hidden>
+              空
+            </div>
             <p className="text-jade text-sm tracking-wider">请先选择至少2个名字进行对比</p>
             <p className="text-ink-light text-xs mt-2">在结果页勾选名字后点击「对比」</p>
             <button onClick={() => router.push('/')} className="mt-6 btn-primary">去起名</button>
@@ -89,7 +92,7 @@ export default function ComparePage() {
           <h1 className="font-serif text-2xl md:text-3xl text-ink ink-calligraphy">名字对比</h1>
           <div className="flex items-center justify-center gap-4 mt-3">
             <div className="brush-divider max-w-[60px] flex-1" />
-            <span className="text-paper-edge/40 text-xs tracking-[0.5em] font-serif">权衡</span>
+            <span className="text-jade-dark/80 text-xs tracking-[0.5em] font-serif">权衡</span>
             <div className="brush-divider max-w-[60px] flex-1" />
           </div>
         </div>

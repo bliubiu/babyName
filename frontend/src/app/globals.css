@@ -822,6 +822,26 @@
   letter-spacing: 0.1em;
   transform: rotate(-3deg);
 }
+/* 大档：测名页「名帖」中心位总评分（>=90 朱章 / 其余金章） */
+.score-seal-lg {
+  @apply inline-flex flex-col items-center justify-center font-serif font-bold select-none;
+  border: 2.5px solid currentColor;
+  border-radius: 6px;
+  padding: 0.6rem 1.1rem;
+  font-size: 1.9rem;
+  line-height: 1.15;
+  transform: rotate(-1.5deg);
+}
+.score-seal-lg .score-seal-unit {
+  font-size: 0.7rem;
+  font-weight: normal;
+  letter-spacing: 0.2em;
+  opacity: 0.85;
+}
+.score-seal-lg.score-seal-red { color: rgb(var(--color-seal-red)); }
+.score-seal-lg.score-seal-gold { color: rgb(var(--color-gold-dark)); }
+.dark .score-seal-lg.score-seal-gold { color: rgb(var(--color-gold-light)); }
+
 .score-seal-red { color: rgb(var(--color-seal-red)); }
 .score-seal-gold { color: rgb(var(--color-gold-dark)); }
 .dark .score-seal-gold { color: rgb(var(--color-gold-light)); }

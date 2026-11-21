@@ -101,7 +101,7 @@ export default function HistoryPage() {
           <h1 className="font-serif text-2xl md:text-3xl text-ink ink-calligraphy">历史记录</h1>
           <div className="flex items-center justify-center gap-4 mt-3">
             <div className="brush-divider max-w-[60px] flex-1" />
-            <span className="text-paper-edge/40 text-xs tracking-[0.5em] font-serif">往昔</span>
+            <span className="text-jade-dark/80 text-xs tracking-[0.5em] font-serif">往昔</span>
             <div className="brush-divider max-w-[60px] flex-1" />
           </div>
         </div>

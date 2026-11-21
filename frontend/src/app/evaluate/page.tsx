@@ -174,10 +174,16 @@ export default function EvaluatePage() {
                 <span>{result.name.given_name}</span>
               </div>
               <div className="text-jade-dark/90 text-sm mt-2">{result.name.pinyin}</div>
-              <div className="text-gold text-2xl font-medium mt-3">
-                {(result.name.total_score ?? result.name.score).toFixed(1)} 分
+              <div className="mt-4 flex justify-center">
+                <div
+                  className={`score-seal-lg ${(result.name.total_score ?? result.name.score) >= 90 ? 'score-seal-red' : 'score-seal-gold'}`}
+                  aria-label={`综合评分 ${(result.name.total_score ?? result.name.score).toFixed(1)} 分`}
+                >
+                  {(result.name.total_score ?? result.name.score).toFixed(1)}
+                  <span className="score-seal-unit">综合评分</span>
+                </div>
               </div>
-              <div className="text-ink-light/50 text-xs mt-1">
+              <div className="text-ink-light text-xs mt-1">
                 {result.name.wuxing} · {result.name.strokes} 画 · 生肖{result.zodiac}
               </div>
               {result.name.meaning && (

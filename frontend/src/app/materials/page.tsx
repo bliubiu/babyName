@@ -128,7 +128,7 @@ const MaterialsPage = () => {
                   {item.error ? (
                     <span className="text-crimson text-xs flex-1">{item.error}</span>
                   ) : item.skipped ? (
-                    <span className="text-ink/40 text-xs flex-1">指纹未变，跳过</span>
+                    <span className="text-ink-light text-xs flex-1">指纹未变，跳过</span>
                   ) : (
                     <span className="text-jade text-xs flex-1">写入 {item.rows.toLocaleString('zh-CN')} 行</span>
                   )}
@@ -154,7 +154,7 @@ const MaterialsPage = () => {
             {importMutation.isPending ? <Spinner size="small" /> : <IconRefresh size={16} />}
             {importMutation.isPending ? '导入中…（可能需要数十秒）' : '重新导入物料'}
           </button>
-          <p className="mt-2 text-xs text-ink/40 leading-relaxed">
+          <p className="mt-2 text-xs text-ink-light leading-relaxed">
             重导完成后建议重启应用，使运行期内存缓存（诗词索引/字频统计）与库同步。
           </p>
         </section>
