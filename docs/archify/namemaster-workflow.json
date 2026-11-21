@@ -2,7 +2,7 @@
   "schema_version": 2,
   "diagram_type": "workflow",
   "meta": {
-    "title": "起名 NameMaster 业务流程",
+    "title": "起名 Namer 业务流程",
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "viewBox": [1240, 794]

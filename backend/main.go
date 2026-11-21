@@ -149,7 +149,7 @@ func run() error {
 	)
 
 	app := application.New(application.Options{
-		Name:        "起名 NameMaster",
+		Name:        "起名 Namer",
 		Description: "基于八字五行、易经卦象与音形义的智能起名工具",
 		Services: []application.Service{
 			// 生成器静态分析此调用，绑定 res.App 的全部导出方法（Startup 已改名
@@ -168,7 +168,7 @@ func run() error {
 	})
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:  "起名 NameMaster",
+		Title:  "起名 Namer",
 		Width:  1280,
 		Height: 860,
 		URL:    "/",
@@ -201,7 +201,7 @@ func initLogger(dataDir string, source bootstrap.DataDirSource) error {
 }
 
 func printHelp() {
-	fmt.Println("起名 NameMaster 桌面端 (Wails v3)")
+	fmt.Println("起名 Namer 桌面端 (Wails v3)")
 	fmt.Println("")
 	fmt.Println("Usage:")
 	fmt.Println("  namer-desktop.exe [options]")

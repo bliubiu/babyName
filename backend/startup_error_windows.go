@@ -22,7 +22,7 @@ func showStartupError(msg string) {
 	if err != nil {
 		return
 	}
-	title, err := syscall.UTF16PtrFromString("起名 NameMaster 启动失败")
+	title, err := syscall.UTF16PtrFromString("起名 Namer 启动失败")
 	if err != nil {
 		return
 	}
