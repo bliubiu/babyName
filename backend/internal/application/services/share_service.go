@@ -21,6 +21,10 @@ import (
 //  2. 大小上限：避免把 shares 表当文件存储，也配合 main.go 的 1MB 请求体上限。
 const maxSharePayloadBytes = 64 << 10
 
+// shareTTL 分享链接有效期。链接无账号鉴权，任何人拿到 id 即可读；
+// 永久有效等于把展示快照长期公开，因此设置 30 天有效期，过期按「不存在」处理。
+const shareTTL = 30 * 24 * time.Hour
+
 var (
 	ErrShareNotFound = errors.New("分享不存在或已失效")
 	ErrInvalidShare  = errors.New("分享内容不合法")
@@ -111,6 +115,9 @@ func (s *ShareService) Get(ctx context.Context, id string) (json.RawMessage, err
 		return nil, err
 	}
 	if record == nil {
+		return nil, ErrShareNotFound
+	}
+	if !record.CreatedAt.IsZero() && time.Since(record.CreatedAt) > shareTTL {
 		return nil, ErrShareNotFound
 	}
 	return json.RawMessage(record.Payload), nil

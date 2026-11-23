@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"name/internal/infrastructure/database"
 )
@@ -126,5 +127,35 @@ func TestShareService_GetRejectsBadID(t *testing.T) {
 	}
 	if _, err := svc.Get(context.Background(), strings.Repeat("a", 32)); !errors.Is(err, ErrShareNotFound) {
 		t.Errorf("不存在的合法 id 期望 ErrShareNotFound，实际 %v", err)
+	}
+}
+
+func TestShareService_ExpiredShareNotFound(t *testing.T) {
+	store := &fakeShareStore{records: make(map[string]*database.ShareRecord)}
+	svc := NewShareService(store)
+	id := strings.Repeat("a", 32)
+	store.records[id] = &database.ShareRecord{
+		ID:        id,
+		Payload:   `{"title":"测试"}`,
+		CreatedAt: time.Now().UTC().Add(-shareTTL - time.Hour),
+	}
+
+	if _, err := svc.Get(context.Background(), id); !errors.Is(err, ErrShareNotFound) {
+		t.Errorf("超过 %v 的分享应视为不存在，实际 err=%v", shareTTL, err)
+	}
+}
+
+func TestShareService_FreshShareReadable(t *testing.T) {
+	store := &fakeShareStore{records: make(map[string]*database.ShareRecord)}
+	svc := NewShareService(store)
+	id := strings.Repeat("b", 32)
+	store.records[id] = &database.ShareRecord{
+		ID:        id,
+		Payload:   `{"title":"测试"}`,
+		CreatedAt: time.Now().UTC().Add(-time.Hour),
+	}
+
+	if _, err := svc.Get(context.Background(), id); err != nil {
+		t.Errorf("有效期内分享应可读，实际 err=%v", err)
 	}
 }
