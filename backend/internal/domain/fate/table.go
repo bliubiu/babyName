@@ -194,6 +194,13 @@ func (t *ExcellentTable) TryPush(entry ExcellentEntry) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	// Finalize 会释放 seen（置 nil）表示表已封闭。此时再写入属于调用方
+	// 时序错误，旧实现会在 t.seen[key]=true 处 nil map panic；这里直接忽略，
+	// 保持已发布的榜单不可变，避免把编程错误升级成进程崩溃。
+	if t.dedup && t.seen == nil {
+		return
+	}
+
 	// 去重（skipDedup 表跳过，省下每次 push 的字符串拼接与 map 写入）
 	if t.dedup {
 		key := entry.Char1 + entry.Char2

@@ -180,7 +180,7 @@ func entryKeys(entries []ExcellentEntry) []string {
 }
 
 // TestExcellentTable_CanEnterNeverDropsBetterEntries 保守剪枝的等价性守护
-//（docs/46 P2）：canEnter 可以少剪，但绝不能剪掉任何 betterEntry 判定为
+// （docs/46 P2）：canEnter 可以少剪，但绝不能剪掉任何 betterEntry 判定为
 // 「更优、应替换堆顶」的条目，否则榜单会随剪枝悄悄变化。
 //
 // 最易写错的是同分边界：betterEntry 同分按 Char1+Char2 字典序决胜，
@@ -227,5 +227,19 @@ func TestExcellentTable_CanEnterWhenNotFull(t *testing.T) {
 		if !table.canEnter(sc) {
 			t.Errorf("表未满时分数 %v 应放行", sc)
 		}
+	}
+}
+
+// TestTryPushAfterFinalizeIgnored Finalize 会释放 seen；此后误调用 TryPush
+// 不得因 nil map 赋值而 panic，且已发布榜单保持不变。
+func TestTryPushAfterFinalizeIgnored(t *testing.T) {
+	table := NewExcellentTableWithCap(2)
+	table.TryPush(ExcellentEntry{Char1: "明", Char2: "月", Score: 80})
+	table.Finalize()
+	before := table.Len()
+
+	table.TryPush(ExcellentEntry{Char1: "子", Char2: "涵", Score: 90})
+	if after := table.Len(); after != before {
+		t.Errorf("Finalize 后写入改变了表长度: %d → %d", before, after)
 	}
 }
