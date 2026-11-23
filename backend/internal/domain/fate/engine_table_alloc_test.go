@@ -51,6 +51,8 @@ func TestDoubleNameTableCapacityAdaptsToRequest(t *testing.T) {
 		if want < minExcellentTablePoolSize {
 			want = minExcellentTablePoolSize
 		}
+		// 额外留 count 条余量，供红线名剔除后补位
+		want += count
 		got := out.ExcellentTable.cap
 
 		if got == excellentTableCapacity && count < excellentTableCapacity/10 {
@@ -88,8 +90,8 @@ func TestSmallCountStillGetsReasonableCapacity(t *testing.T) {
 	if out == nil || out.ExcellentTable == nil {
 		t.Fatal("未产出候选表")
 	}
-	if got := out.ExcellentTable.cap; got != minExcellentTablePoolSize {
-		t.Errorf("Count=1 时表容量 = %d，期望下限 %d", got, minExcellentTablePoolSize)
+	if got := out.ExcellentTable.cap; got != minExcellentTablePoolSize+1 {
+		t.Errorf("Count=1 时表容量 = %d，期望 %d（下限 + 红线补位余量）", got, minExcellentTablePoolSize+1)
 	}
 }
 
@@ -170,6 +172,7 @@ func TestSingleNameTableCapacityAdapts(t *testing.T) {
 	if want < minExcellentTablePoolSize {
 		want = minExcellentTablePoolSize
 	}
+	want += count
 	if got := out.ExcellentTable.cap; got != want {
 		t.Errorf("单名 Count=%d 时表容量 = %d，期望 %d", count, got, want)
 	}

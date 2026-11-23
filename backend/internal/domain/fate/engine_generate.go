@@ -295,7 +295,7 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		} else {
 			// 双名：迭代 Char1 × Char2（全量枚举，按外层 Char1 分片并行）
 			// 合并结果**就地写入**传入的 table，不再重造（docs/28 W6）。
-			s.generateDoubleName(ctx, infos, table, &totalCount, fateData, surnamePinyin, topCount, xiSet)
+			s.generateDoubleName(ctx, infos, table, &totalCount, fateData, surnamePinyin, poolSize+topCount, xiSet)
 		}
 	}
 

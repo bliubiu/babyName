@@ -410,7 +410,7 @@ func (s *sessionImpl) generateSingleName(
 //   - 组合级过滤（IsBadCombo / IsHistoricalFigureCombo / PairBlacklist 等）
 //   - 早停：local.IsFull() 时按 (a, b) 组合潜力分与本地堆最小分比较
 //
-// localTable 容量自适应 topCount（避免无谓的 10000 容量浪费内存）。
+// localTable 容量取全局池容量，保证各分片的高分条目不会在局部被提前淘汰。
 // 末尾合并各分片局部 Top-N 到调用方传入的 table（**就地填充，不再重造**）。
 //
 // ★ 历史缺陷（docs/28 W6）：本函数的 table 参数曾是 `**ExcellentTable`，
@@ -424,18 +424,16 @@ func (s *sessionImpl) generateDoubleName(
 	totalCount *atomic.Int64,
 	fateData *FateData,
 	surnamePinyin string,
-	topCount int,
+	poolCap int,
 	xiSet map[string]bool,
 ) {
 	workers := workerCountHint(len(infos))
 
-	// localTable 容量自适应 topCount（避免无谓的 10000 容量浪费内存）：
-	// 取 topCount*2 留余量避免抖动，溢出时 TryPush 按堆顶最小分替换。
-	// topCount 在 NewSessionWithFilter 后由 input.Options.Count 决定（默认 50）。
-	localCap := topCount * 2
-	if localCap < 100 {
-		localCap = 100
-	}
+	// localTable 容量必须与全局池一致：每个分片都可能单独贡献全局 Top-K，
+	// 若只留 topCount*2，分片内第 2N+1 名之后的高分条目会被局部剪枝丢弃，
+	// 全局池（10N）就凑不满，五行多样性与红线补位都会缺候选。
+	// 容量只影响堆内存与替换次数，不增加评分计算，开销可忽略。
+	localCap := max(poolCap, 100)
 
 	chunkSize := (len(infos) + workers - 1) / workers
 	localTables := make([]*ExcellentTable, workers)
