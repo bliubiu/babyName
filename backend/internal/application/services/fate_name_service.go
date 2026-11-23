@@ -96,6 +96,16 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 	sy, sm, sd, sh, smin, _ = bazi.ApplyTrueSolar(sy, sm, sd, sh, smin, req.BirthLocation, req.BirthLongitude)
 	born := time.Date(sy, time.Month(sm), sd, sh, smin, 0, 0, time.UTC)
 
+	// 完整八字分析：响应 Bazi 必须与 /generate 同构（日主强弱、节气、格局、
+	// 五行力量、用神评分等），否则「完整分析」反而比基础生成少字段。
+	// 与引擎内 fateData 同源同算法，喜用神再以 classicXi 兜底统一。
+	fullBazi, baziErr := bazi.AnalyzeBazi(sy, sm, sd, sh, smin)
+	if baziErr != nil {
+		logger.Warn("完整分析：八字排盘失败，响应降级为精简字段",
+			zap.String("surname", req.Surname),
+			zap.Error(baziErr))
+	}
+
 	// 经典喜用神：既是候选池收窄口径，也是响应 Bazi.Xiyongshen 的口径。
 	// 历史隐患（P2-6）：响应此前直接用 fate 引擎内部 BalanceXiYongJi 的
 	// XiYongShen，导致 /analysis=[水] 与 /generate=[木水金] 自相矛盾；
@@ -245,42 +255,13 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 			RishouWuxing: output.FateData.WuXingXiji.RiZhuWuXing,
 			Nayin:        nayin,
 		}
-
-		// 填充四柱（年/月/日/时）和五行分布
-		fourPillars := output.FateData.BaziInfo.FourPillars
-		if len(fourPillars) == 4 {
-			baziAnalysis.Bazi = bazi.Bazi{
-				Year:        fourPillars[0],
-				Month:       fourPillars[1],
-				Day:         fourPillars[2],
-				Hour:        fourPillars[3],
-				YearGanzhi:  fourPillars[0],
-				MonthGanzhi: fourPillars[1],
-				DayGanzhi:   fourPillars[2],
-				HourGanzhi:  fourPillars[3],
-			}
-			// 四柱纳音
-			baziAnalysis.FourNayin = bazi.BuildFourPillarNayin(&baziAnalysis.Bazi)
-			if baziAnalysis.FourNayin != nil {
-				baziAnalysis.Nayin = baziAnalysis.FourNayin.Year.Nayin
-			}
-			// 统计五行分布：天干+地支各算一个，共 8 个五行
-			for _, pillar := range fourPillars {
-				runes := []rune(pillar)
-				if len(runes) < 2 {
-					continue
-				}
-				tg := string(runes[0])
-				dz := string(runes[1])
-				if wx, ok := bazi.WuxingMap[tg]; ok {
-					incrementWuxing(&baziAnalysis.Wuxing, wx)
-				}
-				if wx, ok := bazi.DizhiWuxingMap[dz]; ok {
-					incrementWuxing(&baziAnalysis.Wuxing, wx)
-				}
-			}
+		// 用完整排盘结果覆盖：四柱、五行分布、日主强弱、节气、格局、用神评分、
+		// 五行力量、大衍卦等字段全部与 /generate 同构。
+		if fullBazi != nil {
+			baziAnalysis = *fullBazi
+			baziAnalysis.Xiyongshen = xiYongShen
+			baziAnalysis.Nayin = nayin
 		}
-
 		response.Bazi = baziAnalysis
 		response.Nayin = nayin
 		response.Zodiac = output.FateData.BaziInfo.Zodiac
@@ -360,22 +341,6 @@ func (s *FateNameService) ziweiForRequest(req *GenerateRequest) *ziwei.ZiweiChar
 		req.BirthYear, req.BirthMonth, req.BirthDay,
 		req.BirthHour, req.Gender,
 	)
-}
-
-// incrementWuxing 按五行名称递增 WuxingResult 对应字段
-func incrementWuxing(w *bazi.WuxingResult, wuxing string) {
-	switch wuxing {
-	case "金":
-		w.Jin++
-	case "木":
-		w.Mu++
-	case "水":
-		w.Shui++
-	case "火":
-		w.Huo++
-	case "土":
-		w.Tu++
-	}
 }
 
 // poetryBackfill 诗词出处结构化回填内容（典籍名/篇目/原句/作者/朝代/全诗）

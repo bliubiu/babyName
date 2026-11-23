@@ -101,6 +101,23 @@ func TestFateNameService_E2E_SingleName(t *testing.T) {
 		t.Fatal("单名生成应返回至少 1 个名字，实际为 0")
 	}
 
+	// 响应八字必须完整（与 /generate 同构），不能只剩四柱和五行
+	if resp.Bazi.Bazi.Day == "" || resp.Bazi.Bazi.Hour == "" {
+		t.Errorf("响应八字四柱不完整: %+v", resp.Bazi.Bazi)
+	}
+	if resp.Bazi.DayMaster == "" || resp.Bazi.DayMasterStrength == "" {
+		t.Errorf("响应八字缺日主/日主强弱: day_master=%q strength=%q",
+			resp.Bazi.DayMaster, resp.Bazi.DayMasterStrength)
+	}
+	if resp.Bazi.SolarTerm == "" || resp.Bazi.Season == "" {
+		t.Errorf("响应八字缺节气/季节: solar_term=%q season=%q",
+			resp.Bazi.SolarTerm, resp.Bazi.Season)
+	}
+	if resp.Bazi.WuxingStrength == nil || resp.Bazi.BaziPattern == "" {
+		t.Errorf("响应八字缺五行力量/格局: strength=%v pattern=%q",
+			resp.Bazi.WuxingStrength, resp.Bazi.BaziPattern)
+	}
+
 	// 抽样验证前 3 个名字
 	for i, n := range resp.Names {
 		if i >= 3 {
