@@ -2,6 +2,7 @@ package fate
 
 import (
 	"context"
+	"sort"
 	"strings"
 )
 
@@ -303,6 +304,12 @@ func ensureWuxingDiversity(entries []ExcellentEntry, topCount int) []ExcellentEn
 		seenInResult[key] = true
 		result = append(result, e)
 	}
+
+	// 第三轮：恢复评分降序。前两轮按「五行代表 → 补高分」构造，顺序并不等于分数序；
+	// 若直接把结果当榜单返回，会出现 76 分排在 85 分前面的错乱展示。
+	sort.SliceStable(result, func(i, j int) bool {
+		return betterEntry(result[i], result[j])
+	})
 
 	return result
 }
