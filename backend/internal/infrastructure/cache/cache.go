@@ -39,20 +39,30 @@ type Cache interface {
 type cacheItem struct {
 	value      interface{}
 	expiration time.Time
+	created    time.Time
 }
+
+const defaultMaxEntries = 64
 
 // MemoryCache 内存缓存实现
 type MemoryCache struct {
-	data   map[string]cacheItem
-	mu     sync.RWMutex
-	stopCh chan struct{}
+	data       map[string]cacheItem
+	mu         sync.RWMutex
+	stopCh     chan struct{}
+	maxEntries int // 0=不限；默认 64，按写入时间淘汰最旧项，防止生成结果无界增长
 }
 
 // NewMemoryCache 创建内存缓存，启动过期清理协程
 func NewMemoryCache() *MemoryCache {
+	return NewMemoryCacheWithLimit(defaultMaxEntries)
+}
+
+// NewMemoryCacheWithLimit 创建带容量上限的内存缓存；maxEntries<=0 表示不限制。
+func NewMemoryCacheWithLimit(maxEntries int) *MemoryCache {
 	c := &MemoryCache{
-		data:   make(map[string]cacheItem),
-		stopCh: make(chan struct{}),
+		data:       make(map[string]cacheItem),
+		stopCh:     make(chan struct{}),
+		maxEntries: maxEntries,
 	}
 	go c.cleanupLoop()
 	return c
@@ -158,7 +168,37 @@ func (c *MemoryCache) Set(key string, value interface{}, expiration time.Duratio
 		exp = time.Now().Add(expiration)
 	}
 
-	c.data[key] = cacheItem{value: value, expiration: exp}
+	// 容量保护：先惰性清理过期项，仍超限时淘汰写入时间最早的项。
+	// 生成结果缓存持有完整候选表，若不设上限，不同生辰/选项的请求会在
+	// TTL 窗口内无界累积（桌面端可涨到数百 MB）。
+	if c.maxEntries > 0 {
+		if _, exists := c.data[key]; !exists && len(c.data) >= c.maxEntries {
+			now := time.Now()
+			for k, v := range c.data {
+				if !v.expiration.IsZero() && now.After(v.expiration) {
+					delete(c.data, k)
+				}
+			}
+		}
+		for c.maxEntries > 0 && len(c.data) >= c.maxEntries {
+			if _, exists := c.data[key]; exists {
+				break
+			}
+			oldestKey := ""
+			var oldest time.Time
+			for k, v := range c.data {
+				if oldestKey == "" || v.created.Before(oldest) {
+					oldestKey, oldest = k, v.created
+				}
+			}
+			if oldestKey == "" {
+				break
+			}
+			delete(c.data, oldestKey)
+		}
+	}
+
+	c.data[key] = cacheItem{value: value, expiration: exp, created: time.Now()}
 }
 
 func (c *MemoryCache) Delete(key string) {
