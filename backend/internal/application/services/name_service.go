@@ -352,6 +352,8 @@ func (s *NameService) generateNames(ctx context.Context, req *GenerateRequest, b
 	if s.fateService == nil {
 		err = errors.NewError(errors.ErrCodeInternalError, "名字生成引擎未初始化")
 	} else {
+		// baziAnalysis 仅保留参数位以兼容既有调用契约：喜用神不再在服务层硬收窄，
+		// 引擎按 fateData 的喜用神 + 生助自行收窄（见 buildFilterOption 注释）。
 		names, generationID, output, err = s.generateNamesViaFate(ctx, req, baziAnalysis, onProgress)
 	}
 
@@ -392,26 +394,7 @@ func (s *NameService) generateNamesViaFate(ctx context.Context, req *GenerateReq
 	sy, sm, sd, sh, smin, _ = bazi.ApplyTrueSolar(sy, sm, sd, sh, smin, req.BirthLocation, req.BirthLongitude)
 	born := time.Date(sy, time.Month(sm), sd, sh, smin, 0, 0, time.UTC)
 
-	fo := fate.NewFilterOption().
-		WithMinStroke(req.MinStrokes).
-		WithMaxStroke(req.MaxStrokes).
-		WithGenderFilter(req.Gender).
-		WithStrictness("moderate")
-
-	// 用经典喜用神收窄候选池，保证名字五行与 API 响应 Bazi 的喜用神一致
-	// （fate 引擎内部 BalanceXiYongJi 与经典 BaziAdapter 算法不同，
-	//   若不传入，Top10 可能全是引擎内部喜用神五行，与响应 Bazi 矛盾）
-	// 用户显式指定五行偏好时优先用用户的
-	if len(req.WuxingMatch) > 0 {
-		fo = fo.WithPreferredWuXing(req.WuxingMatch...)
-	} else if baziAnalysis != nil && len(baziAnalysis.Xiyongshen) > 0 {
-		fo = fo.WithPreferredWuXing(baziAnalysis.Xiyongshen...)
-	}
-
-	// 人名频率过滤（来自 Chinese-Names-Corpus 语料统计）
-	if req.MinFrequencyTier > 0 || req.MaxFrequencyTier > 0 {
-		fo = fo.WithFrequencyTier(req.MinFrequencyTier, req.MaxFrequencyTier)
-	}
+	fo := baseFilterOption(req)
 
 	session := s.fateService.engine.NewSessionWithFilter(fo.Build())
 

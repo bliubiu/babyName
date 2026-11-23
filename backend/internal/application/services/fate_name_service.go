@@ -85,26 +85,8 @@ func (s *FateNameService) classicXiyongShen(req *GenerateRequest) []string {
 // 优先使用请求的 WuxingMatch（用户显式指定五行）；
 // 否则按喜用神五行收紧候选池（缩小全量枚举规模，提升性能），
 // 与 NameService.Generate 行为一致（docs/19 Q5：双管线喜用神收窄不一致）。
-func (s *FateNameService) buildFilterOption(req *GenerateRequest, classicXiyongshen []string) fate.Filter {
-	fo := fate.NewFilterOption().
-		WithMinStroke(req.MinStrokes).
-		WithMaxStroke(req.MaxStrokes).
-		WithGenderFilter(req.Gender).
-		WithStrictness("moderate")
-
-	// 用户显式指定五行偏好时，直接以其收窄候选池（避免全量枚举 8105²）
-	if len(req.WuxingMatch) > 0 {
-		fo = fo.WithPreferredWuXing(req.WuxingMatch...)
-	} else if len(classicXiyongshen) > 0 {
-		fo = fo.WithPreferredWuXing(classicXiyongshen...)
-	}
-
-	// 人名频率过滤（来自 Chinese-Names-Corpus 语料统计）
-	if req.MinFrequencyTier > 0 || req.MaxFrequencyTier > 0 {
-		fo = fo.WithFrequencyTier(req.MinFrequencyTier, req.MaxFrequencyTier)
-	}
-
-	return fo.Build()
+func (s *FateNameService) buildFilterOption(req *GenerateRequest) fate.Filter {
+	return baseFilterOption(req).Build()
 }
 
 // GenerateWithAnalysis 使用 fate 引擎生成带详细分析的名字
@@ -122,7 +104,7 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 	classicXi := s.classicXiyongShen(req)
 
 	session := s.engine.NewSessionWithFilter(
-		s.buildFilterOption(req, classicXi),
+		s.buildFilterOption(req),
 	)
 
 	input := &fate.Input{
