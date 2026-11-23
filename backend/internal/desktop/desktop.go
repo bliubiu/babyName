@@ -469,13 +469,15 @@ func (a *App) GetShare(id string) (json.RawMessage, error) {
 // --- 黄历/农历（领域层直连，无服务层） ---
 
 // GetHuangli 获取黄历信息
-func (a *App) GetHuangli(year, month, day int) (*bazi.Huangli, error) {
+func (a *App) GetHuangli(year, month, day int) (result *bazi.Huangli, err error) {
 	if err := validateYMD(year, month, day); err != nil {
 		return nil, err
 	}
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("黄历查询 panic 已恢复", zap.Any("recover", r))
+			result = nil
+			err = errors.New("黄历查询失败，请稍后重试")
 		}
 	}()
 	huangli := bazi.GetHuangli(year, month, day)
@@ -486,7 +488,7 @@ func (a *App) GetHuangli(year, month, day int) (*bazi.Huangli, error) {
 }
 
 // GetLunarCalendar 获取农历信息
-func (a *App) GetLunarCalendar(year, month, day, hour, minute int) (*bazi.LunarCalendar, error) {
+func (a *App) GetLunarCalendar(year, month, day, hour, minute int) (result *bazi.LunarCalendar, err error) {
 	if err := validateYMD(year, month, day); err != nil {
 		return nil, err
 	}
@@ -499,6 +501,8 @@ func (a *App) GetLunarCalendar(year, month, day, hour, minute int) (*bazi.LunarC
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("农历查询 panic 已恢复", zap.Any("recover", r))
+			result = nil
+			err = errors.New("农历查询失败，请稍后重试")
 		}
 	}()
 	lunar := bazi.GetLunarCalendar(year, month, day, hour, minute)
@@ -509,7 +513,7 @@ func (a *App) GetLunarCalendar(year, month, day, hour, minute int) (*bazi.LunarC
 }
 
 // GetLunarMonthCalendar 获取某公历年月的逐日节气与农历节日标注
-func (a *App) GetLunarMonthCalendar(year, month int) (*LunarMonthCalendar, error) {
+func (a *App) GetLunarMonthCalendar(year, month int) (result *LunarMonthCalendar, err error) {
 	if year < 1900 || year > 2100 {
 		return nil, errors.New("年份必须在1900-2100之间")
 	}
@@ -519,6 +523,8 @@ func (a *App) GetLunarMonthCalendar(year, month int) (*LunarMonthCalendar, error
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("农历月历查询 panic 已恢复", zap.Any("recover", r))
+			result = nil
+			err = errors.New("农历月历查询失败，请稍后重试")
 		}
 	}()
 	days := bazi.GetLunarMonthCalendar(year, month)
