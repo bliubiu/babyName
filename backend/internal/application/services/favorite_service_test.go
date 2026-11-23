@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"name/internal/application/validator"
@@ -185,6 +186,45 @@ func TestSaveFavorite_Existing(t *testing.T) {
 	}
 	if len(store.favorites) != 1 {
 		t.Errorf("不应重复保存，收藏数应为 1，实际 %d", len(store.favorites))
+	}
+}
+
+// TestSaveFavorite_ConcurrentNoDuplicate 并发双击收藏只能落一条，
+// 钉住「查重 + 插入」必须串行，否则两个请求同时查不到已有记录各插一条。
+func TestSaveFavorite_ConcurrentNoDuplicate(t *testing.T) {
+	store := &mockFavoriteStore{}
+	svc := NewFavoriteService(store)
+
+	const n = 8
+	var wg sync.WaitGroup
+	ids := make([]string, n)
+	errs := make([]error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			ids[idx], errs[idx] = svc.SaveFavorite(context.Background(), &FavoriteRecord{
+				SessionID: testSessionID,
+				Surname:   "李",
+				GivenName: "明沅",
+				Score:     85,
+			})
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("并发收藏第 %d 个失败: %v", i, err)
+		}
+	}
+	if len(store.favorites) != 1 {
+		t.Fatalf("并发收藏应只落一条，实际 %d 条", len(store.favorites))
+	}
+	for i, id := range ids {
+		if id != "fav-李明沅" {
+			t.Errorf("第 %d 个请求返回 ID %q，应与首条一致", i, id)
+		}
 	}
 }
 

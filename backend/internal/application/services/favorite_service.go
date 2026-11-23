@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -25,6 +26,10 @@ type FavoriteService struct {
 	curatedStore database.CuratedStore // 持久化层，用于自学习
 	nameDB       *name.NameDB          // 内存索引，用于实时生效
 	reviewer     GateReviewRecorder    // 门禁复审候选记录器（可选，docs/33 M6）
+
+	// addMu 串行化「查重 + 写入」：并发双击收藏时，两个请求可能同时查不到已存在
+	// 记录而各插一条，造成重复收藏（SQLite 表无 (session, 姓, 名) 唯一约束）。
+	addMu sync.Mutex
 }
 
 // NewFavoriteService 创建收藏服务
@@ -158,6 +163,8 @@ func (s *FavoriteService) SaveFavorite(ctx context.Context, record *FavoriteReco
 		return "", err
 	}
 	record.SessionID = sid
+	s.addMu.Lock()
+	defer s.addMu.Unlock()
 	existing := s.store.GetFavoriteByName(sid, record.Surname, record.GivenName)
 	if existing != nil {
 		return existing.ID, nil
