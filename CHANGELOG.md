@@ -5,6 +5,26 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.21.4]
+
+### ✨ New Features 新增功能
+- 新增 `scripts/verify-quality.sh`：起名链路「一键验证」四道防线——单元层
+  （fate 评分正确性 / 评分快照防漂移 / 九维 score_detail 透传）、门禁覆盖审计、
+  专项维度巡检（八字五行 / 生肖 / 诗词出典已知答案不变性）、E2E 八大项 18 项；
+  支持 `SKIP_SERVER=1` 纯离线（桌面端迁移后 HTTP 服务已退役）、`SERVER_URL`
+  复用已有服务，以及 `E2E_REPEAT` / `E2E_CONCURRENCY` / `E2E_ROUNDS` 参数覆盖
+- 新增 `scripts/verify-frontend.sh`：前端三件套门禁（`tsc --noEmit` /
+  ESLint warning 阈值 / `vitest run`）；CI 侧 `--require` 缺 node 或依赖即失败，
+  pre-push 侧缺环境仅提示跳过，避免纯后端改动被误伤；与 Go 门禁刻意解耦
+- 新增 `scripts/smoke/cli_matrix.sh`：namer-cli 全参数矩阵 E2E 冒烟 14 用例，
+  覆盖 text/json 输出、TOML 配置加载与命令行优先级、女宝单字名、五行偏好、
+  典籍出典（shijing）、笔画区间、避讳长辈、字位 middle、复姓，以及非法入参
+  的非零退出 + 中文错误信息
+
+### 📚 Docs 文档更新
+- 三脚本自带用法与前置条件注释，分别对应 docs/22、docs/28、docs/33、docs/44、
+  docs/45 阶段 0（P1-29）
+
 ## [2026.11.21.3]
 
 ### 📚 Docs 文档更新
