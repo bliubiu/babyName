@@ -122,10 +122,7 @@ func (s *NameService) Evaluate(ctx context.Context, req *EvaluateRequest) (*Eval
 	// 5. 风险体检
 	risks := fate.AssessNameRisks(provider, req.Surname, given)
 
-	zodiacName := fateData.BaziInfo.Zodiac
-	if s.zodiacFinder != nil {
-		zodiacName = s.zodiacFinder.FindByYear(req.BirthYear)
-	}
+	zodiacName := zodiacNameForBazi(baziAnalysis, s.zodiacFinder, req.BirthYear)
 
 	// 6. 梅花姓名卦 + 体用断卦 + 差异化解读（docs/42 P2-10 测名页接线）。
 	// 卦象字段挂 Name 下（与 /generate names[] 元素同构，NameDetail 嵌入渲染

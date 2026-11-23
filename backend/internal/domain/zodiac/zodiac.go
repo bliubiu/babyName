@@ -194,6 +194,39 @@ func GetZodiacByYear(year int) *Zodiac {
 	return &ZodiacList[zodiacIndex]
 }
 
+// branchZodiacName 地支 → 生肖名称。
+// 生肖以节气（立春）为界，与八字年柱同源，故优先由年支推导，
+// 不能直接用公历年取模（1 月 1 日至立春之间会错一个生肖）。
+var branchZodiacName = map[string]string{
+	"子": "鼠", "丑": "牛", "寅": "虎", "卯": "兔",
+	"辰": "龙", "巳": "蛇", "午": "马", "未": "羊",
+	"申": "猴", "酉": "鸡", "戌": "狗", "亥": "猪",
+}
+
+// GetZodiacByBranch 由地支（年支）取生肖；非地支返回 nil。
+func GetZodiacByBranch(branch string) *Zodiac {
+	name, ok := branchZodiacName[branch]
+	if !ok {
+		return nil
+	}
+	for i := range ZodiacList {
+		if ZodiacList[i].Name == name {
+			return &ZodiacList[i]
+		}
+	}
+	return nil
+}
+
+// GetZodiacByYearGanzhi 由年柱（如「癸卯」）的地支取生肖。
+// 八字年柱已按立春换年，是生肖的唯一正确来源。
+func GetZodiacByYearGanzhi(ganzhi string) *Zodiac {
+	runes := []rune(ganzhi)
+	if len(runes) < 2 {
+		return nil
+	}
+	return GetZodiacByBranch(string(runes[1]))
+}
+
 func GetZodiacByID(id int) *Zodiac {
 	for i := range ZodiacList {
 		if ZodiacList[i].ID == id {

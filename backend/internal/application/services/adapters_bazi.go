@@ -27,7 +27,11 @@ func (a *BaziAnalyzerAdapter) Analyze(born time.Time, gender fate.Gender) (*fate
 		return nil, err
 	}
 
-	zodiacName := zodiac.GetZodiacByYear(year).Name
+	// 生肖与八字年柱同源：年柱已按立春换年，不能再用公历年取模。
+	zodiacName := ""
+	if z := zodiac.GetZodiacByYearGanzhi(baziResult.Bazi.YearGanzhi); z != nil {
+		zodiacName = z.Name
+	}
 	fourPillars := baziGanzhiToArray(baziResult.Bazi)
 
 	// 喜用神单一真源（docs/43 P1-3）：以 bazi weighted 算法（calculateXiyongshenWeighted）

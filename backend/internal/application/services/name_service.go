@@ -242,7 +242,7 @@ func (s *NameService) GenerateWithProgress(ctx context.Context, req *GenerateReq
 	hexagram, tiYong, hexagramDetail, ziweiChart, parallelDuration := s.calculateHexagramAndZiweiParallel(names, baziAnalysis, req)
 
 	// 4. 构建响应
-	zodiacName := s.zodiacFinder.FindByYear(req.BirthYear)
+	zodiacName := zodiacNameForBazi(baziAnalysis, s.zodiacFinder, req.BirthYear)
 	response := s.buildResponse(baziAnalysis, names, hexagram, hexagramDetail, tiYong, ziweiChart, zodiacName)
 	response.GenerationID = generationID
 
