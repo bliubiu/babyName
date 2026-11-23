@@ -4,20 +4,24 @@
 
 ## 📖 项目简介
 
-起名是一个免费的在线起名工具，旨在帮助新手父母为宝宝起一个寓意美好、符合中国传统玄学的名字。
+起名是一个免费的**桌面端起名工具**，帮新手父母为宝宝取一个寓意美好、符合中国传统命理与文字学的名字。
+
+应用基于 **Wails v3** 构建，是一个 Windows 单文件桌面程序：命理排盘、字库检索、名字生成、收藏与历史全部在**本机**完成——不联网、不上传生辰数据，唯一数据源是本地 SQLite 库。
 
 **核心功能：**
 
-- 🔮 八字五行分析 - 计算生辰八字、五行分布、喜用神
-- 🧘 纳音五行 - 60甲子纳音查询
-- 🐭 生肖属相 - 12生肖及喜忌
-- 📜 易经64卦 - 姓名卦象解读
-- ⭐ 智能评分 - 100分制综合评分
-- ❤️ 名字收藏 - 收藏喜欢的名字
-- � 名字对比 - 多名字横向对比
-- 📖 诗词典故 - 名字关联诗词出处
-- 🔍 重名率查询 - 名字重名率统计
-- 📷 图片导出 - 一键导出名字推荐
+- 🔮 **八字五行分析** - 四柱排盘、五行旺衰统计、日主强弱判定、喜用神/忌神推导
+- 🧘 **纳音五行** - 六十甲子纳音查询，分析名字与年命关系
+- 🐭 **生肖属相** - 12 生肖喜忌、相合相冲
+- 📜 **易经 64 卦** - 按姓名笔画起卦，解读卦辞与象辞
+- ⭐ **九维智能评分** - 100 分制综合评分，逐维明细透传（`score_detail`）
+- 🎯 **测名与探索** - 评测已有名字，或按五行偏好探索候选字
+- ❤️ **名字收藏** - 收藏喜欢的名字，本地持久化
+- ⚖️ **名字对比** - 多名字横向对比评分、五行、笔画等指标
+- 📖 **诗词典故** - 名字关联《诗经》等典籍出典
+- 🔍 **重名率查询** - 基于真实人名频率语料的重名率统计
+- 📅 **黄历万年历** - 农历、节气、宜忌查询
+- 📄 **PDF 报告** - 导出结构化起名报告（内置 NotoSansSC 字体），并支持分享快照
 
 ***
 
@@ -25,249 +29,147 @@
 
 ### 技术栈
 
-| 层级     | 技术                                     |
-| -------- | ---------------------------------------- |
-| 前端     | Next.js 16.2+ + React 19.2+ + TypeScript 7.0+ |
-| 样式     | Tailwind CSS                             |
-| 状态管理 | Zustand                                  |
-| 图表库   | ECharts                                  |
-| 包管理器 | pnpm                                     |
-| 后端     | Go + Gin                                 |
-| 存储     | SQLite（默认）/ 内存环形缓存   冷热数据  |
-| 架构     | DDD（领域驱动设计）+ TDD（测试驱动开发） |
+| 层级       | 技术                                                        |
+| ---------- | ----------------------------------------------------------- |
+| 桌面框架   | Wails v3.0.0（Windows WebView2）                            |
+| 前端       | Vite 7 + React 19.2 + TypeScript 6.0                        |
+| 样式       | Tailwind CSS 3.4                                            |
+| 状态管理   | Zustand / TanStack Query / React Router 7                   |
+| 后端       | Go 1.26，纯 Go 实现（`CGO_ENABLED=0`）                      |
+| 数据持久化 | SQLite（`modernc.org/sqlite`，纯 Go，WAL 模式）             |
+| 架构       | DDD（领域驱动设计）+ TDD（测试驱动开发）                     |
+| 包管理器   | pnpm                                                        |
+
+前端不再通过 HTTP 调用后端：Wails 在启动时生成 `frontend/bindings`，React 直接调用 Go 绑定方法（`internal/desktop`），错误以中文文案返回。
+
+### 三层体系
+
+```
+        ┌─────────────────────────┐
+        │  字象（血肉）            │
+        │  选什么字，形音义配合     │
+        │  ├ 部首五行判定（字形法） │
+        │  ├ 字义五行纠正（字义法） │
+        │  ├ 音韵流畅度            │
+        │  └ 诗词典故出典          │
+        ├─────────────────────────┤
+        │  数理（骨架）            │
+        │  笔画搭配，卦象数理       │
+        ├─────────────────────────┤
+        │  命理（根基）            │
+        │  八字分析，喜用神定调     │
+        └─────────────────────────┘
+```
+
+运作流程：八字排盘定喜用神 → 据此确定数理配置 → 在对应五行部首中选字 → 校正字义、搭配音韵、检查出典 → 校验姓名整体五行生克。
 
 ### 目录结构
 
 ```
 name/
-├── backend/                         # Go后端
-│   ├── cmd/server/
-│   │   └── main.go                 # 入口文件
+├── backend/                         # Go 后端（Wails v3 应用宿主）
+│   ├── main.go                      # 入口：目录解析 → 装配 → 服务/窗口
+│   ├── Taskfile.yml                 # wails3 build / package 任务
+│   ├── build/                       # v3 产品元信息 + Windows NSIS 安装脚本
+│   ├── frontend/dist/               # Vite 产物（//go:embed 目录，构建时同步）
+│   ├── assets/                      # 内置字体（PDF 报告用 NotoSansSC 等）
 │   ├── internal/
-│   │   ├── application/            # 应用层
-│   │   │   ├── handlers/           # HTTP处理器
-│   │   │   └── services/           # 业务服务
-│   │   ├── domain/                  # 领域层
-│   │   │   ├── bazi/              # 八字计算
-│   │   │   ├── yijing/            # 易经64卦
-│   │   │   ├── zodiac/             # 生肖属相
-│   │   │   ├── name/              # 名字生成
-│   │   │   ├── namestat/          # 名字统计
-│   │   │   └── classics/           # 诗词典故
-│   │   └── infrastructure/          # 基础设施层
-│   │       └── database/
-│   │           ├── memory/          # 内存存储（默认）
-│   │           └── sqlite/          # SQLite 存储（推荐）
-│   ├── go.mod
-│   └── namer.exe              # 编译后的可执行文件
+│   │   ├── desktop/                 # 绑定层：前端直接调用（替代原 HTTP handler）
+│   │   ├── bootstrap/               # 装配层：存储 + 物料播种 + 服务装配
+│   │   ├── application/             # 应用层：服务编排
+│   │   ├── domain/                  # 领域层：bazi / yijing / ziwei / name / fate …
+│   │   ├── infrastructure/          # 基础设施：SQLite 等
+│   │   └── materials/               # 物料管线
+│   └── cmd/                         # CLI 工具：namer-cli / materials / build_frequency …
 │
-├── frontend/                        # Next.js前端
-│   ├── src/
-│   │   ├── app/                    # 页面
-│   │   │   ├── page.tsx           # 首页
-│   │   │   ├── result/            # 结果页
-│   │   │   ├── history/           # 历史记录页
-│   │   │   ├── favorites/         # 收藏页
-│   │   │   ├── compare/           # 对比页
-│   │   │   └── stat/              # 重名率查询页
-│   │   ├── components/            # 组件
-│   │   ├── lib/                   # 工具库
-│   │   └── types/                 # TypeScript类型
-│   ├── package.json
-│   └── tailwind.config.ts
+├── frontend/                        # Vite + React 前端
+│   ├── src/app/                     # 页面：结果 / 测名 / 对比 / 收藏 / 历史 / 黄历 / 分享
+│   ├── src/components/              # 组件
+│   ├── bindings/                    # Wails 生成的 TypeScript 绑定
+│   └── scripts/sync-dist.mjs        # 产物同步进 Go embed 目录
 │
-└── docs/                           # 项目文档
-    ├── 00-页面原型设计及相关素材知识.md
-    ├── 01-需求规格说明书.md
-    ├── 02-API文档.md
-    ├── 02-原型图设计.md
-    ├── 03-UI设计规范.md
-    ├── 03-开发文档.md
-    ├── 04-功能增强方案.md
-    ├── 04-用户文档.md
-    ├── 05-开发文档.md
-    ├── 06-API.md
-    ├── 07-部署使用手册.md
-    └── 08-API相对路径与动态端口适配.md
+├── data/                            # 物料源 + 唯一交付真库 namer.db
+├── docs/                            # 按序号命名的中文文档（00–48）
+└── scripts/                         # build / release / 质量门禁脚本
 ```
 
 ***
 
 ## 🚀 快速开始
 
-### 方式一：直接运行EXE（推荐）
+### 方式一：安装包（推荐）
 
-运行单体二进制可执行文件启动所有服务。【Web 静态页面内嵌；运行时数据（汉字库、频率统计等）位于二进制同级的 `data/` 目录，一键构建已自动复制】
+从 [Releases](https://github.com/bliubiu/babyName/releases/latest) 下载 `namer-amd64-installer.exe` 双击安装：
 
-```bash
-# 进入后端目录
-cd backend
+- 安装到当前用户作用域（无需管理员权限）
+- 物料与纯净种子库随装，开箱即用
+- 卸载时**保留**个人收藏/历史库
 
-# 运行服务（默认端口8080）
-.\namer.exe -mode all
+### 方式二：免安装绿色版
 
-# 访问 http://localhost:8080
+下载 `namer-desktop.exe` 与 `namer.db`，按如下结构放置后直接运行：
+
+```
+namer-desktop.exe
+data\
+  namer.db        # 唯一交付真库，首次启动即用，无需导入 JSON
+logs\             # 首次运行自动创建
 ```
 
-**参数选项：**
+> 运行期只认 SQLite，不走 JSON。若 `data\namer.db` 缺失，首次启动会从物料源播种；**不要**用开发时含本机收藏的库替代纯净种子库。
 
-```bash
--port 8080            # 指定端口（默认取配置文件 application.yml）
--host localhost       # 指定主机
--mode all             # 运行模式：backend 或 all（覆盖配置文件）
--static ./frontend/out  # 静态文件目录（覆盖配置文件）
--log ./logs           # 日志目录（namer-YYYYMMDD.log 按天轮转）
--db ./namer.db        # SQLite 数据库文件路径（不传走配置文件）
--rate-capacity 100    # 令牌桶限流容量（覆盖配置文件）
+### 方式三：源码构建
+
+```powershell
+# 项目根目录执行（需 wails3 CLI、Go 1.26、pnpm、makensis）
+.\scripts\build.ps1
+
+# 只出 exe，不出安装包
+.\scripts\build.ps1 -SkipInstaller
 ```
 
-**示例：**
+产物统一落在 `backend/bin/`：
 
-```bash
-# 使用 SQLite 持久化存储（推荐）
-.\namer.exe -mode all -db .\namer.db
+| 文件                          | 说明                              |
+| ----------------------------- | --------------------------------- |
+| `namer-desktop.exe`           | 单文件桌面程序（前端已内嵌）      |
+| `namer-amd64-installer.exe`   | NSIS 安装包                       |
+| `namer.db`                    | 现场制作的纯净种子库              |
 
-# 使用端口8083
-.\namer.exe -mode all -port 8083
+`build.ps1` 会先备份开发库，再用 `build_seed` 现场生成干净库供打包，结束后恢复原库，避免把本机收藏/历史带进安装包。
 
-# 使用端口8084 + SQLite
-.\namer.exe -mode all -db .\namer.db -port 8084
-```
+### 前端开发
 
-### 方式二：前后端分离
-
-**1. 启动后端**
-
-```bash
-cd backend
-go run cmd/server/main.go
-# 后端运行在 http://localhost:8080
-```
-
-**2. 启动前端**
-
-```bash
+```powershell
 cd frontend
 pnpm install
-pnpm dev
-# 前端运行在 http://localhost:3000
+pnpm dev          # Vite 开发服务器
+pnpm test         # vitest 单元测试
+pnpm e2e          # 先 build 再跑 Playwright 端到端
 ```
 
-**3. 访问应用**
-打开浏览器访问 <http://localhost:3000>
+### 命令行参数
 
-***
+桌面端同样支持以参数覆盖默认路径，便于绿色版与多库共存：
 
-## 📡 API接口
-
-### 名字生成
-
-**POST** `/api/v1/names/generate`
-
-```json
-请求：
-{
-  "surname": "王",
-  "gender": "male",
-  "birth_year": 2024,
-  "birth_month": 1,
-  "birth_day": 15,
-  "birth_hour": 12,
-  "birth_location": "北京"
-}
-
-响应：
-{
-  "success": true,
-  "data": {
-    "bazi": {
-      "bazi": {
-        "year": "癸卯",
-        "month": "乙丑",
-        "day": "戊子",
-        "hour": "戊午"
-      },
-      "wuxing": { "jin": 2, "mu": 2, "shui": 2, "huo": 2, "tu": 2 },
-      "xiyongshen": ["水", "金"],
-      "rishou": "戊",
-      "rishou_wuxing": "土",
-      "nayin": "海中金",
-      "day_master": "土"
-    },
-    "nayin": "海中金",
-    "zodiac": "兔",
-    "hexagram": { ... },
-    "names": [
-      { "surname": "王", "given_name": "磊", "score": 92.5, ... }
-    ]
-  }
-}
+```powershell
+namer-desktop.exe -db D:\my\namer.db      # 指向新路径=自动建库并播种（干净库）
+namer-desktop.exe -data .\data            # 指定物料目录
+namer-desktop.exe -log .\logs             # 指定日志目录
+namer-desktop.exe -help                   # 查看全部参数
 ```
 
-### 历史记录
+### 数据目录与日志
 
-| 方法     | 路径                    | 说明     |
-| ------ | --------------------- | ------ |
-| GET    | `/api/v1/history`     | 获取历史记录 |
-| POST   | `/api/v1/history`     | 保存历史记录 |
-| DELETE | `/api/v1/history/:id` | 删除历史记录 |
+按来源分级解析（详见 `bootstrap.DataDirSource`）：
 
-### 收藏管理
+| 类型        | 优先级                                                                 |
+| ----------- | ---------------------------------------------------------------------- |
+| 物料目录    | `-data` > `DATA_DIR` > 仓库根 `data/`（开发）> exe 同级 `data/`（打包） |
+| SQLite 库   | `-db` / `NAMER_DB_PATH` > 开发=仓库根 `namer.db` > 打包=`data/namer.db` |
+| 日志目录    | `-log` / `NAMER_LOG_PATH` > 开发=仓库根 `logs/` > 打包=`data/logs`      |
 
-| 方法     | 路径                        | 说明      |
-| ------ | ------------------------- | ------- |
-| GET    | `/api/v1/favorites`       | 获取收藏列表  |
-| POST   | `/api/v1/favorites`       | 添加收藏    |
-| DELETE | `/api/v1/favorites/:id`   | 删除收藏    |
-| GET    | `/api/v1/favorites/check` | 检查是否已收藏 |
-
-### 名字统计
-
-| 方法  | 路径                                | 说明       |
-| --- | --------------------------------- | -------- |
-| GET | `/api/v1/namestat/:name`          | 获取名字重名率  |
-| GET | `/api/v1/namestat`                | 获取常用名字排行 |
-
-### 其他接口
-
-| 方法   | 路径                            | 说明       |
-| ---- | ----------------------------- | -------- |
-| POST | `/api/v1/bazi/analyze`        | 八字分析     |
-| GET  | `/api/v1/yijing/hexagram/:id` | 获取卦象     |
-| GET  | `/api/v1/yijing/hexagram`     | 获取全部卦象   |
-| GET  | `/api/v1/zodiac/:animal`      | 获取生肖信息   |
-| GET  | `/api/v1/zodiac`              | 获取全部生肖   |
-| POST | `/api/v1/report/pdf`          | 生成PDF报告  |
-| POST | `/api/v1/report/html`         | 生成HTML报告 |
-
-### 🔐 安全边界与部署要求
-
-本项目定位为**免费公开工具**，后端**未实现用户鉴权**（会话标识为随机 bearer，非身份认证）。公网部署时必须明确以下边界与防护：
-
-- **依赖网关鉴权**：如需访问控制，请在反向代理（nginx 等）层实现（Basic Auth / JWT 网关 / IP 白名单）
-- **限流已内置**：服务端自带 IP 令牌桶限流、1 MiB 请求体上限、30s 超时、CORS 本机白名单与可信代理白名单
-- **无鉴权接口清单**：`/api/v1` 全部路由均无需认证（详见上方接口表）；`/feedback`、`/report/html`、`/namestats` 等低利用率接口已下线
-- **数据边界**：服务不存储个人身份信息；生辰数据仅用于命理计算，收藏/历史按匿名会话隔离
-
-***
-
-## 🎨 设计规范
-
-### 色彩系统
-
-| 颜色名称 | 色值        | 用途       |
-| ---- | --------- | -------- |
-| 温润米白 | `#FDF8F3` | 主背景      |
-| 暖白   | `#F5F0E8` | 卡片背景     |
-| 墨黑   | `#2C2C2C` | 主要文字     |
-| 深红   | `#8B2323` | 强调/按钮/心形 |
-| 金色   | `#C9A962` | 高亮/评分    |
-| 黛青   | `#4A6670` | 次要文字     |
-
-### 字体
-
-- 标题：Noto Serif SC（思源宋体）
-- 正文：Noto Sans SC（思源黑体）
+日志按天轮转，文件名形如 `namer-YYYYMMDD.log`，保留 32 天。
 
 ***
 
@@ -276,150 +178,129 @@ pnpm dev
 ### 八字分析
 
 - 计算年柱、月柱、日柱、时柱
-- 统计五行分布（金木水火土）
-- 判断日主强弱
-- 计算喜用神
+- 统计五行分布（金木水火土）与旺衰
+- 判断日主强弱，推导喜用神 / 忌神
 
 ### 纳音五行
 
-- 根据出生年份查询纳音
-- 如：2024年 → "海中金"
+- 根据出生年份查询纳音（如 2024 年 → "海中金"）
 - 分析名字与年命的关系
 
 ### 生肖属相
 
 - 根据出生年份确定生肖
-- 提供相合/相冲生肖
-- 列出喜忌字符
+- 提供相合 / 相冲生肖与喜忌字符
 
-### 易经64卦
+### 易经 64 卦
 
-- 根据姓名笔画起卦
+- 按姓名笔画起卦
 - 解读卦辞、象辞
-- 事业/财运/健康建议
+- 给出事业 / 财运 / 健康维度提示
 
 ### 名字评分
 
-| 评分维度  | 权重  |
-| ----- | --- |
-| 八字匹配度 | 30% |
-| 纳音五行  | 20% |
-| 生肖适配  | 15% |
-| 易经卦象  | 20% |
-| 读音韵律  | 10% |
-| 寓意内涵  | 5%  |
+采用九维评分后汇总为 100 分制，逐维明细随结果一并返回；评分口径与门禁规则见 `docs/22`、`docs/33`。
 
-### 名字收藏
+### 名字收藏与对比
 
-- 点击名字旁边的 ❤️ 即可收藏
-- 在收藏页面管理已收藏的名字
-- 支持删除收藏
-
-### 名字对比
-
-- 勾选要对比的名字（最多4个）
-- 点击"对比"按钮进入对比页面
-- 横向对比评分、五行、笔画等指标
+- 结果页点击 ❤️ 收藏，收藏页统一管理
+- 勾选多个名字横向对比评分、五行、笔画等指标
 
 ### 诗词典故
 
-- 选择"诗词经典"来源时，名字会关联诗词出处
-- 显示诗句所属的诗词篇章
-- 名字详解中展示诗词典故
+- 选择「诗词经典」来源时，名字关联典籍出处
+- 名字详解中展示原句与篇章来源
 
 ### 重名率查询
 
-- 输入名字查询全国重名率（基于真实人名频率语料库）
-- 显示重名人数、占比与频率排名
-- 显示重名程度（极高/较高/一般/较低/未收录）
+- 基于真实人名频率语料统计重名率
+- 展示重名程度（极高 / 较高 / 一般 / 较低 / 未收录）
 
-### 图片导出
+### 黄历万年历
 
-- 在结果页点击"导出"按钮
-- 将名字推荐导出为PNG图片
-- 方便分享给家人朋友
+- 公历 / 农历互查、节气与宜忌
+
+### PDF 报告与分享
+
+- 结果页一键导出结构化 PDF 报告（字体内嵌，无外部依赖）
+- 生成分享快照，便于转发给家人
 
 ***
 
-## 🔨 构建与部署
+## 🎨 设计规范
 
-### 一键构建（推荐）
+| 颜色名称 | 色值      | 用途            |
+| -------- | --------- | --------------- |
+| 温润米白 | 米白底    | 主背景          |
+| 暖白     | 暖白底    | 卡片背景        |
+| 墨黑     | 深墨      | 主要文字        |
+| 深红     | `#8B2323` | 强调 / 按钮 / 印章 |
+| 金色     | `#BD9A5A` | 高亮 / 评分     |
+| 黛青     | 青灰      | 次要文字        |
 
-```bash
-# 项目根目录执行
-.\scripts\build.ps1
+- 标题：Noto Serif SC（思源宋体）
+- 正文：Noto Sans SC（思源黑体）
+- 完整色板与组件规范见 `docs/07-UI设计规范.md`
+
+***
+
+## ✅ 质量保障
+
+三道防线脚本，本地与 CI 共用：
+
+```powershell
+bash scripts/verify-quality.sh                # Go：单元 + 门禁审计 + 维度巡检 + E2E
+bash scripts/verify-frontend.sh               # 前端：tsc + ESLint + vitest
+bash scripts/smoke/cli_matrix.sh              # namer-cli 全参数矩阵 E2E（14 用例）
 ```
 
-此脚本会：
-1. 构建前端（`pnpm run build` + `pnpm run export`）
-2. 编译 Go 后端（单文件二进制）
-3. 导出前端静态文件 + 后端 EXE 到 `dist/` 目录
+- `SKIP_SERVER=1 bash scripts/verify-quality.sh`：只跑不需服务的阶段（桌面迁移后 HTTP 服务已退役，CI 用此模式）
+- pre-push hook（`.githooks/pre-push`）会在推送前自动跑快路径；`SKIP_VERIFY=1 git push` 可临时跳过
+- 核心九包覆盖率门槛 75%，CI 见 `.github/workflows/quality.yml`
 
-### 手动构建
+***
 
-**构建前端：**
+## 📦 发布
 
-```bash
-cd frontend
-pnpm install
-pnpm run build
+版本号唯一真源是 `CHANGELOG.md` 顶部首个 `## [YYYY.MM.DD.MICRO]`，脚本自动读取。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/release.ps1              # 构建 + 打 tag + 发 Release
+scripts\release.ps1 -SkipBuild                                           # 产物已就绪，仅打 tag 并发布
+scripts\release.ps1 -Resume -UploadRetries 5                             # 断点续传，只补附件
+scripts\release.ps1 -DryRun                                              # 只做前置校验
 ```
 
-**编译后端：**
+发布内容为四个附件：`namer-desktop.exe`、`namer-amd64-installer.exe`、`namer.db`、`SHA256SUMS.txt`。每个附件上传后都会用 GitHub digest 与本地 SHA256 回验；下载方可执行 `sha256sum -c SHA256SUMS.txt` 校验完整性。
 
-```bash
-cd backend
-go build -o namer.exe ./cmd/server/
-```
-
-### 部署
-
-**二进制 + 数据目录部署（推荐）：**
-
-```bash
-# 一键构建已自动产出 namer.exe + data/ 目录（dist/ 下）
-.\scripts\build.ps1
-
-# 启动 SQLite 模式（数据持久化，重启不丢失）
-.\namer.exe -mode all -db .\namer.db
-```
-
-运行时数据从二进制同级的 `data/` 目录加载（汉字库、人名频率、命名质量门禁字表、经典文献等）。
-部署时请保持 `namer.exe` 与 `data/` 目录同级，否则数据加载降级，重名率查询等依赖真实语料的功能将不可用。
-
-历史记录、收藏、名字反馈等用户数据持久化到 `name.db`。
-首次启动会自动创建 SQLite 数据库并导入用户数据。
-
-**内存模式（开发测试）：**
-
-```bash
-.\namer.exe -mode all
-# 数据仅存于内存，重启后丢失
-```
-
-### 环境变量
-
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `SQLITE_PATH` | SQLite 文件路径 | `name.db` |
-| `HANZI_DATA_PATH` | 汉字数据 JSON 路径 | `hanzi_data.json` |
-| `FRONTEND_STATIC_PATH` | 前端静态文件目录 | `../frontend/out` |
-| `CACHE_TYPE` | 缓存类型 | 空（无缓存） |
-| `RATE_LIMIT_CAPACITY` | 限流容量 | 100 |
-| `RATE_LIMIT_RATE` | 限流速率 | 10 |
+> `backend/bin/` 已在 `.gitignore` 中，二进制**不进仓库历史**，只随 GitHub Release 分发。
 
 ***
 
 ## 🤝 贡献指南
 
-欢迎提交Issue和Pull Request！
+欢迎提交 Issue 和 Pull Request！
 
-1. Fork 本仓库  github.com/bliubiao/name
-2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m 'Add amazing feature'`)
-4. 推送分支 (`git push origin feature/amazing-feature`)
-5. 打开Pull Request
+1. Fork 本仓库 <https://github.com/bliubiu/babyName>
+2. 创建特性分支（`git checkout -b feature/amazing-feature`）
+3. 提交更改（`git commit -m 'feat: 新增某能力'`）
+4. 推送分支（`git push origin feature/amazing-feature`）
+5. 打开 Pull Request
+
+提交前请确保 `scripts/verify-quality.sh` 与 `scripts/verify-frontend.sh` 全部通过，并同步更新 `CHANGELOG.md`。
 
 ***
 
+## 📚 相关文档
 
+- `docs/01-需求规格说明书.md` - 需求与验收口径
+- `docs/05-部署使用手册.md` - 构建、分发、数据目录与企业部署
+- `docs/10-起名规则.md` - 取名字表范围与避讳规则
+- `docs/22-起名链路E2E巡检工具与质量防线审计.md` - 质量防线设计
+- `docs/33-门禁层设计与运营闭环.md` - 门禁算法与运营
+- `docs/47-桌面端Wails迁移方案与实施记录.md` - 迁移决策
+- `docs/48-Wails-v2到v3升级评估与实施方案.md` - v3 升级细节
+
+## 📄 许可
+
+本项目仅供学习与个人使用；命理结论为传统文化视角，仅供参考。

@@ -5,6 +5,20 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.21.5]
+
+### 📚 Docs 文档更新
+- `README.md` 整篇重写为 **Wails v3 桌面端**现实（自 2026-11-07 起内容已过期）：
+  技术栈改为 Wails v3.0.0 / Vite 7 / React 19.2 / TS 6.0 / Go 1.26 / modernc sqlite，
+  去除 Next.js + Gin + HTTP 端口 + `-mode all` 等 Web 时代描述
+- 删除失效内容：整套 `/api/v1` 接口表、环境变量表（`SQLITE_PATH` / `CACHE_TYPE` 等）、
+  端口与 nginx 网关鉴权说明；改为 Wails 绑定调用模型说明
+- 补齐桌面端现状：三层体系与运作流程、真实目录结构、安装包/绿色版/源码构建三种
+  启动路径、`-data`/`-db`/`-log` 参数与数据目录优先级表、九维评分、PDF 报告与分享
+  快照、质量门禁三脚本、`release.ps1` 发布流程（四附件 + SHA256/digest 回验）
+- 修正贡献指南仓库地址（`bliubiao/name` → `bliubiu/babyName`），docs 索引按现有
+  00–48 序号重建
+
 ## [2026.11.21.4]
 
 ### ✨ New Features 新增功能
