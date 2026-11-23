@@ -10,7 +10,7 @@ export interface GenerateRequest {
   /** 显式出生地经度（东经为正）；>0 时优先于地点查表 */
   birth_longitude?: number;
   generation?: string;
-  generation_position?: 'middle' | 'end';
+  generation_position?: 'middle' | 'tail';
   name_type?: 'double' | 'single';
   birth_type?: 'solar' | 'lunar';
   preferences?: string[];
@@ -393,7 +393,7 @@ export interface FormData {
   birthMinute: number;
   birthLocation: string;
   generation: string;
-  generationPosition: 'middle' | 'end';
+  generationPosition: 'middle' | 'tail';
   nameType: 'double' | 'single';
   birthType: 'solar' | 'lunar';
   preferences: string[];

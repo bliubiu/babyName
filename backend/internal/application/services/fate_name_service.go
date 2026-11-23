@@ -130,6 +130,8 @@ func (s *FateNameService) GenerateWithAnalysis(ctx context.Context, req *Generat
 		Gender:     fate.Gender(req.Gender),
 		Born:       born,
 		Generation: req.Generation,
+		// 字辈位置必须显式传入引擎；此前漏传导致「固定最后」永远退化为中间。
+		GenerationPosition: req.GenerationPosition,
 		Options: fate.GenerateOptions{
 			NameLength:      req.NameLength,
 			Count:           50,

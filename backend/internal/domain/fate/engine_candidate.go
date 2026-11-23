@@ -253,7 +253,7 @@ func (s *sessionImpl) generateWithGeneration(
 	}
 
 	// 双名：字辈固定占一个槽位，其余槽位从候选池自由枚举
-	genFirst := input.GenerationPosition != "tail"
+	genFirst := NormalizeGenerationPosition(input.GenerationPosition) != "tail"
 	pool := float64(max(len(infos), 1))
 	done := 0
 	for j := range infos {

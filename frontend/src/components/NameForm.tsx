@@ -235,11 +235,11 @@ export function NameForm({
                 id="generation-position"
                 className="input-field w-auto min-w-[110px]"
                 value={formData.generationPosition}
-                onChange={(e) => setFormData({ generationPosition: e.target.value as 'middle' | 'end' })}
+                onChange={(e) => setFormData({ generationPosition: e.target.value as 'middle' | 'tail' })}
                 aria-label="字辈位置"
               >
                 <option value="middle">固定中间</option>
-                <option value="end">固定最后</option>
+                <option value="tail">固定最后</option>
               </select>
             </div>
           </Field>
