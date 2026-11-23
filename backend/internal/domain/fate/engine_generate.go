@@ -252,6 +252,10 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	if nameLen <= 0 {
 		nameLen = 2
 	}
+	if nameLen != 1 && nameLen != 2 {
+		// 3/4 等值此前会静默按双名处理，前端会展示成双字名却与请求不符
+		return nil, fmt.Errorf("名字长度只支持 1（单字）或 2（双字），收到 %d", nameLen)
+	}
 	topCount := input.Options.Count
 	if topCount <= 0 {
 		topCount = 100
