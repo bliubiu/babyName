@@ -232,10 +232,13 @@ type Character struct {
 	Meaning           string   `json:"meaning"`
 	IsRegular         bool     `json:"is_regular"`
 	IsNameable        bool     `json:"is_nameable"`
-	CommonLevel       int      `json:"common_level"`
-	GenderHint        string   `json:"gender_hint"`
-	HasPoetry         bool     `json:"has_poetry"`
-	NamingCategory    []string `json:"naming_category,omitempty"` // 精选起名分类标签
+	// IsRare 生僻字标记（namer.json/静态表并集），供 ExcludeRare 精确剔除；
+	// 不能只看 IsRegular：一级/二级字也可能被人工标为生僻。
+	IsRare         bool     `json:"is_rare"`
+	CommonLevel    int      `json:"common_level"`
+	GenderHint     string   `json:"gender_hint"`
+	HasPoetry      bool     `json:"has_poetry"`
+	NamingCategory []string `json:"naming_category,omitempty"` // 精选起名分类标签
 
 	// 数据层策展标注（来自 hanzi.json，由 Adapter 映射，供引擎/评分器消费）
 	IsNegative    bool     `json:"is_negative,omitempty"`    // 策展判定不宜入名（压迫级）

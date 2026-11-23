@@ -99,6 +99,11 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		if IsHardNegativeChar(c.Char) || c.IsNegative {
 			continue
 		}
+		// 排除生僻字：只看 IsRegular 不够（一级/二级字也可能被人工标为生僻），
+		// 必须按 IsRare 精确剔除，否则该开关永远无效果。
+		if input.Options.ExcludeRare && c.IsRare {
+			continue
+		}
 		// 名字用字质量门禁：虚词/排行字/口语物名/数字量词/叹词等
 		// 在「组合级」由策展感知门禁处理（IsNonNamingCombo），此处不剔除，
 		// 以免误伤策展好名（如「与砺」「若兮」中的「与/兮」）。
@@ -106,6 +111,12 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		if s.filter.CheckCharacter(c) {
 			validChars = append(validChars, c)
 		}
+	}
+
+	// 拼音首字母筛选：作用在每个名的用字上（双名两字都须命中），
+	// 此前该选项一路传到 Options 后无人读取，CLI/API 声称支持但结果不变。
+	if initial := normalizePinyinInitial(input.Options.PinyinInitial); initial != "" {
+		validChars = filterByPinyinInitial(validChars, initial)
 	}
 
 	// 6. 全放行《通用规范汉字表》字源
