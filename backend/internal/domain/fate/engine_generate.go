@@ -273,7 +273,9 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		// 小 topCount 场景留一个下限，避免堆频繁替换（每次替换 O(log n)）
 		poolSize = minExcellentTablePoolSize
 	}
-	table := NewExcellentTableWithCap(poolSize)
+	// 额外留 topCount 条余量：榜单出口要剔除「机关单位/争议地名」等合规红线名，
+	// 若只留 Top10N，被剔除后没有补位来源，结果会少于用户要求的数量。
+	table := NewExcellentTableWithCap(poolSize + topCount)
 	// totalCount 统计「完成 RateName 评分」的候选组合数（被过滤/早停跳过的组合不计数），
 	// 用于展示生成规模统计，语义为「已评分组合数」而非「总尝试组合数」（B11）。
 	var totalCount atomic.Int64
@@ -303,11 +305,11 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 	// 避免单一五行组合（如金金）垄断排名。未达多样性要求时退化为纯分数排序。
 	// 注意：建表容量即 topCount*10，故正常情况下 table.Len() >= poolSize，
 	// 只有候选池极小或全部被过滤时才会触发下面这条下调。
-	if poolSize > table.Len() {
-		poolSize = table.Len()
-	}
-	topEntries := table.TopN(poolSize)
-	if poolSize > topCount {
+	// 榜单出口先做合规红线过滤，再按分数取 Top：避免被剔除的条目占掉名额、
+	// 导致最终结果少于 topCount（原先在出口循环里跳过且不补位）。
+	topEntries := table.TopN(poolSize + topCount)
+	topEntries = filterForbiddenEntries(input.Surname, topEntries)
+	if len(topEntries) > topCount {
 		topEntries = ensureWuxingDiversity(topEntries, topCount)
 	}
 
@@ -413,4 +415,17 @@ func (s *sessionImpl) generate(ctx context.Context, input *Input) (*Output, erro
 		ExcellentTable: table,
 		TotalCount:     int(totalCount.Load()),
 	}, nil
+}
+
+// filterForbiddenEntries 剔除命中合规红线（机关单位/争议地名/负面历史人物）的名字。
+// 在多样性筛选与截断之前执行，被剔除的名额由池中后续条目补上。
+func filterForbiddenEntries(surname string, entries []ExcellentEntry) []ExcellentEntry {
+	out := make([]ExcellentEntry, 0, len(entries))
+	for _, e := range entries {
+		if IsForbiddenEntity(surname + e.Char1 + e.Char2) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
