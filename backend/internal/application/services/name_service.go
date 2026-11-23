@@ -652,7 +652,11 @@ func (s *NameService) calculateHexagramAndZiweiParallel(names []name.Name, baziA
 
 	go func() {
 		defer wg.Done()
-		z := s.ziweiAnalyzer.Analyze(req.BirthYear, req.BirthMonth, req.BirthDay, req.BirthHour, req.Gender)
+		// 与八字同口径：紫微同样按真太阳时校正后的日期/时辰排盘
+		zy, zm, zd, zh, _, _ := bazi.ApplyTrueSolar(
+			req.BirthYear, req.BirthMonth, req.BirthDay, req.BirthHour,
+			max(0, req.BirthMinute), req.BirthLocation, req.BirthLongitude)
+		z := s.ziweiAnalyzer.Analyze(zy, zm, zd, zh, req.Gender)
 
 		ziweiMutex.Lock()
 		ziweiChart = z

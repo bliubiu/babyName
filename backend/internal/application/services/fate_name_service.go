@@ -332,15 +332,15 @@ func (s *FateNameService) attachFatePerNameHexagrams(names []*name.NameAnalysis,
 }
 
 // ziweiForRequest 按出生时间进行紫微排盘（无分析器时返回 nil）
+// 与八字统一使用真太阳时：同一出生信息不能出现「八字按校正时、紫微按钟表时」两套时辰。
 // 返回完整 ZiweiChart（12 宫落星 + 主星亮度 + 大限等），由前端渲染。
 func (s *FateNameService) ziweiForRequest(req *GenerateRequest) *ziwei.ZiweiChart {
 	if s.ziweiAnalyzer == nil {
 		return nil
 	}
-	return s.ziweiAnalyzer.Analyze(
-		req.BirthYear, req.BirthMonth, req.BirthDay,
-		req.BirthHour, req.Gender,
-	)
+	y, mo, d, h, mi := req.BirthYear, req.BirthMonth, req.BirthDay, req.BirthHour, max(0, req.BirthMinute)
+	y, mo, d, h, _, _ = bazi.ApplyTrueSolar(y, mo, d, h, mi, req.BirthLocation, req.BirthLongitude)
+	return s.ziweiAnalyzer.Analyze(y, mo, d, h, req.Gender)
 }
 
 // poetryBackfill 诗词出处结构化回填内容（典籍名/篇目/原句/作者/朝代/全诗）

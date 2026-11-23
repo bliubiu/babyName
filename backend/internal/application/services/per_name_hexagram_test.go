@@ -79,3 +79,41 @@ func TestPerNameHexagram_NilFinder(t *testing.T) {
 		t.Error("finder 为 nil 时应返回空")
 	}
 }
+
+// TestZiweiUsesTrueSolarTime 紫微排盘必须与八字同口径（真太阳时），
+// 否则同一出生信息会得到「八字按校正时辰、紫微按钟表时辰」两套结论。
+func TestZiweiUsesTrueSolarTime(t *testing.T) {
+	s := &NameService{hexagramFinder: &HexagramAdapter{}, ziweiAnalyzer: &ZiweiAdapter{}}
+	// 乌鲁木齐（东经 87.6°）00:30 出生，真太阳时约前一日 22:20
+	req := &GenerateRequest{
+		Surname: "王", BirthYear: 2000, BirthMonth: 8, BirthDay: 16,
+		BirthHour: 0, BirthMinute: 30, BirthLongitude: 87.6, Gender: "female",
+	}
+	names := []name.Name{{GivenName: "丰儿", Strokes: 7}}
+	baziAnalysis := &bazi.BaziAnalysis{Season: "秋"}
+	_, _, _, chart, _ := s.calculateHexagramAndZiweiParallel(names, baziAnalysis, req)
+	if chart == nil {
+		t.Fatal("紫微排盘不应为空")
+	}
+	if chart.Day != 15 || chart.Hour != 22 {
+		t.Errorf("紫微应使用真太阳时(8/15 22 时)，实得 %d/%d %d 时",
+			chart.Month, chart.Day, chart.Hour)
+	}
+}
+
+// TestFateZiweiUsesTrueSolarTime FateService 的紫微口径同样须校正。
+func TestFateZiweiUsesTrueSolarTime(t *testing.T) {
+	s := &FateNameService{ziweiAnalyzer: &ZiweiAdapter{}}
+	req := &GenerateRequest{
+		BirthYear: 2000, BirthMonth: 8, BirthDay: 16,
+		BirthHour: 0, BirthMinute: 30, BirthLongitude: 87.6, Gender: "female",
+	}
+	chart := s.ziweiForRequest(req)
+	if chart == nil {
+		t.Fatal("紫微排盘不应为空")
+	}
+	if chart.Day != 15 || chart.Hour != 22 {
+		t.Errorf("紫微应使用真太阳时(8/15 22 时)，实得 %d/%d %d 时",
+			chart.Month, chart.Day, chart.Hour)
+	}
+}
