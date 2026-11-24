@@ -39,7 +39,9 @@ type reportName struct {
 	Pinyin   string
 	WuXing   string
 	Score    string
-	Meaning  string
+	// ScoreValue 评分数值（用于排序高亮/摘要，Score 保留展示格式）
+	ScoreValue float64
+	Meaning    string
 	// Scores 各维评分（详批模式展示前若干维）
 	Scores []nameScore
 }
@@ -137,23 +139,25 @@ func parseReportModel(data interface{}) reportModel {
 				continue
 			}
 			m.Names = append(m.Names, reportName{
-				FullName: rawString(nm, "full_name"),
-				Pinyin:   rawString(nm, "pinyin"),
-				WuXing:   rawString(nm, "wuxing"),
-				Score:    getScoreValue(nm, "score"),
-				Meaning:  rawString(nm, "meaning"),
-				Scores:   parseNameScores(nm),
+				FullName:   rawString(nm, "full_name"),
+				Pinyin:     rawString(nm, "pinyin"),
+				WuXing:     rawString(nm, "wuxing"),
+				Score:      getScoreValue(nm, "score"),
+				ScoreValue: getScoreFloat(nm, "score"),
+				Meaning:    rawString(nm, "meaning"),
+				Scores:     parseNameScores(nm),
 			})
 		}
 	case []map[string]interface{}:
 		for _, nm := range names {
 			m.Names = append(m.Names, reportName{
-				FullName: rawString(nm, "full_name"),
-				Pinyin:   rawString(nm, "pinyin"),
-				WuXing:   rawString(nm, "wuxing"),
-				Score:    getScoreValue(nm, "score"),
-				Meaning:  rawString(nm, "meaning"),
-				Scores:   parseNameScores(nm),
+				FullName:   rawString(nm, "full_name"),
+				Pinyin:     rawString(nm, "pinyin"),
+				WuXing:     rawString(nm, "wuxing"),
+				Score:      getScoreValue(nm, "score"),
+				ScoreValue: getScoreFloat(nm, "score"),
+				Meaning:    rawString(nm, "meaning"),
+				Scores:     parseNameScores(nm),
 			})
 		}
 	}
@@ -287,18 +291,21 @@ func renderReport(d *pdf.Document, m reportModel) {
 	left := d.MarginLeft()
 	contentW := d.ContentWidth()
 
-	// ---- 封面标题块：色带 + 主标题 + 副标题 + 生成时间 ----
+	// ---- 封面标题块：色带 + 主标题 + 副标题/生成时间 ----
 	fillRect(d, left, d.CursorY()-6, contentW, 3, clrAccent)
 	d.Space(10)
 	setColor(d, clrTitle)
 	d.TextLine(szTitle+3, szTitle+12, m.Title())
 	setColor(d, clrMuted)
-	d.TextLine(szSmall+1, szSmall+8, "NameMaster · 传统命理起名详批")
-	d.TextLine(szSmall, szSmall+7, "生成时间："+time.Now().Format("2006-01-02 15:04"))
+	subtitle := "NameMaster · 传统命理起名详批"
+	d.Text(left, d.CursorY(), szSmall+1, subtitle)
+	timeText := "生成时间：" + time.Now().Format("2006-01-02 15:04")
+	d.Text(d.PageSize().Width-d.MarginRight()-d.Measure(szSmall+1, timeText),
+		d.CursorY(), szSmall+1, timeText)
+	d.Space(szSmall + 10)
 	d.ResetColor()
-	d.Space(4)
-	d.Rule(left, d.CursorY(), contentW, 1.0)
-	d.Space(14)
+	d.Rule(left, d.CursorY(), contentW, 0.8)
+	d.Space(12)
 
 	if !m.HasData {
 		d.Paragraph("本次请求未提供有效的报告数据（data 字段应为对象）。", szBody, 17)
@@ -306,7 +313,23 @@ func renderReport(d *pdf.Document, m reportModel) {
 		return
 	}
 
-	// ---- 一、基本信息 ----
+	// ---- 报告摘要条：一眼看到推荐数量/最高分/喜用神 ----
+	summary := fmt.Sprintf("共 %d 个推荐名字", len(m.Names))
+	if top := highestScore(m.Names); top > 0 {
+		summary += fmt.Sprintf("　·　最高评分 %s", formatScore(top))
+	}
+	if m.XiYongShen != "" {
+		summary += "　·　喜用神 " + m.XiYongShen
+	}
+	fillRect(d, left, d.CursorY()-3, contentW, 24, clrSection)
+	setColor(d, clrTitle)
+	d.Text(left+10, d.CursorY()+5, szBody+0.5, summary)
+	d.ResetColor()
+	d.Space(32)
+
+	sec := &sectionCounter{}
+
+	// ---- 基本信息 ----
 	basicRows := [][2]string{
 		{"姓氏", m.Surname},
 		{"性别", genderLabel(m.Gender)},
@@ -316,9 +339,9 @@ func renderReport(d *pdf.Document, m reportModel) {
 	if m.Zodiac != "" {
 		basicRows = append(basicRows, [2]string{"生肖", m.Zodiac})
 	}
-	renderSection(d, "一、基本信息", basicRows)
+	renderInfoGrid(d, sec.title("基本信息"), basicRows)
 
-	// ---- 二、八字与五行 ----
+	// ---- 八字与五行 ----
 	baziRows := [][2]string{
 		{"八字", m.Bazi},
 		{"五行", m.WuXing},
@@ -330,19 +353,17 @@ func renderReport(d *pdf.Document, m reportModel) {
 	if m.Nayin != "" {
 		baziRows = append(baziRows, [2]string{"纳音", m.Nayin})
 	}
-	renderSection(d, "二、八字与五行", baziRows)
+	renderInfoGrid(d, sec.title("八字与五行"), baziRows)
 
 	// ---- 详批模式：五行分布图 + 命理依据解读 ----
-	if m.FullDetail {
-		if hasWuXingDist(m.WuXingDist) {
-			renderWuXingChart(d, m.WuXingDist)
-		}
-		if len(m.Analysis) > 0 {
-			renderAnalysis(d, m.Analysis)
-		}
+	if m.FullDetail && hasWuXingDist(m.WuXingDist) {
+		renderWuXingChart(d, m.WuXingDist, sec.title("五行分布"))
+	}
+	if m.FullDetail && len(m.Analysis) > 0 {
+		renderAnalysis(d, m.Analysis, sec.title("命理依据解读"))
 	}
 
-	renderNames(d, m)
+	renderNames(d, m, sec.title("推荐名字"))
 
 	d.Space(6)
 	setColor(d, clrMuted)
@@ -350,6 +371,54 @@ func renderReport(d *pdf.Document, m reportModel) {
 	d.ResetColor()
 
 	setFooter(d)
+}
+
+// sectionCounter 生成「一、二、三…」连续编号，避免因跳过某些区块而出现断号。
+type sectionCounter struct{ n int }
+
+func (s *sectionCounter) title(name string) string {
+	s.n++
+	return chineseNumeral(s.n) + "、" + name
+}
+
+func chineseNumeral(n int) string {
+	digits := []rune("零一二三四五六七八九")
+	if n <= 0 || n >= 100 {
+		return fmt.Sprintf("%d", n)
+	}
+	if n < 10 {
+		return string(digits[n])
+	}
+	tens, ones := n/10, n%10
+	if tens == 1 {
+		if ones == 0 {
+			return "十"
+		}
+		return "十" + string(digits[ones])
+	}
+	if ones == 0 {
+		return string(digits[tens]) + "十"
+	}
+	return string(digits[tens]) + "十" + string(digits[ones])
+}
+
+// highestScore 返回推荐名字中的最高评分（无有效分数时为 0）。
+func highestScore(names []reportName) float64 {
+	var max float64
+	for _, n := range names {
+		if n.ScoreValue > max {
+			max = n.ScoreValue
+		}
+	}
+	return max
+}
+
+// formatScore 统一评分的展示精度：整数不带小数，其余保留一位。
+func formatScore(v float64) string {
+	if v == float64(int64(v)) {
+		return fmt.Sprintf("%d", int64(v))
+	}
+	return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.1f", v), "0"), ".")
 }
 
 // hasWuXingDist 五行分布是否有非零数据。
@@ -363,7 +432,7 @@ func hasWuXingDist(dist map[string]float64) bool {
 }
 
 // renderWuXingChart 画五行分布横向条形图（复用 FillRect / Text）。
-func renderWuXingChart(d *pdf.Document, dist map[string]float64) {
+func renderWuXingChart(d *pdf.Document, dist map[string]float64, title string) {
 	order := []string{"金", "木", "水", "火", "土"}
 	var max float64
 	for _, k := range order {
@@ -378,7 +447,7 @@ func renderWuXingChart(d *pdf.Document, dist map[string]float64) {
 	d.EnsureSpace(szSection + rowH*5 + 24)
 	fillRect(d, d.MarginLeft(), d.CursorY()-2, d.ContentWidth(), szSection+8, clrSection)
 	setColor(d, clrTitle)
-	d.Text(d.MarginLeft()+8, d.CursorY()+3, szSection, "三、五行分布")
+	d.Text(d.MarginLeft()+8, d.CursorY()+3, szSection, title)
 	d.Space(szSection + 12)
 
 	left := d.MarginLeft()
@@ -402,11 +471,11 @@ func renderWuXingChart(d *pdf.Document, dist map[string]float64) {
 }
 
 // renderAnalysis 渲染命理详批段落（每段独立成行，自动折行与分页）。
-func renderAnalysis(d *pdf.Document, paragraphs []string) {
+func renderAnalysis(d *pdf.Document, paragraphs []string, title string) {
 	d.EnsureSpace(szSection + 30)
 	fillRect(d, d.MarginLeft(), d.CursorY()-2, d.ContentWidth(), szSection+8, clrSection)
 	setColor(d, clrTitle)
-	d.Text(d.MarginLeft()+8, d.CursorY()+3, szSection, "四、命理依据解读")
+	d.Text(d.MarginLeft()+8, d.CursorY()+3, szSection, title)
 	d.Space(szSection + 12)
 
 	for _, p := range paragraphs {
@@ -437,38 +506,77 @@ func setFooter(d *pdf.Document) {
 	})
 }
 
-// renderSection 渲染「小节标题 + 若干 label/value 行」。
-func renderSection(d *pdf.Document, title string, rows [][2]string) {
+// renderInfoGrid 渲染「小节标题 + 双列 label/value 网格」。
+//
+// 基本信息/八字字段都较短，单列排布会在右半边留下大片空白；改为每行放两组，
+// 字段从 5 行压到 3 行，版面更紧凑。值过长时仍在本单元格内折行，不会跨列。
+func renderInfoGrid(d *pdf.Document, title string, rows [][2]string) {
 	if len(rows) == 0 {
 		return
 	}
-	d.EnsureSpace(szSection + 4*16 + 20)
+
+	left := d.MarginLeft()
+	contentW := d.ContentWidth()
+	gutter := 20.0
+	cellW := (contentW - gutter) / 2
+	labelW := 52.0
+	valueW := cellW - labelW
+	lineH := 15.0
+
+	// 先算总高，尽量让整节落在同一页，避免标题与字段被拆开
+	totalH := szSection + 12
+	for i := 0; i < len(rows); i += 2 {
+		h := infoRowHeight(d, rows, i, valueW, lineH)
+		totalH += h
+	}
+	d.EnsureSpace(totalH + 10)
 
 	// 小节标题条
-	fillRect(d, d.MarginLeft(), d.CursorY()-2, d.ContentWidth(), szSection+8, clrSection)
+	fillRect(d, left, d.CursorY()-2, contentW, szSection+8, clrSection)
 	setColor(d, clrTitle)
-	d.Text(d.MarginLeft()+8, d.CursorY()+3, szSection, title)
+	d.Text(left+8, d.CursorY()+3, szSection, title)
 	d.Space(szSection + 12)
 
-	labelW := 74.0
-	rowH := 16.0
-	for _, r := range rows {
-		value := r[1]
-		if strings.TrimSpace(value) == "" {
-			value = "—"
+	for i := 0; i < len(rows); i += 2 {
+		rowH := infoRowHeight(d, rows, i, valueW, lineH)
+		d.EnsureSpace(rowH)
+		drawInfoCell(d, rows[i], left, d.CursorY(), labelW, valueW, lineH)
+		if i+1 < len(rows) {
+			drawInfoCell(d, rows[i+1], left+cellW+gutter, d.CursorY(), labelW, valueW, lineH)
 		}
-		lines := d.Wrap(value, szBody, d.ContentWidth()-labelW)
-		d.EnsureSpace(float64(len(lines)) * rowH)
-		setColor(d, clrMuted)
-		d.Text(d.MarginLeft()+2, d.CursorY()+3, szBody, r[0])
-		setColor(d, clrText)
-		for _, ln := range lines {
-			d.Text(d.MarginLeft()+labelW, d.CursorY()+3, szBody, ln)
-			d.Space(rowH)
-		}
+		d.Space(rowH)
 	}
 	d.ResetColor()
 	d.Space(10)
+}
+
+// infoRowHeight 计算网格中一行（最多两个字段）的高度。
+func infoRowHeight(d *pdf.Document, rows [][2]string, i int, valueW, lineH float64) float64 {
+	maxLines := len(d.Wrap(infoValue(rows[i]), szBody, valueW))
+	if i+1 < len(rows) {
+		if n := len(d.Wrap(infoValue(rows[i+1]), szBody, valueW)); n > maxLines {
+			maxLines = n
+		}
+	}
+	return float64(maxLines)*lineH + 6
+}
+
+func infoValue(row [2]string) string {
+	if strings.TrimSpace(row[1]) == "" {
+		return "—"
+	}
+	return row[1]
+}
+
+// drawInfoCell 画一个 label/value 单元格。
+func drawInfoCell(d *pdf.Document, row [2]string, x, y, labelW, valueW, lineH float64) {
+	setColor(d, clrMuted)
+	d.Text(x, y+3, szBody, row[0])
+	setColor(d, clrText)
+	for _, ln := range d.Wrap(infoValue(row), szBody, valueW) {
+		d.Text(x+labelW, y+3, szBody, ln)
+		y += lineH
+	}
 }
 
 // nameTableLayout 名字表格列布局，按内容宽度比例分配，消除中段大空白。
@@ -482,16 +590,21 @@ type nameTableLayout struct {
 func newNameTableLayout(d *pdf.Document) nameTableLayout {
 	left := d.MarginLeft()
 	contentW := d.ContentWidth()
-	// 用相对权重分配：序号 7% / 姓名 18% / 拼音 42% / 五行 18% / 评分 15%
+	// 相对权重：序号 7% / 姓名 21% / 拼音 31% / 五行 14% / 评分 27%（右对齐占余量）
 	wIndex := contentW * 0.07
-	wName := contentW * 0.18
-	wPin := contentW * 0.42
-	scoreW := contentW * 0.15
+	wName := contentW * 0.21
+	wPin := contentW * 0.31
+	wWuxing := contentW * 0.14
 	return nameTableLayout{
-		left:       left,
-		contentW:   contentW,
-		colX:       [4]float64{left, left + wIndex, left + wIndex + wName, left + wIndex + wName + wPin},
-		scoreRight: left + contentW - scoreW/2,
+		left:     left,
+		contentW: contentW,
+		colX: [4]float64{
+			left,
+			left + wIndex,
+			left + wIndex + wName,
+			left + wIndex + wName + wPin + wWuxing*0.35,
+		},
+		scoreRight: left + contentW,
 	}
 }
 
@@ -505,16 +618,21 @@ func drawNameTableHeader(d *pdf.Document, l nameTableLayout) {
 	d.Text(l.colX[2], d.CursorY(), szSmall, "拼音")
 	d.Text(l.colX[3], d.CursorY(), szSmall, "五行")
 	scoreHeader := "评分"
-	d.Text(l.scoreRight-d.Measure(szSmall, scoreHeader), d.CursorY(), szSmall, scoreHeader)
+	d.Text(l.scoreRight-d.Measure(szSmall, scoreHeader)-4, d.CursorY(), szSmall, scoreHeader)
 	d.Space(headerH)
 }
 
 // renderNames 渲染推荐名字表格。
-func renderNames(d *pdf.Document, m reportModel) {
-	d.EnsureSpace(szSection + 70)
+//
+// 排版要点：
+//   - 前 3 名用左侧色条标记，评分按档位着色；
+//   - 每行主行只放结构化短字段，寓意/维度分在下一行起折行，避免大段文字挤进列内；
+//   - 换页时重画表头，保证续页仍可读。
+func renderNames(d *pdf.Document, m reportModel, title string) {
+	d.EnsureSpace(szSection + 72)
 	fillRect(d, d.MarginLeft(), d.CursorY()-2, d.ContentWidth(), szSection+8, clrSection)
 	setColor(d, clrTitle)
-	d.Text(d.MarginLeft()+8, d.CursorY()+3, szSection, "五、推荐名字")
+	d.Text(d.MarginLeft()+8, d.CursorY()+3, szSection, title)
 	d.Space(szSection + 12)
 
 	if len(m.Names) == 0 {
@@ -527,41 +645,65 @@ func renderNames(d *pdf.Document, m reportModel) {
 	l := newNameTableLayout(d)
 	drawNameTableHeader(d, l)
 
+	rankColors := [3][3]float64{
+		{0.78, 0.24, 0.24}, // 第 1 名：朱砂
+		{0.82, 0.62, 0.22}, // 第 2 名：赭金
+		{0.55, 0.58, 0.62}, // 第 3 名：青灰
+	}
+
 	for i, n := range m.Names {
-		// 预估整行高度：主行 + 寓意折行 + 详批模式下各维评分一行
-		meaningLines := d.Wrap(n.Meaning, szSmall, l.contentW-(l.colX[1]-l.left)-6)
+		meaning := ""
+		if n.Meaning != "" {
+			meaning = "寓意：" + n.Meaning
+		}
+		meaningW := l.contentW - (l.colX[1] - l.left) - 4
+		meaningLines := d.Wrap(meaning, szSmall, meaningW)
 		scoreLine := ""
 		if m.FullDetail && len(n.Scores) > 0 {
 			scoreLine = formatNameScores(n.Scores)
 		}
 		scoreLines := 0
 		if scoreLine != "" {
-			scoreLines = len(d.Wrap(scoreLine, szSmall, l.contentW-8))
+			scoreLines = len(d.Wrap(scoreLine, szSmall, meaningW))
 		}
-		rowH := 18.0 + float64(len(meaningLines))*13.0 + float64(scoreLines)*13.0 + 6
+		rowH := 19.0 + float64(len(meaningLines))*13.0 + float64(scoreLines)*13.0 + 8
 		if d.CursorY()+rowH > d.BottomLimit() {
 			d.AddPage()
 			d.Space(6)
 			drawNameTableHeader(d, l) // 续页重画表头
 		}
+		rowTop := d.CursorY()
 
 		// 斑马纹：偶数行浅底，提升可读性
 		if i%2 == 1 {
-			fillRect(d, l.left, d.CursorY()-3, l.contentW, 18, clrSection)
+			fillRect(d, l.left, rowTop-3, l.contentW, rowH-4, clrSection)
 		}
-		setColor(d, clrMuted)
-		d.Text(l.colX[0]+6, d.CursorY()+2, szBody, fmt.Sprintf("%d", i+1))
-		setColor(d, clrTitle)
-		d.Text(l.colX[1], d.CursorY()+2, szBody, n.FullName)
-		setColor(d, clrText)
-		d.Text(l.colX[2], d.CursorY()+2, szBody, n.Pinyin)
-		d.Text(l.colX[3], d.CursorY()+2, szBody, n.WuXing)
-		if n.Score != "" {
-			d.Text(l.scoreRight-d.Measure(szBody, n.Score), d.CursorY()+2, szBody, n.Score)
+		// 前三名左侧色条（与斑马纹错开，始终可见）
+		if i < 3 {
+			fillRect(d, l.left, rowTop-2, 3, rowH-6, rankColors[i])
 		}
-		d.Space(18)
 
-		if n.Meaning != "" {
+		setColor(d, clrMuted)
+		d.Text(l.colX[0]+8, rowTop+2, szBody, fmt.Sprintf("%d", i+1))
+		setColor(d, clrTitle)
+		d.Text(l.colX[1], rowTop+2, szBody, n.FullName)
+		setColor(d, clrText)
+		d.Text(l.colX[2], rowTop+2, szBody, n.Pinyin)
+		d.Text(l.colX[3], rowTop+2, szBody, n.WuXing)
+		if n.Score != "" {
+			scoreColor := clrText
+			switch {
+			case n.ScoreValue >= 90:
+				scoreColor = clrAccent
+			case n.ScoreValue >= 85:
+				scoreColor = clrTitle
+			}
+			setColor(d, scoreColor)
+			d.Text(l.scoreRight-d.Measure(szBody, n.Score)-4, rowTop+2, szBody, n.Score)
+		}
+		d.Space(19)
+
+		if meaning != "" {
 			setColor(d, clrMuted)
 			for _, ln := range meaningLines {
 				d.Text(l.colX[1], d.CursorY(), szSmall, ln)
@@ -570,12 +712,12 @@ func renderNames(d *pdf.Document, m reportModel) {
 		}
 		if scoreLine != "" {
 			setColor(d, clrAccent)
-			for _, ln := range d.Wrap(scoreLine, szSmall, l.contentW-8) {
+			for _, ln := range d.Wrap(scoreLine, szSmall, meaningW) {
 				d.Text(l.colX[1], d.CursorY(), szSmall-0.5, ln)
 				d.Space(13)
 			}
 		}
-		d.Space(6)
+		d.Space(8)
 		d.Rule(l.left, d.CursorY(), l.contentW, 0.4)
 	}
 	d.ResetColor()
@@ -663,6 +805,14 @@ func toFloat(v interface{}) (float64, bool) {
 		}
 	}
 	return 0, false
+}
+
+// getScoreFloat 取评分数值；字符串数字、整数与浮点统一转为 float64。
+func getScoreFloat(data map[string]interface{}, key string) float64 {
+	if v, ok := toFloat(data[key]); ok {
+		return v
+	}
+	return 0
 }
 
 // getScoreValue 取分数字段并做人类可读的格式化（92 → "92"，92.30 → "92.3"）。

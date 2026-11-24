@@ -164,9 +164,9 @@ func TestParseReportModelToleratesShapes(t *testing.T) {
 func TestParseReportModelFullDetail(t *testing.T) {
 	m := parseReportModel(map[string]interface{}{
 		"rishou": "甲", "nayin": "海中金", "zodiac": "鼠",
-		"analysis":     []interface{}{"【八字格局】日主为甲", "【五行平衡】整体均衡"},
-		"wuxing_dist":  map[string]interface{}{"金": float64(1), "木": float64(5), "水": float64(0)},
-		"options":      map[string]interface{}{"detail": "full"},
+		"analysis":    []interface{}{"【八字格局】日主为甲", "【五行平衡】整体均衡"},
+		"wuxing_dist": map[string]interface{}{"金": float64(1), "木": float64(5), "水": float64(0)},
+		"options":     map[string]interface{}{"detail": "full"},
 		"names": []interface{}{
 			map[string]interface{}{
 				"full_name": "李沐", "score": 92.0,
@@ -227,5 +227,55 @@ func TestGeneratePDFFullDetail(t *testing.T) {
 	}
 	if !bytes.HasSuffix(b, []byte("%%EOF\n")) {
 		t.Error("详批 PDF 缺少 EOF")
+	}
+}
+
+// TestReportLayoutHelpers 章节编号连续、最高分与分数格式化。
+func TestReportLayoutHelpers(t *testing.T) {
+	for n, want := range []string{"", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"} {
+		if n == 0 {
+			continue
+		}
+		if got := chineseNumeral(n); got != want {
+			t.Errorf("chineseNumeral(%d) = %q, 期望 %q", n, got, want)
+		}
+	}
+	var sec sectionCounter
+	if got := sec.title("基本信息"); got != "一、基本信息" {
+		t.Errorf("首个章节 = %q", got)
+	}
+	if got := sec.title("推荐名字"); got != "二、推荐名字" {
+		t.Errorf("跳号时章节应连续，实际 %q", got)
+	}
+
+	names := []reportName{{ScoreValue: 88.7}, {ScoreValue: 92.4}, {ScoreValue: 0}}
+	if got := highestScore(names); got != 92.4 {
+		t.Errorf("highestScore = %v, 期望 92.4", got)
+	}
+	if got := formatScore(92.0); got != "92" {
+		t.Errorf("formatScore(92) = %q", got)
+	}
+	if got := formatScore(92.4); got != "92.4" {
+		t.Errorf("formatScore(92.4) = %q", got)
+	}
+}
+
+// TestParseReportModelScoreValue 评分字符串与数值两种形态都要能算出数值分，
+// 供摘要最高分与前三名高亮使用。
+func TestParseReportModelScoreValue(t *testing.T) {
+	m := parseReportModel(map[string]interface{}{
+		"names": []interface{}{
+			map[string]interface{}{"full_name": "张明", "score": "88.6"},
+			map[string]interface{}{"full_name": "张涵", "score": float64(92.4)},
+		},
+	})
+	if len(m.Names) != 2 {
+		t.Fatalf("names = %d", len(m.Names))
+	}
+	if m.Names[0].ScoreValue != 88.6 || m.Names[1].ScoreValue != 92.4 {
+		t.Errorf("ScoreValue 解析异常：%+v", m.Names)
+	}
+	if got := highestScore(m.Names); got != 92.4 {
+		t.Errorf("highestScore = %v, 期望 92.4", got)
 	}
 }

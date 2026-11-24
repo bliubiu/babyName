@@ -45,6 +45,15 @@ func main() {
 		"bazi":       "甲辰 己巳 丙申 癸巳",
 		"wuxing":     "木土 土火 火金 水火",
 		"xiyongshen": "水（喜神：金）",
+		"rishou":     "丙",
+		"nayin":      "山下火",
+		"zodiac":     "龙",
+		"analysis": []interface{}{
+			"【八字格局】日主为丙火，生于巳月，火势得令；年柱甲辰、时柱癸巳，木火相生而水火既济，格局清透。",
+			"【五行平衡】四柱五行分布为木1、火3、土1、金1、水2，火略偏旺，宜以水润之、以金泄之，避免再见木火。",
+			"【喜用神补益】喜用神取水、金：水可调候润局，金能生水并有泄火之功；取名宜选属水属金之字，忌再补木火。",
+		},
+		"wuxing_dist": map[string]interface{}{"金": 1, "木": 1, "水": 2, "火": 3, "土": 1},
 		"names": []interface{}{
 			map[string]interface{}{
 				"full_name": "张珀熙", "pinyin": "zhāng pò xī", "wuxing": "水金", "score": 92.4,
