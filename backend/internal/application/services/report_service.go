@@ -617,7 +617,8 @@ func renderZiwei(d *pdf.Document, z reportZiwei, title string) {
 		palaces = append(palaces, [2]string{name, strings.Join(labels, "、")})
 	}
 	if len(palaces) > 0 {
-		renderInfoGrid(d, "十二宫主星", palaces)
+		drawSubHeading(d, "十二宫主星")
+		renderInfoRows(d, palaces)
 	}
 	renderTextBlock(d, "排盘分析", z.Analysis)
 }
@@ -790,10 +791,7 @@ func renderWuXingChart(d *pdf.Document, dist map[string]float64, title string) {
 	}
 	rowH := 18.0
 	d.EnsureSpace(szSection + rowH*5 + 24)
-	fillRect(d, d.MarginLeft(), d.CursorY()-2, d.ContentWidth(), szSection+8, clrSection)
-	setColor(d, clrTitle)
-	d.Text(d.MarginLeft()+8, d.CursorY()+3, szSection, title)
-	d.Space(szSection + 12)
+	drawSectionHeading(d, title)
 
 	left := d.MarginLeft()
 	labelW := 30.0
@@ -818,10 +816,7 @@ func renderWuXingChart(d *pdf.Document, dist map[string]float64, title string) {
 // renderAnalysis 渲染命理详批段落（每段独立成行，自动折行与分页）。
 func renderAnalysis(d *pdf.Document, paragraphs []string, title string) {
 	d.EnsureSpace(szSection + 30)
-	fillRect(d, d.MarginLeft(), d.CursorY()-2, d.ContentWidth(), szSection+8, clrSection)
-	setColor(d, clrTitle)
-	d.Text(d.MarginLeft()+8, d.CursorY()+3, szSection, title)
-	d.Space(szSection + 12)
+	drawSectionHeading(d, title)
 
 	for _, p := range paragraphs {
 		lines := d.Wrap(p, szBody-0.5, d.ContentWidth()-8)
@@ -855,6 +850,31 @@ func setFooter(d *pdf.Document) {
 	})
 }
 
+// drawSectionHeading 画章节标题：左侧朱砂短条 + 加粗感标题 + 细分隔线。
+// 不使用整条底色，避免连续浅蓝块把版面切碎，也保证黑白打印仍有层级。
+func drawSectionHeading(d *pdf.Document, title string) {
+	left := d.MarginLeft()
+	y := d.CursorY()
+	fillRect(d, left, y-1, 3, szSection+7, clrAccent)
+	setColor(d, clrTitle)
+	d.Text(left+10, y+3, szSection+1, title)
+	d.Space(szSection + 10)
+	d.Rule(left, d.CursorY()-4, d.ContentWidth(), 0.5)
+	d.Space(8)
+	d.ResetColor()
+}
+
+// drawSubHeading 画次级标题：字号略小、无编号、带细分隔线，用于十二宫主星等子区块。
+func drawSubHeading(d *pdf.Document, title string) {
+	left := d.MarginLeft()
+	setColor(d, clrTitle)
+	d.Text(left, d.CursorY()+2, szBody+0.5, title)
+	d.Space(16)
+	d.Rule(left, d.CursorY()-4, d.ContentWidth(), 0.4)
+	d.Space(6)
+	d.ResetColor()
+}
+
 // renderInfoGrid 渲染「小节标题 + 双列 label/value 网格」。
 //
 // 基本信息/八字字段都较短，单列排布会在右半边留下大片空白；改为每行放两组，
@@ -864,7 +884,6 @@ func renderInfoGrid(d *pdf.Document, title string, rows [][2]string) {
 		return
 	}
 
-	left := d.MarginLeft()
 	contentW := d.ContentWidth()
 	gutter := 20.0
 	cellW := (contentW - gutter) / 2
@@ -875,16 +894,28 @@ func renderInfoGrid(d *pdf.Document, title string, rows [][2]string) {
 	// 先算总高，尽量让整节落在同一页，避免标题与字段被拆开
 	totalH := szSection + 12
 	for i := 0; i < len(rows); i += 2 {
-		h := infoRowHeight(d, rows, i, valueW, lineH)
-		totalH += h
+		totalH += infoRowHeight(d, rows, i, valueW, lineH)
 	}
 	d.EnsureSpace(totalH + 10)
 
-	// 小节标题条
-	fillRect(d, left, d.CursorY()-2, contentW, szSection+8, clrSection)
-	setColor(d, clrTitle)
-	d.Text(left+8, d.CursorY()+3, szSection, title)
-	d.Space(szSection + 12)
+	// 小节标题（无底色：左侧短色条 + 细分隔线）
+	drawSectionHeading(d, title)
+	renderInfoRows(d, rows)
+	d.Space(10)
+}
+
+// renderInfoRows 画双列 label/value 行（不画标题），供主章节与子区块复用。
+func renderInfoRows(d *pdf.Document, rows [][2]string) {
+	if len(rows) == 0 {
+		return
+	}
+	left := d.MarginLeft()
+	contentW := d.ContentWidth()
+	gutter := 20.0
+	cellW := (contentW - gutter) / 2
+	labelW := 52.0
+	valueW := cellW - labelW
+	lineH := 15.0
 
 	for i := 0; i < len(rows); i += 2 {
 		rowH := infoRowHeight(d, rows, i, valueW, lineH)
@@ -896,7 +927,6 @@ func renderInfoGrid(d *pdf.Document, title string, rows [][2]string) {
 		d.Space(rowH)
 	}
 	d.ResetColor()
-	d.Space(10)
 }
 
 // infoRowHeight 计算网格中一行（最多两个字段）的高度。
@@ -961,8 +991,7 @@ func newNameTableLayout(d *pdf.Document) nameTableLayout {
 
 // drawNameTableHeader 画表头；换页后必须重画，否则续页列标题丢失。
 func drawNameTableHeader(d *pdf.Document, l nameTableLayout) {
-	headerH := 20.0
-	fillRect(d, l.left, d.CursorY()-4, l.contentW, headerH, clrSection)
+	headerH := 18.0
 	setColor(d, clrMuted)
 	d.Text(l.colX[0]+6, d.CursorY(), szSmall, "序号")
 	d.Text(l.colX[1], d.CursorY(), szSmall, "姓名")
@@ -972,6 +1001,9 @@ func drawNameTableHeader(d *pdf.Document, l nameTableLayout) {
 	scoreHeader := "评分"
 	d.Text(l.scoreRight-d.Measure(szSmall, scoreHeader)-4, d.CursorY(), szSmall, scoreHeader)
 	d.Space(headerH)
+	d.Rule(l.left, d.CursorY()-4, l.contentW, 0.6)
+	d.Space(5)
+	d.ResetColor()
 }
 
 // renderNames 渲染推荐名字表格。
@@ -982,10 +1014,7 @@ func drawNameTableHeader(d *pdf.Document, l nameTableLayout) {
 //   - 换页时重画表头，保证续页仍可读。
 func renderNames(d *pdf.Document, m reportModel, title string) {
 	d.EnsureSpace(szSection + 72)
-	fillRect(d, d.MarginLeft(), d.CursorY()-2, d.ContentWidth(), szSection+8, clrSection)
-	setColor(d, clrTitle)
-	d.Text(d.MarginLeft()+8, d.CursorY()+3, szSection, title)
-	d.Space(szSection + 12)
+	drawSectionHeading(d, title)
 
 	if len(m.Names) == 0 {
 		setColor(d, clrMuted)
