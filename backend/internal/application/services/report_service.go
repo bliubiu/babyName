@@ -64,6 +64,10 @@ type reportModel struct {
 	Rishou     string
 	Nayin      string
 	Zodiac     string
+	// Hexagram 卦象摘要（本卦/卦辞/象辞/卦德/解读）
+	Hexagram *reportHexagram
+	// Ziwei 紫微斗数摘要（命宫/身宫/五行局/四化/十二宫主星）
+	Ziwei *reportZiwei
 	// Analysis 前端生成的命理详批段落（八字格局/五行平衡/喜用神等）
 	Analysis []string
 	// WuXingDist 五行分布数值，用于条形图；键为单字 金木水火土
@@ -73,6 +77,37 @@ type reportModel struct {
 	Names      []reportName
 	// HasData 请求体是否提供了可用的对象数据
 	HasData bool
+}
+
+// reportHexagram 卦象章节数据。
+type reportHexagram struct {
+	Number         int
+	Name           string
+	Symbol         string
+	Upper          string
+	Lower          string
+	GuaCi          string
+	XiangCi        string
+	TuanCi         string
+	GuaDe          string
+	Interpretation string
+}
+
+// reportZiwei 紫微斗数章节数据。
+type reportZiwei struct {
+	MingGong     string
+	ShenGong     string
+	FiveElements string
+	Soul         string
+	Body         string
+	NianZhu      string
+	YueZhu       string
+	RiZhu        string
+	ShiZhu       string
+	SiHua        map[string]string
+	ZhuXing      map[string][]string
+	Brightness   map[string]string
+	Analysis     string
 }
 
 // Title 报告标题
@@ -105,6 +140,8 @@ func parseReportModel(data interface{}) reportModel {
 	m.Rishou = rawString(raw, "rishou")
 	m.Nayin = rawString(raw, "nayin")
 	m.Zodiac = rawString(raw, "zodiac")
+	m.Hexagram = parseReportHexagram(raw)
+	m.Ziwei = parseReportZiwei(raw)
 	m.FullDetail = true // 默认详批；options.detail=summary 时关闭
 	if opts, ok := raw["options"].(map[string]interface{}); ok {
 		if rawString(opts, "detail") == "summary" {
@@ -162,6 +199,91 @@ func parseReportModel(data interface{}) reportModel {
 		}
 	}
 	return m
+}
+
+// parseReportHexagram 解析前端透传的本卦摘要；无该字段或格式不符时返回 nil。
+func parseReportHexagram(raw map[string]interface{}) *reportHexagram {
+	hm, ok := raw["hexagram"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	h := &reportHexagram{
+		Number:         int(getScoreFloat(hm, "number")),
+		Name:           rawString(hm, "name"),
+		Symbol:         rawString(hm, "symbol"),
+		Upper:          rawString(hm, "upper"),
+		Lower:          rawString(hm, "lower"),
+		GuaCi:          rawString(hm, "gua_ci"),
+		XiangCi:        rawString(hm, "xiang_ci"),
+		TuanCi:         rawString(hm, "tuan_ci"),
+		GuaDe:          rawString(hm, "gua_de"),
+		Interpretation: rawString(hm, "interpretation"),
+	}
+	if h.Name == "" && h.GuaCi == "" && h.Number == 0 {
+		return nil
+	}
+	return h
+}
+
+// parseReportZiwei 解析紫微摘要；十二宫主星与生年四化都可能为空。
+func parseReportZiwei(raw map[string]interface{}) *reportZiwei {
+	zm, ok := raw["ziwei"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	z := &reportZiwei{
+		MingGong:     rawString(zm, "ming_gong"),
+		ShenGong:     rawString(zm, "shen_gong"),
+		FiveElements: rawString(zm, "five_elements"),
+		Soul:         rawString(zm, "soul"),
+		Body:         rawString(zm, "body"),
+		NianZhu:      rawString(zm, "nian_zhu"),
+		YueZhu:       rawString(zm, "yue_zhu"),
+		RiZhu:        rawString(zm, "ri_zhu"),
+		ShiZhu:       rawString(zm, "shi_zhu"),
+		Analysis:     rawString(zm, "analysis"),
+		SiHua:        rawStringMap(zm, "si_hua"),
+		ZhuXing:      rawStringSliceMap(zm, "zhu_xing"),
+		Brightness:   rawStringMap(zm, "brightness"),
+	}
+	if z.MingGong == "" && z.FiveElements == "" && len(z.ZhuXing) == 0 {
+		return nil
+	}
+	return z
+}
+
+func rawStringMap(m map[string]interface{}, key string) map[string]string {
+	src, ok := m[key].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	out := make(map[string]string, len(src))
+	for k, v := range src {
+		if s, ok := v.(string); ok && s != "" {
+			out[k] = s
+		}
+	}
+	return out
+}
+
+func rawStringSliceMap(m map[string]interface{}, key string) map[string][]string {
+	src, ok := m[key].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	out := make(map[string][]string, len(src))
+	for k, v := range src {
+		list, ok := v.([]interface{})
+		if !ok {
+			continue
+		}
+		for _, item := range list {
+			if s, ok := item.(string); ok && s != "" {
+				out[k] = append(out[k], s)
+			}
+		}
+	}
+	return out
 }
 
 // ---------- PDF ----------
@@ -272,10 +394,12 @@ var (
 	clrSection = [3]float64{0.94, 0.96, 0.99}
 	clrAccent  = [3]float64{0.78, 0.24, 0.24} // 朱砂红：封面色带与条形图主色
 
-	szTitle   = 19.0
-	szSection = 12.0
-	szBody    = 10.5
-	szSmall   = 9.0
+	szTitle      = 19.0
+	szCoverTitle = 30.0
+	szCoverValue = 12.0
+	szSection    = 12.0
+	szBody       = 10.5
+	szSmall      = 9.0
 )
 
 func setColor(d *pdf.Document, c [3]float64) { d.SetColor(c[0], c[1], c[2]) }
@@ -288,6 +412,9 @@ func fillRect(d *pdf.Document, x, y, w, h float64, c [3]float64) {
 
 // renderReport 渲染报告正文。
 func renderReport(d *pdf.Document, m reportModel) {
+	renderCover(d, m)
+	d.AddPage()
+
 	left := d.MarginLeft()
 	contentW := d.ContentWidth()
 
@@ -362,6 +489,12 @@ func renderReport(d *pdf.Document, m reportModel) {
 	if m.FullDetail && len(m.Analysis) > 0 {
 		renderAnalysis(d, m.Analysis, sec.title("命理依据解读"))
 	}
+	if m.Hexagram != nil {
+		renderHexagram(d, *m.Hexagram, sec.title("卦象"))
+	}
+	if m.Ziwei != nil {
+		renderZiwei(d, *m.Ziwei, sec.title("紫微斗数"))
+	}
 
 	renderNames(d, m, sec.title("推荐名字"))
 
@@ -371,6 +504,199 @@ func renderReport(d *pdf.Document, m reportModel) {
 	d.ResetColor()
 
 	setFooter(d)
+}
+
+// renderCover 渲染封面页。
+//
+// 封面独立成页，只放身份信息与报告摘要，不放表格；正文从第二页开始。
+// 页脚绘制时跳过第 1 页（见 setFooter），内容页从「第 1 页」重新计数。
+func renderCover(d *pdf.Document, m reportModel) {
+	left := d.MarginLeft()
+	contentW := d.ContentWidth()
+	pageH := d.PageSize().Height
+
+	fillRect(d, left, 92, contentW, 4, clrAccent)
+	setColor(d, clrAccent)
+	d.Text(left, 112, szSmall+1, "NAME REPORT  ·  起名详批")
+	setColor(d, clrTitle)
+	d.Text(left, 150, szCoverTitle, m.Title())
+
+	setColor(d, clrMuted)
+	d.Text(left, 192, szSmall+1, "传统命理  ·  八字五行  ·  易经卦象  ·  紫微斗数")
+
+	// 中部信息卡：两列，放最关键的出生与命理信息
+	cardY := 260.0
+	cardH := 176.0
+	fillRect(d, left, cardY, contentW, cardH, clrSection)
+	col2 := left + contentW/2 + 8
+	coverCell := func(x, y float64, label, value string) {
+		setColor(d, clrMuted)
+		d.Text(x, y, szSmall, label)
+		setColor(d, clrTitle)
+		d.Text(x, y+15, szCoverValue, value)
+	}
+	coverCell(left+24, cardY+26, "姓氏", fallbackDash(m.Surname))
+	coverCell(col2, cardY+26, "性别", genderLabel(m.Gender))
+	coverCell(left+24, cardY+72, "出生日期", fallbackDash(m.BirthDate))
+	coverCell(col2, cardY+72, "出生时间", fallbackDash(m.BirthTime))
+	coverCell(left+24, cardY+118, "生肖", fallbackDash(m.Zodiac))
+	coverCell(col2, cardY+118, "喜用神", fallbackDash(m.XiYongShen))
+
+	// 卡片外一条八字摘要（有数据才画）
+	if m.Bazi != "" {
+		setColor(d, clrMuted)
+		d.Text(left, cardY+cardH+24, szSmall+1, "八字")
+		setColor(d, clrTitle)
+		d.Text(left+42, cardY+cardH+24, szBody+1, m.Bazi)
+	}
+
+	// 封面底部品牌与日期
+	ruleY := pageH - 110
+	d.Rule(left, ruleY, contentW, 0.8)
+	setColor(d, clrMuted)
+	d.Text(left, ruleY+16, szSmall, "NameMaster · 传统命理起名系统")
+	dateText := time.Now().Format("2006-01-02")
+	d.Text(d.PageSize().Width-d.MarginRight()-d.Measure(szSmall, dateText),
+		ruleY+16, szSmall, dateText)
+	d.ResetColor()
+}
+
+// renderHexagram 渲染卦象章节：短字段网格 + 卦辞/象辞/彖传/解读文本块。
+func renderHexagram(d *pdf.Document, h reportHexagram, title string) {
+	// 卦象含多条长文本，剩余空间不足时整节换页，避免「卦辞」与「象辞」被页脚截断
+	ensureSectionSpace(d, 300)
+	head := h.Name
+	if h.Number > 0 {
+		head = fmt.Sprintf("第 %d 卦 · %s", h.Number, head)
+	}
+	rows := [][2]string{{"本卦", head}, {"卦德", fallbackDash(h.GuaDe)}}
+	if h.Upper != "" || h.Lower != "" {
+		rows = append(rows, [2]string{"上下卦", fmt.Sprintf("上%s / 下%s", fallbackDash(h.Upper), fallbackDash(h.Lower))})
+	}
+	renderInfoGrid(d, title, rows)
+
+	renderTextBlock(d, "卦辞", h.GuaCi)
+	renderTextBlock(d, "象辞", h.XiangCi)
+	renderTextBlock(d, "彖传", h.TuanCi)
+	renderTextBlock(d, "解读", h.Interpretation)
+}
+
+// renderZiwei 渲染紫微斗数章节：命盘摘要 + 十二宫主星 + 排盘分析。
+func renderZiwei(d *pdf.Document, z reportZiwei, title string) {
+	// 命盘摘要 + 十二宫主星 + 分析通常需要 300pt 以上，空间不足时另起一页
+	ensureSectionSpace(d, 340)
+	rows := [][2]string{
+		{"命宫", fallbackDash(z.MingGong)},
+		{"身宫", fallbackDash(z.ShenGong)},
+		{"五行局", fallbackDash(z.FiveElements)},
+		{"命主 / 身主", strings.TrimSpace(fallbackDash(z.Soul) + " / " + fallbackDash(z.Body))},
+	}
+	sizhu := strings.TrimSpace(strings.Join(nonEmpty([]string{z.NianZhu, z.YueZhu, z.RiZhu, z.ShiZhu}), " "))
+	if sizhu != "" {
+		rows = append(rows, [2]string{"四柱", sizhu})
+	}
+	rows = append(rows, [2]string{"生年四化", formatSiHua(z.SiHua)})
+	renderInfoGrid(d, title, rows)
+
+	// 十二宫主星：固定宫序，缺失的宫不输出；亮度拼在星名后
+	palaces := [][2]string{}
+	for _, name := range ziweiPalaceOrder() {
+		stars, ok := lookupPalace(z.ZhuXing, name)
+		if !ok || len(stars) == 0 {
+			continue
+		}
+		labels := make([]string, 0, len(stars))
+		for _, s := range stars {
+			if b := z.Brightness[s]; b != "" {
+				labels = append(labels, s+"("+b+")")
+			} else {
+				labels = append(labels, s)
+			}
+		}
+		palaces = append(palaces, [2]string{name, strings.Join(labels, "、")})
+	}
+	if len(palaces) > 0 {
+		renderInfoGrid(d, "十二宫主星", palaces)
+	}
+	renderTextBlock(d, "排盘分析", z.Analysis)
+}
+
+func ziweiPalaceOrder() []string {
+	return []string{"命宫", "兄弟", "夫妻", "子女", "财帛", "疾厄", "迁移", "交友", "官禄", "田宅", "福德", "父母"}
+}
+
+func lookupPalace(m map[string][]string, name string) ([]string, bool) {
+	if stars, ok := m[name]; ok {
+		return stars, true
+	}
+	if stars, ok := m[name+"宫"]; ok {
+		return stars, true
+	}
+	for k, stars := range m {
+		if strings.TrimSuffix(k, "宫") == name {
+			return stars, true
+		}
+	}
+	return nil, false
+}
+
+func formatSiHua(m map[string]string) string {
+	if len(m) == 0 {
+		return "—"
+	}
+	order := []string{"禄", "权", "科", "忌"}
+	parts := make([]string, 0, len(order))
+	for _, k := range order {
+		if v := m[k]; v != "" {
+			parts = append(parts, k+" "+v)
+		}
+	}
+	return strings.Join(parts, "  ·  ")
+}
+
+func nonEmpty(list []string) []string {
+	out := make([]string, 0, len(list))
+	for _, s := range list {
+		if strings.TrimSpace(s) != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func fallbackDash(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "—"
+	}
+	return s
+}
+
+// ensureSectionSpace 若当前页剩余高度不足以容纳 need，则另起一页。
+func ensureSectionSpace(d *pdf.Document, need float64) {
+	if d.CursorY()+need > d.BottomLimit() {
+		d.AddPage()
+		d.Space(6)
+	}
+}
+
+// renderTextBlock 渲染「小标签 + 折行正文」，用于卦辞/象辞/分析等长文本。
+func renderTextBlock(d *pdf.Document, label, text string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	lines := d.Wrap(text, szBody-0.5, d.ContentWidth()-8)
+	d.EnsureSpace(16 + float64(len(lines))*15 + 8)
+	setColor(d, clrAccent)
+	d.Text(d.MarginLeft()+4, d.CursorY()+2, szSmall, label)
+	d.Space(15)
+	setColor(d, clrText)
+	for _, ln := range lines {
+		d.Text(d.MarginLeft()+4, d.CursorY()+3, szBody-0.5, ln)
+		d.Space(15)
+	}
+	d.ResetColor()
+	d.Space(6)
 }
 
 // sectionCounter 生成「一、二、三…」连续编号，避免因跳过某些区块而出现断号。
@@ -411,6 +737,24 @@ func highestScore(names []reportName) float64 {
 		}
 	}
 	return max
+}
+
+// gradeLabel 与领域层 scoreToGrade 同阈值，保证 PDF 与结果页评级一致。
+func gradeLabel(score float64) string {
+	switch {
+	case score >= 90:
+		return "上上"
+	case score >= 80:
+		return "上吉"
+	case score >= 70:
+		return "中吉"
+	case score >= 60:
+		return "中平"
+	case score >= 50:
+		return "中下"
+	default:
+		return "下下"
+	}
 }
 
 // formatScore 统一评分的展示精度：整数不带小数，其余保留一位。
@@ -495,11 +839,15 @@ func renderAnalysis(d *pdf.Document, paragraphs []string, title string) {
 // setFooter 注册页脚：页码 + 品牌行。此时页数已确定。
 func setFooter(d *pdf.Document) {
 	d.SetFooter(func(doc *pdf.Document, idx, total int) {
+		// 封面不显示页脚，正文页从「第 1 页」重新计数
+		if idx == 0 {
+			return
+		}
 		y := doc.PageSize().Height - doc.MarginBottom() + 22
 		doc.Rule(doc.MarginLeft(), y-10, doc.ContentWidth(), 0.5)
 		setColor(doc, clrMuted)
 		doc.Text(doc.MarginLeft(), y, szSmall, "由 NameMaster 起名系统生成")
-		page := fmt.Sprintf("第 %d / %d 页", idx+1, total)
+		page := fmt.Sprintf("第 %d / %d 页", idx, total-1)
 		w := doc.Measure(szSmall, page)
 		doc.Text(doc.PageSize().Width-doc.MarginRight()-w, y, szSmall, page)
 		doc.ResetColor()
@@ -584,13 +932,14 @@ type nameTableLayout struct {
 	left       float64
 	contentW   float64
 	colX       [4]float64 // 序号 / 姓名 / 拼音 / 五行
+	gradeX     float64    // 评级
 	scoreRight float64
 }
 
 func newNameTableLayout(d *pdf.Document) nameTableLayout {
 	left := d.MarginLeft()
 	contentW := d.ContentWidth()
-	// 相对权重：序号 7% / 姓名 21% / 拼音 31% / 五行 14% / 评分 27%（右对齐占余量）
+	// 相对权重：序号 7% / 姓名 21% / 拼音 31% / 五行 14%，评级 70% 起，评分右对齐
 	wIndex := contentW * 0.07
 	wName := contentW * 0.21
 	wPin := contentW * 0.31
@@ -604,6 +953,7 @@ func newNameTableLayout(d *pdf.Document) nameTableLayout {
 			left + wIndex + wName,
 			left + wIndex + wName + wPin + wWuxing*0.35,
 		},
+		gradeX:     left + contentW*0.70,
 		scoreRight: left + contentW,
 	}
 }
@@ -617,6 +967,7 @@ func drawNameTableHeader(d *pdf.Document, l nameTableLayout) {
 	d.Text(l.colX[1], d.CursorY(), szSmall, "姓名")
 	d.Text(l.colX[2], d.CursorY(), szSmall, "拼音")
 	d.Text(l.colX[3], d.CursorY(), szSmall, "五行")
+	d.Text(l.gradeX, d.CursorY(), szSmall, "评级")
 	scoreHeader := "评分"
 	d.Text(l.scoreRight-d.Measure(szSmall, scoreHeader)-4, d.CursorY(), szSmall, scoreHeader)
 	d.Space(headerH)
@@ -674,11 +1025,8 @@ func renderNames(d *pdf.Document, m reportModel, title string) {
 		}
 		rowTop := d.CursorY()
 
-		// 斑马纹：偶数行浅底，提升可读性
-		if i%2 == 1 {
-			fillRect(d, l.left, rowTop-3, l.contentW, rowH-4, clrSection)
-		}
-		// 前三名左侧色条（与斑马纹错开，始终可见）
+		// 不用整行底色：底色与文字基线存在视觉错位，长寓意行尤其明显。
+		// 行间仅保留细分隔线，前三名另加左侧色条。
 		if i < 3 {
 			fillRect(d, l.left, rowTop-2, 3, rowH-6, rankColors[i])
 		}
@@ -690,6 +1038,14 @@ func renderNames(d *pdf.Document, m reportModel, title string) {
 		setColor(d, clrText)
 		d.Text(l.colX[2], rowTop+2, szBody, n.Pinyin)
 		d.Text(l.colX[3], rowTop+2, szBody, n.WuXing)
+
+		grade := gradeLabel(n.ScoreValue)
+		if n.Score == "" {
+			grade = "—"
+		}
+		setColor(d, clrMuted)
+		d.Text(l.gradeX, rowTop+2, szBody, grade)
+
 		if n.Score != "" {
 			scoreColor := clrText
 			switch {

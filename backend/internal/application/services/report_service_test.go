@@ -258,6 +258,50 @@ func TestReportLayoutHelpers(t *testing.T) {
 	if got := formatScore(92.4); got != "92.4" {
 		t.Errorf("formatScore(92.4) = %q", got)
 	}
+	if got := gradeLabel(92.4); got != "上上" {
+		t.Errorf("gradeLabel(92.4) = %q", got)
+	}
+	if got := gradeLabel(88.1); got != "上吉" {
+		t.Errorf("gradeLabel(88.1) = %q", got)
+	}
+	if got := gradeLabel(75); got != "中吉" {
+		t.Errorf("gradeLabel(75) = %q", got)
+	}
+}
+
+// TestParseReportModelHexagramZiwei 卦象与紫微摘要应正确解析（含十二宫主星与亮度）。
+func TestParseReportModelHexagramZiwei(t *testing.T) {
+	m := parseReportModel(map[string]interface{}{
+		"hexagram": map[string]interface{}{
+			"number": 19, "name": "地泽临", "upper": "坤", "lower": "兑",
+			"gua_ci": "临：元亨利贞。", "xiang_ci": "泽上有地，临。",
+			"tuan_ci": "临，刚浸而长。", "gua_de": "上坤下兑，悦而顺",
+			"interpretation": "居上临下，以德感人。",
+		},
+		"ziwei": map[string]interface{}{
+			"ming_gong": "丙午", "shen_gong": "丁未", "five_elements": "火六局",
+			"soul": "廉贞", "body": "天相",
+			"si_hua":     map[string]interface{}{"禄": "廉贞", "忌": "太阳"},
+			"zhu_xing":   map[string]interface{}{"命宫": []interface{}{"紫微", "天府"}},
+			"brightness": map[string]interface{}{"紫微": "庙"},
+			"analysis":   "命宫紫微天府同守。",
+		},
+	})
+	if m.Hexagram == nil || m.Hexagram.Number != 19 || m.Hexagram.Name != "地泽临" {
+		t.Fatalf("卦象解析异常: %+v", m.Hexagram)
+	}
+	if m.Hexagram.GuaDe == "" || m.Hexagram.GuaCi == "" {
+		t.Errorf("卦象字段缺失: %+v", m.Hexagram)
+	}
+	if m.Ziwei == nil || m.Ziwei.MingGong != "丙午" || m.Ziwei.FiveElements != "火六局" {
+		t.Fatalf("紫微解析异常: %+v", m.Ziwei)
+	}
+	if stars := m.Ziwei.ZhuXing["命宫"]; len(stars) != 2 || stars[0] != "紫微" {
+		t.Errorf("十二宫主星解析异常: %v", stars)
+	}
+	if m.Ziwei.Brightness["紫微"] != "庙" {
+		t.Errorf("主星亮度解析异常: %v", m.Ziwei.Brightness)
+	}
 }
 
 // TestParseReportModelScoreValue 评分字符串与数值两种形态都要能算出数值分，

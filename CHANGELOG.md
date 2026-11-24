@@ -5,6 +5,26 @@
 
 > 注：自 `2026.08.24.0` 起建立统一变更日志；此前迭代未留档。
 
+## [2026.11.24.2]
+
+**导出 PDF 增加封面、卦象/紫微章节与评级列；移除错位行底色**
+
+### ✨ New Features 新增功能
+- 新增独立封面页：标题、出生信息卡（姓氏/性别/出生日期/出生时间/生肖/喜用神）、
+  八字摘要与品牌日期；封面不显示页脚，正文页从第 1 页计数
+- 新增「卦象」章节：本卦、卦德、上下卦、卦辞、象辞、彖传与解读；空间不足时整节换页
+- 新增「紫微斗数」章节：命宫/身宫、五行局、命主/身主、四柱、生年四化、
+  十二宫主星（附庙旺亮度）与排盘分析
+- 推荐名字表新增「评级」列，与领域层 `scoreToGrade` 同阈值（上上/上吉/中吉/中平/中下/下下）
+
+### 📈 Improvements 性能/体验优化
+- 移除名字表整行斑马纹底色，只保留细分隔线；解决底色与文字行/长寓意行错位的问题
+- 前端导出载荷补齐 `hexagram` 与 `ziwei` 摘要字段
+
+### 📚 Docs 文档更新
+- `docs/25-报告PDF生成实现说明.md` 同步封面、卦象、紫微与评级列说明
+- `tools/pdf_preview` 样例补齐卦象/紫微数据
+
 ## [2026.11.24.1]
 
 **导出 PDF 报告版式优化：动态章节编号、双列信息网格与榜单重点标识**
@@ -234,7 +254,7 @@
 
 ### ✅ 验证
 - 仓库内 CWD 冒烟（自身单库命中 + 仓库零污染）、安装版启动 db 直连
-  `%LocalAppData%\Programs\NameMaster\data\namer.db`、卸载保库，全部通过；
+  `%LocalAppData%\Programs\Namer\data\namer.db`、卸载保库，全部通过；
   go test 30 包全绿；exe 37.4MB / 安装器 20.9MB 重建通过
 
 ## [2026.11.18.4]
@@ -989,11 +1009,11 @@
 - 【手册】API 接口表对齐实际路由：移除 3 个不存在路由（/bazi/analyze、/yijing、/zodiac），补异步生成/任务/测名/黄历/农历/健康检查；新增访客会话隔离说明（X-Session-ID 机制与孤儿会话竞态提示）；文档引用 docs/06-API.md → docs/02
 - 【手册】方式二补 `backend/bin/start-server.sh` 一键启动（--rebuild/--check/--skip-frontend）；`go run cmd/server/main.go` 全部修正为 `go -C backend run ./cmd/server`（多文件包单文件形式无法编译）
 - 【手册】CORS 白名单部署要点（NAMER_CORS_ORIGINS，systemd 示例内联）；Nginx 方式 B 引用 `nginx-frontend.conf` 安全白名单（docs/45 P1-31）
-- 【手册】勘误：健康路径 `/api/v1/health` → `/healthz`（3 处）、备份库名 namemaster.db → 权威库 backend/namer.db（含 WAL 在线备份）、systemd/nginx 示例命名统一 namer、仓库地址 yourusername/namemaster → bliubiu/babyName、Go 版本对齐 go.mod 单一真源
+- 【手册】勘误：健康路径 `/api/v1/health` → `/healthz`（3 处）、备份库名 Namer.db → 权威库 backend/namer.db（含 WAL 在线备份）、systemd/nginx 示例命名统一 namer、仓库地址 yourusername/Namer → bliubiu/babyName、Go 版本对齐 go.mod 单一真源
 - 【手册】部署检查清单补物料导入/CORS/验证脚本/启动日志无 ERROR 项；文档版本表 1.1
 
 ### ✅ 验证
-- 全文 grep 复查零残留（namemaster/-dsn/假路由/旧健康路径）；命令均按实际 flag 与多文件包约束核对
+- 全文 grep 复查零残留（Namer/-dsn/假路由/旧健康路径）；命令均按实际 flag 与多文件包约束核对
 
 ## [2026.11.10.2]
 
@@ -2933,7 +2953,7 @@ namestatistics 自带测试）；前端 tsc 0 错误、vitest 45/45、lint 0 err
 - ② 字库播种：entrypoint「新增 36 项，失败 0」，二次启动「保留已有 36 项」
   （no-clobber 正确）；生成 API 返回真实八字/五行/喜用神与名字
   （瑞赟 82.4 / 湃信 77.8 / 嫦浩 76.8）
-- ③ 配置加载：启动日志 `Starting NameMaster server {"host": "0.0.0.0"}`
+- ③ 配置加载：启动日志 `Starting Namer server {"host": "0.0.0.0"}`
   （C10 实证）；DB 落宿主数据卷、容器层无残留；无静态 Fatal
 - ④ 持久化：收藏（92.7 浮点）→ `restart backend` → 完整回读
 - 部署前置（实测必需）：宿主挂载目录 `chown -R 1000:1000`；证书须含

@@ -426,6 +426,35 @@ export interface ReportPayload {
   analysis?: string[];
   /** 五行分布数值，用于条形图；键为单字 金木水火土 */
   wuxing_dist?: Record<string, number>;
+  /** 卦象摘要：本卦/上下卦/卦辞/象辞/彖传/卦德/解读 */
+  hexagram?: {
+    number?: number;
+    name?: string;
+    symbol?: string;
+    upper?: string;
+    lower?: string;
+    gua_ci?: string;
+    xiang_ci?: string;
+    tuan_ci?: string;
+    gua_de?: string;
+    interpretation?: string;
+  };
+  /** 紫微斗数摘要：命宫/身宫/五行局/四柱/四化/十二宫主星/排盘分析 */
+  ziwei?: {
+    ming_gong?: string;
+    shen_gong?: string;
+    five_elements?: string;
+    soul?: string;
+    body?: string;
+    nian_zhu?: string;
+    yue_zhu?: string;
+    ri_zhu?: string;
+    shi_zhu?: string;
+    si_hua?: Record<string, string>;
+    zhu_xing?: Record<string, string[]>;
+    brightness?: Record<string, string>;
+    analysis?: string;
+  };
   /** 导出详略：full=含命理详批与分布图，summary=仅基本信息+名字表 */
   options?: { detail?: 'full' | 'summary' };
   names?: Array<{

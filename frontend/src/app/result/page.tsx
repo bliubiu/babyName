@@ -206,6 +206,37 @@ export default function ResultPage() {
       zodiac: zodiac || undefined,
       analysis,
       wuxing_dist: wuxingDist,
+      hexagram: result?.hexagram
+        ? {
+            number: result.hexagram.number,
+            name: result.hexagram.name,
+            symbol: result.hexagram.symbol,
+            upper: result.hexagram_detail?.upper_trigram_name,
+            lower: result.hexagram_detail?.lower_trigram_name,
+            gua_ci: result.hexagram.gua_ci,
+            xiang_ci: result.hexagram.xiang_ci,
+            tuan_ci: result.hexagram.tuan_ci,
+            gua_de: result.hexagram.gua_de,
+            interpretation: result.hexagram.interpretation,
+          }
+        : undefined,
+      ziwei: result?.ziwei
+        ? {
+            ming_gong: result.ziwei.ming_gong,
+            shen_gong: result.ziwei.shen_gong,
+            five_elements: result.ziwei.five_elements,
+            soul: result.ziwei.soul,
+            body: result.ziwei.body,
+            nian_zhu: result.ziwei.nian_zhu,
+            yue_zhu: result.ziwei.yue_zhu,
+            ri_zhu: result.ziwei.ri_zhu,
+            shi_zhu: result.ziwei.shi_zhu,
+            si_hua: result.ziwei.si_hua,
+            zhu_xing: result.ziwei.zhu_xing,
+            brightness: result.ziwei.brightness,
+            analysis: result.ziwei.analysis,
+          }
+        : undefined,
       options: { detail: 'full' as const },
       names: (result?.names ?? []).slice(0, 30).map((n: Name) => ({
         full_name: n.full_name || `${n.surname}${n.given_name}`,

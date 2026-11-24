@@ -1,6 +1,6 @@
 # 报告 PDF 生成实现说明
 
-> 版本：`2026.11.24.1`
+> 版本：`2026.11.24.2`
 > 代码：`backend/internal/infrastructure/pdf/`、`backend/internal/application/services/report_service.go`
 > 上游问题：`docs/24-遗留问题清单.md` 的 P1-3（`/report/pdf` 是硬编码占位实现）
 
@@ -79,17 +79,22 @@ CID 直接等于子集内的新字形号，因此 `/CIDToGIDMap /Identity`，无
 `ReportService` 采用「解析请求 → 统一报表模型 → 渲染 PDF」两段式：
 
 - 模型字段沿用既有请求体（`surname/gender/birth_date/birth_time/bazi/wuxing/xiyongshen/names[]`），
-  详批字段包括 `rishou/nayin/zodiac/analysis/wuxing_dist/options.detail`。
-- **头部**：朱砂色带 + 标题 + 右侧生成时间；下接摘要条（推荐数量、最高评分、喜用神）。
-- **章节编号动态生成**：`sectionCounter` 从「一」连续编号；某节缺数据时不会出现断号
-  （例如无五行分布时，命理依据仍紧接上一节编号）。
-- **基本信息 / 八字与五行**：双列 label-value 网格，短字段每行两组，避免单列右侧留白；
-  值过长时在单元格内折行。
-- **五行分布**：横向条形图，按金木水火土固定顺序，保留浅色底槽与数值。
+  详批字段包括 `rishou/nayin/zodiac/analysis/wuxing_dist/hexagram/ziwei/options.detail`。
+- **封面页**：独立成页，朱砂色带 + 标题 + 四行副标题 + 出生信息卡（姓氏/性别/出生日期/
+  出生时间/生肖/喜用神）+ 八字摘要 + 底部品牌与日期；封面不显示页脚，正文页从第 1 页计数。
+- **正文头部**：标题 + 右侧生成时间 + 摘要条（推荐数量、最高评分、喜用神）。
+- **章节编号动态生成**：`sectionCounter` 从「一」连续编号；某节缺数据时不会出现断号。
+- **基本信息 / 八字与五行**：双列 label-value 网格，短字段每行两组；值过长时单元格内折行。
+- **五行分布**：横向条形图，按金木水火土固定顺序。
 - **命理依据解读**：按前端提供的段落逐段折行/分页。
-- **推荐名字**：表头为序号/姓名/拼音/五行/评分；前 3 名左侧色条标记（朱砂/赭金/青灰），
-  评分 ≥90 朱砂、≥85 品牌蓝；寓意行以「寓意：」前缀折行，详批模式再追加维度评分。
-  换页自动重画表头，避免续页列标题丢失。
+- **卦象**：本卦（第 N 卦·卦名）/卦德/上下卦网格，加卦辞、象辞、彖传、解读文本块；
+  剩余空间不足时整节换页，避免长文被页脚截断。
+- **紫微斗数**：命宫/身宫、五行局、命主/身主、四柱、生年四化网格；十二宫主星按固定宫序
+  输出（星名附带庙旺亮度），最后附排盘分析。
+- **推荐名字**：表头为序号/姓名/拼音/五行/评级/评分；评级与领域层 `scoreToGrade` 同阈值
+  （上上/上吉/中吉/中平/中下/下下）；前 3 名左侧色条标记，评分 ≥90 朱砂、≥85 品牌蓝；
+  寓意行以「寓意：」前缀折行，详批模式追加维度评分。**不再使用整行斑马纹底色**，
+  只用细分隔线，避免底色与文字行视觉错位；换页自动重画表头。
 - **页脚**：品牌行 + 「第 X / Y 页」。
 - 空数据/非对象输入：产出一份「未提供有效报告数据」的可读报告，而不是 500。
 
@@ -129,8 +134,9 @@ pdftoppm -png -r 100 ../.workbuddy/tmp/report_sample.pdf page
 | `TestDocumentMissingGlyphFallback` | 缺字兜底与 `MissingRunes` |
 | `TestWrapRespectsWidth` / `TestMeasureIsMonotonic` | 折行与测量 |
 | `TestGeneratePDFContainsRealData` | **占位文案消失** + 请求数据进入 ToUnicode CMap |
-| `TestReportLayoutHelpers` | 章节编号连续、最高分与分数格式化 |
+| `TestReportLayoutHelpers` | 章节编号连续、最高分与分数格式化、评级阈值 |
 | `TestParseReportModelScoreValue` | 字符串/数值评分统一转数值，供摘要与高亮 |
+| `TestParseReportModelHexagramZiwei` | 卦象字段、十二宫主星与主星亮度解析 |
 | `TestGeneratePDFEmptyData` / `TestGeneratePDFContextCancelled` | 空数据可读、ctx 取消即返回 |
 | `TestReportHandlerGeneratePDF` | 接口层 200 + `application/pdf` + `%PDF-` 头 |
 
