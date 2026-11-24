@@ -393,6 +393,7 @@ var (
 	clrMuted   = [3]float64{0.45, 0.45, 0.45}
 	clrSection = [3]float64{0.94, 0.96, 0.99}
 	clrAccent  = [3]float64{0.78, 0.24, 0.24} // 朱砂红：封面色带与条形图主色
+	clrWhite   = [3]float64{1, 1, 1}
 
 	szTitle      = 19.0
 	szCoverTitle = 30.0
@@ -1025,10 +1026,12 @@ func renderNames(d *pdf.Document, m reportModel, title string) {
 		}
 		rowTop := d.CursorY()
 
-		// 不用整行底色：底色与文字基线存在视觉错位，长寓意行尤其明显。
+		// 表格正文每行先铺白底：不使用斑马纹，同时覆盖任何可能残留的底色，
+		// 保证文字行与背景边界严格对齐。
+		fillRect(d, l.left, rowTop, l.contentW, rowH-4, clrWhite)
 		// 行间仅保留细分隔线，前三名另加左侧色条。
 		if i < 3 {
-			fillRect(d, l.left, rowTop-2, 3, rowH-6, rankColors[i])
+			fillRect(d, l.left, rowTop-1, 3, rowH-6, rankColors[i])
 		}
 
 		setColor(d, clrMuted)
