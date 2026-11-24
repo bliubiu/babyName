@@ -39,7 +39,7 @@ type Cache interface {
 type cacheItem struct {
 	value      interface{}
 	expiration time.Time
-	created    time.Time
+	seq        uint64 // 写入序号：Windows 下 time.Now 精度约 1ms，同一毫秒内连续写入会并列，必须用序号定序
 }
 
 const defaultMaxEntries = 64
@@ -49,7 +49,8 @@ type MemoryCache struct {
 	data       map[string]cacheItem
 	mu         sync.RWMutex
 	stopCh     chan struct{}
-	maxEntries int // 0=不限；默认 64，按写入时间淘汰最旧项，防止生成结果无界增长
+	maxEntries int    // 0=不限；默认 64，按写入时间淘汰最旧项，防止生成结果无界增长
+	nextSeq    uint64 // 单调递增的写入序号，保证淘汰顺序确定
 }
 
 // NewMemoryCache 创建内存缓存，启动过期清理协程
@@ -185,10 +186,10 @@ func (c *MemoryCache) Set(key string, value interface{}, expiration time.Duratio
 				break
 			}
 			oldestKey := ""
-			var oldest time.Time
+			var oldestSeq uint64
 			for k, v := range c.data {
-				if oldestKey == "" || v.created.Before(oldest) {
-					oldestKey, oldest = k, v.created
+				if oldestKey == "" || v.seq < oldestSeq {
+					oldestKey, oldestSeq = k, v.seq
 				}
 			}
 			if oldestKey == "" {
@@ -198,7 +199,8 @@ func (c *MemoryCache) Set(key string, value interface{}, expiration time.Duratio
 		}
 	}
 
-	c.data[key] = cacheItem{value: value, expiration: exp, created: time.Now()}
+	c.nextSeq++
+	c.data[key] = cacheItem{value: value, expiration: exp, seq: c.nextSeq}
 }
 
 func (c *MemoryCache) Delete(key string) {

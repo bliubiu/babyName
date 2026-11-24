@@ -162,7 +162,9 @@ func TestCastHexagramByDayan_ChangedHexagram(t *testing.T) {
 				r.InterHexagram.UpperTrigram, r.InterHexagram.LowerTrigram, wantInterUpper, wantInterLower)
 		}
 
-		if r.ChangeYao == 0 {
+		// 注意：ChangeYao==0 有两种含义——无动爻（以本卦卦辞断）与六爻皆动
+		// （以变卦卦辞断）。判断有无变卦必须以动爻集合为准，不能用断卦爻位。
+		if len(r.ChangeYaos) == 0 {
 			if r.ChangedHexagram != nil {
 				t.Fatalf("无动爻时变卦应为 nil，got %+v", r.ChangedHexagram)
 			}
